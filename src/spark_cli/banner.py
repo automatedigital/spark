@@ -169,7 +169,8 @@ def check_for_updates() -> int | None:
             cwd=str(repo_dir),
         )
     except Exception:
-        pass  # Offline or timeout — use stale refs, that's fine
+        # Offline or timeout — use stale refs, that's fine
+        logger.debug("Ignored exception in check_for_updates", exc_info=True)
 
     # Count commits behind
     try:

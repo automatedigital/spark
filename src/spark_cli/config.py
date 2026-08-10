@@ -21,7 +21,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 _IS_WINDOWS = platform.system() == "Windows"
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -913,10 +913,10 @@ ENV_VARS_BY_VERSION: dict[int, list[str]] = {
 # LLM provider is required but handled in the setup wizard's provider
 # selection step (OpenRouter / Anthropic / Custom endpoint), so this
 # dict is intentionally empty — no single env var is universally required.
-REQUIRED_ENV_VARS = {}
+REQUIRED_ENV_VARS: dict[str, dict[str, Any]] = {}
 
 # Optional environment variables that enhance functionality
-OPTIONAL_ENV_VARS = {
+OPTIONAL_ENV_VARS: dict[str, dict[str, Any]] = {
     # ── Provider (handled in provider selection, not shown in checklists) ──
     "OPENROUTER_API_KEY": {
         "description": "OpenRouter API key (for vision, web scraping helpers, and MoA)",
@@ -1974,8 +1974,8 @@ def check_config_version() -> tuple[int, int]:
     Returns (current_version, latest_version).
     """
     config = load_config()
-    current = config.get("_config_version", 0)
-    latest = DEFAULT_CONFIG.get("_config_version", 1)
+    current = int(config.get("_config_version", 0))
+    latest = int(cast(Any, DEFAULT_CONFIG.get("_config_version", 1)))
     return current, latest
 
 
@@ -2312,7 +2312,11 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
     Returns:
         Dict with migration results: {"env_added": [...], "config_added": [...], "warnings": [...]}
     """
-    results = {"env_added": [], "config_added": [], "warnings": []}
+    results: dict[str, list[str]] = {
+        "env_added": [],
+        "config_added": [],
+        "warnings": [],
+    }
 
     # ── Always: sanitize .env (split concatenated keys) ──
     try:
@@ -2320,7 +2324,8 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
         if fixes and not quiet:
             print(f"  ✓ Repaired .env file ({fixes} corrupted entries fixed)")
     except Exception:
-        pass  # best-effort; don't block migration on sanitize failure
+        # best-effort; don't block migration on sanitize failure
+        logger.debug("Ignored exception in migrate_config", exc_info=True)
 
     # Check config version
     current_ver, latest_ver = check_config_version()
@@ -2735,12 +2740,12 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
             if var.get("password"):
                 import getpass
 
-                value = getpass.getpass(f"  {var['prompt']}: ")
+                env_value = getpass.getpass(f"  {var['prompt']}: ")
             else:
-                value = input(f"  {var['prompt']}: ").strip()
+                env_value = input(f"  {var['prompt']}: ").strip()
 
-            if value:
-                save_env_value(var["name"], value)
+            if env_value:
+                save_env_value(var["name"], env_value)
                 results["env_added"].append(var["name"])
                 print(f"  ✓ Saved {var['name']}")
             else:
@@ -2791,15 +2796,15 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
                     if info.get("password"):
                         import getpass
 
-                        value = getpass.getpass(
+                        optional_value = getpass.getpass(
                             f"  {info.get('prompt', name)} (Enter to skip): "
                         )
                     else:
-                        value = input(
+                        optional_value = input(
                             f"  {info.get('prompt', name)} (Enter to skip): "
                         ).strip()
-                    if value:
-                        save_env_value(name, value)
+                    if optional_value:
+                        save_env_value(name, optional_value)
                         results["env_added"].append(name)
                         print(f"  ✓ Saved {name}")
                     print()
@@ -2858,14 +2863,14 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, A
             for var in missing_skill_config:
                 default = var.get("default", "")
                 default_hint = f" (default: {default})" if default else ""
-                value = input(f"  {var['prompt']}{default_hint}: ").strip()
-                if not value and default:
-                    value = str(default)
-                if value:
+                skill_value = input(f"  {var['prompt']}{default_hint}: ").strip()
+                if not skill_value and default:
+                    skill_value = str(default)
+                if skill_value:
                     storage_key = f"{SKILL_CONFIG_PREFIX}.{var['key']}"
-                    _set_nested(config, storage_key, value)
+                    _set_nested(config, storage_key, skill_value)
                     results["config_added"].append(var["key"])
-                    print(f"  ✓ Saved {var['key']} = {value}")
+                    print(f"  ✓ Saved {var['key']} = {skill_value}")
                 else:
                     results["warnings"].append(
                         f"Skipped {var['key']} — skill '{var.get('skill', '?')}' may ask for it later"
@@ -2953,7 +2958,8 @@ def _normalize_max_turns_config(config: dict[str, Any]) -> dict[str, Any]:
         agent_config["max_turns"] = config["max_turns"]
 
     if "max_turns" not in agent_config:
-        agent_config["max_turns"] = DEFAULT_CONFIG["agent"]["max_turns"]
+        default_agent = cast(dict[str, Any], DEFAULT_CONFIG["agent"])
+        agent_config["max_turns"] = default_agent["max_turns"]
 
     config["agent"] = agent_config
     config.pop("max_turns", None)
@@ -3003,8 +3009,9 @@ def load_config() -> dict[str, Any]:
         except Exception as e:
             print(f"Warning: Failed to load config: {e}")
 
-    return _expand_env_vars(
-        _normalize_root_model_keys(_normalize_max_turns_config(config))
+    return cast(
+        dict[str, Any],
+        _expand_env_vars(_normalize_root_model_keys(_normalize_max_turns_config(config))),
     )
 
 
@@ -3154,7 +3161,7 @@ def load_env() -> dict[str, str]:
     if env_path.exists():
         # On Windows, open() defaults to the system locale (cp1252) which can
         # fail on UTF-8 .env files. Use explicit UTF-8 only on Windows.
-        open_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+        open_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
         with open(env_path, **open_kw) as f:
             raw_lines = f.readlines()
         # Sanitize before parsing: split concatenated lines & drop stale
@@ -3234,8 +3241,8 @@ def sanitize_env_file() -> int:
     if not env_path.exists():
         return 0
 
-    read_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
-    write_kw = {"encoding": "utf-8"} if _IS_WINDOWS else {}
+    read_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+    write_kw: dict[str, Any] = {"encoding": "utf-8"} if _IS_WINDOWS else {}
 
     with open(env_path, **read_kw) as f:
         original_lines = f.readlines()
@@ -3284,8 +3291,8 @@ def save_env_value(key: str, value: str):
 
     # On Windows, open() defaults to the system locale (cp1252) which can
     # cause OSError errno 22 on UTF-8 .env files.
-    read_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
-    write_kw = {"encoding": "utf-8"} if _IS_WINDOWS else {}
+    read_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+    write_kw: dict[str, Any] = {"encoding": "utf-8"} if _IS_WINDOWS else {}
 
     lines = []
     if env_path.exists():
@@ -3376,8 +3383,8 @@ def save_http_api_env_block(api_key: str) -> None:
 
     ensure_spark_home()
     env_path = get_env_path()
-    read_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
-    write_kw = {"encoding": "utf-8"} if _IS_WINDOWS else {}
+    read_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+    write_kw: dict[str, Any] = {"encoding": "utf-8"} if _IS_WINDOWS else {}
 
     lines: list[str] = []
     if env_path.exists():
@@ -3440,8 +3447,8 @@ def remove_env_value(key: str) -> bool:
         os.environ.pop(key, None)
         return False
 
-    read_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
-    write_kw = {"encoding": "utf-8"} if _IS_WINDOWS else {}
+    read_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+    write_kw: dict[str, Any] = {"encoding": "utf-8"} if _IS_WINDOWS else {}
 
     with open(env_path, **read_kw) as f:
         lines = f.readlines()
@@ -3830,7 +3837,7 @@ def set_config_value(key: str, value: str):
     # Read the raw user config (not merged with defaults) to avoid
     # dumping all default values back to the file
     config_path = get_config_path()
-    user_config = {}
+    user_config: dict[str, Any] = {}
     if config_path.exists():
         try:
             with open(config_path, encoding="utf-8") as f:
@@ -3848,16 +3855,17 @@ def set_config_value(key: str, value: str):
         current = current[part]
 
     # Convert value to appropriate type
+    parsed_value: Any = value
     if value.lower() in ("true", "yes", "on"):
-        value = True
+        parsed_value = True
     elif value.lower() in ("false", "no", "off"):
-        value = False
+        parsed_value = False
     elif value.isdigit():
-        value = int(value)
+        parsed_value = int(value)
     elif value.replace(".", "", 1).isdigit():
-        value = float(value)
+        parsed_value = float(value)
 
-    current[parts[-1]] = value
+    current[parts[-1]] = parsed_value
 
     # Write only user config back (not the full merged defaults)
     ensure_spark_home()

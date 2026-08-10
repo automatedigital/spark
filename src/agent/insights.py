@@ -20,7 +20,7 @@ import json
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from agent.usage_pricing import (
     DEFAULT_PRICING,
@@ -35,7 +35,7 @@ _DEFAULT_PRICING = DEFAULT_PRICING
 
 def _has_known_pricing(model_name: str, provider: str | None = None, base_url: str | None = None) -> bool:
     """Check if a model has known pricing (vs unknown/custom endpoint)."""
-    return has_known_pricing(model_name, provider=provider, base_url=base_url)
+    return cast(bool, has_known_pricing(model_name, provider=provider, base_url=base_url))
 
 
 def _estimate_cost(
@@ -79,7 +79,7 @@ def _estimate_cost(
 
 def _format_duration(seconds: float) -> str:
     """Format seconds into a human-readable duration string."""
-    return format_duration_compact(seconds)
+    return cast(str, format_duration_compact(seconds))
 
 
 def _bar_chart(values: list[int], max_width: int = 20) -> list[str]:
@@ -491,12 +491,12 @@ class InsightsEngine:
             daily_counts[dt.strftime("%Y-%m-%d")] += 1
 
         day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        day_breakdown = [
+        day_breakdown: list[dict[str, Any]] = [
             {"day": day_names[i], "count": day_counts.get(i, 0)}
             for i in range(7)
         ]
 
-        hour_breakdown = [
+        hour_breakdown: list[dict[str, Any]] = [
             {"hour": i, "count": hour_counts.get(i, 0)}
             for i in range(24)
         ]

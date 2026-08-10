@@ -1862,7 +1862,8 @@ class APIServerAdapter(BasePlatformAdapter):
                 logger.error('[%s] Port %d already in use. Set a different port in config.yaml: platforms.api_server.port', self.name, self._port)
                 return False
             except (ConnectionRefusedError, OSError):
-                pass  # port is free
+                # port is free
+                logger.debug("Ignored exception in connect", exc_info=True)
 
             self._runner = web.AppRunner(self._app)
             await self._runner.setup()

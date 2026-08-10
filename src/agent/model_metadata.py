@@ -74,7 +74,7 @@ _endpoint_model_metadata_cache_time: dict[str, float] = {}
 _ENDPOINT_MODEL_CACHE_TTL = 300
 
 
-def _requests_tls_kwargs() -> dict[str, str]:
+def _requests_tls_kwargs() -> dict[str, Any]:
     verify = requests_verify_value()
     return {"verify": verify} if verify else {}
 
@@ -455,7 +455,7 @@ def fetch_model_metadata(force_refresh: bool = False) -> dict[str, dict[str, Any
         response.raise_for_status()
         data = response.json()
 
-        cache = {}
+        cache: dict[str, dict[str, Any]] = {}
         for model in data.get("data", []):
             model_id = model.get("id", "")
             entry = {

@@ -296,7 +296,8 @@ def _process_single_prompt(
                             "metadata": {"batch_num": batch_num, "timestamp": datetime.now().isoformat()},
                         }
             except FileNotFoundError:
-                pass  # Docker CLI not installed — skip check (e.g., Modal backend)
+                # Docker CLI not installed — skip check (e.g., Modal backend)
+                logger.debug("Ignored exception in _process_single_prompt", exc_info=True)
             except Exception as img_err:
                 if config.get("verbose"):
                     print(f"   Prompt {prompt_index}: Docker image check failed: {img_err}", flush=True)

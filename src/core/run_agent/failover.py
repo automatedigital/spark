@@ -68,7 +68,8 @@ class _FailoverMixin:
                     if data == b"":
                         dead_count += 1
                 except BlockingIOError:
-                    pass  # No data available — socket is healthy
+                    # No data available — socket is healthy
+                    logger.debug("Ignored exception in _cleanup_dead_connections", exc_info=True)
                 except OSError:
                     dead_count += 1
                 finally:

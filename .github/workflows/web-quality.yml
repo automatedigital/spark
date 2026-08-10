@@ -83,3 +83,8 @@ jobs:
         env:
           PYTHON: python
         run: npm run test:e2e
+
+      - name: Chat contracts end-to-end
+        env:
+          PYTHON: python
+        run: node ./e2e/chat-contracts.mjs

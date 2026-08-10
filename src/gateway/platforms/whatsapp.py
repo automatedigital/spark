@@ -348,7 +348,8 @@ class WhatsAppAdapter(BasePlatformAdapter):
                             else:
                                 print(f"[{self.name}] Bridge found but not connected (status: {bridge_status}), restarting")
             except Exception:
-                pass  # Bridge not running, start a new one
+                # Bridge not running, start a new one
+                logger.debug("Ignored exception in connect", exc_info=True)
 
             # Kill any orphaned bridge from a previous gateway run
             _kill_port_process(self._bridge_port)
@@ -804,7 +805,8 @@ class WhatsAppAdapter(BasePlatformAdapter):
                 timeout=aiohttp.ClientTimeout(total=5)
             )
         except Exception:
-            pass  # Ignore typing indicator failures
+            # Ignore typing indicator failures
+            logger.debug("Ignored exception in send_typing", exc_info=True)
 
     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         """Get information about a WhatsApp chat."""

@@ -563,7 +563,8 @@ class _ToolExecutionMixin:
                             work_dir, f"before {function_name}"
                         )
                 except Exception:
-                    pass  # never block tool execution
+                    # never block tool execution
+                    logger.debug("Ignored exception in _execute_tool_calls_sequential", exc_info=True)
 
             # Checkpoint before destructive terminal commands
             if _block_msg is None and function_name == "terminal" and self._checkpoint_mgr.enabled:
@@ -575,7 +576,8 @@ class _ToolExecutionMixin:
                             cwd, f"before terminal: {cmd[:60]}"
                         )
                 except Exception:
-                    pass  # never block tool execution
+                    # never block tool execution
+                    logger.debug("Ignored exception in _execute_tool_calls_sequential", exc_info=True)
 
             tool_start_time = time.time()
 

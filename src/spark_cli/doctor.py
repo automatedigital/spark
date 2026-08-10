@@ -9,9 +9,10 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from dotenv import load_dotenv
 
@@ -159,7 +160,7 @@ def _check_ca_bundle(issues: list[str]) -> str | None:
     return httpx_verify_value()
 
 
-def _shorten(text: str, limit: int = 180) -> str:
+def _shorten(text: object, limit: int = 180) -> str:
     text = " ".join(str(text or "").split())
     if len(text) <= limit:
         return text
@@ -480,7 +481,8 @@ def _collect_gateway_blockers(env_values: dict[str, str]) -> list[DoctorBlocker]
 
 
 def _configured_disabled_skill_names(config: dict[str, Any]) -> set[str]:
-    skills_cfg = config.get("skills") if isinstance(config.get("skills"), dict) else {}
+    skills_value = config.get("skills")
+    skills_cfg = cast(dict[str, Any], skills_value) if isinstance(skills_value, dict) else {}
     disabled: set[str] = set()
     raw_disabled = skills_cfg.get("disabled")
     if isinstance(raw_disabled, str):
@@ -1144,23 +1146,22 @@ def run_doctor(args):
     # cua-driver (macOS background computer-use)
     import platform as _platform
     if _platform.system() == "Darwin":
+        _cua_install_command: Callable[[], str] = lambda: (
+            '/bin/bash -c "$(curl -fsSL '
+            "https://raw.githubusercontent.com/trycua/cua/main/libs/"
+            'cua-driver/scripts/install.sh)"'
+        )
         try:
             from tools.computer_use.cua_backend import (
-                cua_driver_install_command as _cua_install_command,
+                cua_driver_install_command,
             )
             from tools.computer_use.cua_backend import (
                 is_available as _cua_available,
             )
+            _cua_install_command = cua_driver_install_command
             _ok = _cua_available()
         except Exception:
             _ok = bool(shutil.which("cua-driver"))
-
-            def _cua_install_command():
-                return (
-                    '/bin/bash -c "$(curl -fsSL '
-                    "https://raw.githubusercontent.com/trycua/cua/main/libs/"
-                    'cua-driver/scripts/install.sh)"'
-                )
         if _ok:
             check_ok("cua-driver", "(macOS background computer-use)")
         else:

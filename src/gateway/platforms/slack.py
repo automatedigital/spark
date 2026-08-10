@@ -1171,7 +1171,8 @@ class SlackAdapter(BasePlatformAdapter):
                             else:
                                 text = injection
                         except UnicodeDecodeError:
-                            pass  # Binary content, skip injection
+                            # Binary content, skip injection
+                            logger.debug("Ignored exception in _handle_slack_message", exc_info=True)
 
                 except Exception as e:  # pragma: no cover - defensive logging
                     logger.warning("[Slack] Failed to cache document from %s: %s", url, e, exc_info=True)

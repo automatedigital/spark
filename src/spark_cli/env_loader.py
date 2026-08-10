@@ -59,7 +59,8 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
                     logger.debug("Ignoring error in _sanitize_env_file_if_needed()", exc_info=True)
                 raise
     except Exception:
-        pass  # best-effort — don't block gateway startup
+        # best-effort — don't block gateway startup
+        logger.debug("Ignored exception in _sanitize_env_file_if_needed", exc_info=True)
 
 
 def load_spark_dotenv(

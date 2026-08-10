@@ -29,7 +29,7 @@ import urllib.request
 import uuid
 from collections import OrderedDict
 from collections.abc import Callable
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic as _steady_clock
@@ -1011,13 +1011,16 @@ async def _finalize_web_turn_projection_async(
     and queue cleanup are not delayed behind unrelated executor work.
     """
     if turn is not None and turn.workspace_slug:
-        return await _run_blocking(
-            _finalize_web_turn_projection,
-            session_id,
-            turn,
-            result,
-            interrupted=interrupted,
-            agent=agent,
+        return cast(
+            dict[str, Any] | None,
+            await _run_blocking(
+                _finalize_web_turn_projection,
+                session_id,
+                turn,
+                result,
+                interrupted=interrupted,
+                agent=agent,
+            ),
         )
     return _finalize_web_turn_projection(
         session_id,
@@ -1886,7 +1889,6 @@ def _get_web_agent_for_turn(session_id: str) -> tuple[str | None, Any]:
     return None, None
 
 
-@asynccontextmanager
 def _prefetch_update_check() -> None:
     """Run in a thread at startup to warm the update-check cache."""
     try:
@@ -1967,14 +1969,15 @@ async def _lifespan(_app: FastAPI):
     ensure_dashboard_token_file()
     loop_lag_task = asyncio.create_task(_monitor_web_loop_lag())
     # Warm the update cache in the background so /api/status has it immediately
+    warmup_functions: tuple[Callable[[], Any], ...] = (
+        _prefetch_update_check,
+        _prefetch_mac_update_check,
+        _init_memory_store,
+        _prewarm_agent_stack,
+    )
     warmup_tasks = [
         asyncio.create_task(_run_blocking(function))
-        for function in (
-            _prefetch_update_check,
-            _prefetch_mac_update_check,
-            _init_memory_store,
-            _prewarm_agent_stack,
-        )
+        for function in warmup_functions
     ]
     # Desktop app: keep the messaging gateway running in the background so
     # platforms stay reachable while the app is open. No-ops outside the
@@ -2225,7 +2228,7 @@ def _publish_event(topic: str, data: dict, session_id: str | None = None) -> Non
                 loop.call_soon_threadsafe(
                     _flush_pending_token_events,
                     sealed_token_events,
-                    sealed_gap_sessions,
+                    sealed_gap_sessions or set(),
                 )
             except Exception:
                 _log.debug("Ignoring error in _publish_event()", exc_info=True)
@@ -2451,8 +2454,13 @@ def _subagent_event_name(payload: dict[str, Any]) -> str:
 
 
 def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
-    legacy_run = payload.get("run") if isinstance(payload.get("run"), dict) else {}
+    event_payload = cast(
+        dict[str, Any],
+        payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
+    )
+    legacy_run = cast(
+        dict[str, Any], payload.get("run") if isinstance(payload.get("run"), dict) else {}
+    )
     subagent_id = (
         payload.get("id")
         or payload.get("run_id")
@@ -2517,7 +2525,10 @@ def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[s
 def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]) -> None:
     """Persist a subagent lifecycle event and fan it out on chat.subagent.*."""
     event_name = _subagent_event_name(payload)
-    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    event_payload = cast(
+        dict[str, Any],
+        payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
+    )
     if not event_payload and isinstance(payload.get("data"), dict):
         event_payload = payload["data"]
     run_snapshot = None
@@ -3340,9 +3351,16 @@ def _desktop_platform() -> str | None:
 
 def _conversation_diagnostics_payload(session_id: str) -> dict[str, Any]:
     status = _conversation_turn_status_payload(session_id)
-    timings = status.get("timings") if isinstance(status.get("timings"), dict) else {}
-    relative = timings.get("relative_seconds") if isinstance(timings.get("relative_seconds"), dict) else {}
-    absolute = timings.get("absolute") if isinstance(timings.get("absolute"), dict) else {}
+    timings = cast(
+        dict[str, Any], status.get("timings") if isinstance(status.get("timings"), dict) else {}
+    )
+    relative = cast(
+        dict[str, Any],
+        timings.get("relative_seconds") if isinstance(timings.get("relative_seconds"), dict) else {},
+    )
+    absolute = cast(
+        dict[str, Any], timings.get("absolute") if isinstance(timings.get("absolute"), dict) else {}
+    )
 
     def _rounded_number(value: Any) -> float | None:
         if isinstance(value, (int, float)):
@@ -3704,7 +3722,8 @@ def _denormalize_config_from_web(config: dict[str, Any]) -> dict[str, Any]:
                 if ctx_override > 0 or model_provider or model_base_url or model_api_mode:
                     config["model"] = _apply_model_virtuals({})
         except Exception:
-            pass  # can't read disk config — just use the string form
+            # can't read disk config — just use the string form
+            _log.debug("Ignored exception in _denormalize_config_from_web", exc_info=True)
     return config
 
 
@@ -5853,8 +5872,8 @@ def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
         enabled_toolsets = _get_platform_tools(load_config(), "cli")
         disabled_toolsets = getattr(agent, "disabled_toolsets", None)
         tool_defs = get_tool_definitions(
-            enabled_toolsets=enabled_toolsets,
-            disabled_toolsets=disabled_toolsets,
+            enabled_toolsets=list(enabled_toolsets),
+            disabled_toolsets=list(disabled_toolsets or []),
             quiet_mode=True,
         )
         agent.enabled_toolsets = enabled_toolsets
@@ -5906,6 +5925,87 @@ def _final_web_turn_session_id(requested_session_id: str, agent: Any, turn: WebA
     if isinstance(agent_session_id, str) and agent_session_id:
         return agent_session_id
     return requested_session_id
+
+
+async def _complete_web_agent_turn(
+    *,
+    requested_session_id: str,
+    agent: Any,
+    active_turn: WebActiveTurn | None,
+    result: Any,
+    user_message: str,
+    before_message_count: int,
+    loop: asyncio.AbstractEventLoop,
+    token_queue: asyncio.Queue,
+    eager_user_id: int | None = None,
+    checkpoint_operation: str = "turn_completion",
+    before_persist: Callable[[], None] | None = None,
+    after_persist: Callable[[], None] | None = None,
+    log_context: str = "Web turn",
+) -> str:
+    """Finalize one web-agent task and always release its browser-facing state.
+
+    Persistence and projection are best-effort, but queue closure, ``turn_done``
+    publication, active-turn cleanup, and sidebar refresh are unconditional.
+    Keeping that invariant in one place prevents create, follow-up, retry, and
+    project-chat paths from drifting apart.
+    """
+    final_session_id = (
+        _final_web_turn_session_id(requested_session_id, agent, active_turn)
+        if agent is not None
+        else requested_session_id
+    )
+    turn_outcome = None
+    try:
+        if before_persist is not None:
+            before_persist()
+        if active_turn:
+            await _await_checkpoint_ready(
+                final_session_id,
+                active_turn,
+                operation=checkpoint_operation,
+            )
+        surviving_assistant_id = _persist_web_turn_if_missing(
+            final_session_id,
+            user_message,
+            result,
+            before_message_count,
+            eager_user_id=eager_user_id,
+            checkpoint_assistant_id=(
+                active_turn.assistant_message_id if active_turn else None
+            ),
+        )
+        if active_turn is not None and surviving_assistant_id is not None:
+            with active_turn.lock:
+                active_turn.assistant_message_id = surviving_assistant_id
+        turn_outcome = await _finalize_web_turn_projection_async(
+            final_session_id,
+            active_turn,
+            result,
+            agent=agent,
+        )
+        if agent is not None:
+            _maybe_auto_title_web(agent, final_session_id, user_message, result)
+        if after_persist is not None:
+            after_persist()
+    except (Exception, asyncio.CancelledError):
+        _log.exception("%s finalization failed session=%s", log_context, final_session_id)
+    finally:
+        try:
+            loop.call_soon_threadsafe(token_queue.put_nowait, None)
+        except RuntimeError:
+            _log.debug("Event loop gone before closing the token queue", exc_info=True)
+        _web_queues.pop(requested_session_id, None)
+        _publish_event(
+            "chat.turn_done",
+            _turn_done_payload(result, final_session_id, turn_outcome=turn_outcome),
+            final_session_id,
+        )
+        _clear_web_turn(final_session_id)
+        if final_session_id != requested_session_id:
+            _clear_web_turn(requested_session_id)
+        _emit_web_session_updated(final_session_id)
+    return final_session_id
 
 
 def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
@@ -6755,7 +6855,10 @@ async def estimate_tokens(body: TokenEstimateRequest):
     if body.model:
         try:
             from agent.models_dev import get_model_capabilities
-            mc = get_model_capabilities(model=body.model)
+            route = _resolve_web_turn_route("", explicit_model=body.model)
+            route_runtime = route.get("runtime") or {}
+            route_provider = str(route_runtime.get("provider") or "")
+            mc = get_model_capabilities(provider=route_provider, model=body.model)
             if mc and mc.context_window > 0:
                 context_window = mc.context_window
         except Exception:
@@ -7108,56 +7211,18 @@ async def create_conversation(body: ConversationCreate):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
-            turn_outcome = None
-            # Persistence and projection are best-effort.  Whatever happens
-            # here, the turn must still publish chat.turn_done and clear its
-            # active entry: the web UI waits on both, so skipping them leaves
-            # the session spinning forever.  CancelledError is included
-            # deliberately -- if the runtime went away mid-turn, that is
-            # exactly when finalization matters most.
-            try:
-                if _active_turn:
-                    await _await_checkpoint_ready(
-                        final_session_id, _active_turn, operation="turn_completion"
-                    )
-                surviving_assistant_id = _persist_web_turn_if_missing(
-                    final_session_id, message, result, before_message_count,
-                    eager_user_id=eager_user_id,
-                    checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-                )
-                if _active_turn is not None and surviving_assistant_id is not None:
-                    with _active_turn.lock:
-                        _active_turn.assistant_message_id = surviving_assistant_id
-                turn_outcome = await _finalize_web_turn_projection_async(
-                    final_session_id,
-                    _active_turn,
-                    result,
-                    agent=agent,
-                )
-                if agent is not None:
-                    _maybe_auto_title_web(agent, final_session_id, message, result)
-            except (Exception, asyncio.CancelledError):
-                _log.exception(
-                    "Web chat turn finalization failed session=%s", final_session_id
-                )
-            finally:
-                try:
-                    loop.call_soon_threadsafe(queue.put_nowait, None)
-                except RuntimeError:
-                    _log.debug("Event loop gone before closing the token queue", exc_info=True)
-                _web_queues.pop(session_id, None)
-                _publish_event(
-                    "chat.turn_done",
-                    _turn_done_payload(
-                        result, final_session_id, turn_outcome=turn_outcome
-                    ),
-                    final_session_id,
-                )
-                _clear_web_turn(final_session_id)
-                if final_session_id != session_id:
-                    _clear_web_turn(session_id)
-                _emit_web_session_updated(final_session_id)
+            await _complete_web_agent_turn(
+                requested_session_id=session_id,
+                agent=agent,
+                active_turn=_active_turn,
+                result=result,
+                user_message=message,
+                before_message_count=before_message_count,
+                eager_user_id=eager_user_id,
+                loop=loop,
+                token_queue=queue,
+                log_context="Web chat turn",
+            )
 
     turn = await _run_blocking(
         _mark_web_turn_active,
@@ -7608,52 +7673,17 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
-            turn_outcome = None
-            # Persistence and projection are best-effort.  Whatever happens
-            # here, the turn must still publish chat.turn_done and clear its
-            # active entry: the web UI waits on both, so skipping them leaves
-            # the session spinning forever.  CancelledError is included
-            # deliberately -- if the runtime went away mid-turn, that is
-            # exactly when finalization matters most.
-            try:
-                if _active_turn:
-                    await _await_checkpoint_ready(
-                        final_session_id, _active_turn, operation="turn_completion"
-                    )
-                surviving_assistant_id = _persist_web_turn_if_missing(
-                    final_session_id, message, result, before_message_count,
-                    eager_user_id=eager_user_id,
-                    checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-                )
-                if _active_turn is not None and surviving_assistant_id is not None:
-                    with _active_turn.lock:
-                        _active_turn.assistant_message_id = surviving_assistant_id
-                turn_outcome = await _finalize_web_turn_projection_async(
-                    final_session_id,
-                    _active_turn,
-                    result,
-                    agent=agent,
-                )
-                _maybe_auto_title_web(agent, final_session_id, message, result)
-            except (Exception, asyncio.CancelledError):
-                _log.exception(
-                    "Web turn finalization failed session=%s", final_session_id
-                )
-            finally:
-                loop.call_soon_threadsafe(queue.put_nowait, None)
-                _web_queues.pop(session_id, None)
-                _publish_event(
-                    "chat.turn_done",
-                    _turn_done_payload(
-                        result, final_session_id, turn_outcome=turn_outcome
-                    ),
-                    final_session_id,
-                )
-                _clear_web_turn(final_session_id)
-                if final_session_id != session_id:
-                    _clear_web_turn(session_id)
-                _emit_web_session_updated(final_session_id)
+            await _complete_web_agent_turn(
+                requested_session_id=session_id,
+                agent=agent,
+                active_turn=_active_turn,
+                result=result,
+                user_message=message,
+                before_message_count=before_message_count,
+                eager_user_id=eager_user_id,
+                loop=loop,
+                token_queue=queue,
+            )
 
     turn = await _run_blocking(
         _mark_web_turn_active,
@@ -8126,54 +8156,16 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
-            turn_outcome = None
-            # Persistence and projection are best-effort.  Whatever happens
-            # here, the turn must still publish chat.turn_done and clear its
-            # active entry: the web UI waits on both, so skipping them leaves
-            # the session spinning forever.  CancelledError is included
-            # deliberately -- if the runtime went away mid-turn, that is
-            # exactly when finalization matters most.
-            try:
-                if _active_turn:
-                    await _await_checkpoint_ready(
-                        final_session_id, _active_turn, operation="turn_completion"
-                    )
-                surviving_assistant_id = _persist_web_turn_if_missing(
-                    final_session_id,
-                    user_msg,
-                    result,
-                    before_message_count,
-                    checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-                )
-                if _active_turn is not None and surviving_assistant_id is not None:
-                    with _active_turn.lock:
-                        _active_turn.assistant_message_id = surviving_assistant_id
-                turn_outcome = await _finalize_web_turn_projection_async(
-                    final_session_id,
-                    _active_turn,
-                    result,
-                    agent=agent,
-                )
-                _maybe_auto_title_web(agent, final_session_id, user_msg, result)
-            except (Exception, asyncio.CancelledError):
-                _log.exception(
-                    "Web turn finalization failed session=%s", final_session_id
-                )
-            finally:
-                _web_queues.pop(session_id, None)
-                _publish_event(
-                    "chat.turn_done",
-                    _turn_done_payload(
-                        result, final_session_id, turn_outcome=turn_outcome
-                    ),
-                    final_session_id,
-                )
-                _clear_web_turn(final_session_id)
-                if final_session_id != session_id:
-                    _clear_web_turn(session_id)
-                _emit_web_session_updated(final_session_id)
+            await _complete_web_agent_turn(
+                requested_session_id=session_id,
+                agent=agent,
+                active_turn=_active_turn,
+                result=result,
+                user_message=user_msg,
+                before_message_count=before_message_count,
+                loop=loop,
+                token_queue=queue,
+            )
 
     await _run_blocking(
         _mark_web_turn_active,
@@ -8333,7 +8325,7 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
     state, reason, idle_for = _web_turn_state(turn)
-    diagnostics = {
+    diagnostics: dict[str, Any] = {
         "requested_session_id": ids.get("requested") or session_id,
         "resolved_session_id": ids.get("resolved") or session_id,
         "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
@@ -8826,6 +8818,16 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
 
     raw_message = body.message
 
+    def _start_workspace_preview_after_turn() -> None:
+        try:
+            from spark_cli.workspace_routes import start_preview
+
+            start_preview(slug, None)
+        except Exception:
+            _log.debug(
+                "workspace preview auto-start skipped slug=%s", slug, exc_info=True
+            )
+
     async def run_agent_task() -> None:
         agent = None
         _active_turn = None
@@ -8869,62 +8871,22 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            turn_outcome = None
-            # Persistence and projection are best-effort.  Whatever happens
-            # here, the turn must still publish chat.turn_done and clear its
-            # active entry: the web UI waits on both, so skipping them leaves
-            # the session spinning forever.  CancelledError is included
-            # deliberately -- if the runtime went away mid-turn, that is
-            # exactly when finalization matters most.
-            try:
-                _strip_user_message_prefix(session_id, context_prefix, raw_message)
-                final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
-                if _active_turn:
-                    await _await_checkpoint_ready(
-                        final_session_id,
-                        _active_turn,
-                        operation="workspace_turn_completion",
-                    )
-                surviving_assistant_id = _persist_web_turn_if_missing(
-                    final_session_id, raw_message, result, before_message_count,
-                    eager_user_id=eager_user_id,
-                    checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-                )
-                if _active_turn is not None and surviving_assistant_id is not None:
-                    with _active_turn.lock:
-                        _active_turn.assistant_message_id = surviving_assistant_id
-                turn_outcome = await _finalize_web_turn_projection_async(
-                    final_session_id,
-                    _active_turn,
-                    result,
-                    agent=agent,
-                )
-                if agent is not None:
-                    _maybe_auto_title_web(agent, final_session_id, raw_message, result)
-                try:
-                    from spark_cli.workspace_routes import start_preview
-
-                    start_preview(slug, None)
-                except Exception:
-                    _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
-            except (Exception, asyncio.CancelledError):
-                _log.exception(
-                    "Web turn finalization failed session=%s", final_session_id
-                )
-            finally:
-                loop.call_soon_threadsafe(queue.put_nowait, None)
-                _web_queues.pop(session_id, None)
-                _publish_event(
-                    "chat.turn_done",
-                    _turn_done_payload(
-                        result, final_session_id, turn_outcome=turn_outcome
-                    ),
-                    final_session_id,
-                )
-                _clear_web_turn(final_session_id)
-                if final_session_id != session_id:
-                    _clear_web_turn(session_id)
-                _emit_web_session_updated(final_session_id)
+            await _complete_web_agent_turn(
+                requested_session_id=session_id,
+                agent=agent,
+                active_turn=_active_turn,
+                result=result,
+                user_message=raw_message,
+                before_message_count=before_message_count,
+                eager_user_id=eager_user_id,
+                checkpoint_operation="workspace_turn_completion",
+                before_persist=lambda: _strip_user_message_prefix(
+                    session_id, context_prefix, raw_message
+                ),
+                after_persist=_start_workspace_preview_after_turn,
+                loop=loop,
+                token_queue=queue,
+            )
 
     await _run_blocking(
         _mark_web_turn_active,

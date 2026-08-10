@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ from core.spark_constants import get_skills_dir
 logger = logging.getLogger(__name__)
 
 
-class SkillProvenance(str, Enum):
+class SkillProvenance(StrEnum):
     BUNDLED = "bundled"
     SPARK_CREATED = "spark_created"
     HUB_INSTALLED = "hub_installed"

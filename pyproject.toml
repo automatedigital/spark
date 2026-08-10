@@ -159,7 +159,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "integration: marks tests requiring external services (API keys, Modal, etc.)",
-    "slow: marks tests that take >1 second (deselect with '-m not slow')",
+    "slow: marks tests that take >1 second (deselect with '-m not slow and not integration')",
     "network: marks tests that hit real network endpoints",
     "serial: marks tests that cannot run in parallel (shared global state)",
     "allow_spawn: test may launch a real subprocess (see conftest guard)",
@@ -228,28 +228,3 @@ exclude = [
     "src/spark_cli/web/src-tauri/resources/",
     "src/spark_cli/web/src-tauri/target/",
 ]
-
-# --- mypy ratchet -------------------------------------------------------
-# These modules still have type errors and are exempt.  Everything else in
-# src/agent and src/spark_cli is clean and gated in CI, so a new error in a
-# clean module fails the build.  Fix a module, delete its line here.
-# Remaining: 15 modules, 323 errors.
-[[tool.mypy.overrides]]
-module = [
-    "agent.anthropic_adapter",
-    "agent.auxiliary_client",
-    "agent.context_compressor",
-    "agent.credential_pool",
-    "agent.error_classifier",
-    "agent.insights",
-    "agent.model_metadata",
-    "spark_cli.auth",
-    "spark_cli.config",
-    "spark_cli.doctor",
-    "spark_cli.main",
-    "spark_cli.model_switch",
-    "spark_cli.plugins",
-    "spark_cli.setup",
-    "spark_cli.web_server",
-]
-ignore_errors = true

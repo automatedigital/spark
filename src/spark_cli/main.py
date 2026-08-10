@@ -44,10 +44,15 @@ Usage:
 """
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
+import time as _time
+from datetime import UTC, datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _require_tty(command_name: str) -> None:
@@ -110,7 +115,8 @@ def _apply_profile_override() -> None:
                     profile_name = name
                     consume = 0  # don't strip anything from argv
         except (UnicodeDecodeError, OSError):
-            pass  # corrupted file, skip
+            # corrupted file, skip
+            logger.debug("Ignored exception in _apply_profile_override", exc_info=True)
 
     # 3. If we found a profile, resolve and set SPARK_HOME
     if profile_name is not None:
@@ -158,7 +164,8 @@ try:
 
     _setup_logging(mode="cli")
 except Exception:
-    pass  # best-effort — don't crash the CLI if logging setup fails
+    # best-effort — don't crash the CLI if logging setup fails
+    logger.debug("Ignored exception in module setup", exc_info=True)
 
 # Apply IPv4 preference early, before any HTTP clients are created.
 try:
@@ -171,16 +178,11 @@ try:
         _apply_ipv4(force=True)
     del _early_cfg, _net
 except Exception:
-    pass  # best-effort — don't crash if config isn't available yet
-
-import logging
-import time as _time
-from datetime import UTC, datetime
+    # best-effort — don't crash if config isn't available yet
+    logger.debug("Ignored exception in module setup", exc_info=True)
 
 from core.spark_constants import OPENROUTER_BASE_URL
 from spark_cli import __release_date__, __version__
-
-logger = logging.getLogger(__name__)
 
 
 def _relative_time(ts) -> str:
@@ -1367,16 +1369,16 @@ def select_provider_and_model(
             selected_provider.startswith("custom:")
             or selected_provider in _custom_provider_map
         ):
-            provider_info = _named_custom_provider_map(load_config()).get(
+            named_provider_info = _named_custom_provider_map(load_config()).get(
                 selected_provider
             )
-            if provider_info is None:
+            if named_provider_info is None:
                 print(
                     "Warning: the selected saved custom provider is no longer available. "
                     "It may have been removed from config.yaml. No change."
                 )
                 return
-            _model_flow_named_custom(config, provider_info)
+            _model_flow_named_custom(config, named_provider_info)
         elif selected_provider == "remove-custom":
             _remove_custom_provider(config)
         elif selected_provider == "ollama":
@@ -3781,7 +3783,8 @@ def _sync_bundled_skills_to_other_profiles_for_update() -> None:
                 except Exception as pe:
                     print(f"  {p.name}: error ({pe})")
     except Exception:
-        pass  # profiles module not available or no profiles
+        # profiles module not available or no profiles
+        logger.debug("Ignored exception in _sync_bundled_skills_to_other_profiles_for_update", exc_info=True)
 
     _sync_bundled_skills_to_dashboard_homes_for_update(synced_paths)
 
@@ -4756,7 +4759,8 @@ def cmd_update(args):
                         print("Up to date.")
                         return
                 except Exception:
-                    pass  # Offline or unexpected error — fall through to normal path
+                    # Offline or unexpected error — fall through to normal path
+                    logger.debug("Ignored exception in cmd_update", exc_info=True)
 
             if spark_home.exists() and can_prompt:
                 print(f"  Found existing Spark home: {spark_home}")
@@ -5095,7 +5099,8 @@ def cmd_update(args):
 
             importlib.reload(_hc)
         except Exception:
-            pass  # non-fatal — worst case a lazy import fails gracefully
+            # non-fatal — worst case a lazy import fails gracefully
+            logger.debug("Ignored exception in cmd_update", exc_info=True)
 
         # Sync bundled skills (copies new, updates changed, respects user deletions)
         _sync_bundled_skills_for_update()
@@ -5108,7 +5113,8 @@ def cmd_update(args):
             if synced:
                 print(f"\n-> Honcho: synced {synced} profile(s)")
         except Exception:
-            pass  # honcho plugin not installed or not configured
+            # honcho plugin not installed or not configured
+            logger.debug("Ignored exception in cmd_update", exc_info=True)
 
         # Ensure dream-related databases are initialized
         print()
@@ -5581,7 +5587,8 @@ def cmd_profile(args):
                     if clone_honcho_for_profile(name):
                         print(f"Honcho config cloned (peer: {name})")
                 except Exception:
-                    pass  # Honcho plugin not installed or not configured
+                    # Honcho plugin not installed or not configured
+                    logger.debug("Ignored exception in cmd_profile", exc_info=True)
 
             # Seed bundled skills (skip if --clone-all already copied them)
             if not clone_all:

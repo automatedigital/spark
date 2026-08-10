@@ -341,7 +341,7 @@ class _CodexCompletionsAdapter:
                     # a function_call response with incidental text should not
                     # be collapsed into a plain-text message.
                     assembled = "".join(collected_text_deltas)
-                    final.output = [SimpleNamespace(
+                    cast(Any, final).output = [SimpleNamespace(
                         type="message", role="assistant", status="completed",
                         content=[SimpleNamespace(type="output_text", text=assembled)],
                     )]
@@ -609,7 +609,8 @@ def _read_codex_access_token() -> str | None:
                 logger.debug("Codex access token expired (exp=%s), skipping", exp)
                 return None
         except Exception:
-            pass  # Non-JWT token or decode error — use as-is
+            # Non-JWT token or decode error — use as-is
+            logger.debug("Ignored exception in _read_codex_access_token", exc_info=True)
 
         return access_token.strip()
     except Exception as exc:
@@ -684,15 +685,15 @@ def _resolve_api_key_provider() -> tuple[OpenAI | None, str | None]:
             if model is None:
                 continue  # skip provider if we don't know a valid aux model
             logger.debug("Auxiliary text client: %s (%s) via pool", pconfig.name, model)
-            extra = {}
+            pool_extra: dict[str, Any] = {}
             if "api.kimi.com" in base_url.lower():
-                extra["default_headers"] = {"User-Agent": "KimiCLI/1.30.0"}
+                pool_extra["default_headers"] = {"User-Agent": "KimiCLI/1.30.0"}
             elif "api.githubcopilot.com" in base_url.lower():
                 from spark_cli.models import copilot_default_headers
 
-                extra["default_headers"] = copilot_default_headers()
+                pool_extra["default_headers"] = copilot_default_headers()
             return OpenAI(
-                api_key=api_key, base_url=base_url, **extra, **httpx_client_kwargs()
+                api_key=api_key, base_url=base_url, **pool_extra, **httpx_client_kwargs()
             ), model
 
         creds = resolve_api_key_provider_credentials(provider_id)
@@ -707,15 +708,15 @@ def _resolve_api_key_provider() -> tuple[OpenAI | None, str | None]:
         if model is None:
             continue  # skip provider if we don't know a valid aux model
         logger.debug("Auxiliary text client: %s (%s)", pconfig.name, model)
-        extra = {}
+        direct_extra: dict[str, Any] = {}
         if "api.kimi.com" in base_url.lower():
-            extra["default_headers"] = {"User-Agent": "KimiCLI/1.30.0"}
+            direct_extra["default_headers"] = {"User-Agent": "KimiCLI/1.30.0"}
         elif "api.githubcopilot.com" in base_url.lower():
             from spark_cli.models import copilot_default_headers
 
-            extra["default_headers"] = copilot_default_headers()
+            direct_extra["default_headers"] = copilot_default_headers()
         return OpenAI(
-            api_key=api_key, base_url=base_url, **extra, **httpx_client_kwargs()
+            api_key=api_key, base_url=base_url, **direct_extra, **httpx_client_kwargs()
         ), model
 
     return None, None
@@ -738,12 +739,12 @@ def _try_openrouter() -> tuple[OpenAI | None, str | None]:
             default_headers=_OR_HEADERS, **httpx_client_kwargs(),
         ), _OPENROUTER_MODEL
 
-    or_key = os.getenv("OPENROUTER_API_KEY")
-    if not or_key:
+    env_or_key = os.getenv("OPENROUTER_API_KEY")
+    if not env_or_key:
         return None, None
     logger.debug("Auxiliary client: OpenRouter")
     return OpenAI(
-        api_key=or_key, base_url=OPENROUTER_BASE_URL,
+        api_key=env_or_key, base_url=OPENROUTER_BASE_URL,
         default_headers=_OR_HEADERS, **httpx_client_kwargs(),
     ), _OPENROUTER_MODEL
 
@@ -844,7 +845,7 @@ def _current_custom_base_url() -> str:
     return custom_base or ""
 
 
-def _try_custom_endpoint() -> tuple[OpenAI | None, str | None]:
+def _try_custom_endpoint() -> tuple[Any | None, str | None]:
     runtime = _resolve_custom_runtime()
     if len(runtime) == 2:
         custom_base, custom_key = runtime
@@ -871,6 +872,7 @@ def _try_custom_endpoint() -> tuple[OpenAI | None, str | None]:
 
 
 def _try_codex() -> tuple[Any | None, str | None]:
+    codex_token: str | None
     pool_present, entry = _select_pool_entry("openai-codex")
     if pool_present:
         codex_token = _pool_runtime_api_key(entry)
@@ -898,6 +900,7 @@ def _try_anthropic() -> tuple[Any | None, str | None]:
         return None, None
 
     pool_present, entry = _select_pool_entry("anthropic")
+    token: str | None
     if pool_present:
         if entry is None:
             return None, None
@@ -1053,7 +1056,7 @@ def _try_payment_fallback(
                        "custom": "local/custom", "local/custom": "local/custom"}
     skip_chain_labels = {_alias_to_label.get(s, s) for s in skip_labels}
 
-    tried = []
+    tried: list[str] = []
     for label, try_fn in _get_provider_chain():
         if label in skip_chain_labels:
             continue
@@ -1135,7 +1138,7 @@ def _resolve_auto(main_runtime: dict[str, Any] | None = None) -> tuple[OpenAI | 
             return client, resolved or main_model
 
     # ── Step 2: aggregator / fallback chain ──────────────────────────────
-    tried = []
+    tried: list[str] = []
     for label, try_fn in _get_provider_chain():
         client, model = try_fn()
         if client is not None:
@@ -1164,7 +1167,7 @@ def _resolve_auto(main_runtime: dict[str, Any] | None = None) -> tuple[OpenAI | 
 # below — never look up auth env vars ad-hoc.
 
 
-def _to_async_client(sync_client, model: str):
+def _to_async_client(sync_client: Any, model: str | None) -> tuple[Any, str | None]:
     """Convert a sync client to its async counterpart, preserving Codex routing."""
     from openai import AsyncOpenAI
 
@@ -1248,10 +1251,14 @@ def resolve_provider_client(
     Returns:
         (client, resolved_model) or (None, None) if auth is unavailable.
     """
+    client: Any
+
     # Normalise aliases
     provider = _normalize_aux_provider(provider)
 
-    def _needs_codex_wrap(client_obj, base_url_str: str, model_str: str) -> bool:
+    def _needs_codex_wrap(
+        client_obj: Any, base_url_str: str, model_str: str | None
+    ) -> bool:
         """Decide if a plain OpenAI client should be wrapped for Responses API.
 
         Returns True when api_mode is explicitly "codex_responses", or when
@@ -1274,7 +1281,9 @@ def resolve_provider_client(
                 return True
         return False
 
-    def _wrap_if_needed(client_obj, final_model_str: str, base_url_str: str = ""):
+    def _wrap_if_needed(
+        client_obj: Any, final_model_str: str | None, base_url_str: str = ""
+    ) -> Any:
         """Wrap a plain OpenAI client in CodexAuxiliaryClient if Responses API is needed."""
         if _needs_codex_wrap(client_obj, base_url_str, final_model_str):
             logger.debug(
@@ -1282,7 +1291,7 @@ def resolve_provider_client(
                 "(api_mode=%s, model=%s, base_url=%s)",
                 api_mode or "auto-detected", final_model_str,
                 base_url_str[:60] if base_url_str else "")
-            return CodexAuxiliaryClient(client_obj, final_model_str)
+            return CodexAuxiliaryClient(client_obj, final_model_str or "")
         return client_obj
 
     # ── Auto: try all providers in priority order ────────────────────
@@ -1361,7 +1370,7 @@ def resolve_provider_client(
                 model or _read_main_model() or "gpt-4o-mini",
                 provider,
             )
-            extra = {}
+            extra: dict[str, Any] = {}
             if "api.kimi.com" in custom_base.lower():
                 extra["default_headers"] = {"User-Agent": "KimiCLI/1.30.0"}
             elif "api.githubcopilot.com" in custom_base.lower():
@@ -1468,7 +1477,7 @@ def resolve_provider_client(
         final_model = _normalize_resolved_model(model or default_model, provider)
 
         # Provider-specific headers
-        headers = {}
+        headers: dict[str, str] = {}
         if "api.kimi.com" in base_url.lower():
             headers["User-Agent"] = "KimiCLI/1.30.0"
         elif "api.githubcopilot.com" in base_url.lower():
@@ -1476,10 +1485,11 @@ def resolve_provider_client(
 
             headers.update(copilot_default_headers())
 
+        provider_extra: dict[str, Any] = {"default_headers": headers} if headers else {}
         client = OpenAI(
             api_key=api_key,
             base_url=base_url,
-            **({"default_headers": headers} if headers else {}),
+            **provider_extra,
             **httpx_client_kwargs(),
         )
 
@@ -1674,7 +1684,9 @@ def resolve_vision_provider_client(
     )
     requested = _normalize_vision_provider(requested)
 
-    def _finalize(resolved_provider: str, sync_client: Any, default_model: str | None):
+    def _finalize(
+        resolved_provider: str, sync_client: Any, default_model: str | None
+    ) -> tuple[str, Any | None, str | None]:
         if sync_client is None:
             return resolved_provider, None, None
         final_model = resolved_model or default_model
@@ -1813,9 +1825,10 @@ def neuter_async_httpx_del() -> None:
     """
     try:
         from openai._base_client import AsyncHttpxClientWrapper
-        AsyncHttpxClientWrapper.__del__ = lambda self: None
+        cast(Any, AsyncHttpxClientWrapper).__del__ = lambda self: None
     except (ImportError, AttributeError):
-        pass  # Graceful degradation if the SDK changes its internals
+        # Graceful degradation if the SDK changes its internals
+        logger.debug("Ignored exception in neuter_async_httpx_del", exc_info=True)
 
 
 def _force_close_async_httpx(client: Any) -> None:
@@ -2039,7 +2052,7 @@ def _resolve_task_provider_model(
 _DEFAULT_AUX_TIMEOUT = 30.0
 
 
-def _get_task_timeout(task: str, default: float = _DEFAULT_AUX_TIMEOUT) -> float:
+def _get_task_timeout(task: str | None, default: float = _DEFAULT_AUX_TIMEOUT) -> float:
     """Read timeout from auxiliary.{task}.timeout in config, falling back to *default*."""
     if not task:
         return default
@@ -2068,7 +2081,7 @@ def _get_task_timeout(task: str, default: float = _DEFAULT_AUX_TIMEOUT) -> float
 _ANTHROPIC_COMPAT_PROVIDERS = frozenset({"minimax", "minimax-cn"})
 
 
-def _is_anthropic_compat_endpoint(provider: str, base_url: str) -> bool:
+def _is_anthropic_compat_endpoint(provider: str | None, base_url: str) -> bool:
     """Detect if an endpoint expects Anthropic-format content blocks.
 
     Returns True for known Anthropic-compatible providers (MiniMax) and
@@ -2129,8 +2142,8 @@ def _convert_openai_images_to_anthropic(messages: list) -> list:
 
 
 def _build_call_kwargs(
-    provider: str,
-    model: str,
+    provider: str | None,
+    model: str | None,
     messages: list,
     temperature: float | None = None,
     max_tokens: int | None = None,
@@ -2214,9 +2227,9 @@ def call_llm(
     messages: list,
     temperature: float | None = None,
     max_tokens: int | None = None,
-    tools: list = None,
+    tools: list | None = None,
     timeout: float | None = None,
-    extra_body: dict = None,
+    extra_body: dict | None = None,
 ) -> Any:
     """Centralized synchronous LLM call.
 
@@ -2442,9 +2455,9 @@ async def async_call_llm(
     messages: list,
     temperature: float | None = None,
     max_tokens: int | None = None,
-    tools: list = None,
+    tools: list | None = None,
     timeout: float | None = None,
-    extra_body: dict = None,
+    extra_body: dict | None = None,
 ) -> Any:
     """Centralized asynchronous LLM call.
 

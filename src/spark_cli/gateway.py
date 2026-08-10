@@ -315,7 +315,8 @@ def stop_profile_gateway() -> bool:
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
-        pass  # Already gone
+        # Already gone
+        logger.debug("Ignored exception in stop_profile_gateway", exc_info=True)
     except PermissionError:
         print(f"⚠ Permission denied to kill PID {pid}")
         return False

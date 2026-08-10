@@ -33,7 +33,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from core.spark_constants import get_spark_home
+from core.spark_constants import display_spark_home, get_spark_home
 
 if TYPE_CHECKING:
     from agent.rate_limit_tracker import RateLimitState
@@ -257,13 +257,13 @@ def is_persistent_env(*args, **kwargs):
 class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentContextMixin, _AgentSupportMixin, _FailoverMixin, _ProviderTransportMixin, _ToolExecutionMixin, _CodexStreamingMixin, _PromptCacheMixin):
     def __init__(
         self,
-        base_url: str = None,
-        api_key: str = None,
-        provider: str = None,
-        api_mode: str = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        provider: str | None = None,
+        api_mode: str | None = None,
         acp_command: str = None,
         acp_args: list[str] | None = None,
-        command: str = None,
+        command: str | None = None,
         args: list[str] | None = None,
         model: str = "",
         max_iterations: int = 90,  # Default tool-calling iterations (shared with subagents)
@@ -300,7 +300,7 @@ class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentConte
         max_tokens: int = None,
         reasoning_config: dict[str, Any] = None,
         service_tier: str = None,
-        request_overrides: dict[str, Any] = None,
+        request_overrides: dict[str, Any] | None = None,
         prefill_messages: list[dict[str, Any]] = None,
         platform: str = None,
         user_id: str = None,
@@ -315,7 +315,7 @@ class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentConte
         checkpoint_max_snapshots: int = 50,
         pass_session_id: bool = False,
         persist_session: bool = True,
-        working_dir: str = None,
+        working_dir: str | None = None,
     ):
         """
         Initialize the AI Agent.
@@ -753,7 +753,7 @@ class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentConte
                     raise RuntimeError(
                         f"No credentials found for provider '{_prov}'. Run `spark setup` "
                         f"to connect it, or set {_prov.upper().replace('-', '_')}_API_KEY "
-                        f"in ~/.spark/.env. Original error: {e}"
+                        f"in {display_spark_home()}/.env. Original error: {e}"
                     ) from e
                 raise RuntimeError(f"Failed to initialize OpenAI client: {e}") from e
 
@@ -925,7 +925,7 @@ class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentConte
                     )
                     self._memory_store.load_from_disk()
             except Exception:
-                pass  # Memory is optional -- don't break agent init
+                logger.debug("Optional memory setup failed", exc_info=True)
 
 
 

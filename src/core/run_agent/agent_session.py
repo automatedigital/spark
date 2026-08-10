@@ -379,7 +379,8 @@ class _AgentSessionMixin:
                         )
                         return
                 except Exception:
-                    pass  # corrupted existing file — allow the overwrite
+                    # corrupted existing file — allow the overwrite
+                    logger.debug("Ignored exception in _save_session_log", exc_info=True)
 
             entry = {
                 "session_id": self.session_id,

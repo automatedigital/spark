@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import enum
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -80,6 +81,9 @@ class ClassifiedError:
     @property
     def is_auth(self) -> bool:
         return self.reason in (FailoverReason.auth, FailoverReason.auth_permanent)
+
+
+ResultFactory = Callable[..., ClassifiedError]
 
 
 
@@ -308,8 +312,8 @@ def classify_api_error(
     provider_lower = (provider or "").strip().lower()
     model_lower = (model or "").strip().lower()
 
-    def _result(reason: FailoverReason, **overrides) -> ClassifiedError:
-        defaults = {
+    def _result(reason: FailoverReason, **overrides: Any) -> ClassifiedError:
+        defaults: dict[str, Any] = {
             "reason": reason,
             "status_code": status_code,
             "provider": provider,
@@ -419,7 +423,7 @@ def _classify_by_status(
     approx_tokens: int,
     context_length: int,
     num_messages: int = 0,
-    result_fn,
+    result_fn: ResultFactory,
 ) -> ClassifiedError | None:
     """Classify based on HTTP status code with message-aware refinement."""
 
@@ -515,7 +519,7 @@ def _classify_by_status(
     return None
 
 
-def _classify_402(error_msg: str, result_fn) -> ClassifiedError:
+def _classify_402(error_msg: str, result_fn: ResultFactory) -> ClassifiedError:
     """Disambiguate 402: billing exhaustion vs transient usage limit.
 
     The key insight from OpenClaw: some 402s are transient rate limits
@@ -554,7 +558,7 @@ def _classify_400(
     approx_tokens: int,
     context_length: int,
     num_messages: int = 0,
-    result_fn,
+    result_fn: ResultFactory,
 ) -> ClassifiedError:
     """Classify 400 Bad Request — context overflow, format error, or generic."""
 
@@ -622,7 +626,7 @@ def _classify_400(
 # ── Error code classification ───────────────────────────────────────────
 
 def _classify_by_error_code(
-    error_code: str, error_msg: str, result_fn,
+    error_code: str, error_msg: str, result_fn: ResultFactory,
 ) -> ClassifiedError | None:
     """Classify by structured error codes from the response body."""
     code_lower = error_code.lower()
@@ -667,7 +671,7 @@ def _classify_by_message(
     *,
     approx_tokens: int,
     context_length: int,
-    result_fn,
+    result_fn: ResultFactory,
 ) -> ClassifiedError | None:
     """Classify based on error message patterns when no status code is available."""
 

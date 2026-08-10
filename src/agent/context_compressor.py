@@ -87,8 +87,8 @@ class ContextCompressor(ContextEngine):
         self._context_probed = False
         self._context_probe_persistable = False
         self._previous_summary: str | None = None
-        self._typed_checkpoint: "ContextCheckpoint | None" = None
-        self._last_shadow_checkpoint: "ContextCheckpoint | None" = None
+        self._typed_checkpoint: ContextCheckpoint | None = None
+        self._last_shadow_checkpoint: ContextCheckpoint | None = None
 
     def update_model(
         self,
@@ -565,9 +565,9 @@ The user has requested that this compaction PRIORITISE preserving all informatio
         result_call_ids: set = set()
         for msg in messages:
             if msg.get("role") == "tool":
-                cid = msg.get("tool_call_id")
-                if cid:
-                    result_call_ids.add(cid)
+                result_cid = msg.get("tool_call_id")
+                if result_cid:
+                    result_call_ids.add(result_cid)
 
         # 1. Remove tool results whose call_id has no matching assistant tool_call
         orphaned_results = result_call_ids - surviving_call_ids

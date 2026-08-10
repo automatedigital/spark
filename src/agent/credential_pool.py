@@ -568,7 +568,7 @@ class CredentialPool:
                     entry = synced
                 refreshed = auth_mod.refresh_codex_oauth_pure(
                     entry.access_token,
-                    entry.refresh_token,
+                    cast(str, entry.refresh_token),
                 )
                 updated = replace(
                     entry,
@@ -595,7 +595,7 @@ class CredentialPool:
                     try:
                         from agent.anthropic_adapter import refresh_anthropic_oauth_pure
                         refreshed = refresh_anthropic_oauth_pure(
-                            synced.refresh_token,
+                            cast(str, synced.refresh_token),
                             use_json=synced.source.endswith("spark_pkce"),
                         )
                         updated = replace(
@@ -635,7 +635,7 @@ class CredentialPool:
                     try:
                         refreshed = auth_mod.refresh_codex_oauth_pure(
                             synced.access_token,
-                            synced.refresh_token,
+                            cast(str, synced.refresh_token),
                         )
                         updated = replace(
                             synced,
@@ -657,7 +657,7 @@ class CredentialPool:
                         try:
                             _write_codex_cli_tokens(
                                 updated.access_token,
-                                updated.refresh_token,
+                                cast(str, updated.refresh_token),
                                 id_token=updated.extra.get("id_token"),
                                 last_refresh=updated.last_refresh,
                             )
@@ -694,7 +694,7 @@ class CredentialPool:
             try:
                 _write_codex_cli_tokens(
                     updated.access_token,
-                    updated.refresh_token,
+                    cast(str, updated.refresh_token),
                     id_token=updated.extra.get("id_token"),
                     last_refresh=updated.last_refresh,
                 )
@@ -1135,7 +1135,7 @@ def _seed_from_singletons(provider: str, entries: list[PooledCredential]) -> tup
                     "refresh_token": tokens.get("refresh_token"),
                     "id_token": tokens.get("id_token"),
                     "base_url": "https://chatgpt.com/backend-api/codex",
-                    "last_refresh": state.get("last_refresh"),
+                    "last_refresh": state.get("last_refresh") if isinstance(state, dict) else None,
                     "label": label_from_token(tokens.get("access_token", ""), "device_code"),
                 },
             )

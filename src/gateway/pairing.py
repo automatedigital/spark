@@ -64,7 +64,8 @@ def _secure_write(path: Path, data: str) -> None:
         try:
             os.chmod(path, 0o600)
         except OSError:
-            pass  # Windows doesn't support chmod the same way
+            # Windows doesn't support chmod the same way
+            logger.debug("Ignored exception in _secure_write", exc_info=True)
     except BaseException:
         try:
             os.unlink(tmp_path)

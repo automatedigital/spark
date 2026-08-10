@@ -382,7 +382,8 @@ class _InfoCommandsMixin:
                         self.conversation_history,
                     )
                 except Exception:
-                    pass  # Best-effort
+                    # Best-effort
+                    logger.debug("Ignored exception in _reload_mcp", exc_info=True)
 
             print(
                 f"  ✅ Agent updated - {len(self.agent.tools if self.agent else [])} tool(s) available"

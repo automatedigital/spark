@@ -118,7 +118,8 @@ def _inject_skill_config(loaded_skill: dict[str, Any], parts: list[str]) -> None
         lines.append("]")
         parts.extend(lines)
     except Exception:
-        pass  # Non-critical — skill still loads without config injection
+        # Non-critical — skill still loads without config injection
+        logger.debug("Ignored exception in _inject_skill_config", exc_info=True)
 
 
 def _build_skill_message(

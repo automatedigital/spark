@@ -32,7 +32,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, overload
 
 import httpx
 import yaml
@@ -746,7 +746,17 @@ def _save_provider_state(
     auth_store["active_provider"] = provider_id
 
 
-def read_credential_pool(provider_id: str | None = None) -> dict[str, Any]:
+@overload
+def read_credential_pool(provider_id: None = None) -> dict[str, Any]: ...
+
+
+@overload
+def read_credential_pool(provider_id: str) -> list[dict[str, Any]]: ...
+
+
+def read_credential_pool(
+    provider_id: str | None = None,
+) -> dict[str, Any] | list[dict[str, Any]]:
     """Return the persisted credential pool, or one provider slice."""
     auth_store = _load_auth_store()
     pool = auth_store.get("credential_pool")
@@ -1257,8 +1267,12 @@ def _refresh_qwen_cli_tokens(
 
     expires_in = payload.get("expires_in")
     try:
-        expires_in_seconds = int(expires_in)
-    except Exception:
+        expires_in_seconds = (
+            int(expires_in)
+            if isinstance(expires_in, (str, int, float))
+            else 6 * 60 * 60
+        )
+    except (TypeError, ValueError):
         expires_in_seconds = 6 * 60 * 60
 
     refreshed = {
@@ -1981,6 +1995,8 @@ def get_auth_status(provider_id: str | None = None) -> dict[str, Any]:
             logger.debug("Ignoring error in get_auth_status()", exc_info=True)
         return {"logged_in": False, "configured": False}
     # API-key providers
+    if target is None:
+        return {"logged_in": False}
     pconfig = PROVIDER_REGISTRY.get(target)
     if pconfig and pconfig.auth_type == "api_key":
         return get_api_key_provider_status(target)

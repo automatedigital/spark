@@ -83,7 +83,8 @@ def _macos_pngpaste(dest: Path) -> bool:
         if r.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
             return True
     except FileNotFoundError:
-        pass  # pngpaste not installed
+        # pngpaste not installed
+        logger.debug("Ignored exception in _macos_pngpaste", exc_info=True)
     except Exception as e:
         logger.debug("pngpaste failed: %s", e)
     return False

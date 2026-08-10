@@ -263,7 +263,8 @@ class _AgentContextMixin:
                             if tool_content.strip().startswith(("{", "[")):
                                 tool_content = json.loads(tool_content)
                         except (json.JSONDecodeError, AttributeError):
-                            pass  # Keep as string if not valid JSON
+                            # Keep as string if not valid JSON
+                            logger.debug("Ignored exception in _convert_to_trajectory_format", exc_info=True)
 
                         tool_index = len(tool_responses)
                         tool_name = (

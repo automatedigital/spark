@@ -421,7 +421,8 @@ class _DisplayCommandsMixin:
                     )
                 self.console.print("[dim]   Run 'spark setup' to configure[/]")
         except Exception:
-            pass  # Don't crash on import errors
+            # Don't crash on import errors
+            logger.debug("Ignored exception in _show_tool_availability_warnings", exc_info=True)
 
     def _show_status(self):
         """Show compact startup status line."""
@@ -1275,7 +1276,8 @@ class _DisplayCommandsMixin:
                     reasoning=msg.get("reasoning"),
                 )
             except Exception:
-                pass  # Best-effort copy
+                # Best-effort copy
+                logger.debug("Ignored exception in _handle_branch_command", exc_info=True)
 
         # Set title on the branch
         try:

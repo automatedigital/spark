@@ -200,7 +200,8 @@ class SubdirectoryHintTracker:
                         rel_path = str(hint_path.relative_to(Path.home()))
                         rel_path = "~/" + rel_path
                     except ValueError:
-                        pass  # keep absolute
+                        # keep absolute
+                        logger.debug("Ignored exception in _load_hints_for_directory", exc_info=True)
                 found_hints.append((rel_path, content))
                 # First match wins per directory (like startup loading)
                 break

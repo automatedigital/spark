@@ -1798,7 +1798,7 @@ class _TurnLoopMixin:
                                     model=self.model,
                                 )
                             except Exception:
-                                pass  # never block the agent loop
+                                logger.debug("Progress callback failed", exc_info=True)
 
                         if self.verbose_logging:
                             logging.debug(f"Token usage: prompt={usage_dict['prompt_tokens']:,}, completion={usage_dict['completion_tokens']:,}, total={usage_dict['total_tokens']:,}")
@@ -3731,7 +3731,7 @@ class _TurnLoopMixin:
                     review_skills=_should_review_skills,
                 )
             except Exception:
-                pass  # Background review is best-effort
+                logger.debug("Background skill review failed", exc_info=True)
 
         # Note: Memory provider on_session_end() + shutdown_all() are NOT
         # called here — run_conversation() is called once per user message in

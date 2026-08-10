@@ -135,7 +135,8 @@ class WebhookAdapter(BasePlatformAdapter):
             logger.error('[webhook] Port %d already in use. Set a different port in config.yaml: platforms.webhook.port', self._port)
             return False
         except (ConnectionRefusedError, OSError):
-            pass  # port is free
+            # port is free
+            logger.debug("Ignored exception in connect", exc_info=True)
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()

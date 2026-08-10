@@ -596,7 +596,8 @@ class GatewayStreamConsumer:
             )
             self._last_sent_text = prefix
         except Exception:
-            pass  # best-effort — don't let this block the fallback path
+            # best-effort — don't let this block the fallback path
+            logger.debug("Ignored exception in _try_strip_cursor", exc_info=True)
 
     async def _send_commentary(self, text: str) -> bool:
         """Send a completed interim assistant commentary message."""

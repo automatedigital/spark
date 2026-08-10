@@ -730,7 +730,8 @@ def check_all_command_guards(command: str, env_type: str,
         from tools.tirith_security import check_command_security
         tirith_result = check_command_security(command)
     except ImportError:
-        pass  # tirith module not installed — allow
+        # tirith module not installed — allow
+        logger.debug("Ignored exception in check_all_command_guards", exc_info=True)
 
     # Dangerous command check (detection only, no approval)
     is_dangerous, pattern_key, description = detect_dangerous_command(command)

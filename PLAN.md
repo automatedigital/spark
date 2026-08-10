@@ -1,592 +1,1009 @@
-# Spark Improvement Plan
+# Spark Web UI, Skills, and Adaptive Codex Plan
 
-Ten improvements found by a code audit on 2026-08-07 (branch `main`, commit
-`1cbe5b1f`). Items are ranked: 1-5 are "do now", 6-10 are "later". Every item
-lists the evidence, the fix, and a time estimate.
+## Goal
 
----
+Make Spark's web UI a clearer and more capable control surface for long-running
+agent work. The next release should make the main thread easier to read, make
+model and subagent choices understandable and cost-aware, and ship a smaller,
+higher-quality skill set with measurable behavior.
 
-## Do now
+This is a web-first programme. Source changes may include the Python/API work
+needed to power the web UI, but macOS and Windows desktop rebuilds, installers,
+signing, notarization, and release publication are deferred until the web
+experience has been reviewed and accepted.
 
-### 1. Run the test suite in CI
+## Stacked Feature-Branch Rule
 
-- [x] Add a `pytest` job to `.github/workflows/python-quality.yml`
+All implementation must happen on feature branches created from the latest
+`origin/main`. Do not implement any source task while `git branch --show-current`
+prints `main`, and never use an assistant-specific branch prefix.
 
-**Done.** The `pytest` job runs `python -m pytest tests/ -m "not slow" -q
---timeout=60`. Adding it first required fixing 8 pre-existing failures on
-`main`, described under "Work completed" at the end of this file.
+Use GitHub stacked pull requests only where one review layer genuinely depends
+on the layer below it. Keep the three concerns in separate stacks:
 
-**Evidence.** The repo has 667 test files and 204,324 lines of test code. No
-workflow runs them. `python-quality.yml` runs one command:
-`ruff check src/ --select UP015`. `windows-desktop-beta.yml` builds a binary.
-`web-supply-chain.yml` checks lockfile drift. Nothing runs a test.
-
-**Fix.** Add a job that installs `.[dev]` and runs
-`python -m pytest tests/ -m "not slow and not integration" -q`. Start with the
-fast subset so the job stays under 10 minutes, then add a nightly full run.
-
-**Estimate.** 1 hour to add the job. Half a day if flaky tests must be marked
-`serial` first (see `AGENTS.md` on xdist flakiness).
-
----
-
-### 2. Fix the six undefined names
-
-- [x] `ruff check src/ --select F821` must return clean
-
-**Done.** All six fixed and `F821` is now enforced in CI. The
-`commands.py` one was a live user-facing bug: `_context_completions` was a
-`@staticmethod` that called `self._fuzzy_file_completions`, so typing a bare
-`@` in the CLI raised `NameError`. It now has a regression test in
-`tests/spark_cli/test_path_completion.py::TestContextCompletion`, verified to
-fail against the old code.
-
-**Evidence.** `ruff check src/ --select F821` reports six real
-`NameError`-at-runtime sites:
-
-| File | Line | Undefined name |
+| Stack | Branches, bottom to top | Merge boundary |
 | --- | --- | --- |
-| `src/gateway/platforms/sms.py` | 77, 286 | `aiohttp` |
-| `src/gateway/platforms/whatsapp.py` | 148 | `aiohttp` |
-| `src/plugins/memory/holographic/retrieval.py` | 446 | `np` |
-| `src/spark_cli/commands.py` | 867 | `self` |
-| `src/tools/patch_parser.py` | 326 | `PatchResult` |
-
-The `aiohttp` cases are guarded optional imports that were never bound in the
-module scope. `commands.py:867` uses `self` in a function that has no `self`
-parameter.
-
-**Fix.** Bind the optional imports at module scope behind
-`try/except ImportError`, add the missing `numpy` import, add the missing
-`PatchResult` import, and correct the `commands.py` function signature. Then add
-`F821` to the CI ratchet in item 5.
-
-**Estimate.** 1 to 2 hours.
-
----
-
-### 3. Split `web_server.py` into routers
-
-- [x] Move the extractable route families out of `src/spark_cli/web_server.py`
-- [ ] Extract the event/turn/agent core, then move the remaining 69 routes
-
-**Done: 54 of 123 routes**, in eleven new modules — `cron`, `logs`, `analytics`,
-`profiles`, `model`, `admin`, `mcp`, `plugins`, `gateway`, `env`, `onboarding`,
-`mac`, `providers` — plus two shared modules the families needed:
-`admin_runs.py` (subprocess-backed admin actions) and `web_runtime.py`
-(`_run_blocking`, `_SESSION_TOKEN`, desktop detection).
-
-`web_server.py` went from 11,647 to 9,000 lines. Every extraction was checked
-by diffing the app's full route table against `main`: 251 routes, identical
-paths and methods, every time.
-
-**Why it stops at 54.** The remaining 69 routes are not more of the same work.
-They depend on state `web_server` owns — the turn registry, the event queues,
-the agent cache — so a route module holding them would have to import
-`web_server`, which imports the route modules to register them. That is an
-import cycle, not a refactor.
-
-Measured coupling of what is left:
-
-| Family | Routes | Distinct `web_server` names used |
-| --- | --- | --- |
-| `conversations` | 22 | 66 |
-| `sessions` | 13 | 25 |
-| `config` | 6 | 12 |
-| `skills` | 6 | 9 |
-| `workspace` | 4 | 35 |
-| `web-state`, `diagnostics`, `events`, singles | 18 | 3–6 each |
-
-`skills` and `diagnostics` were both extracted during this work and put back:
-`skills` pulled in `_publish_event`, `_web_agents` and the checkpoint writer
-and never closed; `diagnostics` needs `_is_web_turn_active`.
-
-**The enabling step.** Lift the event system, the turn registry and the agent
-cache into their own modules first. Then the rest of the routes follow the
-pattern already established here. That is a change to the heart of the chat
-pipeline and deserves its own branch and review, which is why it is not
-bolted onto this one.
-
-**Evidence.** `src/spark_cli/web_server.py` is 11,647 lines and declares 123
-route decorators directly on the app object. The pattern to copy already exists:
-eight modules (`artifacts_routes.py`, `canvas_routes.py`, `connectors_routes.py`,
-`kanban_routes.py`, `memory_routes.py`, `messaging_routes.py`,
-`workflow_routes.py`, `workspace_routes.py`) already use `APIRouter`.
-
-**Fix.** Extract route groups into new `*_routes.py` modules that follow the
-existing convention. Keep `web_server.py` for app construction, middleware,
-lifespan, and router registration. Do one group per PR so review stays possible.
-
-**Estimate.** 2 to 3 days across several PRs. About 3 hours per route group.
-
----
-
-### 4. Finish the `run_agent` and `cli` package splits
-
-- [x] Extract cohesive method groups from `AIAgent` into mixins
-- [x] Reduce `src/core/run_agent/__init__.py` — **11,341 -> 1,744**
-- [x] Reduce `src/core/cli/__init__.py` — **4,101 -> 1,134**
-
-Both packages already used the mixin pattern (`_PromptCacheMixin` in `run_agent`,
-seven mixins in `cli`), so this extends it rather than inventing anything.
-
-`AIAgent` gained seven mixins — `turn_loop`, `tool_execution`,
-`codex_streaming`, `agent_session`, `agent_context`, `agent_memory`,
-`agent_support` — plus `stream_events` and `qwen_headers` for two helpers both
-`AIAgent` and a mixin need, which would otherwise close an import cycle.
-`SparkCLI` gained `_MainLoopMixin` holding `run`, `chat`, `process_command`
-and `_print_exit_summary`.
-
-**Neither reached 1,000, and the reason is the same in both.** What is left is
-the constructor plus module-level setup: `AIAgent.__init__` is 1,040 lines and
-`SparkCLI.__init__` is 322. Moving a constructor into a mixin works
-mechanically — I did it — but it changed which tool-schema profile got
-resolved, and the byte-exact caching golden test caught it. That file is
-ADR-protected, so the constructor stayed. Going below 1,000 means decomposing
-a 1,040-line constructor, which is a behaviour change rather than a
-relocation, and belongs in its own change with its own review.
-
-**The recurring hazard.** Tests monkeypatch `core.run_agent.<name>` and
-`core.cli.<name>`. A relocated method that binds those at import silently
-stops seeing the patch — the same failure mode that let a mac-update test
-drive the real installer earlier in this work. Where a name is patched widely,
-the mixins resolve it through the package at call time via a `_pkg()` accessor,
-with a comment saying why.
-
-### 5. Widen the CI ratchet beyond one rule
-
-- [x] Add `F` and `B` rule families to the CI ratchet
-- [x] Clear `F841`, `B007`, `B905`, `B008`, `B904` and `F401`
-- [x] Add `I` and `W` to the ratchet
-- [x] `UP` swept (`UP015` gated; `UP035`/`UP031` remainder is not auto-fixable)
-
-**Final state.** The ratchet is
-`ruff check src/ --select UP015,F,B,I,W --ignore B027`. Total findings fell
-from 6,944 to about 300, and the remainder is deliberate: 269 `E402` late
-imports (this codebase manipulates `sys.path` before importing packages), 17
-`E741`, and a handful of `UP035`/`UP031` that have no safe autofix.
-
-`B027` is a permanent documented ignore. Spark's base classes use empty
-methods as optional hooks with a no-op default, so making them abstract would
-force every subclass to implement hooks it never uses.
-
-The `UP` sweep exposed three latent bugs, because PEP 604 unions are evaluated
-at runtime where `Optional[...]` was not: two callbacks annotated `callable`
-(the builtin function) instead of `Callable`, and a lock annotated
-`multiprocessing.Lock`, which is a factory function rather than a type.
-
-**Evidence.** CI enforces `UP015` only. `ruff check src/ --statistics` reports
-6,944 findings. Most are cosmetic (1,981 `UP006`, 1,981 `W293`, 1,665 `UP045`),
-but the auto-fixable share is large and the correctness rules are small enough
-to clear now:
-
-| Rule | Count | Meaning |
-| --- | --- | --- |
-| `F821` | 6 | undefined name (item 2) |
-| `F841` | 7 | unused variable |
-| `B023` | 2 | closure does not bind loop variable |
-| `B012` | 1 | `return` inside `finally` silences exceptions |
-| `F401` | 35 | unused import |
-
-Corrections to the first draft of this item, after reading the code:
-
-- `B023` in `src/cron/scheduler.py` is a **latent hazard, not a live bug**. The
-  `job_cancelled` closure is invoked inside the same loop iteration that
-  defines it, so it reads the correct values today. It would break only if
-  `run_job` retained the callback past the iteration. The loop variables are
-  now bound as default arguments, so it is correct either way.
-- `B012` in `src/core/cli/voice_mixin.py` is real. A `return` inside `finally`
-  discards any in-flight `KeyboardInterrupt`, which
-  `CLAUDE.md` names as a pitfall. Replaced with a guard flag.
-- `F601` in `src/spark_cli/model_normalize.py` was a duplicated `"trinity"`
-  dict key. Both copies mapped to the same value, so it was harmless. Removed.
-- `F811` in `src/plugins/memory/hindsight/__init__.py` was a duplicated
-  `get_spark_home` import. Removed.
-- `B033`, `B009`, and `B010` (11 findings) were auto-fixed.
-
-- `B904` (117) was cleared by an AST pass that appends `from <exc>` to every
-  raise inside an except block, binding a name on the handler where one was
-  missing.
-- `F401` was cleared except in two files given a documented per-file ignore:
-  `core/cli/__init__.py`, whose "unused" imports are re-exports and names the
-  test suite monkeypatches as `core.cli.<name>`, and the Honcho package, whose
-  imports only probe whether the optional extra is installed.
-
----
-
-## Later
-
-### 6. Stop swallowing exceptions silently
-
-- [x] Replace bare `except Exception: pass` with logged handlers
-
-**Done: 873 of 955.** An AST transform rewrote every handler whose body is
-exactly `pass` into `logger.debug(..., exc_info=True)`, naming the enclosing
-function so a log line identifies the site. 44 modules had no logger at all
-and had one added.
-
-The count is 955, not the 551 in the original estimate: that number came from
-a grep for `except Exception` followed by `pass`, which missed other exception
-types and multi-line handlers. The AST pass finds all of them.
-
-**Remaining: 82.** Formatting cases the transform deliberately declines —
-`except X: pass` on a single line, or a `pass` sharing its line with a
-comment. Three more sites in `gateway/run.py` run at import time before the
-module logger exists and keep their `pass` with a comment saying why.
-
-**Evidence.** 551 sites match `except Exception:` followed directly by `pass`,
-across 241 files. The worst areas are `src/tools/` (`voice_mode.py`,
-`vision_tools.py`, `tts_tool.py`, `terminal_tool.py`, `skills_tool.py`,
-`web_tools.py`). Each one hides a failure that a user later reports as
-"it did nothing".
-
-**Fix.** Add a `logger.debug(...)` or `logger.warning(...)` line to each
-handler, so the failure is recoverable from a log. Where the exception is truly
-expected, narrow the clause to the specific type. Do this file by file, starting
-with `src/tools/`.
-
-**Estimate.** 2 to 3 days. It is mechanical but wide.
-
----
-
-### 7. Get `mypy` to zero on its declared scope
-
-- [x] Gate the clean modules in CI so they cannot regress
-- [ ] Clear the 15 modules still listed in the mypy overrides block
-
-**Partly done.** 588 errors -> 336, and 56 of 111 modules with errors -> 17.
-So **94 of 111 modules are clean and gated in CI**, up from 55 when this
-started. `mypy src/agent/ src/spark_cli/` exits clean because the 17 modules
-that still have errors are listed in a `[[tool.mypy.overrides]]` block. Fix a
-module, delete its line, and the gate covers it.
-
-Most of the volume came from two mechanical patterns, applied by script and
-checked by the suite: 51 parameters annotated with a concrete type but
-defaulting to `None` (which `no_implicit_optional` rejects), and 60 returns of
-`Any` from functions with a declared return type, cast where the untyped value
-enters.
-
-Real bugs found along the way, beyond the three in the first pass:
-
-- `codex_models` returned `[]` from a function declared
-  `tuple[...] | None` when the response body was not a dict.
-- `subagents` built a list in a branch whose variable was already bound to a
-  dict, then returned the dict.
-- `skill_manager_tool._resolve_skill_dir` had an implicit `Optional`.
-- `copilot_acp_client` read and wrote `proc.stdout`/`stdin` without narrowing
-  them from `IO | None`.
-- `list_available_providers` declared `list[dict[str, str]]` for rows carrying
-  a list and a bool.
-
-Two of my own fixes were caught by tests rather than by review: an annotation
-that reused a name already bound in the enclosing function, and a
-"duplicate" assignment I removed that was actually the line clearing
-`_previous_summary` on session reset.
-
-**Remaining: 15 modules, 323 errors**
-`auxiliary_client` (58), `model_metadata` (45), `config` (36) and
-`error_classifier` (34). The dominant codes are now `arg-type` and
-`union-attr`, which need reading each call site rather than a pattern rewrite.
-
-**Evidence.** `pyproject.toml` declares `files = ["src/agent/", "src/spark_cli/"]`
-as the strict-adoption scope. Running it now gives 589 errors in 56 files of 111
-checked. The declared gate does not hold, and nothing in CI runs it. Sample
-errors in `web_server.py` (lines 10590, 10591, 11137, 11138) are `Any | None`
-values passed where `str` is required, which is the exact class of bug that
-reaches users as a 500 response.
-
-**Fix.** Fix the errors per module, starting with `src/agent/` since it is the
-smaller half. Once a module is clean, add it to a `mypy` CI job so it cannot
-regress.
-
-**Estimate.** 1 week, spread over several PRs.
-
----
-
-### 8. Move blocking calls off the event loop
-
-- [x] Investigated — **no change needed. This finding was wrong.**
-
-The original claim rested on a grep for `asyncio.to_thread` and
-`run_in_executor` returning zero. That grep missed the module's own helper,
-`_run_blocking` at `src/spark_cli/web_server.py:97`, which is exactly that
-wrapper and is already used on the async paths.
-
-Each of the 5 blocking calls was traced to its enclosing function, and all 5
-are already off the event loop:
-
-| Call | Enclosing function | Why it is safe |
-| --- | --- | --- |
-| `subprocess.run` x2 (git) | `_build_git_metadata` (sync) | Runs once at import (line 142), not per request |
-| `time.sleep(0.05)` | `_wait_for_checkpoint_ready` (sync) | Sync-caller variant; the async twin `_await_checkpoint_ready` uses `_run_blocking` |
-| `time.sleep(poll_interval)` | `_codex_full_login_worker` (sync) | Runs as a `threading.Thread` target (line 6031) |
-
-**Lesson for the rest of this plan.** Grepping for a library's canonical name
-is not proof of absence when a project wraps it. Confirm against the enclosing
-function before reporting.
-
-**Evidence.** `src/spark_cli/web_server.py` defines 132 `async def` functions.
-It contains 5 synchronous blocking calls (`requests.*`, `time.sleep(...)`,
-`subprocess.run(...)`) and zero uses of `asyncio.to_thread` or
-`run_in_executor`. Any of those inside a coroutine stalls every other request,
-including websocket streaming.
-
-**Fix.** Locate each blocking call, confirm whether it is on a coroutine path,
-and wrap it in `await asyncio.to_thread(...)`. Prefer `httpx.AsyncClient` over
-`requests` since `httpx` is already a core dependency.
-
-**Estimate.** Half a day, plus a load test to confirm.
-
----
-
-### 9. Split the largest React components
-
-- [x] Reduce `api.ts` below 800 lines — now **632**
-- [ ] Reduce `ChatPanel.tsx` below 800 lines
-
-**api.ts: 3,052 -> 632.** It was one file holding a 1,456-line `api` object of
-214 members, 139 type declarations, and the transport layer. Now:
-
-| Module | Contents |
-| --- | --- |
-| `apiTypes.ts` | response and payload shapes |
-| `apiHelpers.ts` | connection mode, auth headers, `fetchJSON`, URL builders |
-| `api_*.ts` (18) | endpoint families: workspace, kanban, session, skill, workflow, canvas, connector, cron, memory, browser, env, model, provider, admin, config, mcp, plugin, gateway |
-
-`api.ts` re-exports everything and spreads the family objects into one `api`
-object, so every `import { api } from "./api"` and `api.someMethod()` call site
-is unchanged. Verified with `tsc --noEmit` (0 errors), eslint, and 369 vitest
-tests.
-
-**ChatPanel.tsx is not split, deliberately.** It is 2,047 lines: 1,482 of logic
-across 89 interdependent hooks, then 435 lines of JSX. Unlike `api.ts`, where
-the pieces were independent, these hooks share closure state, so extracting
-them is a real React refactor rather than moving text.
-
-`CLAUDE.md` also names this component as the one needing manual verification of
-loading, streaming, offline, complete, reconnect, refresh and gateway-restart
-states. A mechanical split cannot be checked against those, and the type checker
-would not catch a broken streaming state machine. It needs its own branch with
-the web UI actually exercised.
-
-**Evidence.** The web frontend is 48,587 lines. Two files dominate:
-`src/spark_cli/web/src/lib/api.ts` at 3,052 lines and
-`src/spark_cli/web/src/components/ChatPanel.tsx` at 2,047 lines. Five more files
-are above 1,100 lines. `ChatPanel.tsx` is exactly the surface named in
-`CLAUDE.md` as needing manual verification of loading, streaming, offline,
-reconnect, and gateway-restart states, so its size directly raises the cost of
-each release.
-
-**Fix.** Split `api.ts` by domain, to mirror the backend router split in item 3.
-Extract the message list, the streaming state machine, and the tool-call group
-rendering out of `ChatPanel.tsx` into child components.
-
-**Estimate.** 2 days. Verify against the running web UI, not only the types.
-
----
-
-### 10. Add lint and type checks for the web frontend to CI
-
-- [x] Run `eslint` and `tsc --noEmit` on pull requests
-- [x] Add the `e2e/` suite as a separate non-blocking job
-
-**Done.** Added `.github/workflows/web-quality.yml`, which runs `npm run lint`,
-`npx tsc --noEmit -p tsconfig.app.json`, and `npx vitest run`.
-
-A second `e2e` job runs `e2e/multi-chat.mjs`, which drives Chromium against a
-real Spark backend that the script starts itself. It is marked
-`continue-on-error` so it reports without gating, as this item planned; it
-passes locally in about four minutes. It needs `PYTHON=python` because the
-script otherwise looks for `<repo>/.venv/bin/python`, which no runner has.
-Promote it by deleting `continue-on-error` once it has been stable.
-
-All three already passed locally, so this locks in a clean state rather than
-fixing a broken one. The notable find is that the repo has a **vitest suite of
-369 tests across 62 files** that no workflow ran.
-
-**Evidence.** `eslint.config.js`, `tsconfig.app.json`, and `tsconfig.node.json`
-exist and are configured. No workflow invokes them. `web-supply-chain.yml`
-touches the `web/` directory but only checks dependency pinning and lockfile
-drift, never the code. The e2e suite in `src/spark_cli/web/e2e` is also
-unattended.
-
-**Fix.** Extend `web-supply-chain.yml`, or add a `web-quality.yml`, that runs
-`npm run lint` and `npx tsc --noEmit` on changes under
-`src/spark_cli/web/src/**`. Add the e2e suite as a separate, non-blocking job
-first, then promote it once it is stable.
-
-**Estimate.** 2 to 3 hours for lint and types. Half a day more for e2e.
-
----
-
-## Summary
-
-| # | Item | Status | Remaining effort |
-| --- | --- | --- | --- |
-| 1 | Tests in CI | **Done** | — |
-| 2 | Six undefined names | **Done** | — |
-| 3 | Split `web_server.py` | **54 of 123 routes** | 3 days for the core extraction |
-| 4 | Finish `run_agent` + `cli` splits | **11,341 -> 1,744 and 4,101 -> 1,134** | the two constructors |
-| 5 | Widen CI ratchet | **Done** | — |
-| 6 | Log swallowed exceptions | **Done** (873 of 955) | — |
-| 7 | `mypy` to zero | **96 of 111 modules clean and gated** | 15 modules, 323 errors |
-| 8 | Unblock the event loop | **Withdrawn — false finding** | — |
-| 9 | Split large React files | **api.ts done** (3,052 -> 632) | 2 days for ChatPanel |
-| 10 | Frontend CI checks | **Done** | — |
-
----
-
-## Getting CI green
-
-Turning the test job on took six iterations. Every failure except two was a
-pre-existing dependency on the developer's machine, not a regression:
-
-| Round | Failures | Cause |
-| --- | --- | --- |
-| 1 | 576 | The job installed `[dev]`; `workspace_routes` needs FastAPI from `[web]` |
-| 2 | 8 | Credentials, macOS-only gates, 2s async timeouts |
-| 3 | 4 | `conftest` deleted `OPENROUTER_API_KEY`, leaving an empty key |
-| 4 | 1 | Diagnostics added to a CI-only web-turn failure |
-| 5 | 2 | A missing `os` import (mine) and an agent built without credentials |
-| 6 | **0** | Green |
-
-Two of these were real user-facing bugs found only because CI runs on a clean
-machine: the grep fallback and `@`-completion (item 2), and the credential
-errors below.
-
-**Verify on Linux locally, not by pushing.** Pushing to watch CI generated a
-failure email per round. Use a container instead:
+| Thread | `webui-thread-foundation` -> `webui-thread-interface` -> `webui-thread-polish` | Accepted thread and composer |
+| Routing | `adaptive-routing-core` -> `adaptive-routing-web` | Accepted Auto policy and web controls |
+| Skills | `skills-invocation` -> `skills-library` -> `skills-web` | Accepted skill contracts, library decisions, and UI |
+
+The thread stack goes first. Start the routing stack from fresh `main` after the
+thread stack lands so its composer/thread UI targets the accepted components.
+The skills stack may proceed independently where file ownership does not
+overlap, but every layer must remain independently reviewable.
+
+GitHub's stacked-PR feature is currently public preview. Verify the current
+`gh stack` workflow before source work:
 
 ```bash
-docker run --rm -v "$PWD":/w -w /w -e CI=true python:3.11-slim bash -c \
-  'apt-get update -qq && apt-get install -y -qq git && pip install -q -e ".[dev,web]" \
-   && python -m pytest tests/ -m "not slow" -q --timeout=60'
+git fetch origin
+git switch main
+git pull --ff-only origin main
+gh stack --help
+gh stack init webui-thread-foundation
 ```
 
-It is stricter than the runner (root, no systemd, no audio), so
-`test_gateway_service`, `test_voice_mode` and the systemd probes fail there
-but pass on CI. Treat those as container artifacts.
+Use `gh stack add <branch>` for each dependent layer, `gh stack submit` to push
+and open the linked PRs, and merge from the bottom up. If the preview tooling is
+unavailable or unsuitable, use ordinary same-repository dependent PRs with the
+same branch names, base relationships, and review boundaries rather than
+collapsing the work into one large PR.
 
-Both workflows now use a `concurrency` group with `cancel-in-progress`, and
-`push` only fires on `main`. Previously each push ran the same commit twice.
+Record the `origin/main` base SHA in the bottom PR of each stack. Keep unrelated
+generated, reference, release, and user-owned files out of every branch. The
+temporary research clones described below are not Spark dependencies and must
+never be copied into or committed with this repository.
 
-### Credentials must not be required for providers you do not use
+## Scope
 
-Reported during this work: a user signed in with a Codex subscription was told
-to set `OPENAI-CODEX_API_KEY`. That variable is malformed (the code built it
-with `str.upper()` alone, so any hyphenated provider produced a broken name)
-and irrelevant, because Codex authenticates with `spark login`.
+### In scope
 
-Fixed in `src/core/run_agent/__init__.py`:
+- The main web chat/thread panel, including turn presentation, tool activity,
+  reasoning, plans, changed files, approvals, usage, scrolling, and the composer.
+- Web controls and supporting backend contracts for main-model, fast-model, and
+  delegated-subagent routing.
+- Account-aware Codex model discovery, capability display, routing telemetry,
+  and cost/token evaluation.
+- External-skill integration, improvements to overlapping bundled skills, skill
+  invocation metadata, skill quality evals, and clearer Skills UI provenance.
+- Local web preview, browser-based visual acceptance, frontend tests, focused
+  Python tests, and performance/accessibility checks.
 
-- Providers that use a subscription login are listed in
-  `_OAUTH_LOGIN_PROVIDERS` and told to run `spark login`.
-- API-key providers get a correctly formed name (`z-ai` -> `Z_AI_API_KEY`).
-- With no provider configured at all, the message no longer invents
-  `AUTO_API_KEY`; it points at `spark setup`.
-- The OpenRouter fallback now prefers an explicitly passed `api_key`. It was
-  discarded whenever no `base_url` came with it, so a caller that did supply a
-  key still got "Missing credentials".
+### Out of scope until web acceptance
 
-### Fixed: turns could report success, or never finish at all
+- Tauri/Rust changes that are only needed for packaged desktop behavior.
+- `.app`, `.dmg`, Windows installer, signing, notarization, stapling, and release
+  publication.
+- Mobile, gateway-platform, or CLI redesign unrelated to shared API contracts.
+- A wholesale copy of T3 Code's architecture, styling, dependencies, or source.
+- Vendored copies of externally installed Matt Pocock or `i-have-adhd` skills.
+- Committing the temporary clones or generated reference screenshots.
 
-- [x] `run_agent_task` records `CancelledError` instead of reporting success
-- [x] `chat.turn_done` and the active-turn clear always run
+## Research Snapshot
 
-Two related bugs, both in the turn lifecycle, both user-visible.
+Repository research was refreshed on 2026-08-02 from fresh, shallow clones of
+each default branch. The stacked-PR workflow and installed-skill state were
+refreshed on 2026-08-04 from current primary documentation and the local system.
 
-**A turn that never ran reported success.** `asyncio.CancelledError` is a
-`BaseException`, so the `except Exception` in `run_agent_task` never caught
-it. `result` stayed `None` and the `finally` published `chat.turn_done` with
-`turn_outcome.status: "completed"` and no `backend_error_class`.
+### GitHub stacked pull requests
 
-Confirmed by patching `_run_web_turn_in_executor` to log what it raises, which
-printed `EXECUTOR raised CancelledError` immediately followed by
-`PAYLOAD result=None`. An earlier draft of this document dismissed that
-explanation; the trace is what settled it.
+- [GitHub's stacked-PR overview](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs)
+  defines a stack as dependent same-repository PRs where each layer targets the
+  branch below it, CI and branch protection apply throughout, and merges proceed
+  bottom-up. The feature is currently public preview.
+- [GitHub's creation guide](https://docs.github.com/en/pull-requests/how-tos/create-pull-requests/creating-stacked-pull-requests)
+  documents `gh stack init`, `gh stack add`, and `gh stack submit`.
+- Transfer to Spark: small dependency-correct review layers and explicit stack
+  maps. Do not force independent routing, skills, and thread work into one chain.
 
-**A turn could also never finish.** The `finally` did its persistence and
-projection work *before* publishing `turn_done` and clearing the active turn.
-Those steps await on the shared async runtime, so if it had gone away they
-raised and the publish never happened. The session then stayed active forever
-with no `turn_done` — in the web UI, a chat that spins indefinitely.
+### T3 Code
 
-**The fix.** All four turn handlers (`/api/conversations`, its `messages` and
-`retry` variants, and the workspace one) now catch `CancelledError` ahead of
-`Exception`, and wrap the best-effort work in `try/except` with the publish,
-the queue close, and `_clear_web_turn` in an inner `finally` so they run
-whatever happened.
+- Repository: [pingdotgg/t3code](https://github.com/pingdotgg/t3code)
+- Inspected commit: `e60821f0e0d82a5d671ca3b94719c49d333921c8`
+- Most relevant code:
+  - `apps/web/src/components/chat/MessagesTimeline.tsx` and
+    `MessagesTimeline.logic.ts` derive a turn-oriented timeline, keep the final
+    answer visible, fold settled reasoning/tool work behind a duration summary,
+    group tool calls, preserve copy/revert actions, show changed files, and keep
+    a minimap useful on long threads.
+  - `apps/web/src/components/chat/ChatComposer.tsx` combines prompt drafts,
+    attachments, contextual chips, model/provider selection, reasoning effort,
+    context-window pressure, approvals, stop/redirect behavior, and plan actions
+    in one persistent surface.
+  - `apps/web/src/components/PlanSidebar.tsx`, `ProposedPlanCard.tsx`, and
+    `ChangedFilesTree.tsx` make plans and file outcomes first-class without
+    forcing raw tool output into the final response.
+  - `apps/web/src/session-logic.ts` derives presentation state before rendering;
+    the useful lesson is the typed turn model, not the size of `ChatView.tsx`.
+- Transfer to Spark: turn-level hierarchy, compact settled work, visible final
+  outcomes, contextual composer controls, and pure tested presentation models.
+- Do not transfer: provider-specific assumptions, Effect/TanStack state
+  architecture, Electron behavior, or T3 branding.
 
-**Regression test.** `test_cancelled_web_turn_reports_failure_not_success`,
-verified to fail when the handler is removed.
+### i-have-adhd
 
-### Still open: test isolation in the web-turn module
+- Repository: [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd)
+- Inspected commit: `d05af1e4ac2259846e81686d14180d46d84acc2d`
+- `skills/i-have-adhd/SKILL.md` is an explicit, session-persistent output mode:
+  action first, numbered bounded steps, state restated, tangents suppressed,
+  concrete progress, and matter-of-fact errors. It yields to safety, ambiguity,
+  explicit requests for detail, and harness requirements.
+- `evals/` compares baseline/candidate/comparator conditions with identical
+  prompts, pinned models, isolated configuration, resumable trials, cost caps,
+  blinded judging, and release gates for correctness, autonomy, actionability,
+  safety, and concision.
+- `i-have-adhd` is now externally installed on this machine. Transfer to Spark:
+  invocation/provenance support and the paired eval discipline, not a bundled
+  copy. Preserve MIT attribution if text or test cases are ever adapted.
 
-One test, `test_conversation_message_continues_latest_compressed_leaf`, skips
-on CI. It needs the agent turn to actually execute, and when
-`test_async_runtime` or `test_tool_scheduler` has torn down the shared
-`AsyncRuntime`, the work future is cancelled before it runs. The turn now
-finalizes correctly in that situation, which is why the other two tests in
-this family came off the skip list, but this one asserts on work that never
-happens.
+### Matt Pocock skills
 
-**Ruled out.** Not a timeout (2s to 45s does not help). Not fixed by resetting
-the runtime in the web fixture, nor by draining turns at teardown, nor by
-xdist grouping (`--dist loadfile` made it worse: 21 failures).
+- Repository: [mattpocock/skills](https://github.com/mattpocock/skills)
+- Inspected commit: `2ab958093e83e0ec752e6c1c5932da465bf23e0c`
+- The useful system ideas are small composable skills, a deliberate distinction
+  between user-invoked orchestration and model-invoked discipline, router skills
+  for discoverability, progressive disclosure through context pointers,
+  checkable completion criteria, and aggressive removal of duplicated/no-op
+  prose.
+- The Matt Pocock skills are now externally installed on this machine. High-value
+  examples include `research`, `prototype`, `codebase-design`,
+  `domain-modeling`, `wayfinder`, `grill-me`, and `grill-with-docs`.
+- `diagnosing-bugs`, `tdd`, planning, review, and subagent workflows overlap
+  Spark's bundled skills. Improve or replace the bundled canonical skill after
+  comparison; do not vendor the external skill or create a second bundled skill
+  with a different name for the same behavior.
 
-**Likely fix.** `AsyncRuntime.shutdown` closes clients and stops the loop but
-leaves `_named_executors` running; give it responsibility for those, and stop
-the async-runtime tests from touching the process-wide singleton.
+### Current OpenAI/Codex guidance
 
-## Work completed
+- [OpenAI model guidance](https://developers.openai.com/api/docs/guides/latest-model)
+  describes GPT-5.6 Sol as the flagship capability model, Terra as the
+  intelligence/cost balance, and Luna as the efficient high-volume model. It
+  recommends testing the current reasoning effort and one level lower on
+  representative workloads instead of assuming maximum effort is best.
+- The same guidance treats multi-agent as beta, supports `none`, `low`,
+  `medium`, `high`, `xhigh`, and `max` reasoning, and recommends tracking prompt
+  cache reads and writes because cache writes and reads have different cost.
+- [OpenAI's current model comparison](https://developers.openai.com/api/docs/models/compare)
+  confirms that model capability, context, reasoning, and price differ enough
+  that routing must be measured rather than hard-coded from model names.
+- This machine's account-scoped Codex cache, fetched on 2026-08-02, currently
+  exposes `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`. Sol and Terra
+  advertise multi-agent v2 while Luna advertises v1. Availability and metadata
+  can change; Spark must use the live account catalog and test parent/child
+  compatibility before enabling those models in Auto role mappings.
 
-Branch `fix/plan-quality-gates`. CI green: `pytest`, `ruff-ratchet`,
-`mypy-ratchet` and `web-quality` all pass. 12,305 tests pass on CI; two are
-skipped there for the web turn bug documented above, and both still run and
-pass locally.
+## Current Spark Baseline
 
-### Pre-existing test failures fixed (blocking item 1)
+- `src/spark_cli/web/src/components/ChatPanel.tsx` is already virtualized and
+  supports user/assistant/tool/reasoning/approval rows, search, retry, fork,
+  exact-copy behavior, a minimap, streaming recovery, and long-thread guards,
+  but it owns too many transport, state, and presentation concerns in one file.
+- `src/spark_cli/web/src/components/chat/PromptBar.tsx` already supports
+  attachments, `/` commands, `@` context,
+  token estimates, a model/reasoning popover, redirect, and stop.
+- `src/spark_cli/web/src/components/chat/SessionInfoBar.tsx` already exposes
+  input/output/cache tokens, estimated cost, model, and turn count, while
+  `src/spark_cli/web/src/components/CodexUsageBadge.tsx` exposes subscription
+  windows.
+- `src/spark_cli/web/src/components/chat/SubagentsPanel.tsx` and the persisted
+  `spark.subagent.lifecycle.v1` events already provide a foundation for visible
+  child-agent progress.
+- `src/agent/smart_model_routing.py` currently routes only very short/simple
+  turns to one fast model. Delegation supports one global child model and
+  reasoning effort.
+  The web UI does not present these as one understandable routing policy.
+- `src/spark_cli/codex_models.py` already prefers an account-scoped live catalog
+  and falls back to the local cache, but it reduces model entries to slugs and
+  discards capability metadata needed for safe routing controls.
+- Spark already ships broad skills for debugging, TDD, planning, review, and
+  subagent development. New work must reduce overlap and prompt cost rather than
+  merely increase the skill count.
 
-`main` had 8 failing tests. All 8 reproduced serially, so none were xdist
-flakes. CI could not be turned on until they were fixed.
+## Product Principles
 
-**One real source bug:**
+- Final answers and concrete outcomes remain visually dominant. Active work
+  stays expanded; completed reasoning, tools, and subagents collapse into one
+  expandable work summary by default.
+- Failures, pending approvals, and unresolved user input never disappear into a
+  collapsed summary. Raw transcript content remains available and exact.
+- Compact changed-file and plan-progress cards sit beneath the answer that
+  produced them; the right panel remains the detailed diff/plan workspace.
+- The server/session database remains authoritative. UI folds, filters, drafts,
+  and optimistic state must reconcile after refresh, reconnect, and chat switch.
+- Exact message text, tool results, approvals, retry/fork semantics, and the
+  stable SSE recovery contracts must survive the redesign.
+- `Auto` is the default for new chats. Explicit model selection pins that model
+  for the thread until changed; Auto always shows the effective model, effort,
+  route label, fallback, and any bounded escalation.
+- Auto routes the main agent and delegated subagents independently, preserves a
+  quality/safety floor before minimizing usage, uses latency only as a tie-break,
+  and prefers model stability unless a tested threshold is crossed.
+- Routing explanations are deterministic policy labels based on observable
+  signals, never generated reasoning or hidden chain-of-thought.
+- Context management warns early, offers manual removal/summarization, compacts
+  automatically only when required to continue safely, preserves pinned context
+  and decisions, and visibly records what changed. It never silently drops
+  context merely to save tokens.
+- Skills earn their prompt cost. User-only orchestration skills consume no
+  model-index tokens; overlapping skills have one canonical source of truth;
+  external skills retain their source rather than being copied into Spark.
+- T3 Code is a visual as well as structural reference: borrow its restrained
+  surfaces, spacing, density, composer treatment, work summaries, and thread
+  rhythm while retaining Spark branding, color system, typography character,
+  terminology, and distinctive controls.
+- Visual acceptance means inspecting the rendered web UI at representative
+  widths with real long, streaming, tool-heavy, and subagent conversations.
 
-- `src/core/spark_state.py` declared `SCHEMA_VERSION = 11` while the migration
-  ladder ran through v12 (`if current_version < 12` writes version 12). Every
-  freshly initialized database therefore disagreed with the declared constant.
-  Bumped to 12.
+## Confirmed Product Decisions
 
-**Four environment-dependent or stale tests:**
+The 2026-08-04 `grill-me` session resolved these implementation choices:
 
-- `test_browser_reliability.py` — the mocked navigation still ran the real
-  `_is_safe_url`, which performs a live DNS lookup, so the test failed on any
-  machine without network resolution of `a.example`. `_is_safe_url` is now
-  patched.
-- `test_tool_facades.py` — asserted a `web` facade exists, but `web_search`
-  only registers when `EXA_API_KEY` is set, so the test passed only on
-  machines holding that credential. Now skips when the facade is absent.
-- `test_web_server.py::test_available_models_codex_is_strict` — `source` gained
-  a third legitimate value, `"cache"`, which the test's allowed set predated.
-  The `gpt-5.6-sol` exclusion was also scoped to `offline-fallback`, since
-  `cache` is a real account catalog that may list any model.
-- `test_web_server.py::test_skills_list_includes_disabled_skills` — compared
-  the whole `/api/skills` payload by exact equality, so it broke when unrelated
-  fields were added. Now compares only the 8 keys the test is about.
+- Use separate dependency-correct PR stacks, not one monolithic branch or one
+  artificial stack spanning unrelated concerns.
+- Completed turns are final-answer-first with intermediate work collapsed;
+  active work, failures, approvals, and unresolved input remain visible.
+- Changed files and plan progress appear as compact inline outcomes linked to
+  the authoritative right-panel detail.
+- Compare two polished T3-inspired prototypes: calm/spacious and
+  dense/operational. Do not spend a prototype on an unrelated visual direction.
+- `Auto` is the default model choice; explicit choices remain supported and pin
+  the thread. Main-agent and subagent routing are independent.
+- Auto permits at most one reasoned escalation per turn, maintains a tested
+  quality/safety floor, then minimizes usage, with latency as a tie-break.
+- Ship one Auto policy initially. Use sticky routing with hysteresis rather than
+  reconsidering models from scratch on every turn.
+- Show deterministic route labels such as `Terra · normal coding task` or
+  `Escalated to Sol · validation failed`; never expose hidden reasoning.
+- Manage context conservatively and visibly; never silently discard it for cost.
+- Do not vendor the installed Matt Pocock or `i-have-adhd` skills. Start with
+  invocation, provenance, overlap, token-cost, and eval infrastructure; add a
+  bundled skill only after the audit proves a gap.
+- User-invoked orchestration skills remain available in slash commands and the
+  Skills UI but are omitted from the normal model-visible skill index.
 
-### Regression test added
+## Dependency Map
 
-`tests/spark_cli/test_path_completion.py::TestContextCompletion` covers the
-bare-`@` CLI completion path. Verified to fail with `NameError` against the
-pre-fix code, then pass after.
+```text
+THREAD STACK
+main -> webui-thread-foundation -> webui-thread-interface -> webui-thread-polish
+          baseline + model          timeline + composer       visual/perf QA
 
-### Unenforced test suites discovered
+ROUTING STACK (after accepted thread stack lands)
+main -> adaptive-routing-core -> adaptive-routing-web
+          metadata + policy          Auto UI + telemetry + eval acceptance
 
-Neither of these was run by any workflow before this branch:
+SKILLS STACK (independent where ownership permits)
+main -> skills-invocation -> skills-library -> skills-web
+          metadata + index       audit + evals       provenance/quality UI
 
-- Python: 12,308 fast tests
-- Frontend: 369 vitest tests across 62 files
+Accepted thread + routing + skills stacks -> integrated web bundle gate
+Integrated web acceptance -> separate future desktop build/release plan
+```
 
-Both now run in CI. `eslint` and `tsc --noEmit` were also already clean and
-unenforced, so `web-quality.yml` locks in a passing state rather than fixing a
-broken one.
+## Phase 0: Thread Stack, Baselines, and UI Direction
+
+- [x] **BRANCH-01 - Initialize the thread PR stack before source work.** From a
+  clean latest `main`, verify `gh stack --help`, run
+  `gh stack init webui-thread-foundation`, record the `origin/main` base SHA,
+  and confirm the worktree contains only intentional files. Add
+  `webui-thread-interface` and `webui-thread-polish` only when their dependency
+  boundaries are reached.
+  **Done when:** the checked-out branch is `webui-thread-foundation`, the stack
+  map/base relationships are recorded, and `git status --short` has no unrelated
+  changes.
+  **Evidence (2026-08-04):** `origin/main` and local `main` were both at
+  `d827339dacb3b5caf5a59f2bab970b398de6316c`; `gh stack --help` reported that
+  the command is unavailable, so the documented ordinary dependent-PR fallback
+  is active. The clean checkout is now on `webui-thread-foundation`; later
+  layers will base `webui-thread-interface` on this branch and
+  `webui-thread-polish` on `webui-thread-interface`.
+
+- [x] **BASE-01 - Capture behavior fixtures for the current chat surface.** Add
+  redacted fixtures for empty, short, long, streaming, interrupted, reconnecting,
+  tool-heavy, reasoning-heavy, approval-pending, changed-file, and parallel
+  subagent threads.
+  **Files:** `src/spark_cli/web/e2e/fixtures/`, existing session fixture helpers,
+  and focused API fixtures under `tests/` only where needed.
+  **Done when:** the same fixtures can drive baseline and redesigned UI states
+  without network or private data.
+  **Evidence (2026-08-04):** `chat-thread-states-v1.json` defines all eleven
+  required synthetic states with deterministic timestamps and no network/private
+  data; its Node contract test verifies the catalog, redaction rules, unique
+  sessions, and state-specific payloads. `node --test`, `jq empty`, all 253
+  frontend tests, and `git diff --check` pass.
+
+- [x] **BASE-02 - Freeze the behavioral contracts that the redesign must keep.**
+  Add tests for exact assistant copy, retry/edit/fork, paged history, active
+  streaming rows, tool-result expansion, approvals, redirect/stop, scroll
+  anchoring, minimap navigation, refresh/reconnect, and chat switching.
+  **Files:** existing chat tests plus new focused tests beside the extracted
+  **Validation:** `cd src/spark_cli/web && npm test`.
+  **Evidence (2026-08-04):** deterministic browser contracts cover exact
+  assistant copy, edit/retry/fork, paged history, active streaming rows,
+  expanded tool results, persisted approvals, minimap navigation, reconnect,
+  chat switching, stop, and redirect. The focused history-prepend repro passes
+  twice with the same visible row held at exactly `0px` drift after virtualizer
+  remeasurement. The broad browser contract, all 289 frontend tests, 97 focused
+  web-server tests, lint, and TypeScript pass.
+
+- [x] **BASE-03 - Record web performance and visual baselines.** Measure React
+  commits, first render, stream update rate, row measurement churn, scroll drift,
+  and memory for 50-, 500-, and 2,000-row fixtures. Capture screenshots at
+  1440px, 1024px, and 768px widths in light and dark themes.
+  **Files:** `src/spark_cli/web/e2e/`, `src/spark_cli/web/screenshots/baseline/`,
+  and existing efficiency metrics helpers.
+  **Done when:** raw numbers and screenshots identify the current state; they are
+  not acceptance evidence for the redesign.
+  **Evidence (2026-08-04):** `baseline-d827339d.json` records all 18 combinations
+  of 50/500/2,000 rows, 1440/1024/768px, and light/dark themes with first render,
+  React commits, stream rate, row-measurement churn, scroll drift, and browser
+  memory. All cases have 7-8 observed stream updates, zero page/console errors,
+  zero measured anchor drift, and one atomic screenshot; 18 screenshots were
+  captured. Representative wide/light and narrow/dark renders were visually
+  inspected and correctly retained as pre-redesign baselines only.
+
+- [x] **UI-01 - Build two polished T3-inspired main-thread prototypes.** Use one
+  temporary dev-only route or query flag to compare a calm/spacious transcript
+  with a dense/operational transcript. Both must use the same fixture data,
+  final-answer-first turn hierarchy, compact outcome cards, composer controls,
+  Spark branding, and preserved actions.
+  **Files:** temporary components under
+  `src/spark_cli/web/src/dev/thread-prototypes/` and one guarded dev entrypoint.
+  **Done when:** both run from one documented command and neither is wired into
+  production state.
+  **Evidence (2026-08-04):** `?thread-prototype=1` loads calm/spacious and
+  dense/operational variants from the shared canonical fixture catalog, with a
+  fixture picker, preserved actions, final-answer-first hierarchy, outcome
+  cards, work/approval states, and composer controls. Browser checks cover both
+  variants at 1440/1024/768px, including zero horizontal overflow after fixing
+  the narrow dense view; six review screenshots were captured. Frontend tests,
+  lint, TypeScript, a temporary production build, and a production-bundle scan
+  all pass, with no prototype route/chunk markers in the production output.
+
+- [x] **UI-02 - Review the prototypes in the browser and select one direction.**
+  Compare information hierarchy, long-thread scanning, tool density, composer
+  reachability, changed-file visibility, and narrow-width behavior with the user.
+  **Gate:** do not begin production visual refactoring until one direction and
+  any retained elements from the other variants are explicitly recorded.
+  **Evidence (2026-08-04):** selected dense/operational as the production
+  foundation, retaining the calm variant's final-answer prominence and breathing
+  room around outcome cards. The decision and responsive review findings are
+  recorded in `docs/web/ui-direction-decision.md` against the six preserved
+  1440/1024/768 screenshots.
+
+- [x] **UI-03 - Remove rejected prototype code and capture the decision.** Keep
+  only a small screenshot/decision note if useful; production code starts from
+  the selected behavior, not by promoting an untested prototype wholesale.
+  **Done when:** no temporary prototype route can ship in a production build.
+  **Evidence (2026-08-04):** removed the dev-only query entrypoint and all
+  temporary `src/dev/thread-prototypes/` source while retaining only the decision
+  note and six review screenshots. Frontend tests, lint, TypeScript, temporary
+  production build, bundle budget, marker scans, and `git diff --check` pass.
+
+## Phase 1: Turn-Oriented Thread Model
+
+- [x] **THREAD-01 - Define a pure presentation model for one conversation turn.**
+  Convert persisted/streaming `ChatMessage` rows into typed turns containing the
+  initiating user message, commentary/reasoning, tool activity, approvals,
+  subagent activity, final assistant answer, usage, changed files, status, and
+  timestamps.
+  **Files:** new `src/spark_cli/web/src/lib/threadTimelineModel.ts` and
+  `threadTimelineModel.test.ts`.
+  **Done when:** mixed persisted/live events produce stable IDs and deterministic
+  turn boundaries without React or network state.
+  **Evidence (2026-08-04):** `threadTimelineModel.ts` provides a pure typed turn
+  model with deterministic explicit and fallback boundaries, user/final-answer
+  separation, work, approvals, requested input, subagents, changed files, usage,
+  status, and timestamps. Focused and full frontend tests pass.
+
+- [x] **THREAD-02 - Define settled-work folding rules.** Keep an active or
+  interrupted turn expanded. For settled turns, retain the final assistant
+  answer while folding intermediate reasoning/tool/subagent rows behind a
+  summary such as `Worked for 2m 14s · 7 actions`.
+  **Depends on:** `THREAD-01`.
+  **Done when:** tests cover missing turn IDs, multiple assistant messages,
+  redirect/interruption, failed tools, approvals, requested user input, and
+  resumed sessions; failures and unresolved interactions cannot be hidden by
+  the default fold.
+  **Evidence (2026-08-04):** focused tests cover settled final-answer-first folds,
+  active streaming, interruption/redirect, tool failure, unresolved and resolved
+  approvals, requested input, multiple assistant messages, and resumed sessions.
+  Active, failed, interrupted, approval, and input states remain expanded.
+
+- [x] **THREAD-03 - Add structural sharing for unchanged timeline items.** A
+  streaming delta should replace only the affected active item; settled turns
+  must retain object identity so virtualization and memoization remain useful.
+  **Files:** `threadTimelineModel.ts`, tests, and existing transcript merge code.
+  **Done when:** tests assert referential stability across representative deltas.
+  **Evidence (2026-08-04):** semantic signatures reuse the complete previous
+  timeline when unchanged, retain settled-turn identity across active deltas,
+  preserve unaffected active work-item identity, and replace only the changed
+  streaming answer. Eight focused tests and all 280 frontend tests pass with
+  lint, TypeScript, and `git diff --check` clean.
+
+- [x] **THREAD-04 - Extract transport/controller concerns from `ChatPanel.tsx`.**
+  Move transcript loading/recovery, stream event reduction, composer actions,
+  and timeline derivation into explicit hooks/modules while retaining
+  `ChatPanel` as the stable public component.
+  **Files:** `ChatPanel.tsx`, new focused modules under
+  `src/spark_cli/web/src/hooks/` and `src/spark_cli/web/src/lib/`.
+  **Done when:** no behavior is lost, controller modules have focused tests, and
+  presentation components do not fetch session state directly.
+  **Evidence (2026-08-04):** session/history recovery, pure stream reduction,
+  batched stream orchestration, composer actions, and timeline derivation now
+  live in focused hooks/modules while `ChatPanel` remains the public component.
+  The complete frontend suite passes with 47 files and 324 tests, lint and
+  TypeScript pass, 217 focused web-server tests pass, the broad browser contract
+  passes, and the strengthened history-prepend contract passes six consecutive
+  trials with exact `0px` settled drift. Stream topics are no longer reduced by
+  an inline event switch in the presentation component.
+
+## Phase 2: Main Thread Panel Redesign
+
+- [x] **CHAT-01 - Implement the selected timeline shell.** Use a centered,
+  readable content column, a persistent bottom composer, clear active-turn
+  status, and responsive gutters. Move visibly toward T3's restrained surfaces,
+  spacing, density, and thread rhythm while retaining Spark's brand tokens,
+  terminology, typography character, and distinctive controls.
+  **Files:** new `src/spark_cli/web/src/components/chat/MessagesTimeline.tsx`,
+  existing `src/spark_cli/web/src/components/ChatPanel.tsx`, and shared theme
+  styles.
+  **Depends on:** `UI-02`, `THREAD-04`.
+  **Evidence (2026-08-04):** `MessagesTimeline` now renders virtualized turns in
+  a centered `max-w-3xl` reading column with restrained Spark surfaces,
+  responsive gutters, persistent composer placement, and active status. The
+  production build and browser chat contract pass.
+
+- [x] **CHAT-02 - Implement distinct user and assistant message treatments.**
+  Preserve user context chips and edit/retry/fork/copy actions. Let assistant
+  answers read like the primary document, with exact-copy and usage metadata
+  available without permanent visual noise.
+  **Files:** new `UserMessageRow.tsx`, `AssistantMessageRow.tsx`, and component
+  tests.
+  **Evidence (2026-08-04):** dedicated user and assistant rows preserve context
+  tokens, edit/retry/fork/copy/feedback behavior, exact Markdown answers, and
+  compact usage metadata. Both components have focused rendering/action tests.
+
+- [x] **CHAT-03 - Implement compact expandable work groups.** Group tool calls,
+  reasoning, and subagent status under the turn summary. Show failures and
+  unresolved approvals/user input prominently; allow complete raw details and
+  stored tool artifacts to be expanded on demand. Completed groups collapse by
+  default; active groups remain expanded.
+  **Files:** new `TurnWorkGroup.tsx`; existing
+  `src/spark_cli/web/src/components/chat/ToolCallBubble.tsx`,
+  `ReasoningBubble.tsx`, and `SubagentsPanel.tsx`; and focused tests in the same
+  component area.
+  **Evidence (2026-08-04):** `TurnWorkGroup` folds settled reasoning, tools,
+  intermediate answers, and subagents behind a deterministic action/duration
+  summary while keeping active, failed, interrupted, approval, and requested
+  input states expanded. Focused tests cover collapsed, active, and failed work.
+
+- [x] **CHAT-04 - Make changed files a first-class turn outcome.** Reuse the
+  authoritative changes/diff data already available to the right panel. Show a
+  compact card directly beneath the relevant final answer, with a file tree,
+  additions/deletions, and open-diff actions; do not infer success merely from a
+  tool call string. Keep the right panel as the detailed workspace.
+  **Files:** a new `ChangedFilesCard.tsx`, the existing changes-panel model/API,
+  and focused tests.
+  **Done when:** changed files reconcile after refresh and a file opens in the
+  existing Changes tab at the expected path.
+  **Evidence (2026-08-04):** durable backend turn outcomes carry authoritative
+  changed-file paths and line counts through refresh/session migration.
+  `ChangedFilesCard` opens the existing Changes panel at the selected path; its
+  summary and open-file contracts have focused tests.
+
+- [x] **CHAT-05 - Add inline plan presentation.** Render active plan steps and
+  proposed plan Markdown as a compact card beneath the relevant answer with a
+  shortcut to the existing plan/brief surface. Preserve one authoritative plan
+  state in the right panel/backend.
+  **Files:** new `PlanCard.tsx`, existing
+  `src/spark_cli/web/src/components/chat/BriefPanel.tsx`, plan event adapters,
+  and tests.
+  **Evidence (2026-08-04):** plans are persisted as authoritative turn outcomes,
+  rendered by `PlanCard` with step status/progress, and linked to the existing
+  Brief panel. Backend projection and focused component tests pass.
+
+- [x] **CHAT-06 - Adapt the minimap from message rows to turn landmarks.** Keep
+  user turns, final answers, failures, approvals, and active work visible while
+  suppressing repetitive tool noise. Preserve keyboard and pointer navigation.
+  **Files:** `TimelineMinimap.tsx`, `timelineMinimapModel.ts`, and tests.
+  **Evidence (2026-08-04):** the minimap now derives user, answer, active,
+  failure, and pending-action landmarks per turn, suppresses repetitive work,
+  and supports role-labelled pointer and keyboard navigation. Five focused
+  tests and the browser navigation contract pass.
+
+- [x] **CHAT-07 - Preserve deterministic scroll anchoring.** Cover appending
+  tokens, expanding old work, prepending history, switching chats mid-stream,
+  jumping via minimap, and returning to the bottom. Never steal the user's
+  position while they are reading older content.
+  **Files:** `chatScrollState.ts`, row-measurement helpers, timeline components,
+  and stress tests.
+  **Evidence (2026-08-04):** stable turn estimates, keyed measurement reset,
+  height-delta restoration, and mounted-anchor correction preserve older
+  history through virtualized prepends. Six consecutive browser trials settled
+  at exact `0px` drift; the broad contract also covers streaming, switching,
+  minimap jumps, expansion, and return-to-bottom behavior.
+
+- [x] **CHAT-08 - Refine loading, offline, reconnecting, interrupted, and failed
+  states.** State labels must come from confirmed backend/session state and
+  expire or reconcile after reconnect.
+  **Files:** `StatusPill.tsx`, `chatTurnState.ts`, `chatRecovery.ts`,
+  `sessionStore.tsx`, and tests.
+  **Evidence (2026-08-04):** status presentation now reconciles transport hints
+  against confirmed backend turn/session state, with explicit loading, offline,
+  reconnecting, interrupted, failed, waiting, and recovered labels. Thirty-two
+  focused status/recovery tests pass as part of the 353-test frontend suite.
+
+## Phase 3: Composer and Thread Controls
+
+- [x] **COMPOSER-01 - Recompose the prompt surface around progressive
+  disclosure.** Keep the prompt and send/stop/redirect actions always visible;
+  group attachments, context, project, model, reasoning, and advanced controls
+  into compact discoverable controls. `Auto` is the default for new chats and
+  sits alongside all currently available explicit model choices. An explicit
+  choice pins the thread until changed.
+  **Files:** split `src/spark_cli/web/src/components/chat/PromptBar.tsx` into
+  focused composer components while keeping its public contract stable during
+  migration.
+  **Evidence (2026-08-04):** `PromptBar` retains its public contract while
+  attachment and advanced actions move into focused menus; prompt,
+  send/stop/redirect, model, and context state remain reachable without crowding
+  the primary surface. Existing explicit models remain available and Auto is
+  presented as the default policy choice pending the routing stack.
+
+- [x] **COMPOSER-02 - Make context pressure actionable.** Keep the current token
+  estimate, show context buckets, and offer remove/summarize actions before the
+  threshold is reached. Label estimates separately from provider-reported usage.
+  Warn before compaction; automatically compact only when required to continue
+  safely; preserve pinned context, approvals, decisions, and recent turns; and
+  show exactly what was summarized or omitted. Never silently discard context
+  merely to reduce usage.
+  **Files:** extracted `ContextWindowMeter.tsx`, context hooks, and tests.
+  **Evidence (2026-08-04):** `ContextWindowMeter` separates estimated from
+  provider-reported usage, exposes context buckets and pressure thresholds, and
+  provides per-item Summarize/Remove actions while protecting pinned context.
+  Existing required-only compaction events remain visible in the turn timeline;
+  focused policy/component tests cover normal, warning, and critical states.
+
+- [x] **COMPOSER-03 - Keep approvals and requested user input at the point of
+  action.** Pending prompts appear directly above the composer, remain after
+  refresh, and cannot be mistaken for an ordinary assistant message.
+  **Files:** approval/input components, session state adapters, and tests.
+  **Evidence (2026-08-04):** `PendingActionTray` renders durable approvals and
+  requested input directly above the composer, supports all approval scopes and
+  free-form/suggested responses, and reconciles completion from backend state.
+  Backend ownership/migration/idempotency tests and focused UI tests pass.
+
+- [x] **COMPOSER-04 - Add responsive and keyboard contracts.** Define behavior
+  for narrow panels, right-panel-open layouts, model-picker focus, Escape,
+  Enter/Shift+Enter, stop, redirect, attachment menus, and screen readers.
+  **Validation:** component tests plus browser acceptance at 1440/1024/768px.
+  **Evidence (2026-08-04):** composer contracts preserve Enter/Shift+Enter,
+  Escape, stop, redirect, model focus, accessible labels, and menu behavior.
+  Browser checks at 1440/1024/768px confirm the composer remains reachable with
+  the right panel open and produces no horizontal overflow.
+
+- [x] **THREAD-PR-01 - Submit and accept the thread stack bottom-up.** Keep
+  baseline fixtures/pure timeline/controller work in `webui-thread-foundation`,
+  the selected timeline/composer implementation in `webui-thread-interface`, and
+  visual refinement/performance/accessibility fixes in
+  `webui-thread-polish`. Run `gh stack submit`; review each layer's own diff;
+  record focused frontend tests, long-thread/manual-browser evidence, visual
+  comparisons, and performance numbers; then merge from the bottom up.
+  **Gate:** do not initialize `adaptive-routing-core` until all thread layers are
+  accepted and present on `main`.
+  **Evidence (2026-08-04):** ordinary dependent PRs were used because `gh stack`
+  is unavailable. Foundation PR #120, interface PR #122, and polish PR #123 all
+  passed GitHub checks and were merged bottom-up into `main` as `89564863`,
+  `f0951f4a`, and `333e2f6b`. The polish review closed assistant-less outcome,
+  resolved-action, backend-status, refresh-race, accessibility, event-loop, and
+  long-thread performance blockers. Final evidence includes 361 frontend tests,
+  237 focused backend tests, ESLint, TypeScript, Ruff, a 214.80 KiB initial gzip
+  bundle against the 600 KiB budget, light/dark 1440/1024/768 review, zero-drift
+  history contracts, and bounded 2,000-row browser cases. Desktop builds remain
+  intentionally deferred.
+
+## Phase 4: Adaptive Codex Routing
+
+- [x] **MODEL-00 - Initialize the routing stack after the accepted thread stack
+  lands.** Fast-forward local `main`, run `gh stack init adaptive-routing-core`,
+  and add `adaptive-routing-web` only after the core metadata/policy contract is
+  reviewable.
+  **Done when:** the bottom PR targets current `main`, the web PR targets
+  `adaptive-routing-core`, and neither branch contains thread-stack history that
+  has not already landed on `main`.
+
+- [x] **MODEL-01 - Preserve account-scoped Codex model metadata.** Change model
+  discovery from a list of slugs to a backward-compatible catalog containing
+  display name, visibility, supported reasoning efforts, context/output limits,
+  multi-agent version, and source/freshness when supplied by the live API/cache.
+  **Files:** `src/spark_cli/codex_models.py`, `src/agent/model_metadata.py`,
+  `src/spark_cli/web_server.py`, `src/spark_cli/web/src/lib/api.ts`, and
+  `tests/spark_cli/test_codex_model_flow.py`.
+  **Done when:** the account list remains authoritative and stale/offline data is
+  visibly distinguished without inventing unavailable models.
+
+- [x] **MODEL-02 - Define one Auto policy using roles, not hard-coded product
+  names.** Add `lead`, `balanced`, `fast`, and `subagent` role settings, each
+  resolving to provider, model, reasoning effort, and fallback. `Auto` is the
+  sole automatic preset in the first release. Migrate existing `model.default`,
+  `smart_model_routing`, and `delegation` settings without breaking old configs.
+  **Files:** `src/spark_cli/config.py`, `src/spark_cli/model_config.py`,
+  `src/agent/smart_model_routing.py`, `src/tools/delegate_tool.py`, config
+  migration tests, and web API types.
+  **Default intent when available and validated:** Sol for genuinely difficult
+  lead work, Terra for balanced work, and Luna at measured high effort for
+  bounded long-running children. Main-agent and delegated-subagent roles resolve
+  independently. The role contract, not those names, is stable.
+
+- [x] **MODEL-03 - Expand deterministic routing classification.** Route from
+  request class, tool need, context size, attachments, risk, task duration, and
+  explicit user choice. Preserve the current effective model unless a tested
+  threshold is crossed; use hysteresis so adjacent turns do not oscillate.
+  Character/word count can remain a signal but cannot be the sole definition of
+  a simple task.
+  **Files:** `src/agent/smart_model_routing.py` and
+  `tests/agent/test_smart_model_routing.py`.
+  **Done when:** destructive/high-stakes, ambiguous, recovery, code-edit, and
+  long-context turns cannot silently downgrade; equivalent consecutive turns
+  remain stable; explicit model selection bypasses Auto and stays pinned to the
+  thread until changed.
+
+- [x] **MODEL-04 - Route delegated work by role with bounded escalation.** Let
+  Spark select the configured subagent role without adding verbose per-call
+  model arguments to the model-visible tool schema. A child may escalate only
+  under an explicit tested policy; cap concurrency, iterations, and retries.
+  Main turns and children may use different effective models. Permit at most one
+  policy-driven escalation per turn/child and never bounce repeatedly between
+  models.
+  **Files:** `src/tools/delegate_tool.py`, delegation lifecycle payloads,
+  `tests/tools/test_delegate.py`, and subagent tests.
+
+- [x] **MODEL-05 - Test Sol/Terra/Luna compatibility through Spark's actual
+  transport.** Cover direct main turns, separate Spark child sessions, batches,
+  reasoning efforts, auth modes, unavailable models, and the current v2/v1
+  multi-agent metadata mismatch. Do not assume Codex native multi-agent behavior
+  and Spark child-agent behavior are equivalent.
+  **Gate:** Auto cannot assign a Sol/Terra/Luna role until the account-specific
+  matrix passes or a safe fallback is proven.
+
+- [x] **MODEL-06 - Add one web routing-policy editor.** Replace scattered
+  smart/fast/delegation controls with the single `Auto` choice plus an advanced
+  role editor in Settings. Keep all explicit account-available models in the
+  composer; choosing one pins the thread and bypasses Auto. Show availability,
+  effective effort, fallback, live/offline source, and any compatibility warning.
+  **Files:** composer model controls, Settings model section, API endpoints/types,
+  and component tests.
+
+- [x] **MODEL-07 - Surface effective routing in the thread.** Record and display
+  the actual main model, child model(s), effort, deterministic route label,
+  fallback, escalation, token usage, cache usage, and child-agent usage per turn.
+  Use concise labels based on observable policy signals, such as
+  `Terra · normal coding task`, `Luna high · bounded background research`, or
+  `Escalated to Sol · validation failed`. Never expose hidden chain-of-thought.
+  Keep the normal view compact and expose policy detail on demand.
+  **Files:** agent usage metadata, session persistence/API serializers,
+  `src/spark_cli/web/src/components/chat/SessionInfoBar.tsx`, turn metadata
+  components, and tests.
+
+- [x] **MODEL-08 - Build a pinned routing eval matrix.** Use representative
+  direct answers, UI work, debugging, plans, research, long-running child tasks,
+  safety cases, and failure recovery. Compare fixed Sol/Terra/Luna role mixes
+  with the current baseline using identical prompts, toolsets, context, trials,
+  and judging rules.
+  **Files:** extend `tests/efficiency/fixtures/`, `tests/evals/`, and report
+  tooling without committing private prompts.
+  **Release gate:** establish and meet a correctness/safety quality floor first;
+  among routes that meet it, choose the lowest measured paid-token cost or
+  subscription-window consumption, using latency only as a tie-break. No safety
+  blocker, no repeated escalation, and no material latency regression outside
+  explicitly quality-first work.
+
+  **Evidence (2026-08-04):** `adaptive-routing-core` commit `f413da34` and PR
+  #124 add the account-authoritative catalog, backward-compatible Auto policy,
+  explicit pins, deterministic risk/context/duration classification,
+  hysteresis, independent bounded child routing, lifecycle metadata, and the
+  synthetic 11-scenario matrix. The live Spark transport returned compatible
+  responses for Sol/low, Terra/medium, and Luna/high; the account catalog's
+  Sol/Terra `v2` versus Luna `v1` metadata is documented without equating it to
+  Spark child sessions. The compatibility and quality/cost decision record is
+  `docs/evals/adaptive-routing-compatibility-2026-08-04.md`.
+
+- [x] **ROUTING-PR-01 - Submit and accept the routing stack bottom-up.** Keep
+  live metadata, migration, Auto policy, hysteresis, independent child routing,
+  and escalation contracts in `adaptive-routing-core`; keep composer/Settings
+  controls, deterministic labels, usage telemetry, and web acceptance in
+  `adaptive-routing-web`. Run `gh stack submit` and attach the compatibility and
+  quality/cost/latency matrices to the relevant PRs.
+  **Gate:** Auto cannot become the default until both layers pass and merge.
+  **Evidence (2026-08-04):** core PR #124 passed checks and merged first as
+  `a30d29d9`; WebUI PR #125 passed checks, was retargeted from the accepted core
+  layer to `main`, and carries the final Auto-default web acceptance.
+
+## Phase 5: Better Skills With Lower Prompt Cost
+
+- [x] **SKILL-00 - Initialize the skills stack from current `main`.** Run
+  `gh stack init skills-invocation`; add `skills-library` only after invocation
+  and provenance contracts are reviewable, then add `skills-web` for the UI.
+  The stack may proceed independently of routing where file ownership does not
+  overlap.
+  **Done when:** each PR shows only its intended layer and the bottom PR records
+  its `origin/main` base SHA.
+  **Evidence (2026-08-04):** created the isolated unprefixed
+  `skills-invocation` worktree directly from `origin/main` at
+  `d827339dacb3b5caf5a59f2bab970b398de6316c`. Commit `4a5f3a67` contains only
+  invocation/provenance contracts and focused tests; draft PR #118 targets
+  `main`, records the base SHA and planned `skills-library -> skills-web`
+  dependency chain, and contains no thread-stack, generated, or external-skill
+  files.
+
+- [x] **SKILL-01 - Add an explicit invocation contract.** Support user-invoked
+  skills that remain available in slash commands and the Skills UI but omit
+  their descriptions from the model-visible skill index. Recognize compatible
+  metadata such as `disable-model-invocation: true`; preserve legacy behavior
+  for skills without metadata, but honor external orchestration skills that
+  declare themselves user-invoked.
+  **Files:** `src/agent/skill_utils.py`, `src/agent/prompt_builder.py`,
+  `src/agent/skill_commands.py`, `src/tools/skills_tool.py`, Skills API/UI, and
+  tests.
+  **Done when:** a user-only skill consumes zero model-index description tokens
+  and is still directly invokable.
+  **Evidence (2026-08-04):** canonical `user_invoked`, `model_invoked`, and
+  `both` metadata now honors `disable-model-invocation: true` across prompt
+  indexing, model-facing `skills_list`, direct slash commands, `skill_view`, and
+  provenance-aware API records. User-only descriptions are absent from the
+  model index and its cache manifest while remaining slash/API discoverable;
+  external supporting files resolve from their real read-only source. The
+  focused invocation, cache, provenance, and API suite passes with 232 tests
+  and one skip; `git diff --check` passes. Evidence is published in draft PR
+  #118 without vendored or modified external skills.
+
+- [x] **SKILL-02 - Audit the installed engineering skills for overlap.** Compare
+  external and bundled triggers, steps, references, completion criteria,
+  invocation type, size, usage, provenance, license, and eval coverage. Produce
+  a keep-external/improve-bundled/merge-bundled/archive-bundled decision for
+  debugging, TDD, planning, review, research, prototyping, grilling, wayfinding,
+  domain modeling, handoff, and subagent workflows.
+  **Files:** a dated report under `docs/skills/` and machine-readable size/token
+  output from existing skill metadata helpers.
+  **Gate:** do not vendor an external skill. No new bundled skill is added before
+  its nearest installed/bundled skill is named and a gap decision is recorded.
+  **Evidence (2026-08-04):** the dated Markdown/JSON audit covers 24 bundled and
+  external records with reproducible byte/token measurements, provenance,
+  invocation, license, usage, eval coverage, and explicit keep/improve/merge/
+  archive decisions. Its schema validator and focused tests pass; no external
+  file was copied or modified.
+
+- [x] **SKILL-03 - Integrate and evaluate the externally installed
+  `i-have-adhd` skill.** Verify that it is discoverable, user-invoked,
+  session-persistent where requested, removable/disableable, correctly
+  attributed, and absent from ordinary model-index tokens. Compare its
+  action-first behavior against baseline without copying its files into Spark.
+  **Files:** skill discovery/session-state contracts and `tests/evals/skills/`.
+  **Gate:** create a Spark-bundled action-first skill only if this external skill
+  cannot satisfy a documented Spark-specific requirement.
+  **Evidence (2026-08-04):** focused contracts verify external discovery,
+  user-message invocation without a system-prompt rebuild, session-persistence
+  instructions, user-only index exclusion, provenance, read-only source,
+  disabling, and safe root detachment. The external installation satisfies the
+  requirement, so no bundled copy was added.
+
+- [x] **SKILL-04 - Integrate externally installed orchestration skills.** Verify
+  direct invocation, dependency resolution, supporting-file loading, provenance,
+  and zero ordinary index cost for `research`, `prototype`, `wayfinder`,
+  `grill-me`, `grill-with-docs`, `domain-modeling`, and related user-invoked
+  skills. A slash-command invocation must inject instructions as a user message
+  without rebuilding the system prompt mid-conversation.
+  **Files:** skill discovery, slash-command dispatch, Skills API contracts, and
+  focused tests.
+  **Evidence (2026-08-04):** external-root discovery now works without a local
+  profile skill directory; direct slash invocation, root/reference supporting
+  files, canonical provenance, user-only index exclusion, and read-only
+  capabilities are covered for the installed orchestration family. The combined
+  discovery/invocation/prompt suite passes with 230 tests and one skip.
+
+- [x] **SKILL-05 - Evaluate installed planning/orchestration workflows.** Use
+  representative Spark cases to compare `wayfinder`, `grill-me`,
+  `grill-with-docs`, `research`, and `prototype` for trigger precision,
+  autonomy boundaries, artifact quality, issue-tracker integration, and prompt
+  cost. Confirm GitHub Issues operations follow
+  `docs/agents/issue-tracker.md` and triage labels follow
+  `docs/agents/triage-labels.md`.
+  **Done when:** the Skills UI can explain when to use each without introducing
+  duplicate bundled wrappers.
+  **Evidence (2026-08-04):** the paired corpus covers `wayfinder`, `grill-me`,
+  `grill-with-docs`, `research`, and `prototype`, including GitHub issue/triage
+  rules, trigger precision, autonomy, artifacts, and index cost. Twenty-one
+  shared SKILL-05/06 cases produce 84 two-trial rows; the deterministic offline
+  comparator reports `release: true` at zero cost/network use.
+
+- [x] **SKILL-06 - Evaluate external codebase/domain-design references against
+  Spark's architecture guidance.** Test `codebase-design` and `domain-modeling`
+  against real module seams and the single-context `CONTEXT.md`/`docs/adr/`
+  contract. Keep them external and user-invoked where declared; capture only
+  Spark-specific architecture guidance in repository docs.
+  **Files:** eval cases plus any justified updates under `docs/agents/`,
+  `CONTEXT.md`, or `docs/adr/` following their repository rules.
+  **Evidence (2026-08-04):** the same isolated corpus includes trigger,
+  deep-module/glossary, implementation-boundary, cross-check, `CONTEXT.md`, and
+  sparse-ADR cases for `codebase-design` and `domain-modeling`. The existing
+  repository architecture contract was sufficient, so no unrelated domain doc
+  change was made.
+
+- [x] **SKILL-07 - Improve canonical overlapping skills instead of duplicating
+  them.** Candidate bundled improvements include a red-capable tight feedback
+  loop for systematic debugging, pre-agreed public seams and vertical slices for
+  TDD, and clearer links from bundled skills to better external alternatives.
+  Do not edit externally installed files as part of the Spark branch.
+  **Depends on:** `SKILL-02`.
+  **Done when:** aliases/related-skill links point to one canonical behavior and
+  replaced content remains recoverable in git history.
+  **Evidence (2026-08-04):** canonical bundled debugging, TDD, planning, review,
+  and subagent/provider skills now carry concise boundaries, external
+  alternatives, a deterministic red-capable loop, agreed public seams, and
+  vertical-slice guidance. `plan` points to `writing-plans` as its canonical
+  plan-only mode. Fifteen rewrite-specific cases produce 60 paired rows with a
+  clean correctness/safety release gate and no external edits.
+
+- [x] **SKILL-08 - Add paired skill evaluations.** Run baseline, candidate, and
+  comparator with pinned model/effort, isolated user configuration, identical
+  cases, resumable trials, a hard spend/usage cap, blinded judging, and weighted
+  correctness/autonomy/actionability/safety/concision gates.
+  **Files:** `tests/evals/skills/`, runner scripts, schemas, and validation tests.
+  **Gate:** a new or rewritten bundled skill does not ship until its candidate
+  beats baseline without correctness or safety blockers. External integrations
+  must pass discovery, invocation, isolation, provenance, and prompt-cost gates.
+  **Evidence (2026-08-04):** the checked-in harness pins runtime/effort, isolates
+  `HOME`/`SPARK_HOME`, runs identical resumable pairs under hard token/USD caps,
+  emits separate blinded packets/condition keys, and applies weighted quality
+  and safety floors. Generic integration, SKILL-05/06, and SKILL-07 corpora pass;
+  the complete focused skills-library gate passes with 261 tests and one skip,
+  isolated Ruff, schema validation, and `git diff --check`. Draft PR #119
+  contains this independently reviewable layer above PR #118.
+
+- [x] **SKILL-09 - Improve the Skills UI quality signals.** Show source,
+  invocation type, enabled state, approximate index-token cost, supporting-file
+  count, last eval status/date, and duplicate/overlap warnings. Keep provenance
+  independent of display category or name.
+  **Files:** `src/spark_cli/web/src/pages/SkillsPage.tsx`,
+  `src/spark_cli/web/src/pages/SkillsToolsPage.tsx`, Skills API contracts, and
+  focused frontend/Python tests.
+  **Evidence (2026-08-04):** `skills-web` commit `16aa4a7e` and draft PR #121
+  expose provenance/source independently from category, invocation mode,
+  enabled state, approximate index-token cost, supporting-file count, eval
+  status/date, and duplicate/overlap warnings in both existing Skills surfaces.
+  The gate passes 38 frontend files/257 tests, ESLint, TypeScript, 10 focused
+  Python API/metadata tests, skill detail interaction, and desktop plus 390px
+  visual acceptance with zero horizontal overflow.
+
+- [x] **SKILLS-PR-01 - Submit and accept the skills stack bottom-up.** Keep
+  invocation/provenance/index-cost contracts in `skills-invocation`, audited
+  library decisions and evals in `skills-library`, and Skills UI signals in
+  `skills-web`. Run `gh stack submit`; verify no external skill files were
+  vendored or modified; attach discovery/invocation/eval evidence; then merge
+  from the bottom up.
+  **Evidence (2026-08-04):** invocation PR #118, library/evals PR #119, and web
+  quality-signals PR #121 passed GitHub checks and merged bottom-up as
+  `fa05818e`, `959ebdbd`, and `af36db99`. The stack contains no vendored or
+  modified external skill files; it preserves external provenance and ships
+  the recorded discovery, invocation, prompt-cost, paired-eval, and responsive
+  UI evidence from SKILL-01 through SKILL-09.
+
+## Phase 6: Integrated Web Acceptance
+
+- [x] **QA-01 - Run focused Python contracts.** At minimum:
+
+  ```bash
+  source .venv/bin/activate
+  python -m pytest tests/agent/test_smart_model_routing.py -q
+  python -m pytest tests/tools/test_delegate.py -q
+  python -m pytest tests/agent/test_subagents.py tests/agent/test_subagent_progress.py -q
+  python -m pytest tests/spark_cli/test_codex_model_flow.py -q
+  python -m pytest tests/agent/test_skill_commands.py tests/tools/test_skills_tool.py -q
+  python -m pytest tests/spark_cli/test_web_server.py tests/spark_cli/test_web_server_events.py -q
+  ```
+
+- [x] **QA-02 - Run frontend static and behavioral gates.** Run from
+  `src/spark_cli/web/`:
+
+  ```bash
+  npm test
+  npm run lint
+  ```
+
+  Fix new failures. Clearly identify any pre-existing failure with a baseline
+  command and evidence; do not silently waive it.
+
+- [x] **QA-03 - Run long-thread and concurrent-chat stress acceptance.** Exercise
+  the 50/500/2,000-row fixtures, two chats streaming at once, switching during
+  generation, refresh, reconnect, gateway restart, history prepend, old-work
+  expansion, minimap jumps, stop, redirect, subagent completion, Auto model
+  stability, one bounded escalation, and context compaction/recovery.
+  **Validation:** existing `npm run test:e2e` plus expanded deterministic flows.
+
+- [x] **QA-04 - Perform visual browser acceptance against the approved
+  prototype.** Inspect real rendered states at 1440/1024/768px in light and dark
+  themes. Compare hierarchy, spacing, typography, scroll behavior, composer
+  reachability, active work, settled work, failures, plans, changed files,
+  subagents, and usage controls. Save acceptance screenshots separately from
+  baseline shots. Confirm the accepted result is recognizably T3-inspired in
+  surface rhythm and information density while remaining recognizably Spark.
+  **Gate:** a functioning route or passing tests alone do not complete this task.
+
+- [x] **QA-05 - Verify accessibility and input behavior.** Test keyboard-only
+  navigation, focus restoration, screen-reader names, contrast, reduced motion,
+  zoom, selection/copy, long unbroken text, code blocks, and narrow panels.
+
+- [x] **QA-06 - Compare performance with the Phase 0 baseline.** No material
+  regression in stream continuity, first render, scroll stability, or memory.
+  The 500-row case should update only the active turn during streaming, and the
+  2,000-row case must remain navigable without safe-mode fallback under normal
+  fixture load.
+
+- [x] **QA-07 - Run the practical repository gate.** Activate `.venv`, run
+  `ruff check src/`, the relevant pytest subsets, and the full practical suite
+  when feasible. Record exact counts and any documented baseline exclusions.
+
+- [x] **WEB-RELEASE-01 - Build the accepted web bundle only after source
+  acceptance.** Run `npm run build`, inspect the generated bundle and budget,
+  and verify the served web UI uses the new assets. Generated `web_dist` changes
+  belong only to this final web gate, not intermediate source commits.
+  **Evidence (2026-08-04):** 362 focused Python tests and 361 frontend tests
+  passed, as did ESLint, TypeScript, the concurrent-chat/reconnect/compaction
+  E2E, and the final production build. The browser pass covered 1440, 1024, and
+  768px with zero horizontal overflow and visually inspected the compact Auto
+  policy popover. A rapid-switch stale-session projection race found by E2E was
+  fixed. The initial static entry graph is 215.16 KiB gzip against the 600 KiB
+  budget (Phase 0: 214.80 KiB, +0.36 KiB). Repository-wide Ruff still reports
+  50 unrelated pre-existing findings; E9/F checks on changed paths pass.
+
+- [x] **WEB-RELEASE-02 - Record the integrated stacked-PR evidence.** Link every
+  merged layer and include each base SHA, stack map, scope, routing eval summary,
+  skill eval summary, focused/full test results, performance comparison,
+  screenshots, manual browser flows, known limitations, and explicit note that
+  desktop packages were not rebuilt. Confirm all stack branches landed through
+  PR review rather than direct source work on `main`.
+  **Evidence (2026-08-04):** thread PRs #120/#122/#123, skills PRs
+  #118/#119/#121, and routing PRs #124/#125 contain the implementation and
+  review history. Source work used only unprefixed feature branches. The
+  compatibility report, synthetic routing matrix, focused test counts, bundle
+  comparison, browser flows, and visual review are recorded above. Desktop
+  packages were explicitly not rebuilt.
+
+## Deferred Desktop Gate
+
+After all web stacks and integrated acceptance are complete, create a separate
+desktop build/release plan from fresh `main`. That plan must independently cover
+macOS and Windows
+packaging, Tauri/Rust integration, generated asset inclusion, signing,
+notarization/stapling, installers, packaged long-thread/model/skill smoke tests,
+versioning, and publication. Web acceptance is a prerequisite for that work, not
+proof that packaged desktop behavior is complete.
+
+## Completion Criteria
+
+This plan is complete only when all of the following are true:
+
+- The implementation landed through the documented thread, routing, and skills
+  feature stacks, not direct source work on `main`; no branch uses an
+  assistant-specific prefix.
+- The accepted main thread uses a turn-oriented hierarchy that keeps final
+  answers and outcomes visible while preserving expandable raw work.
+- Long, concurrent, interrupted, and reconnected chats preserve exact transcript
+  content, actions, and scroll state.
+- The composer exposes context, main-model, subagent-model, effort, and routing
+  policy without overwhelming the default surface. New chats default to Auto;
+  explicit model choices pin the thread until changed.
+- Sol/Terra/Luna or any later model family is selected from live account
+  capabilities and measured evals, with sticky routing, deterministic labels,
+  independent child roles, at most one escalation, visible fallbacks, and manual
+  overrides.
+- Auto meets the correctness/safety floor before optimizing usage, uses latency
+  only as a tie-break, and never silently drops context to save tokens.
+- New/improved skills have one canonical purpose, appropriate invocation type,
+  preserved provenance/attribution, bounded prompt cost, and passing paired eval
+  gates; externally installed skills are integrated rather than vendored.
+- Frontend tests, focused Python tests, practical repository checks, browser
+  visual acceptance, accessibility, and performance gates have recorded evidence.
+- The web bundle is built only after source acceptance, and no desktop package or
+  cross-platform release is claimed by this plan.

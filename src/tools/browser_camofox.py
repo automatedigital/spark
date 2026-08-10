@@ -273,7 +273,8 @@ def camofox_navigate(url: str, task_id: str | None = None) -> str:
             result["snapshot"] = snapshot_text
             result["element_count"] = snap_data.get("refsCount", 0)
         except Exception:
-            pass  # Navigation succeeded; snapshot is a bonus
+            # Navigation succeeded; snapshot is a bonus
+            logger.debug("Ignored exception in camofox_navigate", exc_info=True)
 
         return json.dumps(result)
     except requests.HTTPError as e:

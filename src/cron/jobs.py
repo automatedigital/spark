@@ -70,7 +70,8 @@ def _secure_dir(path: Path):
     try:
         os.chmod(path, 0o700)
     except (OSError, NotImplementedError):
-        pass  # Windows or other platforms where chmod is not supported
+        # Windows or other platforms where chmod is not supported
+        logger.debug("Ignored exception in _secure_dir", exc_info=True)
 
 
 def _secure_file(path: Path):

@@ -1341,7 +1341,8 @@ class BasePlatformAdapter(ABC):
                     await self.send_typing(chat_id, metadata=metadata)
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
-            pass  # Normal cancellation when handler completes
+            # Normal cancellation when handler completes
+            logger.debug("Ignored exception in _keep_typing", exc_info=True)
         finally:
             # Ensure the underlying platform typing loop is stopped.
             # _keep_typing may have called send_typing() after an outer
@@ -1879,7 +1880,8 @@ class BasePlatformAdapter(ABC):
                     metadata=_thread_metadata,
                 )
             except Exception:
-                pass  # Last resort — don't let error reporting crash the handler
+                # Last resort — don't let error reporting crash the handler
+                logger.debug("Ignored exception in _process_message_background", exc_info=True)
         finally:
             # Stop typing indicator
             typing_task.cancel()

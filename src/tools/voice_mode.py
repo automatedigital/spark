@@ -878,7 +878,8 @@ def play_audio_file(file_path: str) -> bool:
             sd.stop()
             return True
         except (ImportError, OSError):
-            pass  # audio libs not available, fall through to system players
+            # audio libs not available, fall through to system players
+            logger.debug("Ignored exception in play_audio_file", exc_info=True)
         except Exception as e:
             logger.debug("sounddevice playback failed: %s", e)
 

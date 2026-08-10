@@ -556,7 +556,8 @@ class _AgentSupportMixin:
             if state is not None:
                 self._rate_limit_state = state
         except Exception:
-            pass  # Never let header parsing break the agent loop
+            # Never let header parsing break the agent loop
+            logger.debug("Ignored exception in _capture_rate_limits", exc_info=True)
 
     def get_rate_limit_state(self):
         """Return the last captured RateLimitState, or None."""

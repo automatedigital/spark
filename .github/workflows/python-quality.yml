@@ -38,7 +38,7 @@ jobs:
       # (see pyproject) and must be repeated here because an explicit --select
       # on the command line bypasses the config ignore list.
       - name: Enforce cleaned ruff rule families
-        run: ruff check src/ --select UP015,F,B,I,W --ignore B027
+        run: ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027
 
   mypy-ratchet:
     runs-on: ubuntu-latest
@@ -79,12 +79,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,web]"
 
-      # Integration tests are already deselected by the addopts in
-      # pyproject.toml; -m "not slow" keeps this job under the timeout.
+      # A command-line -m replaces pytest's configured marker expression, so
+      # retain both exclusions explicitly. Otherwise this job can run tests
+      # that touch configured external services.
       - name: Run the fast test suite
         env:
           # Some tests construct a client at import/init time and only need a
           # syntactically valid key; no request is ever sent (integration
           # tests are deselected).
           OPENAI_API_KEY: sk-test-not-a-real-key
-        run: python -m pytest tests/ -m "not slow" -q --timeout=60
+        run: python -m pytest tests/ -m "not slow and not integration" -q --timeout=60

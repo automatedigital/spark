@@ -367,7 +367,8 @@ class GatewayConfig:
                 platform = Platform(platform_name)
                 platforms[platform] = PlatformConfig.from_dict(platform_data)
             except ValueError:
-                pass  # Skip unknown platforms
+                # Skip unknown platforms
+                logger.debug("Ignored exception in from_dict", exc_info=True)
 
         reset_by_type = {}
         for type_name, policy_data in data.get("reset_by_type", {}).items():

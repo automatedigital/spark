@@ -29,6 +29,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # SSL certificate auto-detection for NixOS and other non-standard systems.
@@ -228,7 +229,7 @@ if _config_path.exists():
             if _redact is not None:
                 os.environ["SPARK_REDACT_SECRETS"] = str(_redact).lower()
     except Exception:
-        pass  # Non-fatal; gateway can still run with .env values
+        logger.debug("Gateway config environment bridge failed", exc_info=True)
 
 # Apply IPv4 preference if configured (before any HTTP clients are created).
 try:
@@ -237,14 +238,14 @@ try:
     if isinstance(_network_cfg, dict) and _network_cfg.get("force_ipv4"):
         apply_ipv4_preference(force=True)
 except Exception:
-    pass  # logger is not configured until line 339
+    logger.debug("IPv4 preference setup failed", exc_info=True)
 
 # Validate config structure early — log warnings so gateway operators see problems
 try:
     from spark_cli.config import print_config_warnings
     print_config_warnings()
 except Exception:
-    pass  # logger is not configured until line 339
+    logger.debug("Gateway config validation failed", exc_info=True)
 
 # Gateway runs in quiet mode - suppress debug output and use cwd directly (no temp dirs)
 os.environ["SPARK_QUIET"] = "1"
@@ -263,7 +264,7 @@ if not _configured_cwd or _configured_cwd in (".", "auto", "cwd"):
         try:
             _workspace.mkdir(parents=True, exist_ok=True)
         except OSError:
-            pass  # logger is not configured until line 339
+            logger.debug("Gateway workspace creation failed", exc_info=True)
         messaging_cwd = str(_workspace)
     os.environ["TERMINAL_CWD"] = messaging_cwd.strip()
 
@@ -335,8 +336,6 @@ def _expand_whatsapp_auth_aliases(identifier: str) -> set:
                 queue.append(mapped)
 
     return resolved
-
-logger = logging.getLogger(__name__)
 
 # Sentinel placed into _running_agents immediately when a session starts
 # processing, *before* any await.  Prevents a second message for the same
@@ -641,7 +640,8 @@ class GatewayRunner:
             from tools.tirith_security import ensure_installed
             ensure_installed(log_failures=False)
         except Exception:
-            pass  # Non-fatal — fail-open at scan time if unavailable
+            # Non-fatal — fail-open at scan time if unavailable
+            logger.debug("Ignored exception in __init__", exc_info=True)
 
         # Initialize session database for session_search tool support
         self._session_db = None
@@ -794,7 +794,8 @@ class GatewayRunner:
                         if content:
                             _current_memory += f"\n\n## Current {label}:\n{content}"
             except Exception:
-                pass  # Non-fatal — flush still works, just without the guard
+                # Non-fatal — flush still works, just without the guard
+                logger.debug("Ignored exception in _flush_memories_for_session", exc_info=True)
 
             # Give the agent a real turn to think about what to save
             flush_prompt = (
@@ -6635,7 +6636,8 @@ class GatewayRunner:
                     user_id=source.user_id,
                 )
             except Exception:
-                pass  # Session might already exist, ignore errors
+                # Session might already exist, ignore errors
+                logger.debug("Ignored exception in _handle_title_command", exc_info=True)
 
         title_arg = event.get_command_args().strip()
         if title_arg:
@@ -6804,7 +6806,8 @@ class GatewayRunner:
                     reasoning=msg.get("reasoning"),
                 )
             except Exception:
-                pass  # Best-effort copy
+                # Best-effort copy
+                logger.debug("Ignored exception in _handle_branch_command", exc_info=True)
 
         # Set title
         try:
@@ -7094,7 +7097,8 @@ class GatewayRunner:
                     session_entry.session_id, reload_msg
                 )
             except Exception:
-                pass  # Best-effort; don't fail the reload over a transcript write
+                # Best-effort; don't fail the reload over a transcript write
+                logger.debug("Ignored exception in _handle_reload_mcp_command", exc_info=True)
 
             return "\n".join(lines)
 
@@ -9630,7 +9634,8 @@ async def start_gateway(
             try:
                 terminate_pid(existing_pid, force=False)
             except ProcessLookupError:
-                pass  # Already gone
+                # Already gone
+                logger.debug("Ignored exception in start_gateway", exc_info=True)
             except (PermissionError, OSError):
                 logger.error(
                     "Permission denied killing PID %d. Cannot replace.",

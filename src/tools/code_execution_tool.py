@@ -1237,7 +1237,8 @@ def execute_code(
         try:
             os.unlink(sock_path)
         except OSError:
-            pass  # already cleaned up or never created
+            # already cleaned up or never created
+            logger.debug("Ignored exception in execute_code", exc_info=True)
 
 
 def _kill_process_group(proc, escalate: bool = False):

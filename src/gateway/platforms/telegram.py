@@ -238,8 +238,8 @@ class TelegramAdapter(BasePlatformAdapter):
 
         if attempt > MAX_NETWORK_RETRIES:
             message = (
-                "Telegram polling could not reconnect after %d network error retries. "
-                "Restarting gateway." % MAX_NETWORK_RETRIES
+                f"Telegram polling could not reconnect after {MAX_NETWORK_RETRIES} "
+                "network error retries. Restarting gateway."
             )
             logger.error("[%s] %s Last error: %s", self.name, message, error)
             self._set_fatal_error("telegram_network_error", message, retryable=True)
@@ -325,10 +325,9 @@ class TelegramAdapter(BasePlatformAdapter):
         message = (
             "Another process is already polling this Telegram bot token "
             "(possibly OpenClaw or another Spark instance). "
-            "Spark stopped Telegram polling after %d retries. "
+            f"Spark stopped Telegram polling after {MAX_CONFLICT_RETRIES} retries. "
             "Only one poller can run per token — stop the other process "
             "and restart with 'spark start'."
-            % MAX_CONFLICT_RETRIES
         )
         logger.error("[%s] %s Original error: %s", self.name, message, error)
         self._set_fatal_error("telegram_polling_conflict", message, retryable=False)
@@ -1165,7 +1164,8 @@ class TelegramAdapter(BasePlatformAdapter):
                         text=truncated,
                     )
                 except Exception:
-                    pass  # best-effort truncation
+                    # best-effort truncation
+                    logger.debug("Ignored exception in edit_message", exc_info=True)
                 return SendResult(success=True, message_id=message_id)
             # Flood control / RetryAfter — short waits are retried inline,
             # long waits return a failure immediately so streaming can fall back
@@ -1646,7 +1646,8 @@ class TelegramAdapter(BasePlatformAdapter):
                         reply_markup=None,
                     )
                 except Exception:
-                    pass  # non-fatal if edit fails
+                    # non-fatal if edit fails
+                    logger.debug("Ignored exception in _handle_callback_query", exc_info=True)
 
                 # Resolve the approval — unblocks the agent thread
                 try:
@@ -1674,7 +1675,8 @@ class TelegramAdapter(BasePlatformAdapter):
                 reply_markup=None,
             )
         except Exception:
-            pass  # non-fatal if edit fails
+            # non-fatal if edit fails
+            logger.debug("Ignored exception in _handle_callback_query", exc_info=True)
         # Write the response file
         try:
             from core.spark_constants import get_spark_home

@@ -24,7 +24,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,8 @@ try:
 
     setup_logging(mode="cli")
 except Exception:
-    pass  # Logging setup is best-effort - don't crash the CLI
+    # Logging setup is best-effort - don't crash the CLI
+    logger.debug("Ignored exception in module setup", exc_info=True)
 
 # Validate config structure early - print warnings before user hits cryptic errors
 try:
@@ -185,7 +186,8 @@ try:
 
     init_skin_from_config(CLI_CONFIG)
 except Exception:
-    pass  # Skin engine is optional - default skin used if unavailable
+    # Skin engine is optional - default skin used if unavailable
+    logger.debug("Ignored exception in module setup", exc_info=True)
 
 # Initialize tool preview length from config
 try:

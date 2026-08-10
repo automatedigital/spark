@@ -36,7 +36,7 @@ import types
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from core.spark_constants import get_spark_home
 from core.utils import env_var_enabled
@@ -98,7 +98,7 @@ class PluginManifest:
     version: str = ""
     description: str = ""
     author: str = ""
-    requires_env: list[str | dict[str, Any]] = field(default_factory=list)
+    requires_env: list[str] = field(default_factory=list)
     provides_tools: list[str] = field(default_factory=list)
     provides_hooks: list[str] = field(default_factory=list)
     source: str = ""        # "user", "project", or "entrypoint"
@@ -150,8 +150,8 @@ class PluginContext:
             toolset=toolset,
             schema=schema,
             handler=handler,
-            check_fn=check_fn,
-            requires_env=requires_env,
+            check_fn=cast(Callable, check_fn),
+            requires_env=cast(list, requires_env),
             is_async=is_async,
             description=description,
             emoji=emoji,
@@ -276,7 +276,7 @@ class PluginManager:
         self._hooks: dict[str, list[Callable]] = {}
         self._plugin_tool_names: set[str] = set()
         self._cli_commands: dict[str, dict] = {}
-        self._context_engine = None  # Set by a plugin via register_context_engine()
+        self._context_engine: Any = None  # Set by a plugin via register_context_engine()
         self._discovered: bool = False
         self._cli_ref = None  # Set by CLI after plugin discovery
 
@@ -397,7 +397,7 @@ class PluginManager:
         """Check ``importlib.metadata`` for pip-installed plugins."""
         manifests: list[PluginManifest] = []
         try:
-            eps = importlib.metadata.entry_points()
+            eps: Any = importlib.metadata.entry_points()
             # Python 3.12+ returns a SelectableGroups; earlier returns dict
             if hasattr(eps, "select"):
                 group_eps = eps.select(group=ENTRY_POINTS_GROUP)
@@ -502,7 +502,7 @@ class PluginManager:
 
     def _load_entrypoint_module(self, manifest: PluginManifest) -> types.ModuleType:
         """Load a pip-installed plugin via its entry-point reference."""
-        eps = importlib.metadata.entry_points()
+        eps: Any = importlib.metadata.entry_points()
         if hasattr(eps, "select"):
             group_eps = eps.select(group=ENTRY_POINTS_GROUP)
         elif isinstance(eps, dict):
@@ -512,7 +512,7 @@ class PluginManager:
 
         for ep in group_eps:
             if ep.name == manifest.name:
-                return ep.load()
+                return cast(types.ModuleType, ep.load())
 
         raise ImportError(
             f"Entry point '{manifest.name}' not found in group '{ENTRY_POINTS_GROUP}'"

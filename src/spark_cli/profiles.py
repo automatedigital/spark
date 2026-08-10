@@ -470,7 +470,8 @@ def create_profile(
             from spark_cli.default_soul import read_default_soul_md
             soul_path.write_text(read_default_soul_md() + "\n", encoding="utf-8")
         except Exception:
-            pass  # best-effort — don't fail profile creation over this
+            # best-effort — don't fail profile creation over this
+            logger.debug("Ignored exception in create_profile", exc_info=True)
 
     return profile_dir
 

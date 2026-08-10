@@ -2326,7 +2326,8 @@ def _browser_eval(expression: str, task_id: str | None = None) -> str:
         try:
             parsed = json.loads(raw_result)
         except (json.JSONDecodeError, ValueError):
-            pass  # keep as string
+            # keep as string
+            logger.debug("Ignored exception in _browser_eval", exc_info=True)
 
     return json.dumps({
         "success": True,

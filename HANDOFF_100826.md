@@ -2,14 +2,17 @@
 
 Branch `fix/plan-quality-gates`, PR
 [#126](https://github.com/automatedigital/spark/pull/126) (open, mergeable).
-55 commits, 355 files, 49 new source modules.
+The remote head has 56 commits. The cleanup described below is currently an
+uncommitted working-tree diff and must be reviewed before the PR is updated.
 
-**CI is green** on the head commit: `pytest`, `ruff-ratchet`, `mypy-ratchet`,
-`web-quality` all pass.
+The committed head checks were green before cleanup. The uncommitted cleanup
+has now passed the full local safe Python suite, Ruff, mypy, frontend lint,
+TypeScript, Vitest, production build, and both browser E2E suites. Remote CI has
+not been rerun because nothing in this cleanup has been pushed.
 
-`PLAN.md` in the repo root is the source of truth for the work. It holds the
-per-item evidence, what was done, and what is left. This document covers only
-what `PLAN.md` does not: the blockers, the CI history, and the traps.
+`docs/plans/2026-08-10-codebase-health.md` is the source of truth for this
+maintenance work. Root `PLAN.md` remains the web UI, skills, and adaptive
+routing roadmap. This document covers the blockers, CI history, and traps.
 
 ---
 
@@ -17,9 +20,9 @@ what `PLAN.md` does not: the blockers, the CI history, and the traps.
 
 | Path | Why |
 | --- | --- |
-| `PLAN.md` | The ten items, their status, and measured evidence |
-| `PLAN.md` § "Getting CI green" | The six rounds it took to turn the test job on |
-| `PLAN.md` § "Fixed: turns could report success, or never finish" | Two real bugs in the turn lifecycle |
+| `docs/plans/2026-08-10-codebase-health.md` | The ten maintenance items, status, and evidence |
+| That plan § "Getting CI green" | The six rounds it took to turn the test job on |
+| That plan § "Fixed: turns could report success, or never finish" | Two real bugs in the turn lifecycle |
 | `git log main..HEAD` | Each commit message explains one decision |
 
 Do not re-derive the audit. It is already written down.
@@ -30,16 +33,16 @@ Do not re-derive the audit. It is already written down.
 
 | Item | Result | Open |
 | --- | --- | --- |
-| 1 Tests in CI | 12,309 tests now run; none did before | — |
+| 1 Tests in CI | 12,287 safe fast/non-integration tests now run; none did before | — |
 | 2 Undefined names | 6 fixed, `F821` gated | — |
 | 3 Split `web_server.py` | 11,647 → 9,000 lines, 54/123 routes | 69 routes |
-| 4 `run_agent`/`cli` splits | 11,341 → 1,744 and 4,101 → 1,134 | two constructors |
+| 4 `run_agent`/`cli` splits | 11,341 → 1,744 and 4,101 → 1,134 | constructor decomposition only |
 | 5 Ruff ratchet | 6,944 → ~300 findings; `F,B,I,W` gated | — |
-| 6 Silent exceptions | 873 of 955 now log a traceback | 82 formatting cases |
-| 7 mypy | 96 of 111 modules clean **and gated** | 15 modules, 323 errors |
+| 6 Silent exceptions | 955 of 955 now log a traceback | — |
+| 7 mypy | 126 modules clean **and gated** | — |
 | 8 Event loop | Withdrawn — the finding was wrong | — |
-| 9 React split | `api.ts` 3,052 → 632 | `ChatPanel.tsx` 2,047 |
-| 10 Frontend CI | eslint + tsc + vitest + non-blocking e2e | — |
+| 9 React split | `api.ts` 3,052 → 487 | `ChatPanel.tsx` 2,047 |
+| 10 Frontend CI | eslint + tsc + vitest + non-blocking multi-chat/restart and contract e2e | — |
 
 ---
 
@@ -73,15 +76,17 @@ of `monkeypatch.setattr(web_server, ...)` calls.
 Mechanically fine — the mixin resolved and imports worked. But it changed which
 **tool-schema profile** was resolved, and
 `tests/run_agent/test_caching_golden.py` (byte-exact, ADR-protected) caught it.
-Reverted. `run_agent/__init__.py` sits at 1,744 rather than the plan's 1,000
-because the constructor is 1,040 of those lines. Going lower means decomposing
-a constructor, which is a behaviour change, not a relocation.
+Reverted. The constructor is 1,040 lines. The orchestration loop now has
+byte-exact standard chat-completions, Anthropic Messages, and Codex Responses
+coverage and lives in `turn_loop.py`, so `run_agent/__init__.py` is 1,744
+lines without crossing ADR 0012 unsafely. Going lower means decomposing the
+constructor, not relocating it unchanged.
 
 `SparkCLI.__init__` (322 lines) is the same situation at smaller scale.
 
 ### 3. `ChatPanel.tsx`
 
-2,047 lines: 1,482 of logic across 89 interdependent hooks, then 435 of JSX.
+2,047 lines: 1,482 of orchestration across interdependent hooks, then 435 of JSX.
 Unlike `api.ts`, the pieces share closure state, so this is a real React
 refactor. `CLAUDE.md` also names this component as the one needing manual
 verification of loading, streaming, offline, reconnect and gateway-restart
@@ -146,9 +151,9 @@ docker run --rm -v "$PWD":/w -w /w -e CI=true python:3.11-slim bash -c \
   'apt-get update -qq && apt-get install -y -qq git \
    && git config --global --add safe.directory /w \
    && pip install -q -e ".[dev,web]" \
-   && ruff check src/ --select UP015,F,B,I,W --ignore B027 \
+   && ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027 \
    && mypy src/agent/ src/spark_cli/ \
-   && python -m pytest tests/ -m "not slow" -q --timeout=60'
+   && python -m pytest tests/ -m "not slow and not integration" -q --timeout=60'
 ```
 
 Install `git` — without it ~30 tests fail for unrelated reasons.
@@ -171,28 +176,25 @@ and occasionally `test_web_server_events`. They surface more in a 12-core
 container than on GitHub's 4-core runner. `--dist loadfile` makes it worse
 (21 failures) — do not try that again.
 
-### The one CI-skipped test
+### Web-turn test isolation
 
-`test_conversation_message_continues_latest_compressed_leaf` skips when `CI` is
-set. Reason is in the skip comment: `test_async_runtime` and
-`test_tool_scheduler` tear down the shared `AsyncRuntime`, so a later web turn
-has its work future cancelled and the agent turn never executes. The likely fix
-is giving `AsyncRuntime.shutdown` responsibility for its `_named_executors` and
-stopping those tests from touching the process-wide singleton.
+The web-event fixture now owns a fresh `AsyncRuntime` per test and shuts it down
+after draining active turns. The former CI-only skip was removed. The runtime,
+scheduler, and full web-event sequence passes with `CI=true` (124 tests).
 
 ---
 
 ## Gates you must keep green
 
 ```bash
-ruff check src/ --select UP015,F,B,I,W --ignore B027   # ratchet
-mypy src/agent/ src/spark_cli/                          # 15 modules exempt
-python -m pytest tests/ -m "not slow" -q --timeout=60
+ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027
+mypy src/agent/ src/spark_cli/                          # full declared scope
+python -m pytest tests/ -m "not slow and not integration" -q --timeout=60
 cd src/spark_cli/web && npm run lint && npx tsc --noEmit -p tsconfig.app.json && npx vitest run
 ```
 
-The mypy exemptions are a `[[tool.mypy.overrides]]` block at the bottom of
-`pyproject.toml`. **Fix a module, delete its line.** Do not add lines to it.
+There is no mypy exemption block. Do not reintroduce one; fix errors at the
+typed boundary.
 
 `B027` is a deliberate permanent ignore — Spark's base classes use empty
 methods as optional hooks; making them abstract would force every subclass to
@@ -202,15 +204,26 @@ implement hooks it never uses.
 
 ## Highest-value next steps
 
-1. **Merge #126.** 55 commits and growing; it only gets harder to review.
-2. **Finish item 7.** Purely mechanical, no architectural risk, and the ratchet
-   means progress is permanent. The 15 remaining modules are listed in
-   `pyproject.toml` with counts; `web_server` (74), `auxiliary_client` (58) and
-   `model_metadata` (45) dominate. Dominant codes are `arg-type` and
-   `union-attr`, which need reading each call site.
-3. **Retry `web_turns`** on its own branch, using the setter guidance above.
+1. **Merge #126 after the cleanup diff is reviewed.** 56 commits is already a
+   large review surface.
+2. **Retry `web_turns`** on its own branch, using the setter guidance above.
    That unblocks item 3's remaining 69 routes.
-4. **`ChatPanel.tsx`** last — it needs a browser, not a type checker.
+3. **`ChatPanel.tsx`** last — it needs a browser, not a type checker.
+
+---
+
+## Cleanup acceptance (2026-08-10)
+
+- Ruff ratchet: clean, including the final 14 UP rules.
+- mypy: 126 modules checked, zero errors, no exemption block.
+- Python: 12,288 passed, 151 skipped (`not integration`).
+- Frontend: ESLint and TypeScript clean; 369 Vitest tests passed.
+- Production web build: passed; initial static entry graph 214.97 KiB gzip
+  against a 600 KiB budget.
+- Browser: `multi-chat.mjs` and `chat-contracts.mjs` both passed, including
+  active-chat switching, refresh/reconnect recovery, restart recovery, paged
+  history anchoring, action contracts, and project grouping.
+- Routes: 251 method/path entries, all unique, matching the recorded baseline.
 
 ---
 
@@ -236,7 +249,8 @@ implement hooks it never uses.
 
 - Feature branches and PRs only; never push to `main`.
 - No AI attribution in commits or PR bodies.
-- Check items off in `PLAN.md` as you complete them, not in a batch at the end.
+- Check items off in the codebase-health plan as you complete them, not in a
+  batch at the end.
 - Use `.venv`, not anaconda. `pip install` in this session silently landed a
   package in `/opt/anaconda3` — verify with `python -c "import x"` after.
 - Route extractions are verified by diffing the app's full route table against

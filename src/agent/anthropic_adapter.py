@@ -22,9 +22,11 @@ from core.network_tls import urllib_request_kwargs
 from core.spark_constants import get_spark_home
 
 try:
-    import anthropic as _anthropic_sdk
+    import anthropic as _anthropic_sdk_impl
+
+    _anthropic_sdk: Any = _anthropic_sdk_impl
 except ImportError:
-    _anthropic_sdk = None  # type: ignore[assignment]
+    _anthropic_sdk = None
 
 logger = logging.getLogger(__name__)
 
@@ -254,7 +256,7 @@ def build_anthropic_client(api_key: str, base_url: str | None = None):
     from httpx import Timeout
 
     normalized_base_url = _normalize_base_url_text(base_url)
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "timeout": Timeout(timeout=900.0, connect=10.0),
     }
     if normalized_base_url:
@@ -933,8 +935,8 @@ def convert_messages_to_anthropic(
     Anthropic-proprietary — third-party endpoints cannot validate them and will
     reject them with HTTP 400 "Invalid signature in thinking block".
     """
-    system = None
-    result = []
+    system: Any = None
+    result: list[dict[str, Any]] = []
 
     for m in messages:
         role = m.get("role", "user")
@@ -992,7 +994,7 @@ def convert_messages_to_anthropic(
             result_content = content if isinstance(content, str) else json.dumps(content)
             if not result_content:
                 result_content = "(no output)"
-            tool_result = {
+            tool_result: dict[str, Any] = {
                 "type": "tool_result",
                 "tool_use_id": _sanitize_tool_id(m.get("tool_call_id", "")),
                 "content": result_content,
@@ -1067,7 +1069,7 @@ def convert_messages_to_anthropic(
                 m["content"] = [{"type": "text", "text": "(tool result removed)"}]
 
     # Enforce strict role alternation (Anthropic rejects consecutive same-role messages)
-    fixed = []
+    fixed: list[dict[str, Any]] = []
     for m in result:
         if fixed and fixed[-1]["role"] == m["role"]:
             if m["role"] == "user":

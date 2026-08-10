@@ -1250,7 +1250,8 @@ class _ProviderTransportMixin:
                 _model_output_limit = _get_anthropic_max_output(self.model)
                 api_kwargs["max_tokens"] = _model_output_limit
             except Exception:
-                pass  # fail open — let the proxy pick its default
+                # fail open — let the proxy pick its default
+                logger.debug("Ignored exception in _build_api_kwargs", exc_info=True)
 
         extra_body = {}
 

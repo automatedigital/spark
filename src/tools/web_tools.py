@@ -542,7 +542,7 @@ def _normalize_extracted_text(text: str, *, max_newlines: int = 2) -> str:
     lines = [" ".join(line.split()) for line in text.split("\n")]
     normalized = "\n".join(line for line in lines if line)
     if max_newlines > 0:
-        normalized = re.sub(r"\n{%d,}" % (max_newlines + 1), "\n" * max_newlines, normalized)
+        normalized = re.sub(rf"\n{{{max_newlines + 1},}}", "\n" * max_newlines, normalized)
     return normalized.strip()
 
 

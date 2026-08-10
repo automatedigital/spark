@@ -437,7 +437,8 @@ def read_file_tool(
                         ensure_ascii=False,
                     )
             except OSError:
-                pass  # stat failed — fall through to full read
+                # stat failed — fall through to full read
+                logger.debug("Ignored exception in read_file_tool", exc_info=True)
 
         # ── Perform the read ──────────────────────────────────────────
         file_ops = _get_file_ops(task_id)
@@ -521,7 +522,8 @@ def read_file_tool(
                 task_data["dedup"][dedup_key] = _mtime_now
                 task_data.setdefault("read_timestamps", {})[resolved_str] = _mtime_now
             except OSError:
-                pass  # Can't stat — skip tracking for this entry
+                # Can't stat — skip tracking for this entry
+                logger.debug("Ignored exception in read_file_tool", exc_info=True)
 
         if count >= 4:
             # Hard block: stop returning content to break the loop

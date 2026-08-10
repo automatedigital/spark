@@ -405,7 +405,7 @@ def get_model_status():
 _STRICT_MODEL_PROVIDERS = frozenset({"openai-codex", "qwen-oauth"})
 
 
-def _resolve_codex_model_catalog() -> "CodexModelCatalog":
+def _resolve_codex_model_catalog() -> CodexModelCatalog:
     """Return the account-scoped Codex catalog with explicit trust metadata."""
     from spark_cli.auth import get_codex_auth_status
     from spark_cli.codex_models import get_codex_model_catalog

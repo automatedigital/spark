@@ -149,10 +149,10 @@ async function run() {
   );
   await mkdir(screenshotsDir, { recursive: true });
 
-  const backend = startProcess(
-    pythonBin,
-    ["-m", "spark_cli.main", "dashboard", "--host", "127.0.0.1", "--port", String(apiPort), "--no-open"],
-    {
+  const startBackend = () => startProcess(
+      pythonBin,
+      ["-m", "spark_cli.main", "dashboard", "--host", "127.0.0.1", "--port", String(apiPort), "--no-open"],
+      {
       cwd: repoRoot,
       env: {
         ...process.env,
@@ -161,6 +161,7 @@ async function run() {
       },
     },
   );
+  let backend = startBackend();
   const vite = startProcess("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(webPort)], {
     cwd: webRoot,
     env: {
@@ -255,6 +256,20 @@ async function run() {
     if (compactionBody.includes("LOADING LLM RESPONSE")) {
       throw new Error("compaction failure left stale Loading LLM response visible");
     }
+
+    // A backend/gateway restart must not strand the browser in stale state or
+    // lose the persisted transcript when the same Spark home returns.
+    await stopProcess(backend);
+    await page.waitForTimeout(1_000);
+    backend = startBackend();
+    await waitFor(`${apiBase}/api/status`);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: /E2E compaction failure chat/ }).click();
+    await page.getByText("context before compaction.", { exact: true }).first().waitFor({ timeout: 8_000 });
+    const restartedBody = await page.locator("body").innerText();
+    if (restartedBody.includes("LOADING LLM RESPONSE")) {
+      throw new Error("backend restart left stale Loading LLM response visible");
+    }
   } catch (error) {
     if (browser) {
       const pages = browser.contexts().flatMap((context) => context.pages());
@@ -273,7 +288,10 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+run().then(
+  () => process.exit(0),
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

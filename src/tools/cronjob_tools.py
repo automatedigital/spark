@@ -134,7 +134,8 @@ def _resolve_model_override(model_obj: dict[str, Any] | None) -> tuple:
             if isinstance(model_cfg, dict):
                 provider_name = model_cfg.get("provider") or None
         except Exception:
-            pass  # Best-effort; provider stays None
+            # Best-effort; provider stays None
+            logger.debug("Ignored exception in _resolve_model_override", exc_info=True)
     return (provider_name, model_name)
 
 

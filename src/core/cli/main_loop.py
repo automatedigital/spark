@@ -1268,7 +1268,8 @@ class _MainLoopMixin:
                         f"- command scanning will use pattern matching only{_RST}"
                     )
         except Exception:
-            pass  # Non-fatal - fail-open at scan time if unavailable
+            # Non-fatal - fail-open at scan time if unavailable
+            logger.debug("Ignored exception in run", exc_info=True)
 
         # Key bindings for the input area
         kb = KeyBindings()
@@ -2657,7 +2658,8 @@ class _MainLoopMixin:
                             y=renderer._cursor_pos.y + extra,
                         )
             except Exception:
-                pass  # never break resize handling
+                # never break resize handling
+                logger.debug("Ignored exception in _resize_clear_ghosts", exc_info=True)
             _original_on_resize()
 
         app._on_resize = _resize_clear_ghosts
@@ -2892,7 +2894,8 @@ class _MainLoopMixin:
                                 if _synth:
                                     self._pending_input.put(_synth)
                         except Exception:
-                            pass  # Non-fatal - don't break the main loop
+                            # Non-fatal - don't break the main loop
+                            logger.debug("Ignored exception in process_loop", exc_info=True)
 
                 except Exception as e:
                     print(f"Error: {e}")
@@ -2917,7 +2920,8 @@ class _MainLoopMixin:
             if hasattr(_signal, "SIGHUP"):
                 _signal.signal(_signal.SIGHUP, _signal_handler)
         except Exception:
-            pass  # Signal handlers may fail in restricted environments
+            # Signal handlers may fail in restricted environments
+            logger.debug("Ignored exception in run", exc_info=True)
 
         # Install a custom asyncio exception handler that suppresses the
         # "Event loop is closed" RuntimeError from httpx transport cleanup

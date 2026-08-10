@@ -493,7 +493,8 @@ class HindsightMemoryProvider(MemoryProvider):
                 else:
                     logger.warning("uv not found. Run: pip install 'hindsight-client>=%s'", _MIN_CLIENT_VERSION)
         except Exception:
-            pass  # packaging not available or other issue — proceed anyway
+            # packaging not available or other issue — proceed anyway
+            logger.debug("Ignored exception in initialize", exc_info=True)
 
         self._config = _load_config()
         self._mode = self._config.get("mode", "cloud")

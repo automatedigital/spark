@@ -484,9 +484,15 @@ async function run() {
     await waitForText(page, "Reconnect first.");
     await page.reload({ waitUntil: "domcontentloaded" });
     await openChat(page, "contracts_reconnect", "Contract reconnect");
-    await waitForText(page, "Reconnect final.", 12_000);
+    await page.waitForFunction(() => {
+      const chatPanel = document.querySelector('[data-testid="chat-panel"]');
+      return chatPanel?.textContent?.includes("Reconnect final.");
+    }, undefined, { timeout: 12_000 });
     const reconnectText = await panel.innerText();
-    if ((reconnectText.match(/Reconnect final\./g) || []).length !== 1) throw new Error("Reconnect final response duplicated");
+    const reconnectFinalCount = (reconnectText.match(/Reconnect final\./g) || []).length;
+    if (reconnectFinalCount !== 1) {
+      throw new Error(`Reconnect final response count was ${reconnectFinalCount}, expected 1`);
+    }
 
     // Switching while responses are delayed must not bleed one session into another.
     await Promise.all([
@@ -567,7 +573,10 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+run().then(
+  () => process.exit(0),
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

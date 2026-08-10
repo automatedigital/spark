@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import os
 import queue
 import threading
 import time
@@ -92,7 +91,10 @@ def web_client(monkeypatch, tmp_path):
     )
 
     import spark_cli.web_server as web_server
+    from core.async_runtime import AsyncRuntime
 
+    runtime = AsyncRuntime()
+    monkeypatch.setattr(web_server, "get_async_runtime", lambda: runtime)
     monkeypatch.setattr(web_server, "_web_event_loop", asyncio.get_event_loop())
     web_server._event_subscribers.clear()
     web_server._web_active_turns.clear()
@@ -126,6 +128,7 @@ def web_client(monkeypatch, tmp_path):
     web_server._web_turn_aliases.clear()
     web_server._web_queues.clear()
     web_server._web_input_queues.clear()
+    runtime.shutdown()
 
 
 def test_web_state_snapshot_splits_shell_from_selected_detail(web_client):
@@ -2075,17 +2078,7 @@ class TestConversationControl:
         assert resp.json()["session_id"] == "compressed_leaf"
         assert "compressed_leaf" in web_server._web_agents
         assert "compressed_parent" not in web_server._web_agents
-        if not _wait_for(lambda: "history" in captured):
-            if os.getenv("CI"):
-                # Test isolation, not a product bug. Other modules
-                # (test_async_runtime, test_tool_scheduler) shut down the
-                # shared AsyncRuntime, and a web turn scheduled afterwards has
-                # its work future cancelled, so fake_run never executes. The
-                # turn itself now finalizes correctly either way -- that is
-                # covered by test_cancelled_web_turn_reports_failure_not_success.
-                # Tracked in PLAN.md.
-                pytest.skip("shared AsyncRuntime torn down by another module; see PLAN.md")
-            raise AssertionError("the agent turn never ran")
+        assert _wait_for(lambda: "history" in captured), "the agent turn never ran"
         assert captured["agent"].session_id == "compressed_leaf"
         assert captured["user_message"] == "recall"
         assert captured["history"] == [

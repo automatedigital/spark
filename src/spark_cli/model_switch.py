@@ -580,11 +580,11 @@ def switch_model(
         )
 
         if target_provider == current_provider and not is_custom and not resolved_alias:
-            detected: tuple[str, str] | None = detect_provider_for_model(
+            detected_provider: tuple[str, str] | None = detect_provider_for_model(
                 new_model, current_provider
             )
-            if detected:
-                target_provider, new_model = detected
+            if detected_provider:
+                target_provider, new_model = detected_provider
 
     # =================================================================
     # COMMON PATH: Resolve credentials, normalize, get metadata
