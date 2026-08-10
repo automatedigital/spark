@@ -1,9 +1,9 @@
 """Tests for ${ENV_VAR} substitution in config.yaml values."""
 
-import os
+import importlib
+
 import pytest
 from spark_cli.config import _expand_env_vars, load_config
-from unittest.mock import patch as mock_patch
 
 
 class TestExpandEnvVars:
@@ -107,10 +107,9 @@ class TestLoadCliConfigExpansion:
 
         monkeypatch.setenv("TEST_VISION_KEY_XYZ", "vis-key-123")
         # Patch the spark home so load_cli_config finds our test config
-        monkeypatch.setattr("core.cli.config_state._spark_home", tmp_path)
-
-        from core.cli.config_state import load_cli_config
-        config = load_cli_config()
+        config_state = importlib.import_module("core.cli.config_state")
+        monkeypatch.setattr(config_state, "_spark_home", tmp_path)
+        config = config_state.load_cli_config()
 
         assert config["auxiliary"]["vision"]["api_key"] == "vis-key-123"
 
@@ -124,9 +123,8 @@ class TestLoadCliConfigExpansion:
         config_file.write_text(config_yaml)
 
         monkeypatch.delenv("UNSET_CLI_VAR_ABC", raising=False)
-        monkeypatch.setattr("core.cli.config_state._spark_home", tmp_path)
-
-        from core.cli.config_state import load_cli_config
-        config = load_cli_config()
+        config_state = importlib.import_module("core.cli.config_state")
+        monkeypatch.setattr(config_state, "_spark_home", tmp_path)
+        config = config_state.load_cli_config()
 
         assert config["auxiliary"]["vision"]["api_key"] == "${UNSET_CLI_VAR_ABC}"
