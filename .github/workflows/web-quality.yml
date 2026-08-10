@@ -43,14 +43,12 @@ jobs:
       - name: Unit tests
         run: npx vitest run
 
-  # Not a gate yet. The e2e suite drives a real browser against a real Python
-  # backend, so it is the most likely thing here to be flaky on a runner.
-  # It reports without failing the build; promote it by deleting
-  # continue-on-error once it has been stable for a while.
+  # Drive a real browser against a real Python backend. These contracts cover
+  # multi-chat isolation, refresh/reconnect, gateway restart, and persisted
+  # history, so a failure must block the merge rather than report as advisory.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
