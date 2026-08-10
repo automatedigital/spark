@@ -51,8 +51,8 @@ class DaytonaEnvironment(BaseEnvironment):
         super().__init__(cwd=cwd, timeout=timeout)
 
         from daytona import (
-            Daytona,
             CreateSandboxFromImageParams,
+            Daytona,
             DaytonaError,
             Resources,
             SandboxState,
@@ -126,7 +126,7 @@ class DaytonaEnvironment(BaseEnvironment):
                 if requested_cwd in ("~", "/home/daytona"):
                     self.cwd = home
         except Exception:
-            pass
+            logger.debug("Ignoring error in __init__()", exc_info=True)
         logger.info("Daytona: resolved home to %s, cwd to %s", self._remote_home, self.cwd)
 
         self._sync_manager = FileSyncManager(
@@ -199,7 +199,7 @@ class DaytonaEnvironment(BaseEnvironment):
                 try:
                     sandbox.stop()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in cancel()", exc_info=True)
 
         if login:
             shell_cmd = f"bash -l -c {shlex.quote(cmd_string)}"

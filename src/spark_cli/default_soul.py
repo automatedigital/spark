@@ -1,6 +1,9 @@
 """Default SOUL.md seeded into SPARK_HOME and used as the base identity."""
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Base identity written to ~/.spark/SOUL.md when it doesn't yet exist.
 # Users can edit this file to personalize their assistant, but the default is
@@ -57,7 +60,7 @@ def read_default_soul_md() -> str:
         if content:
             return content
     except OSError:
-        pass
+        logger.debug("Ignoring error in read_default_soul_md()", exc_info=True)
     return DEFAULT_SOUL_MD.strip()
 
 

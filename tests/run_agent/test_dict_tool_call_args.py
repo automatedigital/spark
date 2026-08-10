@@ -53,7 +53,7 @@ def test_tool_call_validation_accepts_dict_arguments(monkeypatch):
         lambda *args, **kwargs: [{"function": {"name": "read_file"}}],
     )
     monkeypatch.setattr(
-        "core.run_agent.handle_function_call",
+        "core.run_agent.tool_execution.handle_function_call",
         lambda name, args, task_id=None, **kwargs: json.dumps({"ok": True, "args": args}),
     )
 

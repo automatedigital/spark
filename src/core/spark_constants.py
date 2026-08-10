@@ -4,8 +4,11 @@ Import-safe module with no dependencies — can be imported from anywhere
 without risk of circular imports.
 """
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def get_spark_home() -> Path:
@@ -48,7 +51,7 @@ def get_default_spark_root() -> Path:
         # SPARK_HOME is under ~/.spark (normal or profile mode)
         return native_home
     except ValueError:
-        pass
+        logger.debug("Ignoring error in get_default_spark_root()", exc_info=True)
 
     # Docker / custom deployment.
     # Check if this is a profile path: <root>/profiles/<name>
@@ -231,7 +234,7 @@ def is_container() -> bool:
                 _container_detected = True
                 return True
     except OSError:
-        pass
+        logger.debug("Ignoring error in is_container()", exc_info=True)
     _container_detected = False
     return False
 
@@ -278,7 +281,7 @@ def is_server_environment() -> bool:
                 _server_env_detected = True
                 return True
     except Exception:
-        pass
+        logger.debug("Ignoring error in is_server_environment()", exc_info=True)
 
     # 3. SSH session — works for interactive sessions on all platforms
     if any(os.getenv(v) for v in ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")):
@@ -310,7 +313,7 @@ def get_server_hostname() -> str:
         if name and name != "localhost":
             return name
     except Exception:
-        pass
+        logger.debug("Ignoring error in get_server_hostname()", exc_info=True)
     return "localhost"
 
 
@@ -340,7 +343,7 @@ def get_public_base_url(host: str, port: int, scheme: str = "http") -> str:
             if _pub:
                 return _pub.rstrip("/")
     except Exception:
-        pass
+        logger.debug("Ignoring error in get_public_base_url()", exc_info=True)
 
     # 2. Server environment — use real hostname
     display_host = host

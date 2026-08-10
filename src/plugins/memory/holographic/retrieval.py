@@ -7,10 +7,12 @@ Jaccard similarity reranking and trust-weighted scoring.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import numpy as np
+
     from .store import MemoryStore
 
 try:
@@ -443,7 +445,7 @@ class FactRetriever:
 
     def _score_facts_by_vector(
         self,
-        target_vec: "np.ndarray",
+        target_vec: np.ndarray,
         category: str | None = None,
         limit: int = 10,
     ) -> list[dict]:
@@ -533,7 +535,7 @@ class FactRetriever:
         max_rank = max(max_rank, 1e-6)  # avoid div by zero
 
         results = []
-        for row, raw_rank in zip(rows, raw_ranks):
+        for row, raw_rank in zip(rows, raw_ranks, strict=False):
             fact = dict(row)
             fact.pop("fts_rank_raw", None)
             fact["fts_rank"] = raw_rank / max_rank  # normalize to [0, 1]
@@ -582,9 +584,9 @@ class FactRetriever:
                 ts = timestamp_str
 
             if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
+                ts = ts.replace(tzinfo=UTC)
 
-            age_days = (datetime.now(timezone.utc) - ts).total_seconds() / 86400
+            age_days = (datetime.now(UTC) - ts).total_seconds() / 86400
             if age_days < 0:
                 return 1.0
 

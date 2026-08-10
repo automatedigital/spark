@@ -20,6 +20,7 @@ sys.modules.setdefault("firecrawl", types.SimpleNamespace(Firecrawl=object))
 sys.modules.setdefault("fal_client", types.SimpleNamespace())
 
 import core.run_agent as run_agent  # noqa: E402
+import core.run_agent.turn_loop as turn_loop  # noqa: E402
 import gateway.run as gateway_run  # noqa: E402
 from gateway.config import Platform  # noqa: E402
 from gateway.session import SessionSource  # noqa: E402
@@ -43,7 +44,7 @@ def _patch_agent_bootstrap(monkeypatch):
     monkeypatch.setattr(run_agent, "check_toolset_requirements", lambda: {})
     # Pricing lookup performs a real network fetch for unknown models — stub it.
     monkeypatch.setattr(
-        run_agent,
+        turn_loop,
         "estimate_usage_cost",
         lambda *a, **k: SimpleNamespace(amount_usd=None, status="unknown", source="test"),
     )

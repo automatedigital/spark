@@ -125,7 +125,7 @@ def _discover_homebrew_node_dirs() -> tuple[str, ...]:
                 if os.path.isdir(bin_dir):
                     dirs.append(bin_dir)
     except OSError:
-        pass
+        logger.debug("Ignoring error in _discover_homebrew_node_dirs()", exc_info=True)
     return tuple(dirs)
 
 # Throttle screenshot cleanup to avoid repeated full directory scans.
@@ -765,7 +765,7 @@ def _reap_orphaned_browser_sessions():
                         daemon_pid, session_name)
             reaped += 1
         except (ProcessLookupError, PermissionError, OSError):
-            pass
+            logger.debug("Ignoring error in _reap_orphaned_browser_sessions()", exc_info=True)
 
         # Clean up the socket directory
         shutil.rmtree(socket_dir, ignore_errors=True)
@@ -1417,7 +1417,7 @@ def _run_browser_command(
             try:
                 os.unlink(p)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _run_browser_command()", exc_info=True)
 
         # Log stderr for diagnostics — use warning level on failure so it's visible
         if stderr and stderr.strip():
@@ -2326,7 +2326,8 @@ def _browser_eval(expression: str, task_id: str | None = None) -> str:
         try:
             parsed = json.loads(raw_result)
         except (json.JSONDecodeError, ValueError):
-            pass  # keep as string
+            # keep as string
+            logger.debug("Ignored exception in _browser_eval", exc_info=True)
 
     return json.dumps({
         "success": True,
@@ -2350,7 +2351,7 @@ def _camofox_eval(expression: str, task_id: str | None = None) -> str:
             try:
                 parsed = json.loads(raw_result)
             except (json.JSONDecodeError, ValueError):
-                pass
+                logger.debug("Ignoring error in _camofox_eval()", exc_info=True)
 
         return json.dumps({
             "success": True,
@@ -2587,7 +2588,7 @@ def browser_vision(question: str, annotate: bool = False, task_id: str | None = 
             if _vt is not None:
                 vision_timeout = float(_vt)
         except Exception:
-            pass
+            logger.debug("Ignoring error in browser_vision()", exc_info=True)
 
         call_kwargs = {
             "task": "vision",

@@ -56,8 +56,8 @@ def test_sequential_tools_have_no_artificial_delay_by_default() -> None:
     messages: list[dict] = []
 
     with (
-        patch("core.run_agent.handle_function_call", return_value='{"ok":true}'),
-        patch("core.run_agent.enforce_turn_budget") as mock_budget,
+        patch("core.run_agent.tool_execution.handle_function_call", return_value='{"ok":true}'),
+        patch("core.run_agent.tool_execution.enforce_turn_budget") as mock_budget,
         patch("core.run_agent.time.sleep") as mock_sleep,
     ):
         agent._execute_tool_calls(_two_tool_message(), messages, "task-1")
@@ -74,7 +74,7 @@ def test_explicit_sequential_tool_pacing_is_preserved() -> None:
     messages: list[dict] = []
 
     with (
-        patch("core.run_agent.handle_function_call", return_value='{"ok":true}'),
+        patch("core.run_agent.tool_execution.handle_function_call", return_value='{"ok":true}'),
         patch("core.run_agent.time.sleep") as mock_sleep,
     ):
         agent._execute_tool_calls(_two_tool_message(), messages, "task-1")

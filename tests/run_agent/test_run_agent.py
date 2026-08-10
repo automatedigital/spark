@@ -592,17 +592,17 @@ class TestInit:
 
 class TestInterrupt:
     def test_interrupt_sets_flag(self, agent):
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt()
             assert agent._interrupt_requested is True
 
     def test_interrupt_with_message(self, agent):
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt("new question")
             assert agent._interrupt_message == "new question"
 
     def test_clear_interrupt(self, agent):
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt("msg")
             agent.clear_interrupt()
             assert agent._interrupt_requested is False
@@ -610,7 +610,7 @@ class TestInterrupt:
 
     def test_is_interrupted_property(self, agent):
         assert agent.is_interrupted is False
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt()
             assert agent.is_interrupted is True
 
@@ -621,7 +621,7 @@ class TestHydrateTodoStore:
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi"},
         ]
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent._hydrate_todo_store(history)
         assert not agent._todo_store.has_items()
 
@@ -636,7 +636,7 @@ class TestHydrateTodoStore:
                 "tool_call_id": "c1",
             },
         ]
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent._hydrate_todo_store(history)
         assert agent._todo_store.has_items()
 
@@ -648,7 +648,7 @@ class TestHydrateTodoStore:
                 "tool_call_id": "c1",
             },
         ]
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent._hydrate_todo_store(history)
         assert not agent._todo_store.has_items()
 
@@ -660,7 +660,7 @@ class TestHydrateTodoStore:
                 "tool_call_id": "c1",
             },
         ]
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent._hydrate_todo_store(history)
         assert not agent._todo_store.has_items()
 
@@ -1121,7 +1121,7 @@ class TestExecuteToolCalls:
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc])
         messages = []
         with patch(
-            "core.run_agent.handle_function_call", return_value="search result"
+            "core.run_agent.tool_execution.handle_function_call", return_value="search result"
         ) as mock_hfc:
             agent._execute_tool_calls(mock_msg, messages, "task-1")
             # enabled_tools passes the agent's own valid_tool_names
@@ -1138,7 +1138,7 @@ class TestExecuteToolCalls:
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc1, tc2])
         messages = []
 
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt()
 
         agent._execute_tool_calls(mock_msg, messages, "task-1")
@@ -1155,7 +1155,7 @@ class TestExecuteToolCalls:
         )
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc])
         messages = []
-        with patch("core.run_agent.handle_function_call", return_value="ok") as mock_hfc:
+        with patch("core.run_agent.tool_execution.handle_function_call", return_value="ok") as mock_hfc:
             agent._execute_tool_calls(mock_msg, messages, "task-1")
             # Invalid JSON args should fall back to empty dict
             args, kwargs = mock_hfc.call_args
@@ -1172,7 +1172,7 @@ class TestExecuteToolCalls:
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc])
         messages = []
         big_result = "x" * 150_000
-        with patch("core.run_agent.handle_function_call", return_value=big_result):
+        with patch("core.run_agent.tool_execution.handle_function_call", return_value=big_result):
             agent._execute_tool_calls(mock_msg, messages, "task-1")
         # Content should be replaced with persisted-output or truncation
         assert len(messages[0]["content"]) < 150_000
@@ -1184,7 +1184,7 @@ class TestExecuteToolCalls:
         messages = []
         agent.tool_progress_callback = lambda *args, **kwargs: None
 
-        with patch("core.run_agent.handle_function_call", return_value="search result"), \
+        with patch("core.run_agent.tool_execution.handle_function_call", return_value="search result"), \
              patch.object(agent, "_safe_print") as mock_print:
             agent._execute_tool_calls(mock_msg, messages, "task-1")
 
@@ -1198,7 +1198,7 @@ class TestExecuteToolCalls:
         messages = []
         agent.tool_progress_callback = None
 
-        with patch("core.run_agent.handle_function_call", return_value="search result"), \
+        with patch("core.run_agent.tool_execution.handle_function_call", return_value="search result"), \
              patch.object(agent, "_safe_print") as mock_print:
             agent._execute_tool_calls(mock_msg, messages, "task-1")
 
@@ -1390,7 +1390,7 @@ class TestConcurrentToolExecution:
             call_log.append(name)
             return json.dumps({"result": args.get("q", "")})
 
-        with patch("core.run_agent.handle_function_call", side_effect=fake_handle):
+        with patch("core.run_agent.tool_execution.handle_function_call", side_effect=fake_handle):
             agent._execute_tool_calls_concurrent(mock_msg, messages, "task-1")
 
         assert len(messages) == 3
@@ -1420,7 +1420,7 @@ class TestConcurrentToolExecution:
                 _time.sleep(0.1)  # Slow tool
             return f"result_{q}"
 
-        with patch("core.run_agent.handle_function_call", side_effect=fake_handle):
+        with patch("core.run_agent.tool_execution.handle_function_call", side_effect=fake_handle):
             agent._execute_tool_calls_concurrent(mock_msg, messages, "task-1")
 
         assert messages[0]["tool_call_id"] == "c1"
@@ -1442,7 +1442,7 @@ class TestConcurrentToolExecution:
                 raise RuntimeError("boom")
             return "success"
 
-        with patch("core.run_agent.handle_function_call", side_effect=fake_handle):
+        with patch("core.run_agent.tool_execution.handle_function_call", side_effect=fake_handle):
             agent._execute_tool_calls_concurrent(mock_msg, messages, "task-1")
 
         assert len(messages) == 2
@@ -1458,7 +1458,7 @@ class TestConcurrentToolExecution:
         mock_msg = _mock_assistant_msg(content="", tool_calls=[tc1, tc2])
         messages = []
 
-        with patch("core.run_agent._set_interrupt"):
+        with patch("core.run_agent.agent_support._set_interrupt"):
             agent.interrupt()
 
         agent._execute_tool_calls_concurrent(mock_msg, messages, "task-1")
@@ -1476,7 +1476,7 @@ class TestConcurrentToolExecution:
         messages = []
         big_result = "x" * 150_000
 
-        with patch("core.run_agent.handle_function_call", return_value=big_result):
+        with patch("core.run_agent.tool_execution.handle_function_call", return_value=big_result):
             agent._execute_tool_calls_concurrent(mock_msg, messages, "task-1")
 
         assert len(messages) == 2
@@ -1486,7 +1486,7 @@ class TestConcurrentToolExecution:
 
     def test_invoke_tool_dispatches_to_handle_function_call(self, agent):
         """_invoke_tool should route regular tools through handle_function_call."""
-        with patch("core.run_agent.handle_function_call", return_value="result") as mock_hfc:
+        with patch("core.run_agent.tool_execution.handle_function_call", return_value="result") as mock_hfc:
             result = agent._invoke_tool("web_search", {"q": "test"}, "task-1")
             mock_hfc.assert_called_once_with(
                 "web_search", {"q": "test"}, "task-1",
@@ -1506,7 +1506,7 @@ class TestConcurrentToolExecution:
         agent.tool_start_callback = lambda tool_call_id, function_name, function_args: starts.append((tool_call_id, function_name, function_args))
         agent.tool_complete_callback = lambda tool_call_id, function_name, function_args, function_result: completes.append((tool_call_id, function_name, function_args, function_result))
 
-        with patch("core.run_agent.handle_function_call", return_value='{"success": true}'):
+        with patch("core.run_agent.tool_execution.handle_function_call", return_value='{"success": true}'):
             agent._execute_tool_calls_sequential(mock_msg, messages, "task-1")
 
         assert starts == [("c1", "web_search", {"query": "hello"})]
@@ -1522,7 +1522,7 @@ class TestConcurrentToolExecution:
         agent.tool_start_callback = lambda tool_call_id, function_name, function_args: starts.append((tool_call_id, function_name, function_args))
         agent.tool_complete_callback = lambda tool_call_id, function_name, function_args, function_result: completes.append((tool_call_id, function_name, function_args, function_result))
 
-        with patch("core.run_agent.handle_function_call", side_effect=['{"id":1}', '{"id":2}']):
+        with patch("core.run_agent.tool_execution.handle_function_call", side_effect=['{"id":1}', '{"id":2}']):
             agent._execute_tool_calls_concurrent(mock_msg, messages, "task-1")
 
         assert starts == [
@@ -1558,7 +1558,7 @@ class TestConcurrentToolExecution:
             "spark_cli.plugins.get_pre_tool_call_block_message",
             lambda *args, **kwargs: "Blocked",
         )
-        with patch("core.run_agent.handle_function_call", side_effect=AssertionError("should not run")):
+        with patch("core.run_agent.tool_execution.handle_function_call", side_effect=AssertionError("should not run")):
             result = agent._invoke_tool("web_search", {"q": "test"}, "task-1")
 
         assert json.loads(result) == {"error": "Blocked"}
@@ -1583,7 +1583,7 @@ class TestConcurrentToolExecution:
         starts = []
         agent.tool_start_callback = lambda *a: starts.append(a)
 
-        with patch("core.run_agent.handle_function_call", side_effect=AssertionError("should not run")):
+        with patch("core.run_agent.tool_execution.handle_function_call", side_effect=AssertionError("should not run")):
             agent._execute_tool_calls_sequential(mock_msg, messages, "task-1")
 
         agent._checkpoint_mgr.ensure_checkpoint.assert_not_called()
@@ -1743,7 +1743,7 @@ class TestRunConversation:
         resp2 = _mock_response(content="Done searching", finish_reason="stop")
         agent.client.chat.completions.create.side_effect = [resp1, resp2]
         with (
-            patch("core.run_agent.handle_function_call", return_value="search result") as mock_handle_function_call,
+            patch("core.run_agent.tool_execution.handle_function_call", return_value="search result") as mock_handle_function_call,
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
@@ -1768,7 +1768,7 @@ class TestRunConversation:
             return []
 
         with (
-            patch("core.run_agent.handle_function_call", return_value="search result"),
+            patch("core.run_agent.tool_execution.handle_function_call", return_value="search result"),
             patch("spark_cli.plugins.invoke_hook", side_effect=_record_hook),
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
@@ -1798,7 +1798,7 @@ class TestRunConversation:
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
-            patch("core.run_agent._set_interrupt"),
+            patch("core.run_agent.agent_support._set_interrupt"),
             patch.object(
                 agent, "_interruptible_api_call", side_effect=interrupt_side_effect
             ),
@@ -2141,7 +2141,7 @@ class TestRunConversation:
         agent.client.chat.completions.create.side_effect = [resp1, resp2]
 
         with (
-            patch("core.run_agent.handle_function_call", return_value="result"),
+            patch("core.run_agent.tool_execution.handle_function_call", return_value="result"),
             patch.object(
                 agent.context_compressor, "should_compress", return_value=True
             ),
@@ -2268,7 +2268,7 @@ class TestRunConversation:
         agent.client.chat.completions.create.return_value = resp
 
         with (
-            patch("core.run_agent.handle_function_call") as mock_handle_function_call,
+            patch("core.run_agent.tool_execution.handle_function_call") as mock_handle_function_call,
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
@@ -2302,7 +2302,7 @@ class TestRunConversation:
             content="", finish_reason="stop", tool_calls=[good_tc],
         )
         with (
-            patch("core.run_agent.handle_function_call", return_value='{"success":true}') as mock_hfc,
+            patch("core.run_agent.tool_execution.handle_function_call", return_value='{"success":true}') as mock_hfc,
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
@@ -2336,7 +2336,7 @@ class TestRunConversation:
         agent.client.chat.completions.create.return_value = resp
 
         with (
-            patch("core.run_agent.handle_function_call") as mock_handle_function_call,
+            patch("core.run_agent.tool_execution.handle_function_call") as mock_handle_function_call,
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
@@ -2364,7 +2364,7 @@ class TestRunConversation:
         resp4 = _mock_response(content="Done after nudge", finish_reason="stop")
         agent.client.chat.completions.create.side_effect = [resp1, resp2, resp3, resp4]
         with (
-            patch("core.run_agent.handle_function_call", return_value="search result"),
+            patch("core.run_agent.tool_execution.handle_function_call", return_value="search result"),
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
@@ -2394,7 +2394,7 @@ class TestRunConversation:
             )
         agent.client.chat.completions.create.side_effect = responses
         with (
-            patch("core.run_agent.handle_function_call", return_value="search result"),
+            patch("core.run_agent.tool_execution.handle_function_call", return_value="search result"),
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
@@ -3000,7 +3000,7 @@ class TestSaveSessionLogAtomicWrite:
         agent.session_log_file = tmp_path / "session.json"
         messages = [{"role": "user", "content": "hello"}]
 
-        with patch("core.run_agent.atomic_json_write", create=True) as mock_atomic_write:
+        with patch("core.run_agent.agent_session.atomic_json_write", create=True) as mock_atomic_write:
             agent._save_session_log(messages)
 
         mock_atomic_write.assert_called_once()

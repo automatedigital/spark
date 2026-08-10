@@ -13,13 +13,14 @@ import json as _json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 
-
-from spark_cli.config import (
-    load_config, save_config, get_env_value, save_env_value,
-)
 from spark_cli.colors import Colors, color
+from spark_cli.config import (
+    get_env_value,
+    load_config,
+    save_config,
+    save_env_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,17 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 from spark_cli.cli_output import (  # noqa: E402 — late import block
     print_error as _print_error,
+)
+from spark_cli.cli_output import (
     print_info as _print_info,
+)
+from spark_cli.cli_output import (
     print_success as _print_success,
+)
+from spark_cli.cli_output import (
     print_warning as _print_warning,
+)
+from spark_cli.cli_output import (
     prompt as _prompt,
 )
 
@@ -81,7 +90,7 @@ def _get_effective_configurable_toolsets():
         discover_plugins()  # idempotent — ensures plugins are loaded
         result.extend(get_plugin_toolsets())
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_effective_configurable_toolsets()", exc_info=True)
     return result
 
 
@@ -97,6 +106,8 @@ def _get_plugin_toolset_keys() -> set:
 # Platform display config — derived from the canonical registry so every
 # module shares the same data.  Kept as dict-of-dicts for backward
 # compatibility with existing ``PLATFORMS[key]["label"]`` access patterns.
+from typing import cast
+
 from spark_cli.platforms import PLATFORMS as _PLATFORMS_REGISTRY
 
 PLATFORMS = {
@@ -110,7 +121,7 @@ PLATFORMS = {
 # we use this to show provider selection and prompt for the right API keys.
 # Toolsets not in this map either need no config or use the simple fallback.
 
-TOOL_CATEGORIES = {
+TOOL_CATEGORIES: dict[str, dict] = {
     "tts": {
         "name": "Text-to-Speech",
         "icon": "🔊",
@@ -411,7 +422,7 @@ def _run_post_setup(post_setup_key: str):
 
 # ─── Platform / Toolset Helpers ───────────────────────────────────────────────
 
-def _get_enabled_platforms() -> List[str]:
+def _get_enabled_platforms() -> list[str]:
     """Return platform keys that are configured (have tokens or are CLI)."""
     enabled = ["cli"]
     if get_env_value("TELEGRAM_BOT_TOKEN"):
@@ -427,7 +438,7 @@ def _get_enabled_platforms() -> List[str]:
     return enabled
 
 
-def _platform_toolset_summary(config: dict, platforms: Optional[List[str]] = None) -> Dict[str, Set[str]]:
+def _platform_toolset_summary(config: dict, platforms: list[str] | None = None) -> dict[str, set[str]]:
     """Return a summary of enabled toolsets per platform.
 
     When ``platforms`` is None, this uses ``_get_enabled_platforms`` to
@@ -437,7 +448,7 @@ def _platform_toolset_summary(config: dict, platforms: Optional[List[str]] = Non
     if platforms is None:
         platforms = _get_enabled_platforms()
 
-    summary: Dict[str, Set[str]] = {}
+    summary: dict[str, set[str]] = {}
     for pkey in platforms:
         summary[pkey] = _get_platform_tools(config, pkey)
     return summary
@@ -465,7 +476,7 @@ def _get_platform_tools(
     platform: str,
     *,
     include_default_mcp_servers: bool = True,
-) -> Set[str]:
+) -> set[str]:
     """Resolve which individual toolset names are enabled for a platform."""
     from core.toolsets import resolve_toolset
 
@@ -561,7 +572,7 @@ def _get_platform_tools(
     return enabled_toolsets
 
 
-def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: Set[str]):
+def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: set[str]):
     """Save the selected toolset keys for a platform to config.
 
     Preserves any non-configurable toolset entries (like MCP server names)
@@ -636,7 +647,7 @@ def enable_computer_use_web_toolset() -> None:
     _apply_toolset_change(config, "cli", ["computer_use"], "enable")
 
 
-def _toolset_has_keys(ts_key: str, config: dict = None) -> bool:
+def _toolset_has_keys(ts_key: str, config: dict | None = None) -> bool:
     """Check if a toolset's required API keys are configured."""
     if config is None:
         config = load_config()
@@ -679,10 +690,10 @@ def _prompt_choice(question: str, choices: list, default: int = 0) -> int:
 # ─── Token Estimation ────────────────────────────────────────────────────────
 
 # Module-level cache so discovery + tokenization runs at most once per process.
-_tool_token_cache: Optional[Dict[str, int]] = None
+_tool_token_cache: dict[str, int] | None = None
 
 
-def _estimate_tool_tokens() -> Dict[str, int]:
+def _estimate_tool_tokens() -> dict[str, int]:
     """Return estimated token counts per individual tool name.
 
     Uses tiktoken (cl100k_base) to count tokens in the JSON-serialised
@@ -712,7 +723,7 @@ def _estimate_tool_tokens() -> Dict[str, int]:
         _tool_token_cache = {}
         return _tool_token_cache
 
-    counts: Dict[str, int] = {}
+    counts: dict[str, int] = {}
     for name in registry.get_all_tool_names():
         schema = registry.get_schema(name)
         if schema:
@@ -724,10 +735,10 @@ def _estimate_tool_tokens() -> Dict[str, int]:
     return _tool_token_cache
 
 
-def _prompt_toolset_checklist(platform_label: str, enabled: Set[str]) -> Set[str]:
+def _prompt_toolset_checklist(platform_label: str, enabled: set[str]) -> set[str]:
     """Multi-select checklist of toolsets. Returns set of selected toolset keys."""
-    from spark_cli.curses_ui import curses_checklist
     from core.toolsets import resolve_toolset
+    from spark_cli.curses_ui import curses_checklist
 
     # Pre-compute per-tool token counts (cached after first call).
     tool_tokens = _estimate_tool_tokens()
@@ -775,7 +786,7 @@ def _prompt_toolset_checklist(platform_label: str, enabled: Set[str]) -> Set[str
 
 def _configure_toolset(ts_key: str, config: dict):
     """Configure a toolset - provider selection + API keys.
-    
+
     Uses TOOL_CATEGORIES for provider-aware config, falls back to simple
     env var prompts for toolsets not in TOOL_CATEGORIES.
     """
@@ -887,13 +898,13 @@ def _is_provider_active(provider: dict, config: dict) -> bool:
         return False
 
     if provider.get("tts_provider"):
-        return config.get("tts", {}).get("provider") == provider["tts_provider"]
+        return cast("bool", config.get("tts", {}).get("provider") == provider["tts_provider"])
     if "browser_provider" in provider:
         current = config.get("browser", {}).get("cloud_provider")
-        return provider["browser_provider"] == current
+        return cast("bool", provider["browser_provider"] == current)
     if provider.get("web_backend"):
         current = config.get("web", {}).get("backend")
-        return current == provider["web_backend"]
+        return cast("bool", current == provider["web_backend"])
     return False
 
 
@@ -1183,7 +1194,7 @@ def _reconfigure_simple_requirements(ts_key: str):
 
 # ─── Main Entry Point ─────────────────────────────────────────────────────────
 
-def tools_command(args=None, first_install: bool = False, config: dict = None):
+def tools_command(args=None, first_install: bool = False, config: dict | None = None):
     """Entry point for `spark tools` and `spark setup tools`.
 
     Args:
@@ -1487,7 +1498,7 @@ def _configure_mcp_tools_interactive(config: dict):
                 labels.append(tool_name)
 
         # Determine which tools are currently enabled
-        pre_selected: Set[int] = set()
+        pre_selected: set[int] = set()
         tool_names = [t[0] for t in tools]
         for i, tool_name in enumerate(tool_names):
             if include_list:
@@ -1547,7 +1558,7 @@ def _configure_mcp_tools_interactive(config: dict):
 # ─── Non-interactive disable/enable ──────────────────────────────────────────
 
 
-def _apply_toolset_change(config: dict, platform: str, toolset_names: List[str], action: str):
+def _apply_toolset_change(config: dict, platform: str, toolset_names: list[str], action: str):
     """Add or remove built-in toolsets for a platform."""
     enabled = _get_platform_tools(config, platform, include_default_mcp_servers=False)
     if action == "disable":
@@ -1557,12 +1568,12 @@ def _apply_toolset_change(config: dict, platform: str, toolset_names: List[str],
     _save_platform_tools(config, platform, updated)
 
 
-def _apply_mcp_change(config: dict, targets: List[str], action: str) -> Set[str]:
+def _apply_mcp_change(config: dict, targets: list[str], action: str) -> set[str]:
     """Add or remove specific MCP tools from a server's exclude list.
 
     Returns the set of server names that were not found in config.
     """
-    failed_servers: Set[str] = set()
+    failed_servers: set[str] = set()
     mcp_servers = config.get("mcp_servers") or {}
 
     for target in targets:
@@ -1639,7 +1650,7 @@ def tools_disable_enable_command(args):
                           config.get("mcp_servers") or {}, platform)
         return
 
-    targets: List[str] = args.names
+    targets: list[str] = args.names
     toolset_targets = [t for t in targets if ":" not in t]
     mcp_targets = [t for t in targets if ":" in t]
 
@@ -1653,7 +1664,7 @@ def tools_disable_enable_command(args):
     if toolset_targets:
         _apply_toolset_change(config, platform, toolset_targets, action)
 
-    failed_servers: Set[str] = set()
+    failed_servers: set[str] = set()
     if mcp_targets:
         failed_servers = _apply_mcp_change(config, mcp_targets, action)
         for srv in failed_servers:

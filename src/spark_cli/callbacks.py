@@ -6,13 +6,16 @@ as its first argument and uses its state (queues, app reference) to coordinate
 with the TUI.
 """
 
+import getpass
+import logging
 import queue
 import time as _time
-import getpass
 
-from spark_cli.banner import cprint, _DIM, _RST
-from spark_cli.config import save_env_value_secure
 from core.spark_constants import display_spark_home
+from spark_cli.banner import _DIM, _RST, cprint
+from spark_cli.config import save_env_value_secure
+
+logger = logging.getLogger(__name__)
 
 
 def clarify_callback(cli, question, choices):
@@ -24,7 +27,7 @@ def clarify_callback(cli, question, choices):
     from core.cli import CLI_CONFIG
 
     timeout = CLI_CONFIG.get("clarify", {}).get("timeout", 120)
-    response_queue = queue.Queue()
+    response_queue: queue.Queue = queue.Queue()
     is_open_ended = not choices
 
     cli._clarify_state = {
@@ -100,7 +103,7 @@ def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
         }
 
     timeout = 120
-    response_queue = queue.Queue()
+    response_queue: queue.Queue = queue.Queue()
 
     cli._secret_state = {
         "var_name": var_name,
@@ -114,12 +117,12 @@ def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
         try:
             cli._clear_secret_input_buffer()
         except Exception:
-            pass
+            logger.debug("Ignoring error in prompt_for_secret()", exc_info=True)
     elif hasattr(cli, "_app") and cli._app:
         try:
             cli._app.current_buffer.reset()
         except Exception:
-            pass
+            logger.debug("Ignoring error in prompt_for_secret()", exc_info=True)
 
     if hasattr(cli, "_app") and cli._app:
         cli._app.invalidate()
@@ -164,12 +167,12 @@ def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
         try:
             cli._clear_secret_input_buffer()
         except Exception:
-            pass
+            logger.debug("Ignoring error in prompt_for_secret()", exc_info=True)
     elif hasattr(cli, "_app") and cli._app:
         try:
             cli._app.current_buffer.reset()
         except Exception:
-            pass
+            logger.debug("Ignoring error in prompt_for_secret()", exc_info=True)
     if hasattr(cli, "_app") and cli._app:
         cli._app.invalidate()
     cprint(f"\n{_DIM}  ⏱ Timeout — secret capture cancelled{_RST}")
@@ -202,7 +205,7 @@ def approval_callback(cli, command: str, description: str) -> str:
     with lock:
         from core.cli import CLI_CONFIG
         timeout = CLI_CONFIG.get("approvals", {}).get("timeout", 60)
-        response_queue = queue.Queue()
+        response_queue: queue.Queue = queue.Queue()
         choices = ["once", "session", "always", "deny"]
         if len(command) > 70:
             choices.append("view")
@@ -226,7 +229,7 @@ def approval_callback(cli, command: str, description: str) -> str:
                 cli._approval_deadline = 0
                 if hasattr(cli, "_app") and cli._app:
                     cli._app.invalidate()
-                return result
+                return str(result)
             except queue.Empty:
                 remaining = cli._approval_deadline - _time.monotonic()
                 if remaining <= 0:

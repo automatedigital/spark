@@ -1,0 +1,88 @@
+name: web-quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/spark_cli/web/**"
+      - ".github/workflows/web-quality.yml"
+  pull_request:
+    paths:
+      - "src/spark_cli/web/**"
+      - ".github/workflows/web-quality.yml"
+
+concurrency:
+  group: web-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: src/spark_cli/web
+
+jobs:
+  lint-types-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/spark_cli/web/package-lock.json
+
+      - name: Install with frozen lockfile
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit -p tsconfig.app.json
+
+      - name: Unit tests
+        run: npx vitest run
+
+  # Drive a real browser against a real Python backend. These contracts cover
+  # multi-chat isolation, refresh/reconnect, gateway restart, and persisted
+  # history, so a failure must block the merge rather than report as advisory.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/spark_cli/web/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # The suite spawns the Spark web server itself, so the backend and its
+      # web extra have to be importable.
+      - name: Install Spark
+        working-directory: .
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,web]"
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      # e2e/multi-chat.mjs defaults to <repo>/.venv/bin/python, which does not
+      # exist on a runner; point it at the interpreter set up above.
+      - name: Multi-chat end-to-end
+        env:
+          PYTHON: python
+        run: npm run test:e2e
+
+      - name: Chat contracts end-to-end
+        env:
+          PYTHON: python
+        run: node ./e2e/chat-contracts.mjs

@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 from core.spark_constants import is_wsl as _is_wsl
 
@@ -82,7 +83,8 @@ def _macos_pngpaste(dest: Path) -> bool:
         if r.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
             return True
     except FileNotFoundError:
-        pass  # pngpaste not installed
+        # pngpaste not installed
+        logger.debug("Ignored exception in _macos_pngpaste", exc_info=True)
     except Exception as e:
         logger.debug("pngpaste failed: %s", e)
     return False
@@ -167,7 +169,7 @@ def _get_ps_exe() -> str | None:
     global _ps_exe
     if _ps_exe is False:
         _ps_exe = _find_powershell()
-    return _ps_exe
+    return cast("str | None", _ps_exe)
 
 
 def _windows_has_image() -> bool:
@@ -291,7 +293,7 @@ def _wayland_has_image() -> bool:
     except FileNotFoundError:
         logger.debug("wl-paste not installed — Wayland clipboard unavailable")
     except Exception:
-        pass
+        logger.debug("Ignoring error in _wayland_has_image()", exc_info=True)
     return False
 
 
@@ -353,7 +355,7 @@ def _convert_to_png(path: Path) -> bool:
         img.save(path, "PNG")
         return True
     except ImportError:
-        pass
+        logger.debug("Ignoring error in _convert_to_png()", exc_info=True)
     except Exception as e:
         logger.debug("Pillow BMP→PNG conversion failed: %s", e)
 
@@ -395,9 +397,9 @@ def _xclip_has_image() -> bool:
         )
         return r.returncode == 0 and "image/png" in r.stdout
     except FileNotFoundError:
-        pass
+        logger.debug("Ignoring error in _xclip_has_image()", exc_info=True)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _xclip_has_image()", exc_info=True)
     return False
 
 

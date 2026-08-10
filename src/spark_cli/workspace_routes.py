@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # These modules only exist on Unix. Workspace file and preview routes are
 # cross-platform, so importing this module must not make the entire Windows
@@ -40,7 +40,7 @@ except ImportError:  # pragma: no cover - exercised by Windows CI
     pty = None  # type: ignore[assignment]
     termios = None  # type: ignore[assignment]
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -195,7 +195,7 @@ def _terminate_preview_process(proc: subprocess.Popen[Any]) -> None:
             if result.returncode == 0:
                 return
         except (FileNotFoundError, OSError, subprocess.SubprocessError):
-            pass
+            _log.debug("Ignoring error in _terminate_preview_process()", exc_info=True)
         try:
             proc.terminate()
         except Exception:
@@ -219,7 +219,7 @@ def _terminate_preview_process(proc: subprocess.Popen[Any]) -> None:
                 try:
                     proc.kill()
                 except Exception:
-                    pass
+                    _log.debug("Ignoring error in _terminate_preview_process()", exc_info=True)
 
 
 def _workspace_root() -> Path:
@@ -256,8 +256,8 @@ def _safe_path(project_dir: Path, rel: str) -> Path:
     resolved = (project_dir / rel).resolve()
     try:
         resolved.relative_to(project_dir.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Path traversal detected")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="Path traversal detected") from err
     return resolved
 
 
@@ -273,7 +273,7 @@ def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = Fa
                         continue
                     children.append(_tree_node(child, project_dir, depth + 1, show_hidden))
             except PermissionError:
-                pass
+                _log.debug("Ignoring error in _tree_node()", exc_info=True)
         return {"name": path.name, "path": rel, "type": "dir", "children": children}
     stat = path.stat()
     mime, _ = mimetypes.guess_type(path.name)
@@ -753,7 +753,7 @@ def get_project_tree(slug: str, show_hidden: bool = Query(default=False)):
                 continue
             children.append(_tree_node(entry, project_dir, depth=1, show_hidden=show_hidden))
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from e
     return {"slug": slug, "path": str(project_dir), "tree": children}
 
 
@@ -774,7 +774,7 @@ def read_project_file(slug: str, path: str = Query(...)):
     try:
         content = file_path.read_text(encoding="utf-8", errors="replace")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     mime, _ = mimetypes.guess_type(file_path.name)
     return {"path": path, "content": content, "mime": mime or "text/plain", "size": size}
 
@@ -815,7 +815,7 @@ async def upload_files(
             saved.append({"filename": filename, "size": len(content)})
         except Exception as exc:
             _log.warning("Upload failed for %s: %s", filename, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}")
+            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "saved": saved}
 
@@ -842,7 +842,7 @@ async def upload_workspace_files(files: list[UploadFile] = File(...)):
             )
         except Exception as exc:
             _log.warning("Upload failed for %s: %s", filename, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}")
+            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
     return {"ok": True, "saved": saved}
 
 
@@ -861,7 +861,7 @@ def list_project_dir(slug: str, path: str = Query(default=""), show_hidden: bool
             rel = str(entry.relative_to(project_dir))
             entries.append({"name": entry.name, "path": rel, "type": "dir" if entry.is_dir() else "file"})
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {"path": path, "entries": entries}
 
 
@@ -878,8 +878,8 @@ def list_chat_files(path: str = Query(default=""), show_hidden: bool = Query(def
     target = (workspace / rel).resolve()
     try:
         target.relative_to(workspace.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Path traversal detected")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="Path traversal detected") from err
     if not target.exists() or not target.is_dir():
         raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
 
@@ -891,7 +891,7 @@ def list_chat_files(path: str = Query(default=""), show_hidden: bool = Query(def
             entry_rel = str(entry.relative_to(workspace))
             entries.append({"name": entry.name, "path": entry_rel, "type": "dir" if entry.is_dir() else "file"})
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {"path": path, "entries": entries}
 
 
@@ -905,22 +905,22 @@ class RenameBody(BaseModel):
 
 
 @router.put("/files")
-def write_chat_file(path: str = Query(...), body: WriteFileBody = ...):
+def write_chat_file(path: str = Query(...), body: WriteFileBody = Body(...)):
     """Write text content to a file in the workspace files directory."""
     workspace = _workspace_root()
     rel = path.lstrip("/")
     target = (workspace / rel).resolve()
     try:
         target.relative_to(workspace.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Path traversal detected")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="Path traversal detected") from err
     if target.is_dir():
         raise HTTPException(status_code=400, detail="Path is a directory")
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         target.write_text(body.content, encoding="utf-8")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"ok": True, "path": path}
 
 
@@ -932,8 +932,8 @@ def delete_workspace_chat_file(path: str = Query(...)):
     target = (workspace / rel).resolve()
     try:
         target.relative_to(workspace.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Path traversal detected")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="Path traversal detected") from err
     if not target.exists():
         raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
     try:
@@ -942,7 +942,7 @@ def delete_workspace_chat_file(path: str = Query(...)):
         else:
             target.unlink()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"ok": True, "deleted": path}
 
 
@@ -956,7 +956,7 @@ def delete_project(slug: str):
     try:
         shutil.rmtree(project_dir)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"ok": True, "deleted": slug}
 
 
@@ -972,13 +972,13 @@ def delete_file(slug: str, path: str = Query(...)):
         else:
             target.unlink()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "deleted": path}
 
 
 @router.put("/projects/{slug}/file")
-def write_project_file(slug: str, path: str = Query(...), body: WriteFileBody = ...):
+def write_project_file(slug: str, path: str = Query(...), body: WriteFileBody = Body(...)):
     """Create or overwrite a text file inside a project workspace."""
     project_dir = _project_dir(slug)
     target = _safe_path(project_dir, path)
@@ -988,7 +988,7 @@ def write_project_file(slug: str, path: str = Query(...), body: WriteFileBody = 
     try:
         target.write_text(body.content, encoding="utf-8")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "path": path}
 
@@ -1003,7 +1003,7 @@ def make_project_dir(slug: str, path: str = Query(...)):
     try:
         target.mkdir(parents=True)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "path": path}
 
@@ -1031,7 +1031,7 @@ def rename_project(slug: str, body: ProjectRename):
     try:
         old_path.rename(new_path)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     migrated = 0
     try:
@@ -1080,7 +1080,7 @@ def rename_project_path(slug: str, body: RenameBody):
         dst.parent.mkdir(parents=True, exist_ok=True)
         src.rename(dst)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "src": body.src, "dst": body.dst}
 
@@ -1169,7 +1169,7 @@ def git_status(slug: str):
                     adds = sum(1 for _ in target.open("rb"))
                     dels = 0
             except OSError:
-                pass
+                _log.debug("Ignoring error in git_status()", exc_info=True)
         total_adds += adds or 0
         total_dels += dels or 0
         files.append({"path": path, "status": category, "adds": adds, "dels": dels})
@@ -1225,7 +1225,7 @@ def git_revert(slug: str, body: RevertBody):
         try:
             target.unlink()
         except OSError as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "reverted": body.path}
 
@@ -1248,7 +1248,7 @@ def _queue_terminal_event(run_id: str, event: dict[str, Any]) -> None:
         try:
             q.put_nowait(event)
         except queue.Full:
-            pass
+            _log.debug("Ignoring error in _queue_terminal_event()", exc_info=True)
 
 
 def _run_terminal_command(run_id: str) -> None:
@@ -1361,7 +1361,7 @@ def _run_terminal_shell(run_id: str) -> None:
         try:
             fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
         except OSError:
-            pass
+            _log.debug("Ignoring error in _run_terminal_shell()", exc_info=True)
         proc = subprocess.Popen(
             [shell, "-i"],
             cwd=cwd,
@@ -1422,7 +1422,7 @@ def _run_terminal_shell(run_id: str) -> None:
             try:
                 os.close(master_fd)
             except OSError:
-                pass
+                _log.debug("Ignoring error in _run_terminal_shell()", exc_info=True)
         q = _terminal_run_queues.get(run_id)
         if q is not None:
             q.put_nowait(None)
@@ -1439,7 +1439,7 @@ def send_terminal_input(slug: str, run_id: str, body: TerminalInput):
     try:
         os.write(fd, body.input.encode("utf-8"))
     except OSError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"ok": True, "run_id": run_id}
 
 
@@ -1458,7 +1458,7 @@ def resize_terminal(slug: str, run_id: str, body: TerminalResize):
     try:
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     except OSError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"ok": True, "run_id": run_id, "rows": rows, "cols": cols}
 
 
@@ -1560,7 +1560,7 @@ def _preview_emit(slug: str, event: dict[str, Any]) -> None:
         try:
             q.put_nowait(event)
         except queue.Full:
-            pass
+            _log.debug("Ignoring error in _preview_emit()", exc_info=True)
 
 
 def _publish_workspace_event(topic: str, data: dict[str, Any]) -> None:
@@ -1569,7 +1569,7 @@ def _publish_workspace_event(topic: str, data: dict[str, Any]) -> None:
 
         _publish_event(topic, data)
     except Exception:
-        pass
+        _log.debug("Ignoring error in _publish_workspace_event()", exc_info=True)
 
 
 def _append_preview_log(slug: str, session: dict[str, Any], text: str, stream: str = "server") -> None:
@@ -1776,7 +1776,7 @@ def _process_cwd(pid: int) -> Path | None:
         if proc_cwd.exists():
             return proc_cwd.resolve()
     except Exception:
-        pass
+        _log.debug("Ignoring error in _process_cwd()", exc_info=True)
     try:
         result = subprocess.run(
             ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
@@ -2036,7 +2036,7 @@ def _declared_project_port(project_dir: Path) -> int | None:
                     if port is not None:
                         return port
         except Exception:
-            pass
+            _log.debug("Ignoring error in _declared_project_port()", exc_info=True)
 
     for compose_name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
         compose = project_dir / compose_name
@@ -2095,7 +2095,7 @@ def _detect_preview(
             if isinstance(loaded, dict):
                 config = loaded
         except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid spark.preview.json: {exc}")
+            raise HTTPException(status_code=400, detail=f"Invalid spark.preview.json: {exc}") from exc
     requested_command = requested_command or config.get("command")
     requested_url = requested_url or config.get("url")
     requested_url = _normalize_browser_url(requested_url) if requested_url else None
@@ -2197,7 +2197,7 @@ def _stop_preview_session(slug: str) -> dict[str, Any]:
         except Exception:
             # Preview shutdown must still succeed when an optional browser
             # runtime is absent or already gone.
-            pass
+            _log.debug("Ignoring error in _close_preview_browsers()", exc_info=True)
 
     # Closing agent-browser can wait for an in-flight screenshot/navigation
     # command. Never make the preview stop/restart request wait on that lock.
@@ -2211,7 +2211,7 @@ def _cleanup_preview_sessions() -> None:
         try:
             _stop_preview_session(slug)
         except Exception:
-            pass
+            _log.debug("Ignoring error in _cleanup_preview_sessions()", exc_info=True)
 
 
 def _capture_bound_url_from_log(slug: str, session: dict[str, Any], line: str) -> None:
@@ -2443,7 +2443,7 @@ def start_preview(slug: str, body: PreviewStart | None = None):
         session["updated_at"] = time.time()
         _append_preview_log(slug, session, f"{exc}\n", "error")
         _preview_emit(slug, {"type": "state", **_preview_status_payload(slug, session)})
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return _preview_status_payload(slug, session)
 
@@ -2550,15 +2550,15 @@ def _fetch_preview_html(session: dict[str, Any]) -> str:
     for _ in range(attempts):
         try:
             with urllib.request.urlopen(url, timeout=1) as resp:
-                return resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace")
+                return cast("str", resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace"))
         except Exception as exc:
             last_error = exc
             time.sleep(0.05)
     try:
         with urllib.request.urlopen(url, timeout=3) as resp:
-            return resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace")
+            return cast("str", resp.read(_PREVIEW_FETCH_MAX_BYTES).decode("utf-8", errors="replace"))
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Preview fetch failed: {last_error or exc}")
+        raise HTTPException(status_code=502, detail=f"Preview fetch failed: {last_error or exc}") from exc
 
 
 @router.get("/projects/{slug}/preview/snapshot")
@@ -2612,9 +2612,9 @@ def get_preview_console(slug: str):
 def get_preview_screenshot(slug: str):
     session = _get_preview_session_or_404(slug)
     try:
-        from playwright.sync_api import sync_playwright  # type: ignore
-    except ImportError:
-        raise HTTPException(status_code=501, detail="Playwright is not installed")
+        from playwright.sync_api import sync_playwright
+    except ImportError as err:
+        raise HTTPException(status_code=501, detail="Playwright is not installed") from err
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -2624,7 +2624,7 @@ def get_preview_screenshot(slug: str):
             browser.close()
         return StreamingResponse(iter([png]), media_type="image/png")
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Screenshot failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Screenshot failed: {exc}") from exc
 
 
 def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | None = None) -> dict[str, Any]:
@@ -2664,12 +2664,12 @@ def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | 
             agent_error = str(agent_result.get("error") or "unknown error")
             _append_preview_log(slug, session, f"agent-browser {action} unavailable: {agent_error}", "error")
     try:
-        from playwright.sync_api import sync_playwright  # type: ignore
-    except ImportError:
+        from playwright.sync_api import sync_playwright
+    except ImportError as err:
         detail = "playwright backend unavailable: Playwright is not installed"
         if agent_error:
             detail = f"agent-browser backend unavailable: {agent_error}; {detail}"
-        raise HTTPException(status_code=501, detail=detail)
+        raise HTTPException(status_code=501, detail=detail) from err
     messages: list[dict[str, Any]] = []
     browser = None
     try:
@@ -2717,13 +2717,13 @@ def _run_playwright_action(slug: str, action: str, body: PreviewBrowserAction | 
         if agent_error:
             detail = f"agent-browser backend unavailable: {agent_error}; {detail}"
         _append_preview_log(slug, session, detail, "error")
-        raise HTTPException(status_code=502, detail=detail)
+        raise HTTPException(status_code=502, detail=detail) from exc
     finally:
         if browser is not None:
             try:
                 browser.close()
             except Exception:
-                pass
+                _log.debug("Ignoring error in _run_playwright_action()", exc_info=True)
 
 
 @router.post("/projects/{slug}/preview/click")
@@ -2787,7 +2787,7 @@ def _resolve_preview_backend() -> str:
         if is_available():
             return "agent-browser"
     except Exception:
-        pass
+        _log.debug("Ignoring error in _resolve_preview_backend()", exc_info=True)
     return "playwright"
 
 
@@ -2822,7 +2822,7 @@ def _streamed_session(slug: str, *, persistent: bool = True, create: bool = Fals
     try:
         from spark_cli.preview_browser import BrowserUnavailable, get_streamed_session
     except Exception as exc:  # pragma: no cover - import guard
-        raise HTTPException(status_code=501, detail=f"Streamed browser unavailable: {exc}")
+        raise HTTPException(status_code=501, detail=f"Streamed browser unavailable: {exc}") from exc
     try:
         session = get_streamed_session(
             slug,
@@ -2831,7 +2831,7 @@ def _streamed_session(slug: str, *, persistent: bool = True, create: bool = Fals
         )
         return session, BrowserUnavailable
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Browser session failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Browser session failed: {exc}") from exc
 
 
 @router.post("/projects/{slug}/preview/stream/navigate")
@@ -2844,9 +2844,9 @@ async def stream_browser_navigate(slug: str, body: StreamNavigate):
     try:
         result = await asyncio.to_thread(session.navigate, url)
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Navigation failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Navigation failed: {exc}") from exc
     _active_streamed_previews.add(slug)
     return {"slug": slug, **result}
 
@@ -2857,9 +2857,9 @@ async def stream_browser_frame(slug: str):
     try:
         png = await asyncio.to_thread(session.screenshot)
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Frame capture failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Frame capture failed: {exc}") from exc
     width, height = session.viewport
     return StreamingResponse(
         iter([png]),
@@ -2897,14 +2897,14 @@ async def stream_browser_screencast(request: Request, slug: str):
                 frames.get_nowait()
                 frames.put_nowait(frame)
             except queue.Empty:
-                pass
+                _log.debug("Ignoring error in _on_frame()", exc_info=True)
 
     try:
         handle = await asyncio.to_thread(start_screencast, _on_frame)
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Screencast failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Screencast failed: {exc}") from exc
     if handle is None:
         # Couldn't establish a screencast → tell the client to keep polling.
         raise HTTPException(status_code=501, detail="Screencast unavailable")
@@ -2933,7 +2933,7 @@ async def stream_browser_screencast(request: Request, slug: str):
             try:
                 handle.stop()
             except Exception:
-                pass
+                _log.debug("Ignoring error in event_generator()", exc_info=True)
 
     return StreamingResponse(
         event_generator(),
@@ -3004,9 +3004,9 @@ async def stream_browser_input(slug: str, body: StreamInput):
     except HTTPException:
         raise
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Input failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Input failed: {exc}") from exc
     return {
         "slug": slug,
         "ok": True,
@@ -3026,9 +3026,9 @@ async def stream_browser_viewport(slug: str, body: StreamViewport):
     try:
         await asyncio.to_thread(setter, body.width, body.height)
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Viewport resize failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Viewport resize failed: {exc}") from exc
     w, h = session.viewport
     return {"slug": slug, "width": w, "height": h}
 
@@ -3043,9 +3043,9 @@ async def stream_browser_emulate(slug: str, body: StreamEmulate):
     try:
         await asyncio.to_thread(lambda: setter(dark=body.dark))
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Emulation failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Emulation failed: {exc}") from exc
     return {"slug": slug, "dark": body.dark}
 
 
@@ -3097,9 +3097,9 @@ async def stream_browser_tab_action(slug: str, body: StreamTab):
     except HTTPException:
         raise
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Tab action failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Tab action failed: {exc}") from exc
     return {"slug": slug, "ok": True, **result}
 
 
@@ -3156,9 +3156,9 @@ async def stream_browser_pick(slug: str, body: StreamPick):
     try:
         info = await asyncio.to_thread(picker, body.x, body.y)
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Element pick failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Element pick failed: {exc}") from exc
     return {"slug": slug, "element": info or {}}
 
 
@@ -3173,9 +3173,9 @@ async def stream_browser_screenshot_to_chat(slug: str):
     try:
         png = await asyncio.to_thread(session.screenshot)
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Screenshot failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Screenshot failed: {exc}") from exc
     name = ""
     downloads_dir = getattr(session, "downloads_dir", None)
     if downloads_dir is not None:
@@ -3205,9 +3205,9 @@ async def stream_browser_record(slug: str, body: StreamRecord):
             lambda: recorder(frames=body.frames, interval=body.interval)
         )
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Recording failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Recording failed: {exc}") from exc
     if path is None:
         raise HTTPException(
             status_code=501,
@@ -3283,9 +3283,9 @@ async def stream_browser_cookies(slug: str):
     try:
         cookies = await asyncio.to_thread(session.cookies)
     except browser_unavailable as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Cookie read failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Cookie read failed: {exc}") from exc
     return {"slug": slug, "cookies": cookies}
 
 
@@ -3346,7 +3346,7 @@ async def stream_browser_install(slug: str):
     try:
         result = await asyncio.to_thread(_install)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Install failed: {exc}")
+        raise HTTPException(status_code=500, detail=f"Install failed: {exc}") from exc
     return {"slug": slug, **result}
 
 

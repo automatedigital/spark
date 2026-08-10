@@ -43,7 +43,7 @@ class _AgentSetupMixin:
                     current_model = normalized_model
                     changed = True
         except Exception:
-            pass
+            logger.debug("Ignoring error in _normalize_model_for_provider()", exc_info=True)
 
         if resolved_provider == "copilot":
             try:
@@ -71,7 +71,7 @@ class _AgentSetupMixin:
                     self.api_mode = resolved_mode
                     changed = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in _normalize_model_for_provider()", exc_info=True)
             return changed
 
         if resolved_provider in {"opencode-zen", "opencode-go"}:
@@ -100,7 +100,7 @@ class _AgentSetupMixin:
                     self.api_mode = resolved_mode
                     changed = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in _normalize_model_for_provider()", exc_info=True)
             return changed
 
         if resolved_provider != "openai-codex":
@@ -130,7 +130,7 @@ class _AgentSetupMixin:
                 if available:
                     fallback_model = available[0]
             except Exception:
-                pass
+                logger.debug("Ignoring error in _normalize_model_for_provider()", exc_info=True)
 
             if current_model != fallback_model:
                 self.model = fallback_model
@@ -146,8 +146,8 @@ class _AgentSetupMixin:
         Returns True if credentials are ready, False on auth failure.
         """
         from spark_cli.runtime_provider import (
-            resolve_runtime_provider,
             format_runtime_provider_error,
+            resolve_runtime_provider,
         )
 
         try:
@@ -241,7 +241,7 @@ class _AgentSetupMixin:
                         resolved_provider,
                     )
             except Exception:
-                pass
+                logger.debug("Ignoring error in _ensure_runtime_credentials()", exc_info=True)
 
         # Normalize model for the resolved provider (e.g. swap non-Codex
         # models when provider is openai-codex).  Fixes #651.
@@ -283,7 +283,7 @@ class _AgentSetupMixin:
             if service_tier:
                 overrides = resolve_fast_mode_overrides(route.get("model"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _resolve_turn_agent_config()", exc_info=True)
         budget_cfg = getattr(self, "_response_budget_config", {}) or {}
         return merge_route_request_overrides(
             route, overrides, soft_caps_enabled=bool(budget_cfg.get("soft_output_caps", True))
@@ -360,7 +360,7 @@ class _AgentSetupMixin:
                 )
                 self._session_db._conn.commit()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _init_agent()", exc_info=True)
 
         try:
             runtime = runtime_override or {

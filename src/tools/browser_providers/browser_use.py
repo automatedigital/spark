@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 
@@ -12,7 +12,7 @@ from tools.browser_providers.base import CloudBrowserProvider
 from tools.managed_tool_gateway import resolve_managed_tool_gateway
 
 logger = logging.getLogger(__name__)
-_pending_create_keys: Dict[str, str] = {}
+_pending_create_keys: dict[str, str] = {}
 _pending_create_keys_lock = threading.Lock()
 
 _BASE_URL = "https://api.browser-use.com/api/v3"
@@ -72,7 +72,7 @@ class BrowserUseProvider(CloudBrowserProvider):
     # Config resolution (direct API key; managed hosted gateways are disabled)
     # ------------------------------------------------------------------
 
-    def _get_config_or_none(self) -> Optional[Dict[str, Any]]:
+    def _get_config_or_none(self) -> dict[str, Any] | None:
         api_key = os.environ.get("BROWSER_USE_API_KEY")
         if api_key:
             return {
@@ -91,7 +91,7 @@ class BrowserUseProvider(CloudBrowserProvider):
             "managed_mode": True,
         }
 
-    def _get_config(self) -> Dict[str, Any]:
+    def _get_config(self) -> dict[str, Any]:
         config = self._get_config_or_none()
         if config is None:
             raise ValueError("Browser Use requires a direct BROWSER_USE_API_KEY credential.")
@@ -101,14 +101,14 @@ class BrowserUseProvider(CloudBrowserProvider):
     # Session lifecycle
     # ------------------------------------------------------------------
 
-    def _headers(self, config: Dict[str, Any]) -> Dict[str, str]:
+    def _headers(self, config: dict[str, Any]) -> dict[str, str]:
         headers = {
             "Content-Type": "application/json",
             "X-Browser-Use-API-Key": config["api_key"],
         }
         return headers
 
-    def create_session(self, task_id: str) -> Dict[str, object]:
+    def create_session(self, task_id: str) -> dict[str, object]:
         config = self._get_config()
         managed_mode = bool(config.get("managed_mode"))
 

@@ -8,11 +8,14 @@ channels without surprising chat or web transports.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
+
+logger = logging.getLogger(__name__)
 
 SUBAGENT_EVENT_SCHEMA = "spark.subagent.lifecycle.v1"
 SUBAGENT_LIFECYCLE_CALLBACK_EVENT = "subagent.lifecycle"
@@ -139,15 +142,17 @@ def _json_safe(value: Any, *, depth: int = 0) -> Any:
 
     if isinstance(value, (list, tuple, set, frozenset)):
         items = list(value)
-        out = [_json_safe(item, depth=depth + 1) for item in items[:MAX_COLLECTION_ITEMS]]
+        seq: list[Any] = [
+            _json_safe(item, depth=depth + 1) for item in items[:MAX_COLLECTION_ITEMS]
+        ]
         if len(items) > MAX_COLLECTION_ITEMS:
-            out.append(
+            seq.append(
                 {
                     "_truncated": True,
                     "_omitted_items": len(items) - MAX_COLLECTION_ITEMS,
                 }
             )
-        return out
+        return seq
 
     return _truncate_text(str(value))
 
@@ -205,14 +210,14 @@ def make_subagent_event(
         try:
             event_payload["duration_seconds"] = round(float(duration_seconds), 3)
         except (TypeError, ValueError):
-            pass
+            logger.debug("Ignoring error in make_subagent_event()", exc_info=True)
     if is_error is not None:
         event_payload["is_error"] = bool(is_error)
     if result_lines is not None:
         try:
             event_payload["result_lines"] = max(0, int(result_lines))
         except (TypeError, ValueError):
-            pass
+            logger.debug("Ignoring error in make_subagent_event()", exc_info=True)
     if summary:
         event_payload["summary"] = _truncate_text(str(summary), MAX_LONG_TEXT_CHARS)
     if error:
@@ -221,7 +226,7 @@ def make_subagent_event(
         try:
             event_payload["api_calls"] = max(0, int(api_calls))
         except (TypeError, ValueError):
-            pass
+            logger.debug("Ignoring error in make_subagent_event()", exc_info=True)
     if exit_reason:
         event_payload["exit_reason"] = _truncate_text(str(exit_reason), 80)
     if tokens is not None:
@@ -255,7 +260,7 @@ def emit_subagent_event(
             event=event,
         )
     except Exception:
-        pass
+        logger.debug("Ignoring error in emit_subagent_event()", exc_info=True)
 
 
 def make_run_record(
@@ -287,7 +292,7 @@ def make_run_record(
         "provider": provider,
         "toolsets": list(toolsets or []),
     }
-    return _json_safe(record)
+    return cast("dict[str, Any]", _json_safe(record))
 
 
 def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dict[str, Any] | None = None) -> None:
@@ -298,7 +303,8 @@ def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dic
     payload = payload or {}
     task_index = int(run_record.get("task_index", 0) or 0)
     task_count = int(run_record.get("task_count", 1) or 1)
-    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    _raw_result = payload.get("result")
+    result: dict[str, Any] = _raw_result if isinstance(_raw_result, dict) else {}
 
     lifecycle_event = make_subagent_event(
         event,
@@ -403,13 +409,13 @@ def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dic
                     db.update_subagent_run(str(run_id), run_snapshot)
                 db.append_subagent_event(str(run_id), event, lifecycle_event)
             except Exception:
-                pass
+                logger.debug("Ignoring error in emit()", exc_info=True)
 
     if dedicated_cb:
         try:
             dedicated_cb(lifecycle_event)
         except Exception:
-            pass
+            logger.debug("Ignoring error in emit()", exc_info=True)
 
     progress_cb = getattr(parent_agent, "tool_progress_callback", None) if parent_agent is not None else None
     emit_subagent_event(progress_cb, lifecycle_event)

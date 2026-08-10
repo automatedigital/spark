@@ -18,7 +18,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from core.spark_constants import get_optional_skills_dir
 
@@ -29,7 +29,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 _DOCS_BASE = "https://spark.automatedigital.ai/docs"
 
 
-def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
+def _model_config_dict(config: dict[str, Any]) -> dict[str, Any]:
     current_model = config.get("model")
     if isinstance(current_model, dict):
         return dict(current_model)
@@ -38,12 +38,12 @@ def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def _get_credential_pool_strategies(config: Dict[str, Any]) -> Dict[str, str]:
+def _get_credential_pool_strategies(config: dict[str, Any]) -> dict[str, str]:
     strategies = config.get("credential_pool_strategies")
     return dict(strategies) if isinstance(strategies, dict) else {}
 
 
-def _set_credential_pool_strategy(config: Dict[str, Any], provider: str, strategy: str) -> None:
+def _set_credential_pool_strategy(config: dict[str, Any], provider: str, strategy: str) -> None:
     if not provider:
         return
     strategies = _get_credential_pool_strategies(config)
@@ -109,14 +109,14 @@ _DEFAULT_PROVIDER_MODELS = {
 }
 
 
-def _current_reasoning_effort(config: Dict[str, Any]) -> str:
+def _current_reasoning_effort(config: dict[str, Any]) -> str:
     agent_cfg = config.get("agent")
     if isinstance(agent_cfg, dict):
         return str(agent_cfg.get("reasoning_effort") or "").strip().lower()
     return ""
 
 
-def _set_reasoning_effort(config: Dict[str, Any], effort: str) -> None:
+def _set_reasoning_effort(config: dict[str, Any], effort: str) -> None:
     agent_cfg = config.get("agent")
     if not isinstance(agent_cfg, dict):
         agent_cfg = {}
@@ -192,7 +192,7 @@ def print_noninteractive_setup_guidance(reason: str | None = None) -> None:
     print()
 
 
-def prompt(question: str, default: str = None, password: bool = False) -> str:
+def prompt(question: str, default: str | None = None, password: bool = False) -> str:
     """Prompt for input with optional default."""
     if default:
         display = f"{question} [{default}]: "
@@ -291,7 +291,7 @@ def prompt_validated(
     question: str,
     validator,
     *,
-    default: str = None,
+    default: str | None = None,
     password: bool = False,
     allow_empty: bool = True,
 ) -> str:
@@ -309,7 +309,7 @@ def prompt_validated(
 def prompt_checklist(
     title: str,
     items: list,
-    pre_selected: list = None,
+    pre_selected: list | None = None,
     *,
     enter_selects_current: bool = False,
 ) -> list:
@@ -379,7 +379,7 @@ def _print_setup_summary(config: dict, spark_home):
     print()
     print_header("Tool Availability Summary")
 
-    tool_status = []
+    tool_status: list[tuple[str, bool, str | None]] = []
 
     # Vision — use the same runtime resolver as the actual vision tools
     try:
@@ -586,7 +586,7 @@ def _prompt_container_resources(config: dict):
     try:
         terminal["container_cpu"] = float(cpu_str)
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _prompt_container_resources()", exc_info=True)
 
     # Memory
     current_mem = terminal.get("container_memory", 5120)
@@ -594,7 +594,7 @@ def _prompt_container_resources(config: dict):
     try:
         terminal["container_memory"] = int(mem_str)
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _prompt_container_resources()", exc_info=True)
 
     # Disk
     current_disk = terminal.get("container_disk", 51200)
@@ -602,7 +602,7 @@ def _prompt_container_resources(config: dict):
     try:
         terminal["container_disk"] = int(disk_str)
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _prompt_container_resources()", exc_info=True)
 
 
 # Tool categories and provider config are now in tools_config.py (shared
@@ -660,10 +660,10 @@ def setup_model_provider(config: dict, *, quick: bool = False):
         config.pop("custom_providers", None)
 
     # Derive the selected provider for downstream steps (vision setup).
-    selected_provider = None
+    selected_provider = ""
     _m = config.get("model")
     if isinstance(_m, dict):
-        selected_provider = _m.get("provider")
+        selected_provider = str(_m.get("provider") or "")
 
 
     # ── Same-provider fallback & rotation setup (full setup only) ──
@@ -672,7 +672,6 @@ def setup_model_provider(config: dict, *, quick: bool = False):
             from types import SimpleNamespace
 
             from agent.credential_pool import load_pool
-
             from spark_cli.auth_commands import auth_add_command
 
             pool = load_pool(selected_provider)
@@ -1083,6 +1082,8 @@ def setup_terminal_backend(config: dict):
     )
 
     selected_backend = idx_to_backend.get(terminal_idx)
+    if selected_backend is None:
+        raise RuntimeError(f"Unknown terminal backend selection: {terminal_idx}")
 
     if terminal_idx == keep_current_idx:
         print_info(f"Keeping current backend: {current_backend}")
@@ -1440,7 +1441,7 @@ def setup_agent_settings(config: dict):
         if 0.5 <= threshold <= 0.95:
             config["compression"]["threshold"] = threshold
     except ValueError:
-        pass
+        logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
 
     print_success(
         f"Context compression threshold set to {config['compression'].get('threshold', 0.50)}"
@@ -1495,14 +1496,14 @@ def setup_agent_settings(config: dict):
             if idle_val > 0:
                 config["session_reset"]["idle_minutes"] = idle_val
         except ValueError:
-            pass
+            logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
         hour_str = prompt("  Daily reset hour (0-23, local time)", str(current_hour))
         try:
             hour_val = int(hour_str)
             if 0 <= hour_val <= 23:
                 config["session_reset"]["at_hour"] = hour_val
         except ValueError:
-            pass
+            logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
         print_success(
             f"Sessions reset after {config['session_reset'].get('idle_minutes', 1440)} min idle or daily at {config['session_reset'].get('at_hour', 4)}:00"
         )
@@ -1514,7 +1515,7 @@ def setup_agent_settings(config: dict):
             if idle_val > 0:
                 config["session_reset"]["idle_minutes"] = idle_val
         except ValueError:
-            pass
+            logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
         print_success(
             f"Sessions reset after {config['session_reset'].get('idle_minutes', 1440)} min of inactivity"
         )
@@ -1526,7 +1527,7 @@ def setup_agent_settings(config: dict):
             if 0 <= hour_val <= 23:
                 config["session_reset"]["at_hour"] = hour_val
         except ValueError:
-            pass
+            logger.debug("Ignoring error in setup_agent_settings()", exc_info=True)
         print_success(
             f"Sessions reset daily at {config['session_reset'].get('at_hour', 4)}:00"
         )
@@ -2019,54 +2020,6 @@ def _setup_wecom_callback():
     _gw_setup()
 
 
-def _setup_qqbot():
-    """Configure QQ Bot gateway."""
-    print_header("QQ Bot")
-    existing = get_env_value("QQ_APP_ID")
-    if existing:
-        print_info("QQ Bot: already configured")
-        if not prompt_yes_no("Reconfigure QQ Bot?", False):
-            return
-
-    print_info("Connects Spark to QQ via the Official QQ Bot API (v2).")
-    print_info("   Requires a QQ Bot application at q.qq.com")
-    print_info("   Reference: https://bot.q.qq.com/wiki/develop/api-v2/")
-    print()
-
-    app_id = prompt("QQ Bot App ID")
-    if not app_id:
-        print_warning("App ID is required — skipping QQ Bot setup")
-        return
-    save_env_value("QQ_APP_ID", app_id.strip())
-
-    client_secret = prompt("QQ Bot App Secret", password=True)
-    if not client_secret:
-        print_warning("App Secret is required — skipping QQ Bot setup")
-        return
-    save_env_value("QQ_CLIENT_SECRET", client_secret)
-    print_success("QQ Bot credentials saved")
-
-    print()
-    print_info("🔒 Security: Restrict who can DM your bot")
-    print_info("   Use QQ user OpenIDs (found in event payloads)")
-    print()
-    allowed_users = prompt("Allowed user OpenIDs (comma-separated, leave empty for open access)")
-    if allowed_users:
-        save_env_value("QQ_ALLOWED_USERS", allowed_users.replace(" ", ""))
-        print_success("QQ Bot allowlist configured")
-    else:
-        print_info("⚠️  No allowlist set — anyone can DM the bot!")
-
-    print()
-    print_info("📬 Home Channel: OpenID for cron job delivery and notifications.")
-    home_channel = prompt("Home channel OpenID (leave empty to set later)")
-    if home_channel:
-        save_env_value("QQ_HOME_CHANNEL", home_channel)
-
-    print()
-    print_success("QQ Bot configured!")
-
-
 def _setup_bluebubbles():
     """Configure BlueBubbles iMessage gateway."""
     print_header("BlueBubbles (iMessage)")
@@ -2510,7 +2463,7 @@ def setup_memory(config: dict):
 # =============================================================================
 
 
-def _get_section_config_summary(config: dict, section_key: str) -> Optional[str]:
+def _get_section_config_summary(config: dict, section_key: str) -> str | None:
     """Return a short summary if a setup section is already configured, else None.
 
     Used after OpenClaw migration to detect which sections can be skipped.
@@ -2530,7 +2483,7 @@ def _get_section_config_summary(config: dict, section_key: str) -> Optional[str]
                 if get_active_provider():
                     has_key = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in _get_section_config_summary()", exc_info=True)
         if not has_key:
             return None
         model = config.get("model")
@@ -3122,7 +3075,7 @@ def run_setup_wizard(args):
     _offer_launch_chat()
 
 
-def _resolve_spark_chat_argv() -> Optional[list[str]]:
+def _resolve_spark_chat_argv() -> list[str] | None:
     """Resolve argv for launching ``spark chat`` in a fresh process."""
     spark_bin = shutil.which("spark")
     if spark_bin:
@@ -3132,7 +3085,7 @@ def _resolve_spark_chat_argv() -> Optional[list[str]]:
         if importlib.util.find_spec("spark_cli") is not None:
             return [sys.executable, "-m", "spark_cli.main", "chat"]
     except Exception:
-        pass
+        logger.debug("Ignoring error in _resolve_spark_chat_argv()", exc_info=True)
 
     return None
 
@@ -3172,13 +3125,13 @@ def _offer_launch_chat():
                     real_tty = _path
                     break
             except OSError:
-                pass
+                logger.debug("Ignoring error in _offer_launch_chat()", exc_info=True)
         if real_tty:
             _new = os.open(real_tty, os.O_RDWR | os.O_NOCTTY)
             os.dup2(_new, 0)
             os.close(_new)
     except Exception:
-        pass
+        logger.debug("Ignoring error in _offer_launch_chat()", exc_info=True)
 
     os.execvp(chat_argv[0], chat_argv)
 
@@ -3360,8 +3313,8 @@ def _run_quick_setup(config: dict, spark_home):
         print_info("You can configure these later with 'spark setup gateway'.")
 
         # Group by platform (preserving order)
-        platform_order = []
-        platforms = {}
+        platform_order: list[str] = []
+        platforms: dict[str, list[dict[str, Any]]] = {}
         for var in missing_messaging:
             name = var["name"]
             if "TELEGRAM" in name:

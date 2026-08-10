@@ -16,6 +16,8 @@ from agent.usage_pricing import (
     format_duration_compact,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class _InfoCommandsMixin:
     def _show_usage(self):
@@ -147,8 +149,8 @@ class _InfoCommandsMixin:
                 i += 1
 
         try:
-            from core.spark_state import SessionDB
             from agent.insights import InsightsEngine
+            from core.spark_state import SessionDB
 
             db = SessionDB()
             engine = InsightsEngine(db)
@@ -195,6 +197,7 @@ class _InfoCommandsMixin:
 
         if sub == "dispatch":
             import asyncio
+
             from spark_cli.kanban_dispatch import run_dispatch_tick
 
             try:
@@ -231,6 +234,7 @@ class _InfoCommandsMixin:
         informs the user so they know the tool list has been refreshed.
         """
         import time
+
         import yaml as _yaml
 
         CONFIG_WATCH_INTERVAL = 5.0  # seconds between config.yaml stat() calls
@@ -288,10 +292,10 @@ class _InfoCommandsMixin:
         """
         try:
             from tools.mcp_tool import (
-                shutdown_mcp_servers,
-                discover_mcp_tools,
-                _servers,
                 _lock,
+                _servers,
+                discover_mcp_tools,
+                shutdown_mcp_servers,
             )
 
             # Capture old server names
@@ -378,7 +382,8 @@ class _InfoCommandsMixin:
                         self.conversation_history,
                     )
                 except Exception:
-                    pass  # Best-effort
+                    # Best-effort
+                    logger.debug("Ignored exception in _reload_mcp", exc_info=True)
 
             print(
                 f"  ✅ Agent updated - {len(self.agent.tools if self.agent else [])} tool(s) available"

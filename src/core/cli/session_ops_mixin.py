@@ -7,6 +7,7 @@ save/retry/undo, and gateway-status display. Combined into SparkCLI via inherita
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 from datetime import datetime
@@ -17,6 +18,8 @@ from core.model_tools import get_tool_definitions
 from core.spark_constants import display_spark_home, get_spark_home
 from spark_cli.banner import build_welcome_banner
 
+logger = logging.getLogger(__name__)
+
 
 class _SessionOpsMixin:
     def _handle_export_command(self, cmd: str):
@@ -24,7 +27,7 @@ class _SessionOpsMixin:
 
         With --publish, opt-in to upload the redacted file to a public GitHub Gist.
         """
-        from core.cli.render import _cprint, _DIM, _RST
+        from core.cli.render import _DIM, _RST, _cprint
         from spark_cli.session_export import export_session_redacted, publish_export
 
         tokens = cmd.strip().split()[1:]  # drop "/export"
@@ -175,7 +178,7 @@ class _SessionOpsMixin:
             )
             self._session_db._conn.commit()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _preload_resumed_session()", exc_info=True)
 
         return True
 
@@ -485,7 +488,7 @@ class _SessionOpsMixin:
 
     def _show_gateway_status(self):
         """Show status of the gateway and connected messaging platforms."""
-        from gateway.config import load_gateway_config, Platform
+        from gateway.config import Platform, load_gateway_config
 
         print()
         print("+" + "-" * 60 + "+")

@@ -445,15 +445,20 @@ class TestVprintForceParameter:
     def test_error_messages_use_force_in_run_agent(self):
         """Verify that critical error _vprint calls in run_agent.py
         include force=True."""
-        with open("src/core/run_agent/__init__.py", "r") as f:
-            source = f.read()
+        # The turn loop was split across the run_agent package, so scan every
+        # module in it rather than just __init__.py.
+        from pathlib import Path as _Path
 
-        tree = ast.parse(source)
+        sources = [
+            f.read_text()
+            for f in sorted(_Path("src/core/run_agent").glob("*.py"))
+        ]
 
         forced_error_count = 0
         unforced_error_count = 0
 
-        for node in ast.walk(tree):
+        nodes = [n for source in sources for n in ast.walk(ast.parse(source))]
+        for node in nodes:
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
@@ -564,8 +569,12 @@ class TestCtrlCResetsContinuousMode:
     def test_ctrl_c_handler_resets_voice_continuous(self):
         """Source check: Ctrl+C voice cancel block must set
         _voice_continuous = False."""
-        with open("src/core/cli/__init__.py") as f:
-            source = f.read()
+        # The run loop moved into core/cli/main_loop.py, so read the package.
+        from pathlib import Path as _Path
+
+        source = "\n".join(
+            f.read_text() for f in sorted(_Path("src/core/cli").glob("*.py"))
+        )
 
         # Find the Ctrl+C handler's voice cancel block
         lines = source.split("\n")
@@ -740,8 +749,12 @@ class TestKeyHandlerNeverBlocks:
     def test_processing_guard_in_start_path(self):
         """Source check: key handler must check _voice_processing before
         starting a new recording."""
-        with open("src/core/cli/__init__.py") as f:
-            source = f.read()
+        # The run loop moved into core/cli/main_loop.py, so read the package.
+        from pathlib import Path as _Path
+
+        source = "\n".join(
+            f.read_text() for f in sorted(_Path("src/core/cli").glob("*.py"))
+        )
 
         lines = source.split("\n")
         in_handler = False

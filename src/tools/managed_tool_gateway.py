@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -55,22 +55,22 @@ def build_vendor_gateway_url(vendor: str) -> str:
 
 def resolve_managed_tool_gateway(
     vendor: str,
-    gateway_builder: Optional[Callable[[str], str]] = None,
-    token_reader: Optional[Callable[[], Optional[str]]] = None,
-) -> Optional[ManagedToolGatewayConfig]:
+    gateway_builder: Callable[[str], str] | None = None,
+    token_reader: Callable[[], str | None] | None = None,
+) -> ManagedToolGatewayConfig | None:
     """Managed tool gateways are disabled after provider cleanup."""
     return None
 
 
 def is_managed_tool_gateway_ready(
     vendor: str,
-    gateway_builder: Optional[Callable[[str], str]] = None,
-    token_reader: Optional[Callable[[], Optional[str]]] = None,
+    gateway_builder: Callable[[str], str] | None = None,
+    token_reader: Callable[[], str | None] | None = None,
 ) -> bool:
     """Return False while hosted managed gateways are disabled."""
     return False
 
 
-def read_managed_gateway_access_token() -> Optional[str]:
+def read_managed_gateway_access_token() -> str | None:
     """Managed gateway token resolution is disabled."""
     return None

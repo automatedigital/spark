@@ -9,6 +9,7 @@ back into the minimal shape Spark expects from an OpenAI client.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import re
@@ -20,6 +21,8 @@ from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 ACP_MARKER_BASE_URL = "acp://copilot"
 _DEFAULT_TIMEOUT_SECONDS = 900.0
@@ -241,7 +244,7 @@ def _ensure_path_within_cwd(path_text: str, cwd: str) -> Path:
 
 
 class _ACPChatCompletions:
-    def __init__(self, client: "CopilotACPClient"):
+    def __init__(self, client: CopilotACPClient):
         self._client = client
 
     def create(self, **kwargs: Any) -> Any:
@@ -249,7 +252,7 @@ class _ACPChatCompletions:
 
 
 class _ACPChatNamespace:
-    def __init__(self, client: "CopilotACPClient"):
+    def __init__(self, client: CopilotACPClient):
         self.completions = _ACPChatCompletions(client)
 
 
@@ -295,7 +298,7 @@ class CopilotACPClient:
             try:
                 proc.kill()
             except Exception:
-                pass
+                logger.debug("Ignoring error in close()", exc_info=True)
 
     def _create_chat_completion(
         self,
@@ -370,6 +373,7 @@ class CopilotACPClient:
         stderr_tail: deque[str] = deque(maxlen=40)
 
         def _stdout_reader() -> None:
+            assert proc.stdout is not None  # opened with stdout=PIPE
             for line in proc.stdout:
                 try:
                     inbox.put(json.loads(line))
@@ -399,6 +403,7 @@ class CopilotACPClient:
                 "method": method,
                 "params": params,
             }
+            assert proc.stdin is not None  # opened with stdin=PIPE
             proc.stdin.write(json.dumps(payload) + "\n")
             proc.stdin.flush()
 

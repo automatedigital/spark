@@ -1114,7 +1114,7 @@ def execute_code(
                         oldest = tail_buf.popleft()
                         tail_collected -= len(oldest)
             except (ValueError, OSError):
-                pass
+                logger.debug("Ignoring error in _drain_head_tail()", exc_info=True)
             # Transfer final tail to output list
             tail_chunks.extend(tail_buf)
 
@@ -1237,7 +1237,8 @@ def execute_code(
         try:
             os.unlink(sock_path)
         except OSError:
-            pass  # already cleaned up or never created
+            # already cleaned up or never created
+            logger.debug("Ignored exception in execute_code", exc_info=True)
 
 
 def _kill_process_group(proc, escalate: bool = False):

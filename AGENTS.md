@@ -36,7 +36,7 @@ spark doctor                        # Diagnose environment
 
 python -m pytest tests/ -q                          # Full suite
 python -m pytest tests/ -k "test_name" -q           # Focused test
-python -m pytest tests/ -m "not slow" -q            # Skip slow tests
+python -m pytest tests/ -m "not slow and not integration" -q  # Skip slow/external tests
 python -m pytest tests/ -m "not integration" -q     # Skip external services
 ruff check src/
 mypy src/agent/ src/spark_cli/

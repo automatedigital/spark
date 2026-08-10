@@ -29,11 +29,13 @@ import logging
 import os
 import threading
 import uuid
+from collections.abc import Sequence
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional, Sequence
 
 from core.spark_constants import get_config_path, get_spark_home
+
+logger = logging.getLogger(__name__)
 
 # Sentinel to track whether setup_logging() has already run.  The function
 # is idempotent — calling it twice is safe but the second call is a no-op
@@ -185,11 +187,11 @@ COMPONENT_PREFIXES = {
 
 def setup_logging(
     *,
-    spark_home: Optional[Path] = None,
-    log_level: Optional[str] = None,
-    max_size_mb: Optional[int] = None,
-    backup_count: Optional[int] = None,
-    mode: Optional[str] = None,
+    spark_home: Path | None = None,
+    log_level: str | None = None,
+    max_size_mb: int | None = None,
+    backup_count: int | None = None,
+    mode: str | None = None,
     force: bool = False,
 ) -> Path:
     """Configure the Spark logging subsystem.
@@ -353,7 +355,7 @@ class _ManagedRotatingFileHandler(RotatingFileHandler):
             try:
                 os.chmod(self.baseFilename, 0o660)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _chmod_if_managed()", exc_info=True)
 
     def _open(self):
         stream = super()._open()
@@ -400,7 +402,7 @@ def _add_rotating_handler(
     max_bytes: int,
     backup_count: int,
     formatter: logging.Formatter,
-    log_filter: Optional[logging.Filter] = None,
+    log_filter: logging.Filter | None = None,
 ) -> None:
     """Add a ``RotatingFileHandler`` to *logger*, skipping if one already
     exists for the same resolved file path (idempotent).
@@ -449,5 +451,5 @@ def _read_logging_config():
                     log_cfg.get("backup_count"),
                 )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _read_logging_config()", exc_info=True)
     return (None, None, None)

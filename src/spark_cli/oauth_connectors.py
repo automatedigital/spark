@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -21,11 +22,14 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 from urllib.parse import urlencode
 
 import httpx
 
 from core.spark_constants import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -102,7 +106,7 @@ def load_token(provider_id: str) -> dict | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return cast("dict[Any, Any] | None", json.loads(path.read_text(encoding="utf-8")))
     except Exception:
         return None
 
@@ -114,7 +118,7 @@ def save_token(provider_id: str, token: dict) -> None:
     try:
         os.chmod(token_path(provider_id), 0o600)
     except OSError:
-        pass
+        logger.debug("Ignoring error in save_token()", exc_info=True)
 
 
 def clear_token(provider_id: str) -> None:
@@ -263,7 +267,7 @@ def exchange_code(
     token = resp.json()
     if "expires_in" in token and "expires_at" not in token:
         token["expires_at"] = int(time.time()) + int(token["expires_in"])
-    return token
+    return cast("dict[Any, Any]", token)
 
 
 def request_device_code(provider_id: str) -> dict:
@@ -283,7 +287,7 @@ def request_device_code(provider_id: str) -> dict:
         timeout=15,
     )
     resp.raise_for_status()
-    return resp.json()
+    return cast("dict[Any, Any]", resp.json())
 
 
 def poll_device_code(provider_id: str, device_code: str) -> dict:
@@ -303,7 +307,7 @@ def poll_device_code(provider_id: str, device_code: str) -> dict:
     token = resp.json()
     if "expires_in" in token and "expires_at" not in token:
         token["expires_at"] = int(time.time()) + int(token["expires_in"])
-    return token
+    return cast("dict[Any, Any]", token)
 
 
 def enrich_token(provider_id: str, token: dict) -> dict:
@@ -328,7 +332,7 @@ def enrich_token(provider_id: str, token: dict) -> dict:
         if account:
             token["account"] = account
     except Exception:
-        pass
+        logger.debug("Ignoring error in enrich_token()", exc_info=True)
     return token
 
 

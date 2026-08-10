@@ -7,6 +7,7 @@ SparkCLI via inheritance.
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -20,6 +21,8 @@ from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.styles import Style as PTStyle
 
 from core.cli.render import _PT_ANSI
+
+logger = logging.getLogger(__name__)
 
 
 class _TuiMixin:
@@ -50,7 +53,7 @@ class _TuiMixin:
             if profile not in ("default", "custom"):
                 symbol = f"{profile} {symbol}"
         except Exception:
-            pass
+            logger.debug("Ignoring error in _get_tui_prompt_symbols()", exc_info=True)
         stripped = symbol.rstrip()
         if not stripped:
             return "❯ ", "❯ "
@@ -126,7 +129,7 @@ class _TuiMixin:
 
             style_dict.update(get_prompt_toolkit_style_overrides())
         except Exception:
-            pass
+            logger.debug("Ignoring error in _build_tui_style_dict()", exc_info=True)
         # Keep hint/runtime helper text muted for readability.
         style_dict["hint"] = "#8B8682 italic"
         style_dict["status-bar-dim"] = "bg:#1a1a2e #8B8682"
@@ -169,8 +172,8 @@ class _TuiMixin:
             return ""
 
         try:
-            import subprocess
             import re
+            import subprocess
 
             result = subprocess.run(
                 [
@@ -208,7 +211,7 @@ class _TuiMixin:
                 if _term_lines > 2:
                     print("\n" * (_term_lines - 1), end="", flush=True)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _dismiss_welcome_logo()", exc_info=True)
         self._show_welcome_logo = False
 
     def _get_welcome_splash_fragments(self):

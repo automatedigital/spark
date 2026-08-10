@@ -6,8 +6,12 @@ pipeline, and provider listing. Combined into SparkCLI via inheritance.
 
 from __future__ import annotations
 
+import logging
+
 from core.cli import _looks_like_slash_command  # defined before this import; no cycle
 from core.cli.render import _cprint
+
+logger = logging.getLogger(__name__)
 
 
 class _ModelMixin:
@@ -16,6 +20,7 @@ class _ModelMixin:
     ) -> int | None:
         """Run curses_single_select via run_in_terminal so prompt_toolkit handles terminal ownership cleanly."""
         import threading
+
         from spark_cli.curses_ui import curses_single_select
 
         result = [None]
@@ -52,7 +57,7 @@ class _ModelMixin:
             try:
                 result[0] = input(prompt_text).strip() or None
             except (KeyboardInterrupt, EOFError):
-                pass
+                logger.debug("Ignoring error in _ask()", exc_info=True)
 
         if self._app:
             from prompt_toolkit.application import run_in_terminal
@@ -161,7 +166,7 @@ class _ModelMixin:
                 )
                 _cprint(f"    Context: {ctx:,} tokens")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _apply_model_switch_result()", exc_info=True)
 
         cache_enabled = (
             "openrouter" in (result.base_url or "").lower()
@@ -199,7 +204,7 @@ class _ModelMixin:
                 if live:
                     model_list = live
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_model_picker_selection()", exc_info=True)
             if not model_list:
                 model_list = provider_data.get("models", [])
             state["stage"] = "model"
@@ -259,9 +264,9 @@ class _ModelMixin:
           /model --provider <provider>        - switch to provider, auto-detect model
         """
         from spark_cli.model_switch import (
-            switch_model,
-            parse_model_flags,
             list_authenticated_providers,
+            parse_model_flags,
+            switch_model,
         )
         from spark_cli.providers import get_label
 
@@ -315,7 +320,7 @@ class _ModelMixin:
                         self._smart_model_routing = _cfg.get("smart_model_routing") or {}
                         self.agent = None  # force re-init with new route
                     except Exception:
-                        pass
+                        logger.debug("Ignoring error in _run_multi()", exc_info=True)
 
                 if self._app:
                     from prompt_toolkit.application import run_in_terminal
@@ -334,7 +339,8 @@ class _ModelMixin:
             else:
                 # Simple mode: disable multi-model routing if it was on
                 try:
-                    from spark_cli.config import load_config as _lc3, save_config as _sc
+                    from spark_cli.config import load_config as _lc3
+                    from spark_cli.config import save_config as _sc
                     _cfg = _lc3()
                     _smr = _cfg.get("smart_model_routing")
                     if isinstance(_smr, dict) and _smr.get("enabled"):
@@ -344,7 +350,7 @@ class _ModelMixin:
                         self.agent = None
                         _cprint("  Multi-model routing disabled.")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_model_switch()", exc_info=True)
 
             model_display = self.model or "unknown"
             provider_display = get_label(self.provider) if self.provider else "unknown"
@@ -361,7 +367,7 @@ class _ModelMixin:
                 user_provs = cfg.get("providers")
                 custom_provs = get_compatible_custom_providers(cfg)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_model_switch()", exc_info=True)
 
             try:
                 providers = list_authenticated_providers(
@@ -474,7 +480,7 @@ class _ModelMixin:
                 )
                 _cprint(f"    Context: {ctx:,} tokens")
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_model_switch()", exc_info=True)
 
         # Cache notice
         cache_enabled = (
@@ -518,15 +524,15 @@ class _ModelMixin:
         Shows current model + provider, then lists all authenticated
         providers with their available models.
         """
+        from spark_cli.auth import resolve_provider as _resolve_provider
         from spark_cli.models import (
+            _PROVIDER_LABELS,
             curated_models_for_provider,
+            format_model_pricing_table,
+            get_pricing_for_provider,
             list_available_providers,
             normalize_provider,
-            _PROVIDER_LABELS,
-            get_pricing_for_provider,
-            format_model_pricing_table,
         )
-        from spark_cli.auth import resolve_provider as _resolve_provider
 
         # Resolve current provider
         raw_provider = normalize_provider(self.provider)
@@ -570,7 +576,7 @@ class _ModelMixin:
                     ):
                         print(line)
                 elif curated:
-                    for mid, desc in curated:
+                    for mid, _desc in curated:
                         current_marker = (
                             " ← current" if (is_active and mid == self.model) else ""
                         )

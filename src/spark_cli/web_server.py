@@ -20,21 +20,20 @@ import platform
 import queue as thread_queue
 import re
 import shutil
-import secrets
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.parse
 import urllib.request
 import uuid
 from collections import OrderedDict
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic as _steady_clock
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, cast
 
 import yaml
 
@@ -42,40 +41,69 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from spark_cli import __version__, __release_date__
+from core.async_runtime import get_async_runtime
+from gateway.status import get_running_pid, read_runtime_status
+from spark_cli import __release_date__, __version__
+from spark_cli.admin_routes import register_admin_routes
+from spark_cli.admin_runs import (
+    ADMIN_ACTIONS,
+)
+from spark_cli.analytics_routes import register_analytics_routes
+from spark_cli.canvas_routes import register_canvas_routes
 from spark_cli.config import (
     DEFAULT_CONFIG,
     OPTIONAL_ENV_VARS,
+    check_config_version,
     get_config_path,
     get_env_path,
     get_spark_home,
     load_config,
     load_env,
     save_config,
-    save_env_value,
-    remove_env_value,
-    check_config_version,
-    redact_key,
 )
-from spark_cli.onboarding_validation import (
-    normalize_http_base_url,
-    normalize_model_name,
-    validate_env_assignment,
-)
-from gateway.status import get_running_pid, read_runtime_status
+from spark_cli.connectors_routes import register_connectors_routes
+from spark_cli.connectors_routes import set_server_port as _set_connectors_port
+from spark_cli.cron_routes import register_cron_routes
 from spark_cli.dashboard_auth import (
     dashboard_token_path,
     ensure_dashboard_token_file,
-    extract_bearer_token,
     get_configured_dashboard_secret,
     validate_dashboard_request,
 )
-from spark_cli.canvas_routes import register_canvas_routes
+from spark_cli.env_routes import register_env_routes
+from spark_cli.gateway_routes import (
+    _runtime_gateway_pid,
+    _runtime_gateway_running,
+    register_gateway_routes,
+)
 from spark_cli.kanban_routes import register_kanban_routes
+from spark_cli.logs_routes import register_logs_routes
+from spark_cli.mac_routes import (
+    _check_mac_update,
+    _mac_update_cache,
+    register_mac_routes,
+)
+from spark_cli.mcp_routes import register_mcp_routes
+from spark_cli.model_routes import _resolve_codex_model_catalog, register_model_routes
+from spark_cli.onboarding_routes import register_onboarding_routes
+from spark_cli.onboarding_validation import (
+    normalize_http_base_url,
+    normalize_model_name,
+)
+from spark_cli.plugins_routes import register_plugins_routes
+from spark_cli.profiles_routes import register_profiles_routes
+from spark_cli.providers_routes import (
+    _truncate_str,
+    register_providers_routes,
+)
+from spark_cli.web_runtime import (
+    _SESSION_TOKEN,
+    _desktop_app_version,
+    _is_desktop_app,
+    _run_blocking,
+)
 from spark_cli.workflow_routes import register_workflow_routes
 from spark_cli.workspace_routes import register_workspace_routes
-from spark_cli.connectors_routes import register_connectors_routes, set_server_port as _set_connectors_port
-from core.async_runtime import get_async_runtime
 
 try:
     from fastapi import FastAPI, HTTPException, Request
@@ -84,19 +112,16 @@ try:
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel, Field
     from starlette.middleware.base import BaseHTTPMiddleware
-except ImportError:
+except ImportError as err:
     raise SystemExit(
         "Web UI requires fastapi and uvicorn.\n"
         "Run 'spark web' to auto-install, or: pip install spark-agent[web]"
-    )
+    ) from err
 
 WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
 
 
-async def _run_blocking(function, /, *args, **kwargs):
-    """Run web-server blocking work in Spark's bounded process worker pool."""
-    return await get_async_runtime().run_blocking(function, *args, **kwargs)
 
 
 def _github_repository_url(remote: str) -> str | None:
@@ -122,7 +147,7 @@ def _build_git_metadata() -> tuple[str | None, str | None]:
                 timeout=2,
             ).stdout.strip() or None
         except (OSError, subprocess.SubprocessError):
-            pass
+            _log.debug("Ignoring error in _build_git_metadata()", exc_info=True)
     if repository_url is None:
         try:
             remote = subprocess.run(
@@ -135,7 +160,7 @@ def _build_git_metadata() -> tuple[str | None, str | None]:
             ).stdout.strip()
             repository_url = _github_repository_url(remote)
         except (OSError, subprocess.SubprocessError):
-            pass
+            _log.debug("Ignoring error in _build_git_metadata()", exc_info=True)
     return commit, repository_url
 
 
@@ -172,10 +197,8 @@ def _apply_web_turn_active_state(rows: list[dict[str, Any]]) -> None:
         row["is_active"] = _is_web_turn_active(str(sid)) if sid else False
 
 # Captured at startup — fan-out SSE events from sync agent threads
-_web_event_loop: Optional[asyncio.AbstractEventLoop] = None
+_web_event_loop: asyncio.AbstractEventLoop | None = None
 _event_subscribers: set = set()  # _EventSubscriber (raw queues remain test-compatible)
-_admin_runs: dict[str, dict[str, Any]] = {}
-_admin_run_queues: dict[str, thread_queue.Queue] = {}
 
 
 class _ChunkedStreamText:
@@ -242,7 +265,7 @@ class WebActiveTurn:
     last_event_at: float
     status: str
     interrupt_requested: bool
-    active_agent_session_id: Optional[str]
+    active_agent_session_id: str | None
     phase: str
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     workspace_slug: str | None = None
@@ -525,7 +548,7 @@ class _EventSubscriber:
     gap_sessions: set[str] = field(default_factory=set)
     local_sequence: int = 0
 
-    def accepts(self, topic: str, session_id: Optional[str]) -> bool:
+    def accepts(self, topic: str, session_id: str | None) -> bool:
         topic_matches = _topic_allowed(topic, self.prefixes) or (
             topic == "bus.gap" and _topic_allowed("chat", self.prefixes)
         )
@@ -574,7 +597,7 @@ class _EventSubscriber:
                 else:
                     chosen = data
                     self.priority_queue._queue.appendleft(priority_env)  # type: ignore[attr-defined]
-            return chosen.result()
+            return cast("dict[str, Any]", chosen.result())
         finally:
             # Cancellation can arrive while asyncio.wait itself is suspended.
             # Always reap both Queue.get tasks or interpreter shutdown reports
@@ -590,18 +613,18 @@ class _EventSubscriber:
         try:
             priority_head = self.priority_queue._queue[0]  # type: ignore[attr-defined]
         except (AttributeError, IndexError):
-            pass
+            _log.debug("Ignoring error in _get_earliest_ready()", exc_info=True)
         try:
             data_head = self.data_queue._queue[0]  # type: ignore[attr-defined]
         except (AttributeError, IndexError):
-            pass
+            _log.debug("Ignoring error in _get_earliest_ready()", exc_info=True)
         if priority_head is None:
             return self.data_queue.get_nowait() if data_head is not None else None
         if data_head is None:
-            return self.priority_queue.get_nowait()
+            return cast("dict[str, Any] | None", self.priority_queue.get_nowait())
         if self._sequence_of(priority_head) < self._sequence_of(data_head):
-            return self.priority_queue.get_nowait()
-        return self.data_queue.get_nowait()
+            return cast("dict[str, Any] | None", self.priority_queue.get_nowait())
+        return cast("dict[str, Any] | None", self.data_queue.get_nowait())
 
     @staticmethod
     def _sequence_of(envelope: dict[str, Any]) -> int:
@@ -656,7 +679,7 @@ class _EventSubscriber:
             self.priority_queue.put_nowait(envelope)
             return
         except asyncio.QueueFull:
-            pass
+            _log.debug("Ignoring error in _enqueue_priority()", exc_info=True)
         # Priority capacity is reserved from token traffic. If lifecycle traffic
         # itself fills it, replace the oldest item and surface a recovery gap.
         try:
@@ -668,7 +691,7 @@ class _EventSubscriber:
         except (asyncio.QueueEmpty, asyncio.QueueFull):
             _record_event_drop(str(envelope.get("topic") or "unknown"), envelope.get("session_id"))
 
-    def _record_gap(self, topic: str, session_id: Optional[str], sequence: int) -> None:
+    def _record_gap(self, topic: str, session_id: str | None, sequence: int) -> None:
         _record_event_drop(topic, session_id)
         key = str(session_id or "-")
         if key in self.gap_sessions:
@@ -684,7 +707,7 @@ class _EventSubscriber:
             }
         )
 
-    def acknowledge_gap(self, session_id: Optional[str]) -> None:
+    def acknowledge_gap(self, session_id: str | None) -> None:
         self.gap_sessions.discard(str(session_id or "-"))
 
 # strip_ansi handles complete ECMA-48 sequences. Web streaming can occasionally
@@ -719,7 +742,7 @@ def _sanitize_web_chat_value(value: Any) -> Any:
     return value
 
 
-def _resolve_web_turn_ids(session_id: Optional[str]) -> dict[str, Optional[str]]:
+def _resolve_web_turn_ids(session_id: str | None) -> dict[str, str | None]:
     """Resolve a user-facing session id to the latest active conversation leaf."""
     if not session_id:
         return {"requested": session_id, "resolved": session_id, "latest": session_id}
@@ -738,7 +761,7 @@ def _resolve_web_turn_ids(session_id: Optional[str]) -> dict[str, Optional[str]]
         return {"requested": session_id, "resolved": session_id, "latest": session_id}
 
 
-def _web_turn_candidates(session_id: Optional[str]) -> set[str]:
+def _web_turn_candidates(session_id: str | None) -> set[str]:
     ids = _resolve_web_turn_ids(session_id)
     return {str(v) for v in ids.values() if v}
 
@@ -748,13 +771,13 @@ def _web_turn_key(session_id: str) -> str:
     return str(ids.get("latest") or ids.get("resolved") or session_id)
 
 
-def _web_turn_alias_set(session_id: Optional[str]) -> set[str]:
+def _web_turn_alias_set(session_id: str | None) -> set[str]:
     if not session_id:
         return set()
     return _web_turn_candidates(session_id) | {session_id}
 
 
-def _web_turn_candidate_keys(session_id: Optional[str], *, resolve: bool = True) -> list[str]:
+def _web_turn_candidate_keys(session_id: str | None, *, resolve: bool = True) -> list[str]:
     if not session_id:
         return []
     candidates = [session_id]
@@ -809,7 +832,7 @@ def _web_workspace_git_status(slug: str | None) -> dict[str, Any] | None:
     try:
         from spark_cli.workspace_routes import git_status
 
-        return _json_safe(git_status(slug))
+        return cast("dict[str, Any] | None", _json_safe(git_status(slug)))
     except Exception:
         _log.debug("web workspace status lookup failed slug=%s", slug, exc_info=True)
         return None
@@ -885,7 +908,7 @@ def _latest_web_turn_projection(session_id: str) -> dict[str, Any] | None:
             if (row := db.get_latest_web_turn_projection(candidate)) is not None
         ]
         if rows:
-            return max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"]
+            return cast("dict[str, Any] | None", max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"])
     finally:
         db.close()
     return None
@@ -988,13 +1011,16 @@ async def _finalize_web_turn_projection_async(
     and queue cleanup are not delayed behind unrelated executor work.
     """
     if turn is not None and turn.workspace_slug:
-        return await _run_blocking(
-            _finalize_web_turn_projection,
-            session_id,
-            turn,
-            result,
-            interrupted=interrupted,
-            agent=agent,
+        return cast(
+            dict[str, Any] | None,
+            await _run_blocking(
+                _finalize_web_turn_projection,
+                session_id,
+                turn,
+                result,
+                interrupted=interrupted,
+                agent=agent,
+            ),
         )
     return _finalize_web_turn_projection(
         session_id,
@@ -1234,7 +1260,7 @@ def _mark_web_turn_active(
     *,
     status: str = "Starting…",
     phase: str = "starting",
-    active_agent_session_id: Optional[str] = None,
+    active_agent_session_id: str | None = None,
 ) -> WebActiveTurn:
     key = _web_turn_key(session_id)
     now = time.time()
@@ -1262,10 +1288,10 @@ def _mark_web_turn_active(
 
 
 def _record_web_turn_timing(
-    session_id: Optional[str],
+    session_id: str | None,
     name: str,
     *,
-    when: Optional[float] = None,
+    when: float | None = None,
     only_if_absent: bool = True,
 ) -> None:
     if not session_id or not name:
@@ -1288,7 +1314,7 @@ def _record_web_turn_timing(
         turn.timings[name] = time.time() if when is None else when
 
 
-def _web_turn_timing_payload(turn: Optional[WebActiveTurn]) -> dict[str, Any]:
+def _web_turn_timing_payload(turn: WebActiveTurn | None) -> dict[str, Any]:
     if not turn:
         return {}
     with turn.lock:
@@ -1312,18 +1338,18 @@ def _web_turn_timing_payload(turn: Optional[WebActiveTurn]) -> dict[str, Any]:
     return {"absolute": timings, "relative_seconds": relative}
 
 
-def _record_web_first_visible_event(session_id: Optional[str], kind: str) -> None:
+def _record_web_first_visible_event(session_id: str | None, kind: str) -> None:
     _record_web_turn_timing(session_id, "first_visible_event")
     _record_web_turn_timing(session_id, f"first_{kind}_event")
 
 
 def _touch_web_turn(
-    session_id: Optional[str],
+    session_id: str | None,
     *,
-    status: Optional[str] = None,
-    phase: Optional[str] = None,
-    interrupt_requested: Optional[bool] = None,
-    active_agent_session_id: Optional[str] = None,
+    status: str | None = None,
+    phase: str | None = None,
+    interrupt_requested: bool | None = None,
+    active_agent_session_id: str | None = None,
 ) -> None:
     if not session_id:
         return
@@ -1346,7 +1372,7 @@ def _touch_web_turn(
         return
 
 
-def _append_web_turn_token(session_id: Optional[str], token: str) -> None:
+def _append_web_turn_token(session_id: str | None, token: str) -> None:
     if not session_id or not token:
         return
     token = _sanitize_web_chat_text(token)
@@ -1577,7 +1603,7 @@ class _CheckpointWriter:
                         try:
                             db.close()
                         except Exception:
-                            pass
+                            _log.debug("Ignoring error in _run()", exc_info=True)
                         db = None
                         db_path = None
                     request.attempts += 1
@@ -1608,7 +1634,7 @@ class _CheckpointWriter:
                 try:
                     db.close()
                 except Exception:
-                    pass
+                    _log.debug("Ignoring error in _run()", exc_info=True)
 
     @staticmethod
     def _write_request(db: Any, request: _CheckpointRequest) -> None:
@@ -1658,9 +1684,9 @@ _checkpoint_writer = _CheckpointWriter()
 
 
 def _web_turn_state(
-    turn: Optional[WebActiveTurn],
+    turn: WebActiveTurn | None,
     *,
-    now: Optional[float] = None,
+    now: float | None = None,
 ) -> tuple[str, str | None, float | None]:
     """Return a backend-owned lifecycle state for chat recovery.
 
@@ -1819,7 +1845,7 @@ def _clear_web_turn(session_id: str) -> None:
                 try:
                     response_queue.put_nowait(_WEB_INPUT_CANCELLED)
                 except thread_queue.Full:
-                    pass
+                    _log.debug("Ignoring error in _clear_web_turn()", exc_info=True)
 
     for action_id in cancelled_actions:
         action = _get_web_pending_action(action_id)
@@ -1831,7 +1857,7 @@ def _clear_web_turn(session_id: str) -> None:
         )
 
 
-def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTurn]]:
+def _get_web_turn(session_id: str) -> tuple[str | None, WebActiveTurn | None]:
     candidates = _web_turn_candidate_keys(session_id)
     with _with_web_turn_lock():
         for candidate in candidates:
@@ -1841,13 +1867,13 @@ def _get_web_turn(session_id: str) -> tuple[Optional[str], Optional[WebActiveTur
     return None, None
 
 
-def _is_web_turn_active(session_id: Optional[str]) -> bool:
+def _is_web_turn_active(session_id: str | None) -> bool:
     if not session_id:
         return False
     return _get_web_turn(session_id)[1] is not None
 
 
-def _get_web_agent_for_turn(session_id: str) -> tuple[Optional[str], Any]:
+def _get_web_agent_for_turn(session_id: str) -> tuple[str | None, Any]:
     ids = _resolve_web_turn_ids(session_id)
     candidates = [
         ids.get("latest"),
@@ -1863,14 +1889,13 @@ def _get_web_agent_for_turn(session_id: str) -> tuple[Optional[str], Any]:
     return None, None
 
 
-@asynccontextmanager
 def _prefetch_update_check() -> None:
     """Run in a thread at startup to warm the update-check cache."""
     try:
         from spark_cli.banner import check_for_updates
         check_for_updates()
     except Exception:
-        pass
+        _log.debug("Ignoring error in _prefetch_update_check()", exc_info=True)
 
 
 def _prefetch_mac_update_check() -> None:
@@ -1879,7 +1904,7 @@ def _prefetch_mac_update_check() -> None:
         if _is_desktop_app() and sys.platform == "darwin":
             _check_mac_update(force=True)
     except Exception:
-        pass
+        _log.debug("Ignoring error in _prefetch_mac_update_check()", exc_info=True)
 
 
 def _init_memory_store() -> None:
@@ -1907,12 +1932,12 @@ def _prewarm_agent_stack() -> None:
     """
     try:
         import core.model_tools  # noqa: F401  (runs _discover_tools at import)
-        from core.run_agent import AIAgent  # noqa: F401
 
         # Warm the models.dev metadata fetch now (during the desktop loading
         # screen) rather than on the first chat turn — it runs synchronously in
         # AIAgent.__init__ and can stall for seconds when models.dev is slow.
         from agent.models_dev import fetch_models_dev
+        from core.run_agent import AIAgent  # noqa: F401
 
         fetch_models_dev()
     except Exception:
@@ -1944,14 +1969,15 @@ async def _lifespan(_app: FastAPI):
     ensure_dashboard_token_file()
     loop_lag_task = asyncio.create_task(_monitor_web_loop_lag())
     # Warm the update cache in the background so /api/status has it immediately
+    warmup_functions: tuple[Callable[[], Any], ...] = (
+        _prefetch_update_check,
+        _prefetch_mac_update_check,
+        _init_memory_store,
+        _prewarm_agent_stack,
+    )
     warmup_tasks = [
         asyncio.create_task(_run_blocking(function))
-        for function in (
-            _prefetch_update_check,
-            _prefetch_mac_update_check,
-            _init_memory_store,
-            _prewarm_agent_stack,
-        )
+        for function in warmup_functions
     ]
     # Desktop app: keep the messaging gateway running in the background so
     # platforms stay reachable while the app is open. No-ops outside the
@@ -1984,7 +2010,7 @@ async def _lifespan(_app: FastAPI):
             try:
                 response_queue.put_nowait(_WEB_INPUT_CANCELLED)
             except thread_queue.Full:
-                pass
+                _log.debug("Ignoring error in _lifespan()", exc_info=True)
         _web_turn_aliases.clear()
         _web_queues.clear()
         with _pending_token_lock:
@@ -1997,7 +2023,7 @@ async def _lifespan(_app: FastAPI):
         try:
             await loop_lag_task
         except asyncio.CancelledError:
-            pass
+            _log.debug("Ignoring error in _lifespan()", exc_info=True)
 
 
 app = FastAPI(title="Spark Agent", version=__version__, lifespan=_lifespan)
@@ -2008,12 +2034,8 @@ app = FastAPI(title="Spark Agent", version=__version__, lifespan=_lifespan)
 # Injected into the SPA HTML so only the legitimate web UI can use it.
 # ---------------------------------------------------------------------------
 _SERVER_INSTANCE_ID = uuid.uuid4().hex
-_SESSION_TOKEN = secrets.token_urlsafe(32)
 
 # Simple rate limiter for the reveal endpoint
-_reveal_timestamps: List[float] = []
-_REVEAL_MAX_PER_WINDOW = 5
-_REVEAL_WINDOW_SECONDS = 30
 
 # CORS: LAN dashboard mode uses bearer/token-file auth on API routes, so we
 # allow any Origin (no cookies). For untrusted networks, keep the dashboard
@@ -2030,7 +2052,7 @@ app.add_middleware(
 class EfficiencyCounterMiddleware(BaseHTTPMiddleware):
     """Count API polling and response bytes without retaining paths or content."""
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         try:
             from core.runtime_metrics import increment
@@ -2046,7 +2068,7 @@ class EfficiencyCounterMiddleware(BaseHTTPMiddleware):
             if size and size.isdigit():
                 increment("json_snapshot_bytes", int(size))
         except Exception:
-            pass
+            _log.debug("Ignoring error in dispatch()", exc_info=True)
         return response
 
 
@@ -2058,7 +2080,7 @@ class DashboardAPIAuthMiddleware(BaseHTTPMiddleware):
 
     _PUBLIC_PATHS = frozenset({"/api/dashboard/auth/info", "/api/status"})
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next):
         if request.method == "OPTIONS":
             return await call_next(request)
         path = request.url.path
@@ -2109,11 +2131,6 @@ def _json_safe(obj: Any, max_len: int = 12000) -> Any:
             return {}
 
 
-def _truncate_str(s: Any, max_len: int = 16000) -> str:
-    if s is None:
-        return ""
-    t = str(s)
-    return t if len(t) <= max_len else t[: max_len - 1] + "…"
 
 
 def _tool_result_preview(result: Any, max_len: int = 2000) -> dict[str, Any]:
@@ -2140,7 +2157,7 @@ def _message_for_history_response(msg: dict[str, Any], include_tool_results: boo
     if "content" in out:
         out["content"] = _sanitize_web_chat_value(out.get("content"))
     if out.get("role") != "tool" or include_tool_results:
-        return _sanitize_web_chat_value(out)
+        return cast("dict[str, Any]", _sanitize_web_chat_value(out))
 
     content = out.get("content") or ""
     preview = _tool_result_preview(content)
@@ -2152,7 +2169,7 @@ def _message_for_history_response(msg: dict[str, Any], include_tool_results: boo
         })
     out.update(preview)
     out["content"] = out["result_preview"]
-    return _sanitize_web_chat_value(out)
+    return cast("dict[str, Any]", _sanitize_web_chat_value(out))
 
 
 def _hide_from_web_history(msg: dict[str, Any]) -> bool:
@@ -2168,24 +2185,9 @@ def _hide_from_web_history(msg: dict[str, Any]) -> bool:
     return True
 
 
-def _redacted_response_preview(resp: Any, max_len: int = 600) -> str:
-    """Small response preview for auth diagnostics without exposing secrets."""
-    try:
-        body = resp.text
-    except Exception:
-        body = ""
-    preview = _truncate_str(body, max_len).strip()
-    if not preview:
-        return "(empty response)"
-    preview = re.sub(
-        r'(?i)("?(?:access_token|refresh_token|id_token|authorization_code|code_verifier|token)"?\s*[:=]\s*)"[^"]+"',
-        r'\1"[redacted]"',
-        preview,
-    )
-    return preview
 
 
-def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> None:
+def _publish_event(topic: str, data: dict, session_id: str | None = None) -> None:
     global _pending_token_events, _pending_token_gap_sessions, _token_flush_scheduled
     loop = _web_event_loop
     if loop is None:
@@ -2205,7 +2207,7 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
         if detailed_enabled():
             increment("event_payload_bytes", len(json.dumps(envelope, default=str).encode("utf-8")))
     except Exception:
-        pass
+        _log.debug("Ignoring error in _publish_event()", exc_info=True)
     envelope["_seq"] = _next_event_sequence()
 
     # A semantic event is a hard token-batch boundary. Seal the current batch
@@ -2226,10 +2228,10 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
                 loop.call_soon_threadsafe(
                     _flush_pending_token_events,
                     sealed_token_events,
-                    sealed_gap_sessions,
+                    sealed_gap_sessions or set(),
                 )
             except Exception:
-                pass
+                _log.debug("Ignoring error in _publish_event()", exc_info=True)
 
     if topic == "chat.token" and session_id:
         should_schedule = False
@@ -2276,7 +2278,7 @@ def _publish_event(topic: str, data: dict, session_id: Optional[str] = None) -> 
     try:
         loop.call_soon_threadsafe(_fanout_event_envelope, envelope, published_at)
     except Exception:
-        pass
+        _log.debug("Ignoring error in _publish_event()", exc_info=True)
 
 
 def _schedule_pending_token_flush(
@@ -2377,13 +2379,13 @@ def _fanout_event_envelope(envelope: dict[str, Any], published_at: float) -> Non
                     subscriber.put_nowait(envelope)
                     continue
                 except asyncio.QueueFull:
-                    pass
+                    _log.debug("Ignoring error in _fanout_event_envelope()", exc_info=True)
             _record_event_drop(topic, session_id)
         except Exception:
             _event_subscribers.discard(subscriber)
 
 
-def _record_event_drop(topic: str, session_id: Optional[str]) -> None:
+def _record_event_drop(topic: str, session_id: str | None) -> None:
     key = f"{session_id or '-'}:{topic}"
     count = _event_drop_counts.get(key, 0) + 1
     _event_drop_counts[key] = count
@@ -2436,9 +2438,9 @@ def _topic_allowed(topic: str, prefixes: tuple[str, ...]) -> bool:
 
 
 def _emit_sessions_changed(
-    action: str, session_id: str, session: Optional[dict] = None
+    action: str, session_id: str, session: dict | None = None
 ) -> None:
-    payload: Dict[str, Any] = {"action": action, "session_id": session_id}
+    payload: dict[str, Any] = {"action": action, "session_id": session_id}
     if session is not None:
         payload["session"] = _web_session_list_row(session)
     _publish_event("sessions.changed", payload, session_id)
@@ -2452,8 +2454,13 @@ def _subagent_event_name(payload: dict[str, Any]) -> str:
 
 
 def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
-    legacy_run = payload.get("run") if isinstance(payload.get("run"), dict) else {}
+    event_payload = cast(
+        dict[str, Any],
+        payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
+    )
+    legacy_run = cast(
+        dict[str, Any], payload.get("run") if isinstance(payload.get("run"), dict) else {}
+    )
     subagent_id = (
         payload.get("id")
         or payload.get("run_id")
@@ -2518,7 +2525,10 @@ def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[s
 def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]) -> None:
     """Persist a subagent lifecycle event and fan it out on chat.subagent.*."""
     event_name = _subagent_event_name(payload)
-    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    event_payload = cast(
+        dict[str, Any],
+        payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
+    )
     if not event_payload and isinstance(payload.get("data"), dict):
         event_payload = payload["data"]
     run_snapshot = None
@@ -2580,15 +2590,16 @@ def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]
 async def sse_events_bus(
     request: Request,
     topics: str = "sessions,chat",
-    session_id: Optional[str] = None,
-    detail_session_id: Optional[str] = None,
+    session_id: str | None = None,
+    detail_session_id: str | None = None,
     after_sequence: int = 0,
     projection_version: int = 1,
-    server_epoch: Optional[str] = None,
+    server_epoch: str | None = None,
 ):
     """Shared SSE bus with an optional v1 snapshot-plus-delta resume cursor."""
-    from spark_cli.web_state import web_state_journal
     from fastapi.responses import StreamingResponse as _StreamingResponse
+
+    from spark_cli.web_state import web_state_journal
 
     prefixes = tuple(p.strip() for p in topics.split(",") if p.strip())
     session_ids = frozenset({session_id}) if session_id else frozenset()
@@ -2639,7 +2650,7 @@ async def sse_events_bus(
                     break
                 try:
                     env = await asyncio.wait_for(subscriber.get(), timeout=30.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield "event: ping\ndata: {}\n\n"
                     continue
                 if env.get("topic") == "bus.gap":
@@ -2669,7 +2680,7 @@ async def sse_events_bus(
 
 @app.get("/api/web-state/snapshot")
 async def get_web_state_snapshot(
-    selected_session_id: Optional[str] = None,
+    selected_session_id: str | None = None,
     session_limit: int = 50,
     message_limit: int = 200,
 ):
@@ -2734,7 +2745,7 @@ async def get_web_state_deltas(
     after_sequence: int,
     projection_version: int,
     server_epoch: str,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
 ):
     """Return ordered retained deltas or an explicit snapshot requirement."""
     from spark_cli.web_state import web_state_journal
@@ -2759,7 +2770,7 @@ async def get_web_state_deltas(
 # ---------------------------------------------------------------------------
 
 # Manual overrides for fields that need select options or custom types
-_SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
+_SCHEMA_OVERRIDES: dict[str, dict[str, Any]] = {
     "agent.name": {
         "type": "string",
         "description": "The name your agent uses for itself. Applies to new conversations.",
@@ -2954,7 +2965,7 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
 }
 
 # Categories with fewer fields get merged into "general" to avoid tab sprawl.
-_CATEGORY_MERGE: Dict[str, str] = {
+_CATEGORY_MERGE: dict[str, str] = {
     "privacy": "security",
     "context": "agent",
     "skills": "agent",
@@ -3003,11 +3014,11 @@ def _infer_type(value: Any) -> str:
 
 
 def _build_schema_from_config(
-    config: Dict[str, Any],
+    config: dict[str, Any],
     prefix: str = "",
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Walk DEFAULT_CONFIG and produce a flat dot-path → field schema dict."""
-    schema: Dict[str, Dict[str, Any]] = {}
+    schema: dict[str, dict[str, Any]] = {}
     for key, value in config.items():
         full_key = f"{prefix}.{key}" if prefix else key
 
@@ -3028,7 +3039,7 @@ def _build_schema_from_config(
             # Recurse into nested dicts
             schema.update(_build_schema_from_config(value, full_key))
         else:
-            entry: Dict[str, Any] = {
+            entry: dict[str, Any] = {
                 "type": _infer_type(value),
                 "description": full_key.replace(".", " → ").replace("_", " ").title(),
                 "category": category,
@@ -3055,7 +3066,7 @@ _model_virtual_entries = [
     ("model_api_mode", _SCHEMA_OVERRIDES["model_api_mode"]),
     ("model_context_length", _SCHEMA_OVERRIDES["model_context_length"]),
 ]
-_ordered_schema: Dict[str, Dict[str, Any]] = {}
+_ordered_schema: dict[str, dict[str, Any]] = {}
 for _k, _v in CONFIG_SCHEMA.items():
     _ordered_schema[_k] = _v
     if _k == "model":
@@ -3068,64 +3079,18 @@ class ConfigUpdate(BaseModel):
     config: dict
 
 
-class EnvVarUpdate(BaseModel):
-    key: str
-    value: str
 
 
-class EnvVarDelete(BaseModel):
-    key: str
 
 
-class EnvVarReveal(BaseModel):
-    key: str
 
 
-class AdminActionStart(BaseModel):
-    args: Dict[str, Any] = {}
-    confirm: bool = False
 
 
-class GatewayControlRequest(BaseModel):
-    action: str
-    confirm: bool = False
 
 
-class ProfileCreateRequest(BaseModel):
-    name: str
-    clone_from: Optional[str] = None
-    clone_config: bool = False
-    clone_all: bool = False
-    no_alias: bool = True
 
 
-class ProfileRenameRequest(BaseModel):
-    new_name: str
-    confirm: bool = False
-
-
-class ProfileExportRequest(BaseModel):
-    output_path: Optional[str] = None
-    confirm: bool = False
-
-
-class ProfileImportRequest(BaseModel):
-    archive_path: str
-    name: Optional[str] = None
-    confirm: bool = False
-
-
-class McpServerCreate(BaseModel):
-    name: str
-    url: Optional[str] = None
-    command: Optional[str] = None
-    args: List[str] = []
-    env: Dict[str, str] = {}
-
-
-class PluginActionRequest(BaseModel):
-    name: str
-    confirm: bool = False
 
 
 class FeedbackSubmitBody(BaseModel):
@@ -3135,340 +3100,32 @@ class FeedbackSubmitBody(BaseModel):
     note: str
 
 
-class AdminAction:
-    def __init__(
-        self,
-        action_id: str,
-        label: str,
-        description: str,
-        risk: str,
-        command: Callable[[Dict[str, Any]], List[str]],
-        *,
-        requires_confirmation: bool = False,
-        long_running: bool = False,
-        args_schema: Optional[dict] = None,
-        availability: Optional[Callable[[], tuple[bool, Optional[str]]]] = None,
-    ):
-        self.id = action_id
-        self.label = label
-        self.description = description
-        self.risk = risk
-        self.command = command
-        self.requires_confirmation = requires_confirmation
-        self.long_running = long_running
-        self.args_schema = args_schema or {"type": "object", "properties": {}}
-        self.availability = availability
-
-    def to_metadata(self) -> dict:
-        available = True
-        reason = None
-        if self.availability:
-            available, reason = self.availability()
-        return {
-            "id": self.id,
-            "label": self.label,
-            "description": self.description,
-            "risk": self.risk,
-            "requires_confirmation": self.requires_confirmation,
-            "long_running": self.long_running,
-            "args_schema": self.args_schema,
-            "available": available,
-            "unavailable_reason": reason,
-        }
 
 
-def _spark_command(*parts: str) -> List[str]:
-    return [sys.executable, "-m", "spark_cli.main", *parts]
 
 
-def _gateway_command(action: str) -> List[str]:
-    return _spark_command("gateway", action)
 
 
-def _update_command(check_only: bool) -> List[str]:
-    try:
-        from core.spark_constants import get_spark_home
-        spark_home = get_spark_home()
-        # Always clear the cache so we do a fresh git fetch, not a stale 6-hour result
-        (spark_home / ".update_check").unlink(missing_ok=True)
-        if not check_only:
-            # Pre-write "y" so _gateway_prompt auto-accepts the "run installer?" question
-            (spark_home / ".update_response").write_text("y")
-    except Exception:
-        pass
-    if check_only:
-        return _spark_command("version")
-    return _spark_command("update", "--gateway")
 
 
-def _debug_command(args: Dict[str, Any]) -> List[str]:
-    lines = int(args.get("lines") or 200)
-    lines = max(20, min(lines, 2000))
-    return _spark_command("debug", "share", "--local", "--lines", str(lines))
 
 
-ADMIN_ACTIONS: dict[str, AdminAction] = {
-    "gateway.start": AdminAction(
-        "gateway.start",
-        "Start gateway",
-        "Start the configured messaging gateway service.",
-        "medium",
-        lambda _args: _gateway_command("start"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "gateway.stop": AdminAction(
-        "gateway.stop",
-        "Stop gateway",
-        "Stop the configured messaging gateway service.",
-        "high",
-        lambda _args: _gateway_command("stop"),
-        requires_confirmation=True,
-    ),
-    "gateway.restart": AdminAction(
-        "gateway.restart",
-        "Restart gateway",
-        "Restart the configured messaging gateway service.",
-        "high",
-        lambda _args: _gateway_command("restart"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "gateway.install": AdminAction(
-        "gateway.install",
-        "Install gateway service",
-        "Install the OS service wrapper for the gateway.",
-        "high",
-        lambda _args: _gateway_command("install"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "gateway.uninstall": AdminAction(
-        "gateway.uninstall",
-        "Uninstall gateway service",
-        "Remove the OS service wrapper for the gateway.",
-        "high",
-        lambda _args: _gateway_command("uninstall"),
-        requires_confirmation=True,
-    ),
-    "gateway.status": AdminAction(
-        "gateway.status",
-        "Gateway service status",
-        "Read foreground, runtime, and service status.",
-        "low",
-        lambda _args: _gateway_command("status"),
-    ),
-    "diagnostics.doctor": AdminAction(
-        "diagnostics.doctor",
-        "Run doctor",
-        "Run Spark diagnostics and report configuration issues.",
-        "low",
-        lambda _args: _spark_command("doctor"),
-    ),
-    "diagnostics.doctor_fix": AdminAction(
-        "diagnostics.doctor_fix",
-        "Run doctor fix",
-        "Run Spark doctor with repair mode where supported.",
-        "medium",
-        lambda _args: _spark_command("doctor", "--fix"),
-        requires_confirmation=True,
-    ),
-    "diagnostics.debug": AdminAction(
-        "diagnostics.debug",
-        "Build debug report",
-        "Generate a local debug preview with bounded log output.",
-        "low",
-        _debug_command,
-        args_schema={
-            "type": "object",
-            "properties": {"lines": {"type": "integer", "minimum": 20, "maximum": 2000}},
-        },
-    ),
-    "backup.quick": AdminAction(
-        "backup.quick",
-        "Quick backup",
-        "Create a quick Spark backup.",
-        "medium",
-        lambda _args: _spark_command("backup", "--quick"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "backup.full": AdminAction(
-        "backup.full",
-        "Full backup",
-        "Create a full Spark backup.",
-        "medium",
-        lambda _args: _spark_command("backup"),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-    "update.check": AdminAction(
-        "update.check",
-        "Check for updates",
-        "Check whether a Spark update is available.",
-        "low",
-        lambda _args: _update_command(True),
-        long_running=True,
-    ),
-    "update.run": AdminAction(
-        "update.run",
-        "Run update",
-        "Run Spark's update flow.",
-        "high",
-        lambda _args: _update_command(False),
-        requires_confirmation=True,
-        long_running=True,
-    ),
-}
 
 
-def _new_admin_run(action_id: str, args: dict) -> tuple[str, thread_queue.Queue]:
-    run_id = uuid.uuid4().hex
-    queue: thread_queue.Queue = thread_queue.Queue(maxsize=512)
-    _admin_runs[run_id] = {
-        "run_id": run_id,
-        "action_id": action_id,
-        "args": args,
-        "status": "queued",
-        "started_at": None,
-        "finished_at": None,
-        "exit_code": None,
-        "output_tail": [],
-        "error": None,
-    }
-    _admin_run_queues[run_id] = queue
-    return run_id, queue
 
 
-def _queue_admin_event(run_id: str, event: dict) -> None:
-    queue = _admin_run_queues.get(run_id)
-    if queue is None:
-        return
-    try:
-        queue.put_nowait(event)
-    except Exception:
-        pass
 
 
-def _append_admin_output(run_id: str, stream: str, text: str) -> None:
-    run = _admin_runs.get(run_id)
-    if not run:
-        return
-    tail = run.setdefault("output_tail", [])
-    tail.append({"stream": stream, "text": text, "ts": time.time()})
-    del tail[:-200]
 
 
-def _run_admin_action(run_id: str, action: AdminAction, args: dict) -> None:
-    run = _admin_runs[run_id]
-    run["status"] = "running"
-    run["started_at"] = time.time()
-    _queue_admin_event(run_id, {"type": "state", "status": "running"})
-    try:
-        cmd = action.command(args)
-        _queue_admin_event(run_id, {"type": "output", "stream": "system", "text": " ".join(cmd)})
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(PROJECT_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
-        env["PYTHONUNBUFFERED"] = "1"
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(PROJECT_ROOT),
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        if proc.stdout is not None:
-            for line in proc.stdout:
-                text = line.rstrip("\n")
-                _append_admin_output(run_id, "stdout", text)
-                _queue_admin_event(run_id, {"type": "output", "stream": "stdout", "text": text})
-        exit_code = proc.wait()
-        run["exit_code"] = exit_code
-        run["status"] = "done" if exit_code == 0 else "failed"
-    except Exception as exc:
-        run["status"] = "failed"
-        run["error"] = str(exc)
-        _queue_admin_event(run_id, {"type": "output", "stream": "stderr", "text": str(exc)})
-    finally:
-        run["finished_at"] = time.time()
-        _queue_admin_event(run_id, {"type": "done", "run": run})
 
 
-def _profile_info_dict(info: Any, active: str) -> dict:
-    return {
-        "name": info.name,
-        "path": str(info.path),
-        "is_default": info.is_default,
-        "is_active": info.name == active,
-        "gateway_running": info.gateway_running,
-        "model": info.model,
-        "provider": info.provider,
-        "has_env": info.has_env,
-        "skill_count": info.skill_count,
-        "alias_path": str(info.alias_path) if info.alias_path else None,
-    }
 
 
-def _list_plugin_dirs() -> list[dict]:
-    plugins_dir = get_spark_home() / "plugins"
-    rows: list[dict] = []
-    if not plugins_dir.is_dir():
-        return rows
-    for entry in sorted(plugins_dir.iterdir()):
-        if not entry.is_dir() or entry.name.startswith("."):
-            continue
-        manifest = entry / "plugin.json"
-        data: dict = {}
-        if manifest.exists():
-            try:
-                data = json.loads(manifest.read_text(encoding="utf-8"))
-            except Exception:
-                data = {}
-        rows.append(
-            {
-                "name": data.get("name") or entry.name,
-                "id": data.get("id") or entry.name,
-                "path": str(entry),
-                "description": data.get("description"),
-                "version": data.get("version"),
-                "enabled": not (entry / ".disabled").exists(),
-            }
-        )
-    return rows
 
 
-def _configured_gateway_platforms() -> list[dict]:
-    try:
-        from gateway.config import load_gateway_config
-
-        gateway_config = load_gateway_config()
-        return [
-            {
-                "id": platform_cfg.value,
-                "configured": True,
-            }
-            for platform_cfg in gateway_config.get_connected_platforms()
-        ]
-    except Exception:
-        return []
 
 
-def _runtime_gateway_pid(runtime: dict | None) -> int | None:
-    if not runtime:
-        return None
-    pid = runtime.get("pid")
-    try:
-        return int(pid) if pid is not None else None
-    except (TypeError, ValueError):
-        return None
-
-
-def _runtime_gateway_running(runtime: dict | None) -> bool:
-    if not runtime:
-        return False
-    return runtime.get("gateway_state") == "running" and _runtime_gateway_pid(runtime) is not None
 
 
 @app.get("/api/status")
@@ -3533,7 +3190,7 @@ async def get_status():
         finally:
             db.close()
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_status()", exc_info=True)
 
     spark_cfg = load_config()
     _dash = spark_cfg.get("dashboard") if isinstance(spark_cfg, dict) else {}
@@ -3549,7 +3206,7 @@ async def get_status():
             _data = _json.loads(_cache.read_text())
             commits_behind = _data.get("behind")
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_status()", exc_info=True)
 
     return {
         "server_instance_id": _SERVER_INSTANCE_ID,
@@ -3633,20 +3290,10 @@ async def check_update_available():
 # update flow below checks GitHub Releases for a newer DMG and installs it.    #
 # --------------------------------------------------------------------------- #
 
-GITHUB_REPO = "automatedigital/spark"
-_mac_update_cache: dict[str, Any] = {"checked_at": 0.0, "result": None}
-MAC_APP_BUNDLE_ID = "studio.fromtheroot.spark"
-MAC_APP_INSTALL_PATH = Path("/Applications/Spark.app")
 
 
-def _is_desktop_app() -> bool:
-    """True when running as a bundled desktop sidecar."""
-    return os.environ.get("SPARK_DESKTOP") == "1"
 
 
-def _desktop_app_version() -> str | None:
-    """Version of the running .app shell, injected by Tauri at spawn time."""
-    return os.environ.get("SPARK_DESKTOP_VERSION") or None
 
 
 def _desktop_platform() -> str | None:
@@ -3660,630 +3307,62 @@ def _desktop_platform() -> str | None:
     return "linux"
 
 
-def _parse_version(tag: str) -> tuple[int, ...]:
-    nums = re.findall(r"\d+", tag or "")
-    return tuple(int(n) for n in nums) if nums else (0,)
-
-
-def _fetch_latest_mac_release(timeout: float = 8.0) -> dict | None:
-    """Query GitHub Releases for the latest tag and its .dmg asset."""
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-    req = urllib.request.Request(
-        url,
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "spark-desktop"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = json.loads(resp.read().decode())
-    download_url = None
-    for asset in data.get("assets", []) or []:
-        if str(asset.get("name", "")).lower().endswith(".dmg"):
-            download_url = asset.get("browser_download_url")
-            break
-    return {
-        "tag": data.get("tag_name") or data.get("name") or "",
-        "download_url": download_url,
-        "release_url": data.get("html_url"),
-        # Markdown release notes, shown as the changelog in the update modal (§3.3).
-        "release_notes": (data.get("body") or "").strip() or None,
-        "release_name": data.get("name") or None,
-        "published_at": data.get("published_at"),
-    }
-
-
-def _check_mac_update(force: bool = False) -> dict:
-    """Compare the running app version against the latest GitHub release."""
-    current = _desktop_app_version()
-    result = {
-        "update_available": False,
-        "latest_version": None,
-        "current_version": current,
-        "download_url": None,
-        "release_url": None,
-        "release_notes": None,
-        "release_name": None,
-        "published_at": None,
-    }
-    now = time.time()
-    if (
-        not force
-        and _mac_update_cache["result"] is not None
-        and (now - _mac_update_cache["checked_at"]) < 21600
-    ):
-        return _mac_update_cache["result"]
-    try:
-        rel = _fetch_latest_mac_release()
-    except Exception:
-        return result
-    if not rel:
-        return result
-    latest = rel.get("tag") or ""
-    result["latest_version"] = latest.lstrip("v") or None
-    result["download_url"] = rel.get("download_url")
-    result["release_url"] = rel.get("release_url")
-    result["release_notes"] = rel.get("release_notes")
-    result["release_name"] = rel.get("release_name")
-    result["published_at"] = rel.get("published_at")
-    if current and result["latest_version"]:
-        result["update_available"] = _parse_version(result["latest_version"]) > _parse_version(current)
-    _mac_update_cache.update(checked_at=now, result=result)
-    return result
-
-
-def _shell_quote(value: str | Path) -> str:
-    import shlex
-
-    return shlex.quote(str(value))
-
-
-def _build_mac_update_installer_script(
-    *,
-    dmg_path: Path,
-    work_dir: Path,
-    log_path: Path,
-    install_path: Path = MAC_APP_INSTALL_PATH,
-    bundle_id: str = MAC_APP_BUNDLE_ID,
-    expected_version: str = "",
-) -> str:
-    """Build a detached macOS installer script for the downloaded Spark DMG."""
-
-    staged_app = work_dir / "Spark.app"
-    mount_dir = work_dir / "mount"
-    script_path = work_dir / "install-spark-update.zsh"
-    tmp_install_path = install_path.with_name(f"{install_path.name}.tmp")
-    backup_path = install_path.with_name(f"{install_path.name}.previous")
-    privileged_install_cmd = f"{_shell_quote(script_path)} --install-only".replace("\\", "\\\\").replace('"', '\\"')
-
-    return f"""#!/bin/zsh
-set -euo pipefail
-
-DMG={_shell_quote(dmg_path)}
-WORK_DIR={_shell_quote(work_dir)}
-MOUNT_DIR={_shell_quote(mount_dir)}
-STAGED_APP={_shell_quote(staged_app)}
-INSTALL_PATH={_shell_quote(install_path)}
-LOG_PATH={_shell_quote(log_path)}
-BUNDLE_ID={_shell_quote(bundle_id)}
-EXPECTED_VERSION={_shell_quote(expected_version)}
-TMP_INSTALL_PATH={_shell_quote(tmp_install_path)}
-BACKUP_PATH={_shell_quote(backup_path)}
-
-log() {{
-  /bin/mkdir -p "$(/usr/bin/dirname "$LOG_PATH")"
-  /bin/echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_PATH"
-}}
-
-cleanup() {{
-  if /sbin/mount | /usr/bin/grep -q "on $MOUNT_DIR "; then
-    /usr/bin/hdiutil detach "$MOUNT_DIR" -quiet || true
-  fi
-}}
-trap cleanup EXIT
-
-perform_install() {{
-  /bin/rm -rf "$TMP_INSTALL_PATH"
-  /usr/bin/ditto "$STAGED_APP" "$TMP_INSTALL_PATH"
-  /bin/rm -rf "$BACKUP_PATH"
-
-  if [ -d "$INSTALL_PATH" ]; then
-    /bin/mv "$INSTALL_PATH" "$BACKUP_PATH"
-  fi
-
-  if ! /bin/mv "$TMP_INSTALL_PATH" "$INSTALL_PATH"; then
-    log "Replacement move failed; restoring previous app"
-    if [ -d "$BACKUP_PATH" ] && [ ! -d "$INSTALL_PATH" ]; then
-      /bin/mv "$BACKUP_PATH" "$INSTALL_PATH" || true
-    fi
-    return 1
-  fi
-
-  /bin/rm -rf "$BACKUP_PATH"
-}}
-
-if [ "${{1:-}}" = "--install-only" ]; then
-  perform_install >> "$LOG_PATH" 2>&1
-  exit $?
-fi
-
-log "Starting Spark desktop update install"
-EXPECTED_VERSION="${{EXPECTED_VERSION#desktop-v}}"
-EXPECTED_VERSION="${{EXPECTED_VERSION#v}}"
-/bin/mkdir -p "$MOUNT_DIR"
-/usr/bin/hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT_DIR" "$DMG" >> "$LOG_PATH" 2>&1
-
-SOURCE_APP="$(/usr/bin/find "$MOUNT_DIR" -maxdepth 2 -type d -name 'Spark.app' -print -quit)"
-if [ -z "$SOURCE_APP" ]; then
-  log "No Spark.app found in release DMG"
-  exit 2
-fi
-
-FOUND_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$SOURCE_APP/Contents/Info.plist" 2>/dev/null || true)"
-if [ "$FOUND_BUNDLE_ID" != "$BUNDLE_ID" ]; then
-  log "Unexpected bundle id: $FOUND_BUNDLE_ID"
-  exit 3
-fi
-
-SOURCE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$SOURCE_APP/Contents/Info.plist" 2>/dev/null || true)"
-if [ -n "$EXPECTED_VERSION" ] && [ "$SOURCE_VERSION" != "$EXPECTED_VERSION" ]; then
-  log "Unexpected DMG version: $SOURCE_VERSION (expected $EXPECTED_VERSION)"
-  exit 4
-fi
-
-/bin/rm -rf "$STAGED_APP"
-/usr/bin/ditto "$SOURCE_APP" "$STAGED_APP" >> "$LOG_PATH" 2>&1
-cleanup
-
-/usr/bin/osascript -e 'tell application id "{bundle_id}" to quit' >> "$LOG_PATH" 2>&1 || true
-APP_PROCESS_PATTERN="$INSTALL_PATH/Contents/MacOS/spark"
-for _ in {{1..30}}; do
-  if ! /usr/bin/pgrep -f "$APP_PROCESS_PATTERN" >/dev/null 2>&1; then
-    break
-  fi
-  /bin/sleep 1
-done
-if /usr/bin/pgrep -f "$APP_PROCESS_PATTERN" >/dev/null 2>&1; then
-  log "Spark process did not exit; refusing to replace the running app"
-  exit 5
-fi
-
-log "Installing Spark.app into Applications"
-if ! perform_install >> "$LOG_PATH" 2>&1; then
-  log "Direct install failed; requesting administrator privileges"
-  /usr/bin/osascript -e "do shell script \\"{privileged_install_cmd}\\" with administrator privileges" >> "$LOG_PATH" 2>&1
-fi
-
-INSTALLED_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INSTALL_PATH/Contents/Info.plist" 2>/dev/null || true)"
-if [ -n "$EXPECTED_VERSION" ] && [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
-  log "Install verification failed: $INSTALLED_VERSION (expected $EXPECTED_VERSION)"
-  exit 6
-fi
-log "Verified installed Spark.app version $INSTALLED_VERSION"
-
-/usr/bin/xattr -cr "$INSTALL_PATH" >> "$LOG_PATH" 2>&1 || true
-/usr/bin/open "$INSTALL_PATH" >> "$LOG_PATH" 2>&1 || true
-log "Spark desktop update install finished"
-"""
-
-
-@app.get("/api/mac/update/check")
-async def check_mac_update():
-    """Check whether a newer macOS desktop app release is available."""
-    if not _is_desktop_app() or sys.platform != "darwin":
-        return {
-            "update_available": False,
-            "latest_version": None,
-            "current_version": None,
-            "download_url": None,
-            "release_url": None,
-        }
-    return await _run_blocking(_check_mac_update, True)
-
-
-@app.post("/api/mac/update/run")
-async def run_mac_update():
-    """Download the latest macOS DMG and start a detached automatic installer."""
-    if not _is_desktop_app() or sys.platform != "darwin":
-        raise HTTPException(status_code=400, detail="Not running as the macOS desktop app")
-    info = await _run_blocking(_check_mac_update, True)
-    download_url = info.get("download_url")
-    if not download_url:
-        raise HTTPException(status_code=400, detail="No downloadable macOS release found")
-
-    work_dir = Path(tempfile.mkdtemp(prefix="spark-mac-update-"))
-    dest = work_dir / f"Spark-{info.get('latest_version') or 'latest'}.dmg"
-    script_path = work_dir / "install-spark-update.zsh"
-    log_path = work_dir / "install.log"
-
-    def _download_and_start_installer() -> None:
-        urllib.request.urlretrieve(download_url, dest)
-        script_path.write_text(
-            _build_mac_update_installer_script(
-                dmg_path=dest,
-                work_dir=work_dir,
-                log_path=log_path,
-                expected_version=info.get("latest_version") or "",
-            )
-        )
-        script_path.chmod(0o700)
-        with log_path.open("ab") as log_file:
-            subprocess.Popen(
-                ["/bin/zsh", str(script_path)],
-                stdin=subprocess.DEVNULL,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-
-    try:
-        await _run_blocking(_download_and_start_installer)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to start macOS update installer: {exc}") from exc
-    return {
-        "ok": True,
-        "path": str(dest),
-        "installer_script": str(script_path),
-        "log_path": str(log_path),
-        "latest_version": info.get("latest_version"),
-        "status": "installing",
-    }
-
-
-@app.get("/api/admin/actions")
-async def admin_actions():
-    """Return bounded admin actions available to the dashboard."""
-    return {"ok": True, "actions": [a.to_metadata() for a in ADMIN_ACTIONS.values()]}
-
-
-@app.post("/api/admin/actions/{action_id}")
-async def start_admin_action(action_id: str, payload: AdminActionStart):
-    action = ADMIN_ACTIONS.get(action_id)
-    if action is None:
-        raise HTTPException(status_code=404, detail=f"Unknown admin action: {action_id}")
-    meta = action.to_metadata()
-    if not meta["available"]:
-        raise HTTPException(status_code=400, detail=meta["unavailable_reason"] or "Action unavailable")
-    if action.requires_confirmation and not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    run_id, _queue = _new_admin_run(action_id, payload.args or {})
-    threading.Thread(target=_run_admin_action, args=(run_id, action, payload.args or {}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
-
-
-@app.get("/api/admin/actions/runs/{run_id}")
-async def get_admin_action_run(run_id: str):
-    run = _admin_runs.get(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return run
-
-
-@app.get("/api/admin/actions/runs/{run_id}/stream")
-async def stream_admin_action_run(request: Request, run_id: str):
-    from fastapi.responses import StreamingResponse as _StreamingResponse
-
-    run = _admin_runs.get(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    queue = _admin_run_queues.get(run_id)
-    if queue is None:
-        queue = thread_queue.Queue(maxsize=512)
-        _admin_run_queues[run_id] = queue
-
-    async def event_generator():
-        yield f"data: {json.dumps({'type': 'state', 'status': run.get('status')})}\n\n"
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    event = await _run_blocking(queue.get, True, 20)
-                except thread_queue.Empty:
-                    yield "event: ping\ndata: {}\n\n"
-                    if run.get("status") in ("done", "failed"):
-                        break
-                    continue
-                yield f"data: {json.dumps(event, default=str)}\n\n"
-                if event.get("type") == "done":
-                    break
-        finally:
-            if run.get("status") in ("done", "failed"):
-                _admin_run_queues.pop(run_id, None)
-
-    return _StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
-
-
-@app.get("/api/gateway/status")
-async def gateway_admin_status():
-    runtime = read_runtime_status() or {}
-    pid = get_running_pid()
-    running = pid is not None
-    if not running and _runtime_gateway_running(runtime):
-        pid = _runtime_gateway_pid(runtime)
-        running = True
-    return {
-        "ok": True,
-        "running": running,
-        "pid": pid,
-        "runtime": runtime,
-        "platforms": runtime.get("platforms") or {},
-        "configured_platforms": _configured_gateway_platforms(),
-        "service_system": platform.system(),
-        "last_error": runtime.get("last_startup_error") or runtime.get("exit_reason"),
-        "state": runtime.get("gateway_state") if running else "stopped",
-    }
-
-
-@app.post("/api/gateway/control")
-async def gateway_control(payload: GatewayControlRequest):
-    action_id = f"gateway.{payload.action}"
-    action = ADMIN_ACTIONS.get(action_id)
-    if action is None:
-        raise HTTPException(status_code=400, detail=f"Unsupported gateway action: {payload.action}")
-    if action.requires_confirmation and not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    run_id, _queue = _new_admin_run(action_id, {})
-    threading.Thread(target=_run_admin_action, args=(run_id, action, {}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
-
-
-@app.get("/api/profiles")
-async def profiles_list():
-    from spark_cli.profiles import get_active_profile, list_profiles
-
-    active = get_active_profile()
-    return {"ok": True, "active": active, "profiles": [_profile_info_dict(p, active) for p in list_profiles()]}
-
-
-@app.post("/api/profiles")
-async def profiles_create(payload: ProfileCreateRequest):
-    from spark_cli.profiles import create_profile, get_active_profile, list_profiles
-
-    try:
-        path = create_profile(
-            payload.name,
-            clone_from=payload.clone_from,
-            clone_config=payload.clone_config,
-            clone_all=payload.clone_all,
-            no_alias=payload.no_alias,
-        )
-    except (ValueError, FileExistsError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    active = get_active_profile()
-    return {
-        "ok": True,
-        "path": str(path),
-        "profiles": [_profile_info_dict(p, active) for p in list_profiles()],
-    }
-
-
-@app.post("/api/profiles/{name}/use")
-async def profiles_use(name: str):
-    from spark_cli.profiles import set_active_profile
-
-    try:
-        set_active_profile(name)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "active": name}
-
-
-@app.post("/api/profiles/{name}/rename")
-async def profiles_rename(name: str, payload: ProfileRenameRequest):
-    if not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.profiles import rename_profile
-
-    try:
-        path = rename_profile(name, payload.new_name)
-    except (ValueError, FileExistsError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "path": str(path), "name": payload.new_name}
-
-
-@app.delete("/api/profiles/{name}")
-async def profiles_delete(name: str, confirm: bool = False):
-    if not confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.profiles import delete_profile
-
-    try:
-        path = delete_profile(name, yes=True)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "path": str(path)}
-
-
-@app.post("/api/profiles/{name}/export")
-async def profiles_export(name: str, payload: ProfileExportRequest):
-    if not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.profiles import export_profile
-
-    output = payload.output_path or str(get_spark_home() / "backups" / f"profile-{name}-{int(time.time())}.tar.gz")
-    try:
-        path = export_profile(name, output)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "path": str(path)}
-
-
-@app.post("/api/profiles/import")
-async def profiles_import(payload: ProfileImportRequest):
-    if not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.profiles import import_profile
-
-    try:
-        path = import_profile(payload.archive_path, payload.name)
-    except (ValueError, FileExistsError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "path": str(path)}
-
-
-@app.get("/api/plugins")
-async def plugins_list():
-    return {"ok": True, "plugins": _list_plugin_dirs()}
-
-
-@app.post("/api/plugins/{action}")
-async def plugins_action(action: str, payload: PluginActionRequest):
-    if action not in {"install", "update", "remove", "enable", "disable"}:
-        raise HTTPException(status_code=400, detail=f"Unsupported plugin action: {action}")
-    if action in {"install", "update", "remove"} and not payload.confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    action_id = f"plugins.{action}.{uuid.uuid4().hex[:8]}"
-    command = _spark_command("plugins", action, payload.name)
-    run_id, _queue = _new_admin_run(action_id, {"name": payload.name})
-    _admin_runs[run_id]["action_id"] = action_id
-    temp_action = AdminAction(action_id, f"Plugin {action}", f"Run plugin {action}.", "medium", lambda _args: command)
-    threading.Thread(target=_run_admin_action, args=(run_id, temp_action, {"name": payload.name}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
-
-
-@app.get("/api/mcp/servers")
-async def mcp_servers_list():
-    from spark_cli.mcp_config import _get_mcp_servers
-
-    return {"ok": True, "servers": _get_mcp_servers()}
-
-
-@app.post("/api/mcp/servers")
-async def mcp_servers_create(payload: McpServerCreate):
-    from spark_cli.mcp_config import _save_mcp_server
-
-    if not payload.url and not payload.command:
-        raise HTTPException(status_code=400, detail="Provide url or command")
-    server: dict[str, Any] = {}
-    if payload.url:
-        server["url"] = payload.url
-    if payload.command:
-        server["command"] = payload.command
-    if payload.args:
-        server["args"] = payload.args
-    if payload.env:
-        server["env"] = payload.env
-    try:
-        _save_mcp_server(payload.name, server)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "name": payload.name, "server": server}
-
-
-@app.delete("/api/mcp/servers/{name}")
-async def mcp_servers_delete(name: str, confirm: bool = False):
-    if not confirm:
-        raise HTTPException(status_code=400, detail="Confirmation required")
-    from spark_cli.mcp_config import _remove_mcp_server
-
-    if not _remove_mcp_server(name):
-        raise HTTPException(status_code=404, detail="MCP server not found")
-    return {"ok": True}
-
-
-@app.post("/api/mcp/servers/{name}/test")
-async def mcp_servers_test(name: str):
-    from spark_cli.mcp_config import _get_mcp_servers
-
-    servers = _get_mcp_servers()
-    if name not in servers:
-        raise HTTPException(status_code=404, detail="MCP server not found")
-    command = _spark_command("mcp", "test", name)
-    action_id = f"mcp.test.{name}"
-    run_id, _queue = _new_admin_run(action_id, {"name": name})
-    temp_action = AdminAction(action_id, "Test MCP server", "Probe one MCP server.", "low", lambda _args: command)
-    threading.Thread(target=_run_admin_action, args=(run_id, temp_action, {"name": name}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
-
-
-@app.get("/api/diagnostics/summary")
-async def diagnostics_summary():
-    cfg = load_config()
-    env = load_env()
-    missing_required: list[str] = []
-    for key, meta in OPTIONAL_ENV_VARS.items():
-        if meta.get("required") and not env.get(key):
-            missing_required.append(key)
-    return {
-        "ok": True,
-        "spark_home": str(get_spark_home()),
-        "config_path": str(get_config_path()),
-        "env_path": str(get_env_path()),
-        "config_version": cfg.get("_config_version") if isinstance(cfg, dict) else None,
-        "platform": platform.platform(),
-        "python": sys.version.split()[0],
-        "missing_required_env": missing_required,
-        "gateway_running": get_running_pid() is not None,
-        "dashboard_auth": {
-            "token_file": str(dashboard_token_path()),
-            "configured": bool(get_configured_dashboard_secret()),
-        },
-        "actions": [a.to_metadata() for a in ADMIN_ACTIONS.values()],
-    }
-
-
-@app.get("/api/diagnostics/webview")
-async def diagnostics_webview(
-    active_session_id: Optional[str] = None,
-    safe_mode: Optional[bool] = None,
-    recent_long_task_count: Optional[int] = None,
-    connection_mode: Optional[str] = None,
-):
-    """Runtime diagnostics for the desktop/web chat shell.
-
-    The browser owns safe-mode and long-task state, so callers can pass those
-    values as query params when collecting a complete diagnostic snapshot.
-    """
-    candidates = {active_session_id} if active_session_id else set()
-    if active_session_id:
-        try:
-            from core.spark_state import SessionDB
-
-            db = SessionDB()
-            try:
-                sid = db.resolve_session_id(active_session_id)
-                if sid:
-                    candidates.add(sid)
-                    latest = db.resolve_latest_descendant(sid)
-                    if latest:
-                        candidates.add(latest)
-            finally:
-                db.close()
-        except Exception:
-            _log.debug("diagnostic session resolution failed session=%s", active_session_id, exc_info=True)
-
-    active_turn = any(_is_web_turn_active(sid) for sid in candidates if sid)
-    return {
-        "ok": True,
-        "sidecar_pid": os.getpid(),
-        "desktop": _is_desktop_app(),
-        "desktop_version": _desktop_app_version(),
-        "active_session_id": active_session_id,
-        "active_turn": active_turn,
-        "safe_mode": safe_mode,
-        "recent_long_task_count": recent_long_task_count,
-        "connection_mode": connection_mode,
-        "activity_monitor_process_name_note": (
-            "Spark desktop is a Tauri shell that navigates its main webview to "
-            "the local sidecar at http://127.0.0.1:9119, so macOS may show the "
-            "webview page URL rather than the Spark app name for the busy renderer."
-        ),
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def _conversation_diagnostics_payload(session_id: str) -> dict[str, Any]:
     status = _conversation_turn_status_payload(session_id)
-    timings = status.get("timings") if isinstance(status.get("timings"), dict) else {}
-    relative = timings.get("relative_seconds") if isinstance(timings.get("relative_seconds"), dict) else {}
-    absolute = timings.get("absolute") if isinstance(timings.get("absolute"), dict) else {}
+    timings = cast(
+        dict[str, Any], status.get("timings") if isinstance(status.get("timings"), dict) else {}
+    )
+    relative = cast(
+        dict[str, Any],
+        timings.get("relative_seconds") if isinstance(timings.get("relative_seconds"), dict) else {},
+    )
+    absolute = cast(
+        dict[str, Any], timings.get("absolute") if isinstance(timings.get("absolute"), dict) else {}
+    )
 
-    def _rounded_number(value: Any) -> Optional[float]:
+    def _rounded_number(value: Any) -> float | None:
         if isinstance(value, (int, float)):
             return round(float(value), 3)
         return None
@@ -4361,46 +3440,12 @@ async def dashboard_auth_info():
     }
 
 
-def _reveal_authorized(request: Request) -> bool:
-    auth = request.headers.get("authorization", "")
-    if auth == f"Bearer {_SESSION_TOKEN}":
-        return True
-    secret = get_configured_dashboard_secret()
-    if not secret:
-        secret = ensure_dashboard_token_file()
-    client_host = request.client.host if request.client else None
-    qtoken = request.query_params.get("dashboard_token")
-    return validate_dashboard_request(
-        client_host,
-        auth,
-        require_for_remote=True,
-        secret=secret,
-        query_token=qtoken,
-    )
 
 
-def _secret_reveal_authorized(request: Request) -> bool:
-    """Strict auth gate for endpoints that return *plaintext secrets*.
-
-    Unlike :func:`_reveal_authorized`, this does **not** grant a loopback /
-    trusted-local bypass: revealing an unredacted env var always requires the
-    ephemeral per-process session token (injected into the SPA) or a valid
-    configured dashboard token. A local TCP peer alone is not sufficient.
-    """
-    auth = request.headers.get("authorization", "")
-    if _SESSION_TOKEN and auth == f"Bearer {_SESSION_TOKEN}":
-        return True
-    secret = get_configured_dashboard_secret()
-    if not secret:
-        secret = ensure_dashboard_token_file()
-    if not secret:
-        return False
-    token = extract_bearer_token(auth) or (request.query_params.get("dashboard_token") or "").strip() or None
-    return bool(token and secrets.compare_digest(token, secret))
 
 
 @app.get("/api/sessions")
-async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] = None):
+async def get_sessions(limit: int = 20, offset: int = 0, source: str | None = None):
     try:
         from core.spark_state import SessionDB
 
@@ -4423,13 +3468,13 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: Optional[str] =
             }
         finally:
             db.close()
-    except Exception:
+    except Exception as err:
         _log.exception("GET /api/sessions failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
 @app.get("/api/sessions/search")
-async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = None):
+async def search_sessions(q: str = "", limit: int = 20, source: str | None = None):
     """Full-text search across session message content using FTS5."""
     if not q or not q.strip():
         return {"results": []}
@@ -4469,12 +3514,12 @@ async def search_sessions(q: str = "", limit: int = 20, source: Optional[str] = 
             return {"results": list(seen.values())}
         finally:
             db.close()
-    except Exception:
+    except Exception as err:
         _log.exception("GET /api/sessions/search failed")
-        raise HTTPException(status_code=500, detail="Search failed")
+        raise HTTPException(status_code=500, detail="Search failed") from err
 
 
-def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_config_for_web(config: dict[str, Any]) -> dict[str, Any]:
     """Normalize config for the web UI.
 
     Spark supports ``model`` as either a bare string (``"anthropic/claude-sonnet-4"``)
@@ -4510,81 +3555,13 @@ async def get_config():
     return {k: v for k, v in config.items() if not k.startswith("_")}
 
 
-@app.get("/api/onboarding/status")
-async def get_onboarding_status():
-    """First-run detection for the desktop onboarding wizard.
-
-    ``needs_onboarding`` is true when no config.yaml exists yet, or when
-    ``model.provider`` is unset/empty.
-    """
-    config_exists = get_config_path().exists()
-
-    config = load_config() if config_exists else {}
-    model = config.get("model") if isinstance(config, dict) else {}
-    if not isinstance(model, dict):
-        model = {}
-    provider = (model.get("provider") or "").strip()
-    has_model = bool(provider)
-
-    env_on_disk = load_env()
-    has_api_key = any(
-        bool(env_on_disk.get(var_name))
-        for var_name in ("OPENAI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY")
-    )
-
-    return {
-        "needs_onboarding": (not config_exists) or (not has_model),
-        "has_model": has_model,
-        "has_api_key": has_api_key,
-    }
 
 
 # Skill names seeded for the "minimal" onboarding choice.
-_MINIMAL_SKILLS = {"find-skills", "codebase-inspection", "frontend-design", "excalidraw", "claude-code"}
 
 
-class OnboardingSkillsRequest(BaseModel):
-    mode: str  # "recommended" | "minimal" | "none"
 
 
-@app.post("/api/onboarding/skills")
-async def setup_onboarding_skills(req: OnboardingSkillsRequest):
-    """Seed the user's skills directory according to their onboarding choice.
-
-    - ``recommended``: seed all bundled Spark skills.
-    - ``minimal``: seed a small curated subset.
-    - ``none``: seed nothing (blank slate; Spark creates skills over time).
-
-    The choice is persisted under ``skills.onboarding_mode`` in config.
-    """
-    mode = (req.mode or "").strip().lower()
-    if mode not in {"recommended", "minimal", "none"}:
-        raise HTTPException(status_code=400, detail=f"Unknown skills mode: {mode}")
-
-    result: dict = {"copied": [], "total_bundled": 0}
-    if mode in {"recommended", "minimal"}:
-        from tools.skills_sync import sync_skills
-
-        only = _MINIMAL_SKILLS if mode == "minimal" else None
-        result = await _run_blocking(sync_skills, True, only)
-
-    # Persist the choice so re-running setup / diagnostics knows the intent.
-    try:
-        cfg = load_config()
-        if isinstance(cfg, dict):
-            skills_cfg = dict(cfg.get("skills") or {})
-            skills_cfg["onboarding_mode"] = mode
-            cfg["skills"] = skills_cfg
-            save_config(cfg)
-    except Exception:
-        pass
-
-    return {
-        "ok": True,
-        "mode": mode,
-        "seeded": len(result.get("copied", [])),
-        "total_bundled": result.get("total_bundled", 0),
-    }
 
 
 class OpenExternalRequest(BaseModel):
@@ -4637,664 +3614,50 @@ async def get_schema():
             if main_provider and "delegation.provider" in schema:
                 schema["delegation.provider"] = {**schema["delegation.provider"], "placeholder": main_provider}
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_schema()", exc_info=True)
     return {"fields": schema, "category_order": _CATEGORY_ORDER}
 
 
-_EMPTY_MODEL_INFO: dict = {
-    "model": "",
-    "provider": "",
-    "auto_context_length": 0,
-    "config_context_length": 0,
-    "effective_context_length": 0,
-    "capabilities": {},
-}
 
 
-def _codex_usage_windows(rate_limit: Any) -> list[dict[str, Any]]:
-    """Build displayable Codex usage windows from the live response.
-
-    Codex can independently omit or null either window (for example, while a
-    plan has no weekly limit).  Keep every window that is actually present
-    instead of letting one absent window discard the entire usage meter.
-    """
-    if not isinstance(rate_limit, dict):
-        return []
-
-    windows: list[dict[str, Any]] = []
-    for key in ("primary_window", "secondary_window"):
-        window = rate_limit.get(key)
-        if not isinstance(window, dict):
-            continue
-        used_percent = window.get("used_percent")
-        if not isinstance(used_percent, (int, float)):
-            continue
-        window_seconds = window.get("limit_window_seconds")
-        if not isinstance(window_seconds, (int, float)) or window_seconds <= 0:
-            continue
-        if window_seconds == 604800:
-            label = "Weekly limit"
-        elif window_seconds == 18000:
-            label = "5h limit"
-        elif window_seconds % 86400 == 0:
-            label = f"{int(window_seconds / 86400)}d limit"
-        elif window_seconds % 3600 == 0:
-            label = f"{int(window_seconds / 3600)}h limit"
-        else:
-            label = "Usage limit"
-        windows.append({
-            "label": label,
-            "used_percent": used_percent,
-            "reset_at": window.get("reset_at"),
-            "reset_after_seconds": window.get("reset_after_seconds"),
-            "window_seconds": window_seconds,
-        })
-    return windows
 
 
-@app.get("/api/model/codex-usage")
-def get_codex_usage():
-    """Return Codex provider status and any captured usage-limit state.
-
-    The ChatGPT backend ``usage_limits`` endpoint is Cloudflare-protected and
-    requires browser session cookies — it cannot be called server-side with the
-    Codex OAuth token.  The Codex Responses API also does not return
-    x-ratelimit-* headers.  Instead, this endpoint surfaces:
-
-    1. ``provider_connected`` — whether the provider is openai-codex and the
-       user is authenticated (always available when Codex is configured).
-    2. ``limit_hit`` — non-null when a ``usage_limit_reached`` error was
-       detected during a recent inference turn, including reset info.
-    3. ``rate_limit`` — the last x-ratelimit-* state from any active web agent,
-       if the provider returned those headers (most non-Codex providers do).
-    """
-    try:
-        cfg = load_config()
-        model_cfg = cfg.get("model", "")
-        if isinstance(model_cfg, dict):
-            provider = str(model_cfg.get("provider", "") or "").strip()
-        else:
-            provider = ""
-
-        if provider != "openai-codex":
-            return {"available": False, "reason": "not_codex_provider"}
-
-        from spark_cli.auth import get_codex_auth_status
-
-        status = get_codex_auth_status()
-        if not status.get("logged_in"):
-            return {"available": False, "reason": "not_authenticated"}
-
-        # Resolve active model name for display
-        active_model = ""
-        try:
-            if isinstance(model_cfg, dict):
-                active_model = str(model_cfg.get("default", model_cfg.get("name", "")) or "").strip()
-            else:
-                active_model = str(model_cfg or "").strip()
-            if active_model:
-                active_model = active_model.replace("-", " ").title().replace(" ", "-").replace("Gpt", "GPT")
-        except Exception:
-            pass
-
-        # Fetch live usage from the wham/usage endpoint (discovered via CodexBar)
-        # Requires the ChatGPT-Account-Id header extracted from the JWT claims.
-        try:
-            import httpx as _httpx
-            import base64 as _base64
-
-            access_token = status.get("api_key", "")
-            # Extract chatgpt_account_id from JWT payload
-            account_id = ""
-            try:
-                parts = access_token.split(".")
-                if len(parts) >= 2:
-                    padded = parts[1] + "=" * (-len(parts[1]) % 4)
-                    jwt_claims = __import__("json").loads(_base64.urlsafe_b64decode(padded))
-                    auth_ns = jwt_claims.get("https://api.openai.com/auth", {})
-                    account_id = auth_ns.get("chatgpt_account_id", "")
-            except Exception:
-                pass
-
-            wham_headers = {
-                "Authorization": f"Bearer {access_token}",
-                "Accept": "application/json",
-                "User-Agent": "Spark/1.0",
-            }
-            if account_id:
-                wham_headers["ChatGPT-Account-Id"] = account_id
-
-            # Do not require HTTP/2 here. It is an optional httpx dependency
-            # and is intentionally absent from the frozen desktop sidecar;
-            # chatgpt.com serves this endpoint correctly over HTTP/1.1.
-            with _httpx.Client(timeout=10.0) as _hc:
-                wham = _hc.get("https://chatgpt.com/backend-api/wham/usage", headers=wham_headers)
-
-            if wham.status_code == 200:
-                wham_data = wham.json()
-                rl = wham_data.get("rate_limit")
-                if not isinstance(rl, dict):
-                    rl = {}
-                return {
-                    "available": True,
-                    "provider_connected": True,
-                    "active_model": active_model,
-                    "plan_type": wham_data.get("plan_type"),
-                    "limit_reached": rl.get("limit_reached", False),
-                    "windows": _codex_usage_windows(rl),
-                }
-        except Exception as exc:
-            _log.debug("wham/usage fetch failed: %s", exc)
-
-        # Fallback: return connected state without usage windows
-        return {
-            "available": True,
-            "provider_connected": True,
-            "active_model": active_model,
-            "windows": [],
-        }
-    except Exception:
-        _log.exception("GET /api/model/codex-usage failed")
-        return {"available": False, "reason": "internal_error"}
 
 
-@app.get("/api/model/info")
-def get_model_info():
-    """Return resolved model metadata for the currently configured model.
-
-    Calls the same context-length resolution chain the agent uses, so the
-    frontend can display "Auto-detected: 200K" alongside the override field.
-    Also returns model capabilities (vision, reasoning, tools) when available.
-    """
-    try:
-        cfg = load_config()
-        model_cfg = cfg.get("model", "")
-
-        # Extract model name and provider from the config
-        if isinstance(model_cfg, dict):
-            model_name = model_cfg.get("default", model_cfg.get("name", ""))
-            provider = model_cfg.get("provider", "")
-            base_url = model_cfg.get("base_url", "")
-            config_ctx = model_cfg.get("context_length")
-        else:
-            model_name = str(model_cfg) if model_cfg else ""
-            provider = ""
-            base_url = ""
-            config_ctx = None
-
-        if not model_name:
-            return dict(_EMPTY_MODEL_INFO, provider=provider)
-
-        # Resolve auto-detected context length (pass config_ctx=None to get
-        # purely auto-detected value, then separately report the override)
-        try:
-            from agent.model_metadata import get_model_context_length
-
-            auto_ctx = get_model_context_length(
-                model=model_name,
-                base_url=base_url,
-                provider=provider,
-                config_context_length=None,  # ignore override — we want auto value
-            )
-        except Exception:
-            auto_ctx = 0
-
-        config_ctx_int = 0
-        if isinstance(config_ctx, int) and config_ctx > 0:
-            config_ctx_int = config_ctx
-
-        # Effective is what the agent actually uses
-        effective_ctx = config_ctx_int if config_ctx_int > 0 else auto_ctx
-
-        # Try to get model capabilities from models.dev
-        caps = {}
-        try:
-            from agent.models_dev import get_model_capabilities
-
-            mc = get_model_capabilities(provider=provider, model=model_name)
-            if mc is not None:
-                caps = {
-                    "supports_tools": mc.supports_tools,
-                    "supports_vision": mc.supports_vision,
-                    "supports_reasoning": mc.supports_reasoning,
-                    "context_window": mc.context_window,
-                    "max_output_tokens": mc.max_output_tokens,
-                    "model_family": mc.model_family,
-                }
-        except Exception:
-            pass
-
-        return {
-            "model": model_name,
-            "provider": provider,
-            "auto_context_length": auto_ctx,
-            "config_context_length": config_ctx_int,
-            "effective_context_length": effective_ctx,
-            "capabilities": caps,
-        }
-    except Exception:
-        _log.exception("GET /api/model/info failed")
-        return dict(_EMPTY_MODEL_INFO)
 
 
-@app.get("/api/model/status")
-def get_model_status():
-    """Return all model/routing/reasoning state needed by the prompt bar."""
-    try:
-        cfg = load_config()
-        from spark_cli.model_config import read_auto_policy, read_global_model_config
-
-        global_model = read_global_model_config(cfg)
-        policy = read_auto_policy(cfg)
-        model_cfg = cfg.get("model", "")
-        if isinstance(model_cfg, dict):
-            smart_model = str(model_cfg.get("default", model_cfg.get("name", "")) or "")
-            smart_provider = str(model_cfg.get("provider", "") or "")
-        else:
-            smart_model = str(model_cfg or "")
-            smart_provider = ""
-
-        routing_cfg = cfg.get("smart_model_routing", {}) or {}
-        multi_enabled = bool(routing_cfg.get("enabled", False))
-        cheap = routing_cfg.get("cheap_model", {}) or {}
-        fast_model = str(cheap.get("model", "") or "")
-        fast_provider = str(cheap.get("provider", "") or "")
-
-        agent_cfg = cfg.get("agent", {}) if isinstance(cfg.get("agent"), dict) else {}
-        effort = str(agent_cfg.get("reasoning_effort") or "").strip().lower() or "none"
-
-        # Reasoning support
-        reasoning_supported = False
-        try:
-            from agent.models_dev import get_model_capabilities
-            if smart_model:
-                mc = get_model_capabilities(provider=smart_provider, model=smart_model)
-                reasoning_supported = bool(mc and mc.supports_reasoning)
-        except Exception:
-            pass
-
-        catalog_source = "unavailable"
-        catalog_warning = ""
-        try:
-            catalog = _resolve_codex_model_catalog()
-            catalog_source = str(catalog.get("source") or "unavailable")
-            catalog_warning = str(catalog.get("warning") or "")
-        except Exception:
-            pass
-
-        return {
-            "smart_model": "auto" if global_model.selection == "auto" else smart_model,
-            "smart_provider": smart_provider,
-            "fast_model": fast_model,
-            "fast_provider": fast_provider,
-            "multi_model_enabled": multi_enabled,
-            "reasoning_effort": effort,
-            "reasoning_supported": reasoning_supported,
-            "auto_enabled": policy.enabled,
-            "selection": global_model.selection,
-            "auto_roles": {name: target.as_dict() for name, target in policy.roles.items()},
-            "catalog_source": catalog_source,
-            "catalog_warning": catalog_warning,
-        }
-    except Exception:
-        _log.exception("GET /api/model/status failed")
-        return {
-            "smart_model": "", "smart_provider": "", "fast_model": "", "fast_provider": "",
-            "multi_model_enabled": False, "reasoning_effort": "none", "reasoning_supported": False,
-            "auto_enabled": True, "selection": "auto", "auto_roles": {},
-            "catalog_source": "unavailable", "catalog_warning": "",
-        }
 
 
 # Provider-aware model name catalogs. Used by both the quick-settings popover
 # (/api/model/suggestions) and the Config editor dropdown (/api/model/available).
-_PROVIDER_MODEL_SUGGESTIONS: Dict[str, list] = {
-    "openai-codex": [
-        "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2-codex",
-    ],
-    "qwen-oauth": ["qwen3-coder-plus", "qwen3-coder-flash"],
-    "openai": [
-        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-        "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
-        "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini",
-    ],
-    "anthropic": [
-        "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
-        "claude-opus-4-5", "claude-sonnet-4-5",
-    ],
-    "google": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
-    "openrouter": ["anthropic/claude-sonnet-4-6", "openai/gpt-4o", "google/gemini-2.5-pro"],
-    "deepseek": ["deepseek-chat", "deepseek-reasoner"],
-    "xai": ["grok-3", "grok-3-mini"],
-    "ollama": ["llama3.3", "qwen2.5-coder:32b", "mistral", "phi4"],
-}
 
 # Providers whose model catalog is fixed/managed (OAuth backends that only serve
 # a known set), so the Config editor presents a strict dropdown. Open-ended
 # providers (ollama local tags, openrouter's huge catalog, custom endpoints) keep
 # a free-text field — the suggestions are only hints there.
-_STRICT_MODEL_PROVIDERS = frozenset({"openai-codex", "qwen-oauth"})
 
 
-def _normalize_config_provider_key(value: str) -> str:
-    return str(value or "").strip().lower().replace(" ", "-")
 
 
-def _models_from_provider_config(provider: str) -> tuple[list, str]:
-    """Return ``(models, base_url)`` for a provider defined in config.yaml."""
-    requested = _normalize_config_provider_key(provider)
-    if not requested:
-        return [], ""
-    requested_no_custom = requested
-    if requested.startswith("custom:"):
-        requested_no_custom = requested.removeprefix("custom:")
-    try:
-        cfg = load_config()
-    except Exception:
-        return [], ""
-    providers_cfg = cfg.get("providers")
-    if not isinstance(providers_cfg, dict):
-        return [], ""
-
-    for key, entry in providers_cfg.items():
-        if not isinstance(entry, dict):
-            continue
-        key_norm = _normalize_config_provider_key(str(key))
-        display = _normalize_config_provider_key(str(entry.get("name", "") or ""))
-        candidates = {key_norm, f"custom:{key_norm}"}
-        if display:
-            candidates.update({display, f"custom:{display}"})
-        if (
-            requested not in candidates
-            and requested_no_custom not in {key_norm, display}
-        ):
-            continue
-
-        models: list[str] = []
-        default_model = str(entry.get("default_model", "") or "").strip()
-        if default_model:
-            models.append(default_model)
-        cfg_models = entry.get("models", [])
-        if isinstance(cfg_models, list):
-            for model_id in cfg_models:
-                model_id = str(model_id or "").strip()
-                if model_id and model_id not in models:
-                    models.append(model_id)
-        base_url = str(
-            entry.get("api") or entry.get("url") or entry.get("base_url") or ""
-        ).strip()
-        return models, base_url
-    return [], ""
 
 
-def _resolve_codex_model_catalog() -> dict:
-    """Return the account-scoped Codex catalog with explicit trust metadata."""
-    from spark_cli.auth import get_codex_auth_status
-    from spark_cli.codex_models import get_codex_model_catalog
-
-    status = get_codex_auth_status()
-    token = str(status.get("api_key", "") or "") if status.get("logged_in") else ""
-    return get_codex_model_catalog(access_token=token, api_timeout=2.0)
 
 
-def _resolve_provider_models(provider: str, base_url: str = "") -> tuple[list, bool]:
-    """Resolve the model catalog for ``provider`` (live where possible).
-
-    Returns ``(models, live)`` where ``live`` indicates the list came from
-    querying the provider directly (vs. static suggestions). For ollama,
-    openrouter and OpenAI-compatible custom endpoints we query the provider so
-    the dropdown reflects what's actually installed/available. Everything else
-    falls back to the curated suggestion lists.
-    """
-    provider = (provider or "").strip()
-    base_url = (base_url or "").strip()
-
-    config_models, config_base_url = _models_from_provider_config(provider)
-    if config_models:
-        return config_models, False
-    if not base_url and config_base_url:
-        base_url = config_base_url
-
-    if provider == "openai-codex":
-        try:
-            catalog = _resolve_codex_model_catalog()
-            return list(catalog["models"]), bool(catalog["live"])
-        except Exception:
-            return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
-
-    if provider in {"ollama", "openrouter", "custom"} or base_url:
-        try:
-            from agent.model_metadata import list_provider_models
-
-            api_key = ""
-            if provider == "openrouter":
-                api_key = load_env().get("OPENROUTER_API_KEY", "") or ""
-            live = list_provider_models(provider, base_url=base_url, api_key=api_key)
-            if live:
-                return live, True
-        except Exception:
-            _log.exception("live model fetch failed for provider=%s", provider)
-        # Fall back to static hints when the provider is unreachable.
-        return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
-
-    return list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, [])), False
 
 
-@app.get("/api/model/available")
-def get_available_models(provider: str = "", base_url: str = ""):
-    """Return the model catalog for a given provider plus whether the UI should
-    enforce a strict dropdown.
-
-    Query params:
-        provider — provider id (e.g. "openai-codex"). Defaults to "".
-        base_url — optional endpoint URL used to query local/custom providers
-                   (ollama, OpenAI-compatible servers) for their live catalog.
-
-    Response:
-        provider — echoed provider id
-        models   — list of known model names for that provider (may be empty)
-        live     — True when the list was fetched live from the provider
-        strict   — True when the UI should only allow choosing from `models`
-                   (fixed/managed catalogs like openai-codex); False when the
-                   user may type a custom name (ollama, openrouter, custom).
-    """
-    provider = (provider or "").strip()
-    normalized_base_url = ""
-    if (base_url or "").strip():
-        try:
-            normalized_base_url = normalize_http_base_url(
-                base_url, field_name="Model base URL"
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    codex_catalog = None
-    if provider == "openai-codex":
-        try:
-            codex_catalog = _resolve_codex_model_catalog()
-            models = list(codex_catalog["models"])
-            live = bool(codex_catalog["live"])
-        except Exception:
-            models = list(_PROVIDER_MODEL_SUGGESTIONS.get(provider, []))
-            live = False
-    else:
-        models, live = _resolve_provider_models(provider, normalized_base_url)
-    strict = provider in _STRICT_MODEL_PROVIDERS
-    warning = ""
-    source = "live" if live else "curated"
-    if provider == "openai-codex" and not live:
-        source = "offline-fallback"
-        warning = (
-            "The live Codex catalog is unavailable. Only conservative offline "
-            "fallback models are shown; reconnect Codex to refresh account availability."
-        )
-    response = {
-        "provider": provider,
-        "models": models,
-        "live": live,
-        "strict": strict,
-        "source": source,
-        "warning": warning,
-    }
-    if codex_catalog is not None:
-        response.update(
-            {
-                "catalog": list(codex_catalog["catalog"]),
-                "source": codex_catalog["source"],
-                "freshness": codex_catalog["freshness"],
-                "stale": bool(codex_catalog["stale"]),
-                "authoritative": bool(codex_catalog["authoritative"]),
-                "warning": codex_catalog["warning"],
-            }
-        )
-    return response
 
 
-@app.get("/api/model/suggestions")
-def get_model_suggestions():
-    """Return provider-aware model name suggestions for the quick-settings popover."""
-    try:
-        from spark_cli.model_config import read_auto_policy
-
-        cfg = load_config()
-        model_cfg = cfg.get("model", "")
-        smart_provider = ""
-        smart_base_url = ""
-        if isinstance(model_cfg, dict):
-            smart_provider = str(model_cfg.get("provider", "") or "")
-            smart_base_url = str(model_cfg.get("base_url", "") or "")
-
-        routing_cfg = cfg.get("smart_model_routing", {}) or {}
-        cheap = routing_cfg.get("cheap_model", {}) or {}
-        fast_provider = str(cheap.get("provider", "") or "")
-        fast_base_url = str(cheap.get("base_url", "") or "")
-
-        if not smart_provider:
-            policy = read_auto_policy(cfg)
-            smart_provider = policy.role("balanced").provider
-        smart_models, _ = _resolve_provider_models(smart_provider, smart_base_url)
-        fast_models, _ = _resolve_provider_models(fast_provider, fast_base_url)
-
-        return {
-            "smart": ["auto", *[model for model in smart_models if model != "auto"]],
-            "fast": fast_models,
-            "smart_provider": smart_provider,
-            "fast_provider": fast_provider,
-        }
-    except Exception:
-        _log.exception("GET /api/model/suggestions failed")
-        return {"smart": [], "fast": [], "smart_provider": "", "fast_provider": ""}
 
 
-@app.put("/api/model/fast")
-def set_fast_model(body: Dict[str, Any]):
-    """Update just the fast model name, preserving other routing config."""
-    try:
-        from spark_cli.config import save_config
-
-        try:
-            new_model = normalize_model_name(body.get("model"), field_name="Model name")
-        except ValueError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
-
-        cfg = load_config()
-        if "smart_model_routing" not in cfg or not isinstance(cfg["smart_model_routing"], dict):
-            cfg["smart_model_routing"] = {}
-        if "cheap_model" not in cfg["smart_model_routing"] or not isinstance(cfg["smart_model_routing"]["cheap_model"], dict):
-            cfg["smart_model_routing"]["cheap_model"] = {}
-        cfg["smart_model_routing"]["cheap_model"]["model"] = new_model
-        save_config(cfg)
-        return {"ok": True, "model": new_model}
-    except Exception:
-        _log.exception("PUT /api/model/fast failed")
-        return JSONResponse({"error": "Failed to save fast model"}, status_code=500)
 
 
-@app.put("/api/model/smart")
-def set_smart_model(body: Dict[str, Any]):
-    """Update just the smart model name, preserving provider/url/api_mode."""
-    try:
-        from spark_cli.config import save_config
-
-        raw_model = str(body.get("model") or "").strip()
-        if raw_model.lower() == "auto":
-            from spark_cli.model_config import write_global_model_config
-
-            write_global_model_config(model="auto")
-            return {"ok": True, "model": "auto", "selection": "auto"}
-        try:
-            new_model = normalize_model_name(body.get("model"), field_name="Model name")
-        except ValueError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
-
-        cfg = load_config()
-        model_cfg = cfg.get("model", "")
-        if isinstance(model_cfg, dict):
-            model_cfg["default"] = new_model
-            cfg["model"] = model_cfg
-        else:
-            cfg["model"] = new_model
-        save_config(cfg)
-        return {"ok": True, "model": new_model}
-    except Exception:
-        _log.exception("PUT /api/model/smart failed")
-        return JSONResponse({"error": "Failed to save model"}, status_code=500)
 
 
-@app.get("/api/model/reasoning")
-def get_reasoning_effort():
-    """Return current reasoning effort and whether the active model supports it."""
-    try:
-        cfg = load_config()
-        agent_cfg = cfg.get("agent", {}) if isinstance(cfg.get("agent"), dict) else {}
-        effort = str(agent_cfg.get("reasoning_effort") or "").strip().lower() or "none"
-
-        # Check if active model supports reasoning
-        supported = False
-        try:
-            from agent.models_dev import get_model_capabilities
-
-            model_cfg = cfg.get("model", "")
-            if isinstance(model_cfg, dict):
-                model_name = model_cfg.get("default", model_cfg.get("name", ""))
-                provider = model_cfg.get("provider", "")
-            else:
-                model_name = str(model_cfg) if model_cfg else ""
-                provider = ""
-            if model_name:
-                mc = get_model_capabilities(provider=provider, model=model_name)
-                supported = bool(mc and mc.supports_reasoning)
-        except Exception:
-            pass
-
-        return {"effort": effort, "supported": supported}
-    except Exception:
-        _log.exception("GET /api/model/reasoning failed")
-        return {"effort": "none", "supported": False}
 
 
-@app.put("/api/model/reasoning")
-def set_reasoning_effort(body: Dict[str, Any]):
-    """Set reasoning effort level. Valid values: none, minimal, low, medium, high, xhigh."""
-    try:
-        from core.spark_constants import parse_reasoning_effort
-        from spark_cli.config import save_config
-
-        effort = str(body.get("effort", "none")).strip().lower()
-        if effort != "none" and parse_reasoning_effort(effort) is None:
-            return JSONResponse({"error": f"Invalid effort: {effort}"}, status_code=400)
-
-        cfg = load_config()
-        if "agent" not in cfg or not isinstance(cfg["agent"], dict):
-            cfg["agent"] = {}
-        cfg["agent"]["reasoning_effort"] = "" if effort == "none" else effort
-        save_config(cfg)
-        return {"effort": effort, "ok": True}
-    except Exception:
-        _log.exception("PUT /api/model/reasoning failed")
-        return JSONResponse({"error": "Failed to save reasoning effort"}, status_code=500)
 
 
-def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
+def _denormalize_config_from_web(config: dict[str, Any]) -> dict[str, Any]:
     """Reverse _normalize_config_for_web before saving.
 
     Reconstructs ``model`` as a dict by reading the current on-disk config
@@ -5326,7 +3689,7 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
 
     model_val = config.get("model")
     if isinstance(model_val, str) and model_val:
-        def _apply_model_virtuals(model_config: Dict[str, Any]) -> Dict[str, Any]:
+        def _apply_model_virtuals(model_config: dict[str, Any]) -> dict[str, Any]:
             model_config["default"] = model_val
             if model_provider:
                 model_config["provider"] = model_provider
@@ -5359,11 +3722,12 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
                 if ctx_override > 0 or model_provider or model_base_url or model_api_mode:
                     config["model"] = _apply_model_virtuals({})
         except Exception:
-            pass  # can't read disk config — just use the string form
+            # can't read disk config — just use the string form
+            _log.debug("Ignored exception in _denormalize_config_from_web", exc_info=True)
     return config
 
 
-def _validate_config_update_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
+def _validate_config_update_from_web(config: dict[str, Any]) -> dict[str, Any]:
     """Validate onboarding-sensitive fields before saving web config updates."""
     model = config.get("model")
     if isinstance(model, dict):
@@ -5392,9 +3756,9 @@ async def update_config(body: ConfigUpdate):
         return {"ok": True}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception:
+    except Exception as err:
         _log.exception("PUT /api/config failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
 @app.get("/api/auth/session-token")
@@ -5408,83 +3772,12 @@ async def get_session_token():
     return {"token": _SESSION_TOKEN}
 
 
-@app.get("/api/env")
-async def get_env_vars():
-    env_on_disk = load_env()
-    result = {}
-    for var_name, info in OPTIONAL_ENV_VARS.items():
-        value = env_on_disk.get(var_name)
-        result[var_name] = {
-            "is_set": bool(value),
-            "redacted_value": redact_key(value) if value else None,
-            "description": info.get("description", ""),
-            "url": info.get("url"),
-            "category": info.get("category", ""),
-            "is_password": info.get("password", False),
-            "tools": info.get("tools", []),
-            "advanced": info.get("advanced", False),
-        }
-    return result
 
 
-@app.put("/api/env")
-async def set_env_var(body: EnvVarUpdate):
-    try:
-        value = validate_env_assignment(body.key, body.value)
-        save_env_value(body.key, value)
-        return {"ok": True, "key": body.key}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception:
-        _log.exception("PUT /api/env failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.delete("/api/env")
-async def remove_env_var(body: EnvVarDelete):
-    try:
-        removed = remove_env_value(body.key)
-        if not removed:
-            raise HTTPException(status_code=404, detail=f"{body.key} not found in .env")
-        return {"ok": True, "key": body.key}
-    except HTTPException:
-        raise
-    except Exception:
-        _log.exception("DELETE /api/env failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.post("/api/env/reveal")
-async def reveal_env_var(body: EnvVarReveal, request: Request):
-    """Return the real (unredacted) value of a single env var.
-
-    Protected by:
-    - Ephemeral session token (generated per server start, injected into SPA)
-    - Rate limiting (max 5 reveals per 30s window)
-    - Audit logging
-    """
-    # --- Token check (strict: no loopback bypass for plaintext secrets) ---
-    if not _secret_reveal_authorized(request):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    # --- Rate limit ---
-    now = time.time()
-    cutoff = now - _REVEAL_WINDOW_SECONDS
-    _reveal_timestamps[:] = [t for t in _reveal_timestamps if t > cutoff]
-    if len(_reveal_timestamps) >= _REVEAL_MAX_PER_WINDOW:
-        raise HTTPException(
-            status_code=429, detail="Too many reveal requests. Try again shortly."
-        )
-    _reveal_timestamps.append(now)
-
-    # --- Reveal ---
-    env_on_disk = load_env()
-    value = env_on_disk.get(body.key)
-    if value is None:
-        raise HTTPException(status_code=404, detail=f"{body.key} not found in .env")
-
-    _log.info("env/reveal: %s", body.key)
-    return {"key": body.key, "value": value}
 
 
 # ---------------------------------------------------------------------------
@@ -5499,113 +3792,10 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
 # can surface a one-click copy.
 
 
-def _truncate_token(value: Optional[str], visible: int = 6) -> str:
-    """Return ``...XXXXXX`` (last N chars) for safe display in the UI.
-
-    We never expose more than the trailing ``visible`` characters of an
-    OAuth access token. JWT prefixes (the part before the first dot) are
-    stripped first when present so the visible suffix is always part of
-    the signing region rather than a meaningless header chunk.
-    """
-    if not value:
-        return ""
-    s = str(value)
-    if "." in s and s.count(".") >= 2:
-        # Looks like a JWT — show the trailing piece of the signature only.
-        s = s.rsplit(".", 1)[-1]
-    if len(s) <= visible:
-        return s
-    return f"…{s[-visible:]}"
 
 
-def _anthropic_oauth_status() -> Dict[str, Any]:
-    """Combined status across the three Anthropic credential sources we read.
-
-    Spark resolves Anthropic creds in this order at runtime:
-    1. ``~/.spark/.anthropic_oauth.json`` — Spark-managed PKCE flow
-    2. ``~/.claude/.credentials.json`` — Claude Code CLI credentials (auto)
-    3. ``ANTHROPIC_TOKEN`` / ``ANTHROPIC_API_KEY`` env vars
-    The dashboard reports the highest-priority source that's actually present.
-    """
-    try:
-        from agent.anthropic_adapter import (
-            read_spark_oauth_credentials,
-            read_claude_code_credentials,
-            _SPARK_OAUTH_FILE,
-        )
-    except ImportError:
-        read_claude_code_credentials = None  # type: ignore
-        read_spark_oauth_credentials = None  # type: ignore
-        _SPARK_OAUTH_FILE = None  # type: ignore
-
-    spark_creds = None
-    if read_spark_oauth_credentials:
-        try:
-            spark_creds = read_spark_oauth_credentials()
-        except Exception:
-            spark_creds = None
-    if spark_creds and spark_creds.get("accessToken"):
-        return {
-            "logged_in": True,
-            "source": "spark_pkce",
-            "source_label": f"Spark PKCE ({_SPARK_OAUTH_FILE})",
-            "token_preview": _truncate_token(spark_creds.get("accessToken")),
-            "expires_at": spark_creds.get("expiresAt"),
-            "has_refresh_token": bool(spark_creds.get("refreshToken")),
-        }
-
-    cc_creds = None
-    if read_claude_code_credentials:
-        try:
-            cc_creds = read_claude_code_credentials()
-        except Exception:
-            cc_creds = None
-    if cc_creds and cc_creds.get("accessToken"):
-        return {
-            "logged_in": True,
-            "source": "claude_code",
-            "source_label": "Claude Code (~/.claude/.credentials.json)",
-            "token_preview": _truncate_token(cc_creds.get("accessToken")),
-            "expires_at": cc_creds.get("expiresAt"),
-            "has_refresh_token": bool(cc_creds.get("refreshToken")),
-        }
-
-    env_token = os.getenv("ANTHROPIC_TOKEN") or os.getenv("CLAUDE_CODE_OAUTH_TOKEN")
-    if env_token:
-        return {
-            "logged_in": True,
-            "source": "env_var",
-            "source_label": "ANTHROPIC_TOKEN environment variable",
-            "token_preview": _truncate_token(env_token),
-            "expires_at": None,
-            "has_refresh_token": False,
-        }
-    return {"logged_in": False, "source": None}
 
 
-def _claude_code_only_status() -> Dict[str, Any]:
-    """Surface Claude Code CLI credentials as their own provider entry.
-
-    Independent of the Anthropic entry above so users can see whether their
-    Claude Code subscription tokens are actively flowing into Spark even
-    when they also have a separate Spark-managed PKCE login.
-    """
-    try:
-        from agent.anthropic_adapter import read_claude_code_credentials
-
-        creds = read_claude_code_credentials()
-    except Exception:
-        creds = None
-    if creds and creds.get("accessToken"):
-        return {
-            "logged_in": True,
-            "source": "claude_code_cli",
-            "source_label": "~/.claude/.credentials.json",
-            "token_preview": _truncate_token(creds.get("accessToken")),
-            "expires_at": creds.get("expiresAt"),
-            "has_refresh_token": bool(creds.get("refreshToken")),
-        }
-    return {"logged_in": False, "source": None}
 
 
 # Provider catalog. The order matters — it's how we render the UI list.
@@ -5615,162 +3805,12 @@ def _claude_code_only_status() -> Dict[str, Any]:
 # right UI: ``pkce`` = open URL + paste callback code, ``device_code`` =
 # show code + verification URL + poll, ``external`` = read-only (delegated
 # to a third-party CLI like Claude Code or Qwen).
-_OAUTH_PROVIDER_CATALOG: tuple[Dict[str, Any], ...] = (
-    {
-        "id": "anthropic",
-        "name": "Anthropic (Claude API)",
-        "flow": "pkce",
-        "cli_command": "spark auth add anthropic",
-        "docs_url": "https://docs.claude.com/en/api/getting-started",
-        "status_fn": _anthropic_oauth_status,
-    },
-    {
-        "id": "claude-code",
-        "name": "Claude Code (subscription)",
-        "flow": "external",
-        "cli_command": "claude setup-token",
-        "docs_url": "https://docs.claude.com/en/docs/claude-code",
-        "status_fn": _claude_code_only_status,
-    },
-    {
-        "id": "openai-codex",
-        "name": "OpenAI Codex (ChatGPT)",
-        "flow": "device_code",
-        "cli_command": "spark auth add openai-codex",
-        "docs_url": "https://platform.openai.com/docs",
-        "status_fn": None,  # dispatched via auth.get_codex_auth_status
-    },
-    {
-        "id": "qwen-oauth",
-        "name": "Qwen (via Qwen CLI)",
-        "flow": "external",
-        "cli_command": "spark auth add qwen-oauth",
-        "docs_url": "https://github.com/QwenLM/qwen-code",
-        "status_fn": None,  # dispatched via auth.get_qwen_auth_status
-    },
-)
 
 
-def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
-    """Dispatch to the right status helper for an OAuth provider entry."""
-    if status_fn is not None:
-        try:
-            return status_fn()
-        except Exception as e:
-            return {"logged_in": False, "error": str(e)}
-    try:
-        from spark_cli import auth as hauth
-
-        if provider_id == "openai-codex":
-            raw = hauth.get_codex_auth_status()
-            return {
-                "logged_in": bool(raw.get("logged_in")),
-                "source": raw.get("source") or "openai_codex",
-                "source_label": raw.get("auth_mode") or "OpenAI Codex",
-                "token_preview": _truncate_token(raw.get("api_key")),
-                "expires_at": None,
-                "has_refresh_token": False,
-                "last_refresh": raw.get("last_refresh"),
-            }
-        if provider_id == "qwen-oauth":
-            raw = hauth.get_qwen_auth_status()
-            return {
-                "logged_in": bool(raw.get("logged_in")),
-                "source": "qwen_cli",
-                "source_label": raw.get("auth_store_path") or "Qwen CLI",
-                "token_preview": _truncate_token(raw.get("access_token")),
-                "expires_at": raw.get("expires_at"),
-                "has_refresh_token": bool(raw.get("has_refresh_token")),
-            }
-    except Exception as e:
-        return {"logged_in": False, "error": str(e)}
-    return {"logged_in": False}
 
 
-@app.get("/api/providers/oauth")
-async def list_oauth_providers():
-    """Enumerate every OAuth-capable LLM provider with current status.
-
-    Response shape (per provider):
-        id              stable identifier (used in DELETE path)
-        name            human label
-        flow            "pkce" | "device_code" | "external"
-        cli_command     fallback CLI command for users to run manually
-        docs_url        external docs/portal link for the "Learn more" link
-        status:
-          logged_in        bool — currently has usable creds
-          source           short slug ("spark_pkce", "claude_code", ...)
-          source_label     human-readable origin (file path, env var name)
-          token_preview    last N chars of the token, never the full token
-          expires_at       ISO timestamp string or null
-          has_refresh_token bool
-    """
-    providers = []
-    for p in _OAUTH_PROVIDER_CATALOG:
-        status = _resolve_provider_status(p["id"], p.get("status_fn"))
-        providers.append(
-            {
-                "id": p["id"],
-                "name": p["name"],
-                "flow": p["flow"],
-                "cli_command": p["cli_command"],
-                "docs_url": p["docs_url"],
-                "status": status,
-            }
-        )
-    return {"providers": providers}
 
 
-@app.delete("/api/providers/oauth/{provider_id}")
-async def disconnect_oauth_provider(provider_id: str, request: Request):
-    """Disconnect an OAuth provider. Token-protected (matches /env/reveal)."""
-    # Accept either the per-process session token OR the configured dashboard
-    # token (same dual-credential rule as /api/env/reveal). The desktop app and
-    # remote clients authenticate with the dashboard token, so a session-only
-    # check here made OAuth connect/disconnect 401 even though the rest of the
-    # dashboard was authorized.
-    if not _reveal_authorized(request):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    valid_ids = {p["id"] for p in _OAUTH_PROVIDER_CATALOG}
-    if provider_id not in valid_ids:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown provider: {provider_id}. "
-            f"Available: {', '.join(sorted(valid_ids))}",
-        )
-
-    # Anthropic and claude-code clear the same Spark-managed PKCE file
-    # AND forget the Claude Code import. We don't touch ~/.claude/* directly
-    # — that's owned by the Claude Code CLI; users can re-auth there if they
-    # want to undo a disconnect.
-    if provider_id in ("anthropic", "claude-code"):
-        try:
-            from agent.anthropic_adapter import _SPARK_OAUTH_FILE
-
-            if _SPARK_OAUTH_FILE.exists():
-                _SPARK_OAUTH_FILE.unlink()
-        except Exception:
-            pass
-        # Also clear the credential pool entry if present.
-        try:
-            from spark_cli.auth import clear_provider_auth
-
-            clear_provider_auth("anthropic")
-        except Exception:
-            pass
-        _log.info("oauth/disconnect: %s", provider_id)
-        return {"ok": True, "provider": provider_id}
-
-    try:
-        from spark_cli.auth import clear_provider_auth
-
-        cleared = clear_provider_auth(provider_id)
-        _log.info("oauth/disconnect: %s (cleared=%s)", provider_id, cleared)
-        return {"ok": bool(cleared), "provider": provider_id}
-    except Exception as e:
-        _log.exception("disconnect %s failed", provider_id)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -5809,652 +3849,38 @@ async def disconnect_oauth_provider(provider_id: str, request: Request):
 # after 15 minutes. A periodic cleanup runs on each /start call to GC
 # expired sessions so the dict doesn't grow without bound.
 
-_OAUTH_SESSION_TTL_SECONDS = 15 * 60
-_oauth_sessions: Dict[str, Dict[str, Any]] = {}
-_oauth_sessions_lock = threading.Lock()
-
-# Import OAuth constants from canonical source instead of duplicating.
-# Guarded so spark web still starts if anthropic_adapter is unavailable;
-# Phase 2 endpoints will return 501 in that case.
-try:
-    from agent.anthropic_adapter import (
-        _OAUTH_CLIENT_ID as _ANTHROPIC_OAUTH_CLIENT_ID,
-        _OAUTH_TOKEN_URL as _ANTHROPIC_OAUTH_TOKEN_URL,
-        _OAUTH_REDIRECT_URI as _ANTHROPIC_OAUTH_REDIRECT_URI,
-        _OAUTH_SCOPES as _ANTHROPIC_OAUTH_SCOPES,
-        _generate_pkce as _generate_pkce_pair,
-    )
-
-    _ANTHROPIC_OAUTH_AVAILABLE = True
-except ImportError:
-    _ANTHROPIC_OAUTH_AVAILABLE = False
-_ANTHROPIC_OAUTH_AUTHORIZE_URL = "https://claude.ai/oauth/authorize"
-
-
-def _gc_oauth_sessions() -> None:
-    """Drop expired sessions. Called opportunistically on /start."""
-    cutoff = time.time() - _OAUTH_SESSION_TTL_SECONDS
-    with _oauth_sessions_lock:
-        stale = [
-            sid for sid, sess in _oauth_sessions.items() if sess["created_at"] < cutoff
-        ]
-        for sid in stale:
-            _oauth_sessions.pop(sid, None)
-
-
-def _new_oauth_session(provider_id: str, flow: str) -> tuple[str, Dict[str, Any]]:
-    """Create + register a new OAuth session, return (session_id, session_dict)."""
-    sid = secrets.token_urlsafe(16)
-    sess = {
-        "session_id": sid,
-        "provider": provider_id,
-        "flow": flow,
-        "created_at": time.time(),
-        "status": "pending",  # pending | approved | denied | expired | error
-        "error_message": None,
-    }
-    with _oauth_sessions_lock:
-        _oauth_sessions[sid] = sess
-    return sid, sess
-
-
-def _save_anthropic_oauth_creds(
-    access_token: str, refresh_token: str, expires_at_ms: int
-) -> None:
-    """Persist Anthropic PKCE creds to both Spark file AND credential pool.
-
-    Mirrors what auth_commands.add_command does so the dashboard flow leaves
-    the system in the same state as ``spark auth add anthropic``.
-    """
-    from agent.anthropic_adapter import _SPARK_OAUTH_FILE
-
-    payload = {
-        "accessToken": access_token,
-        "refreshToken": refresh_token,
-        "expiresAt": expires_at_ms,
-    }
-    _SPARK_OAUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _SPARK_OAUTH_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    # Best-effort credential-pool insert. Failure here doesn't invalidate
-    # the file write — pool registration only matters for the rotation
-    # strategy, not for runtime credential resolution.
-    try:
-        from agent.credential_pool import (
-            PooledCredential,
-            load_pool,
-            AUTH_TYPE_OAUTH,
-            SOURCE_MANUAL,
-        )
-        import uuid
-
-        pool = load_pool("anthropic")
-        # Avoid duplicate entries: delete any prior dashboard-issued OAuth entry
-        existing = [
-            e
-            for e in pool.entries()
-            if getattr(e, "source", "").startswith(f"{SOURCE_MANUAL}:dashboard_pkce")
-        ]
-        for e in existing:
-            try:
-                pool.remove_entry(getattr(e, "id", ""))
-            except Exception:
-                pass
-        entry = PooledCredential(
-            provider="anthropic",
-            id=uuid.uuid4().hex[:6],
-            label="dashboard PKCE",
-            auth_type=AUTH_TYPE_OAUTH,
-            priority=0,
-            source=f"{SOURCE_MANUAL}:dashboard_pkce",
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_at_ms=expires_at_ms,
-        )
-        pool.add_entry(entry)
-    except Exception as e:
-        _log.warning("anthropic pool add (dashboard) failed: %s", e)
-
-
-def _start_anthropic_pkce() -> Dict[str, Any]:
-    """Begin PKCE flow. Returns the auth URL the UI should open."""
-    if not _ANTHROPIC_OAUTH_AVAILABLE:
-        raise HTTPException(
-            status_code=501, detail="Anthropic OAuth not available (missing adapter)"
-        )
-    verifier, challenge = _generate_pkce_pair()
-    sid, sess = _new_oauth_session("anthropic", "pkce")
-    sess["verifier"] = verifier
-    sess["state"] = verifier  # Anthropic round-trips verifier as state
-    params = {
-        "code": "true",
-        "client_id": _ANTHROPIC_OAUTH_CLIENT_ID,
-        "response_type": "code",
-        "redirect_uri": _ANTHROPIC_OAUTH_REDIRECT_URI,
-        "scope": _ANTHROPIC_OAUTH_SCOPES,
-        "code_challenge": challenge,
-        "code_challenge_method": "S256",
-        "state": verifier,
-    }
-    auth_url = f"{_ANTHROPIC_OAUTH_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
-    return {
-        "session_id": sid,
-        "flow": "pkce",
-        "auth_url": auth_url,
-        "expires_in": _OAUTH_SESSION_TTL_SECONDS,
-    }
-
-
-def _submit_anthropic_pkce(session_id: str, code_input: str) -> Dict[str, Any]:
-    """Exchange authorization code for tokens. Persists on success."""
-    with _oauth_sessions_lock:
-        sess = _oauth_sessions.get(session_id)
-    if not sess or sess["provider"] != "anthropic" or sess["flow"] != "pkce":
-        raise HTTPException(status_code=404, detail="Unknown or expired session")
-    if sess["status"] != "pending":
-        return {
-            "ok": False,
-            "status": sess["status"],
-            "message": sess.get("error_message"),
-        }
-
-    # Anthropic's redirect callback page formats the code as `<code>#<state>`.
-    # Strip the state suffix if present (we already have the verifier server-side).
-    parts = code_input.strip().split("#", 1)
-    code = parts[0].strip()
-    if not code:
-        return {"ok": False, "status": "error", "message": "No code provided"}
-    state_from_callback = parts[1] if len(parts) > 1 else ""
-
-    exchange_data = json.dumps(
-        {
-            "grant_type": "authorization_code",
-            "client_id": _ANTHROPIC_OAUTH_CLIENT_ID,
-            "code": code,
-            "state": state_from_callback or sess["state"],
-            "redirect_uri": _ANTHROPIC_OAUTH_REDIRECT_URI,
-            "code_verifier": sess["verifier"],
-        }
-    ).encode()
-    req = urllib.request.Request(
-        _ANTHROPIC_OAUTH_TOKEN_URL,
-        data=exchange_data,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "spark-dashboard/1.0",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            result = json.loads(resp.read().decode())
-    except Exception as e:
-        sess["status"] = "error"
-        sess["error_message"] = f"Token exchange failed: {e}"
-        return {"ok": False, "status": "error", "message": sess["error_message"]}
-
-    access_token = result.get("access_token", "")
-    refresh_token = result.get("refresh_token", "")
-    expires_in = int(result.get("expires_in") or 3600)
-    if not access_token:
-        sess["status"] = "error"
-        sess["error_message"] = "No access token returned"
-        return {"ok": False, "status": "error", "message": sess["error_message"]}
-
-    expires_at_ms = int(time.time() * 1000) + (expires_in * 1000)
-    try:
-        _save_anthropic_oauth_creds(access_token, refresh_token, expires_at_ms)
-    except Exception as e:
-        sess["status"] = "error"
-        sess["error_message"] = f"Save failed: {e}"
-        return {"ok": False, "status": "error", "message": sess["error_message"]}
-    sess["status"] = "approved"
-    _log.info("oauth/pkce: anthropic login completed (session=%s)", session_id)
-    return {"ok": True, "status": "approved"}
-
-
-async def _start_device_code_flow(provider_id: str) -> Dict[str, Any]:
-    """Initiate a device-code flow (OpenAI Codex).
-
-    Calls the provider's device-auth endpoint via the existing CLI helpers,
-    then spawns a background poller. Returns the user-facing display fields
-    so the UI can render the verification page link + user code.
-    """
-    if provider_id == "openai-codex":
-        # Codex uses fixed OpenAI device-auth endpoints; reuse the helper.
-        sid, _ = _new_oauth_session("openai-codex", "device_code")
-        # Use the helper but in a thread because it polls inline.
-        # We can't extract just the start step without refactoring auth.py,
-        # so we run the full helper in a worker and proxy the user_code +
-        # verification_url back via the session dict. The helper prints
-        # to stdout — we capture nothing here, just status.
-        threading.Thread(
-            target=_codex_full_login_worker,
-            args=(sid,),
-            daemon=True,
-            name=f"oauth-codex-{sid[:6]}",
-        ).start()
-        # Wait briefly for the worker to populate the user_code. OpenAI's
-        # device-auth endpoint is often slow (observed 30–120 s), so we do NOT
-        # block until it returns — if the code isn't ready quickly we return a
-        # "starting" response and the UI polls GET /poll/{session_id} until the
-        # user_code appears (the same endpoint it already polls for approval).
-        deadline = time.time() + 8
-        while time.time() < deadline:
-            with _oauth_sessions_lock:
-                s = _oauth_sessions.get(sid)
-            if s and (s.get("user_code") or s["status"] != "pending"):
-                break
-            await asyncio.sleep(0.1)
-        with _oauth_sessions_lock:
-            s = _oauth_sessions.get(sid, {})
-        if s.get("status") == "error":
-            raise HTTPException(
-                status_code=500, detail=s.get("error_message") or "device-auth failed"
-            )
-        # user_code may be empty here — that's expected when OpenAI is slow.
-        return {
-            "session_id": sid,
-            "flow": "device_code",
-            "status": "starting" if not s.get("user_code") else "polling",
-            "user_code": s.get("user_code") or None,
-            "verification_url": s.get("verification_url")
-            or "https://auth.openai.com/codex/device",
-            "expires_in": int(s.get("expires_in") or 900),
-            "poll_interval": int(s.get("interval") or 5),
-        }
-
-    raise HTTPException(
-        status_code=400,
-        detail=f"Provider {provider_id} does not support device-code flow",
-    )
-
-
-
-def _codex_full_login_worker(session_id: str) -> None:
-    """Run the complete OpenAI Codex device-code flow.
-
-    Codex doesn't use the standard OAuth device-code endpoints; it has its
-    own ``/api/accounts/deviceauth/usercode`` (JSON body, returns
-    ``device_auth_id``) and ``/api/accounts/deviceauth/token`` (JSON body
-    polled until 200). On success the response carries an
-    ``authorization_code`` + ``code_verifier`` that get exchanged at
-    CODEX_OAUTH_TOKEN_URL with grant_type=authorization_code.
-
-    The flow is replicated inline (rather than calling
-    _codex_device_code_login) because that helper prints/blocks/polls in a
-    single function — we need to surface the user_code to the dashboard the
-    moment we receive it, well before polling completes.
-    """
-    prefer_cli = _codex_cli_device_login_preferred()
-    try:
-        if prefer_cli and _codex_cli_device_login_worker(session_id):
-            return
-
-        import httpx
-        from spark_cli.auth import (
-            CODEX_OAUTH_CLIENT_ID,
-            CODEX_OAUTH_TOKEN_URL,
-        )
-
-        issuer = "https://auth.openai.com"
-
-        # Step 1: request device code. OpenAI's usercode endpoint can take well
-        # over a minute to respond, so use a generous read timeout (connect stays
-        # short). The UI shows a "requesting code" state meanwhile.
-        with httpx.Client(
-            timeout=httpx.Timeout(180.0, connect=15.0)
-        ) as client:
-            resp = client.post(
-                f"{issuer}/api/accounts/deviceauth/usercode",
-                json={"client_id": CODEX_OAUTH_CLIENT_ID},
-                headers={"Content-Type": "application/json"},
-            )
-        if resp.status_code != 200:
-            detail = _redacted_response_preview(resp)
-            raise RuntimeError(
-                f"deviceauth/usercode returned {resp.status_code}: {detail}"
-            )
-        device_data = resp.json()
-        user_code = device_data.get("user_code", "")
-        device_auth_id = device_data.get("device_auth_id", "")
-        poll_interval = max(3, int(device_data.get("interval", "5")))
-        if not user_code or not device_auth_id:
-            raise RuntimeError(
-                "device-code response missing user_code or device_auth_id"
-            )
-        verification_url = f"{issuer}/codex/device"
-        with _oauth_sessions_lock:
-            sess = _oauth_sessions.get(session_id)
-            if not sess:
-                return
-            sess["user_code"] = user_code
-            sess["verification_url"] = verification_url
-            sess["device_auth_id"] = device_auth_id
-            sess["interval"] = poll_interval
-            sess["expires_in"] = 15 * 60  # OpenAI's effective limit
-            sess["expires_at"] = time.time() + sess["expires_in"]
-
-        # Step 2: poll until authorized
-        deadline = time.time() + sess["expires_in"]
-        code_resp = None
-        with httpx.Client(timeout=httpx.Timeout(15.0)) as client:
-            while time.time() < deadline:
-                time.sleep(poll_interval)
-                poll = client.post(
-                    f"{issuer}/api/accounts/deviceauth/token",
-                    json={"device_auth_id": device_auth_id, "user_code": user_code},
-                    headers={"Content-Type": "application/json"},
-                )
-                if poll.status_code == 200:
-                    code_resp = poll.json()
-                    break
-                if poll.status_code in (403, 404):
-                    continue  # user hasn't authorized yet
-                raise RuntimeError(f"deviceauth/token poll returned {poll.status_code}")
-
-        if code_resp is None:
-            with _oauth_sessions_lock:
-                sess["status"] = "expired"
-                sess["error_message"] = "Device code expired before approval"
-            return
-
-        # Step 3: exchange authorization_code for tokens
-        authorization_code = code_resp.get("authorization_code", "")
-        code_verifier = code_resp.get("code_verifier", "")
-        if not authorization_code or not code_verifier:
-            raise RuntimeError(
-                "device-auth response missing authorization_code/code_verifier"
-            )
-        with httpx.Client(timeout=httpx.Timeout(15.0)) as client:
-            token_resp = client.post(
-                CODEX_OAUTH_TOKEN_URL,
-                data={
-                    "grant_type": "authorization_code",
-                    "code": authorization_code,
-                    "redirect_uri": f"{issuer}/deviceauth/callback",
-                    "client_id": CODEX_OAUTH_CLIENT_ID,
-                    "code_verifier": code_verifier,
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-        if token_resp.status_code != 200:
-            raise RuntimeError(f"token exchange returned {token_resp.status_code}")
-        tokens = token_resp.json()
-        access_token = tokens.get("access_token", "")
-        refresh_token = tokens.get("refresh_token", "")
-        id_token = tokens.get("id_token", "")
-        if not access_token:
-            raise RuntimeError("token exchange did not return access_token")
-
-        _persist_codex_dashboard_credential(
-            {"access_token": access_token, "refresh_token": refresh_token, "id_token": id_token},
-            "dashboard device_code",
-        )
-        with _oauth_sessions_lock:
-            sess["status"] = "approved"
-        _log.info("oauth/device: openai-codex login completed (session=%s)", session_id)
-    except Exception as e:
-        if not prefer_cli and _codex_cli_device_login_worker(session_id, reason=str(e)):
-            return
-        _log.warning("codex device-code worker failed (session=%s): %s", session_id, e)
-        with _oauth_sessions_lock:
-            s = _oauth_sessions.get(session_id)
-            if s:
-                s["status"] = "error"
-                s["error_message"] = str(e)
-
-
-def _codex_cli_device_login_preferred() -> bool:
-    if os.getenv("SPARK_CODEX_DEVICE_AUTH_IMPL", "").strip().lower() == "inline":
-        return False
-    return shutil.which("codex") is not None
-
-
-def _persist_codex_dashboard_credential(tokens: dict[str, Any], label: str) -> None:
-    """Persist Codex tokens into the credential pool for WebUI OAuth login."""
-    from agent.credential_pool import (
-        AUTH_TYPE_OAUTH,
-        SOURCE_MANUAL,
-        PooledCredential,
-        load_pool,
-    )
-    from spark_cli.auth import DEFAULT_CODEX_BASE_URL
-
-    pool = load_pool("openai-codex")
-    base_url = (
-        os.getenv("SPARK_CODEX_BASE_URL", "").strip().rstrip("/")
-        or DEFAULT_CODEX_BASE_URL
-    )
-    entry = PooledCredential(
-        provider="openai-codex",
-        id=uuid.uuid4().hex[:6],
-        label=label,
-        auth_type=AUTH_TYPE_OAUTH,
-        priority=0,
-        source=f"{SOURCE_MANUAL}:dashboard_device_code",
-        access_token=str(tokens.get("access_token", "") or ""),
-        refresh_token=str(tokens.get("refresh_token", "") or ""),
-        base_url=base_url,
-        extra={"id_token": tokens.get("id_token")},
-    )
-    pool.add_entry(entry)
-
-
-def _codex_cli_device_login_worker(session_id: str, *, reason: str = "") -> bool:
-    """Run the official Codex CLI device-auth flow and import its tokens.
-
-    Returns True when the CLI path handled the session, False when Spark should
-    fall back to its built-in device flow.
-    """
-    if os.getenv("SPARK_CODEX_DEVICE_AUTH_IMPL", "").strip().lower() == "inline":
-        return False
-    codex_bin = shutil.which("codex")
-    if not codex_bin:
-        return False
-
-    try:
-        proc = subprocess.Popen(
-            [codex_bin, "login", "--device-auth"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-    except Exception as exc:
-        _log.debug("codex CLI device auth unavailable: %s", exc)
-        return False
-
-    if reason:
-        _log.info("Falling back to Codex CLI device auth after inline flow failed: %s", reason)
-
-    code_re = re.compile(r"\b[A-Z0-9]{4}-[A-Z0-9]{5}\b")
-    url_re = re.compile(r"https://auth\.openai\.com/codex/device\b")
-    output: thread_queue.Queue[str | None] = thread_queue.Queue()
-
-    def _read_output() -> None:
-        try:
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                output.put(line)
-        except Exception:
-            pass
-        finally:
-            output.put(None)
-
-    threading.Thread(target=_read_output, daemon=True).start()
-
-    saw_code = False
-    verification_url = "https://auth.openai.com/codex/device"
-    code_timeout = float(
-        os.getenv("SPARK_CODEX_CLI_DEVICE_AUTH_CODE_TIMEOUT_SECONDS", "12") or "12"
-    )
-    code_deadline = time.time() + max(1.0, code_timeout)
-
-    try:
-        while time.time() < code_deadline:
-            if proc.poll() is not None:
-                break
-            try:
-                line = output.get(timeout=0.25)
-            except thread_queue.Empty:
-                continue
-            if line is None:
-                break
-            if not saw_code:
-                url_match = url_re.search(line)
-                if url_match:
-                    verification_url = url_match.group(0)
-                code_match = code_re.search(line)
-                if code_match:
-                    saw_code = True
-                    with _oauth_sessions_lock:
-                        sess = _oauth_sessions.get(session_id)
-                        if not sess:
-                            proc.terminate()
-                            return True
-                        sess["user_code"] = code_match.group(0)
-                        sess["verification_url"] = verification_url
-                        sess["interval"] = 5
-                        sess["expires_in"] = 15 * 60
-                        sess["expires_at"] = time.time() + sess["expires_in"]
-                    break
-
-        if not saw_code:
-            try:
-                proc.terminate()
-                proc.wait(timeout=2)
-            except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-            _log.info(
-                "Codex CLI device auth did not produce a code within %.1fs; falling back to inline flow",
-                code_timeout,
-            )
-            return False
-
-        rc = proc.wait(timeout=15 * 60)
-    except Exception as exc:
-        try:
-            proc.kill()
-        except Exception:
-            pass
-        _log.debug("codex CLI device auth failed while reading output: %s", exc)
-        return False
-
-    if rc != 0:
-        raise RuntimeError(f"Codex CLI device auth exited with status {rc}")
-
-    from spark_cli.auth import _import_codex_cli_tokens
-
-    tokens = _import_codex_cli_tokens()
-    if not tokens:
-        raise RuntimeError(
-            "Codex CLI login completed, but Spark could not import tokens from ~/.codex/auth.json. "
-            "Configure Codex CLI to use file-backed credentials or run `spark auth` in the terminal."
-        )
-    _persist_codex_dashboard_credential(tokens, "codex CLI device_code")
-    with _oauth_sessions_lock:
-        sess = _oauth_sessions.get(session_id)
-        if sess:
-            sess["status"] = "approved"
-    return True
-
-
-@app.post("/api/providers/oauth/{provider_id}/start")
-async def start_oauth_login(provider_id: str, request: Request):
-    """Initiate an OAuth login flow. Token-protected."""
-    # Accept either the per-process session token OR the configured dashboard
-    # token (same dual-credential rule as /api/env/reveal). The desktop app and
-    # remote clients authenticate with the dashboard token, so a session-only
-    # check here made OAuth connect/disconnect 401 even though the rest of the
-    # dashboard was authorized.
-    if not _reveal_authorized(request):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    _gc_oauth_sessions()
-    valid = {p["id"] for p in _OAUTH_PROVIDER_CATALOG}
-    if provider_id not in valid:
-        raise HTTPException(status_code=400, detail=f"Unknown provider {provider_id}")
-    catalog_entry = next(p for p in _OAUTH_PROVIDER_CATALOG if p["id"] == provider_id)
-    if catalog_entry["flow"] == "external":
-        raise HTTPException(
-            status_code=400,
-            detail=f"{provider_id} uses an external CLI; run `{catalog_entry['cli_command']}` manually",
-        )
-    try:
-        if catalog_entry["flow"] == "pkce":
-            return _start_anthropic_pkce()
-        if catalog_entry["flow"] == "device_code":
-            return await _start_device_code_flow(provider_id)
-    except HTTPException:
-        raise
-    except Exception as e:
-        _log.exception("oauth/start %s failed", provider_id)
-        raise HTTPException(status_code=500, detail=str(e))
-    raise HTTPException(status_code=400, detail="Unsupported flow")
-
-
-class OAuthSubmitBody(BaseModel):
-    session_id: str
-    code: str
-
-
-@app.post("/api/providers/oauth/{provider_id}/submit")
-async def submit_oauth_code(provider_id: str, body: OAuthSubmitBody, request: Request):
-    """Submit the auth code for PKCE flows. Token-protected."""
-    # Accept either the per-process session token OR the configured dashboard
-    # token (same dual-credential rule as /api/env/reveal). The desktop app and
-    # remote clients authenticate with the dashboard token, so a session-only
-    # check here made OAuth connect/disconnect 401 even though the rest of the
-    # dashboard was authorized.
-    if not _reveal_authorized(request):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    if provider_id == "anthropic":
-        return await _run_blocking(
-            _submit_anthropic_pkce, body.session_id, body.code
-        )
-    raise HTTPException(
-        status_code=400, detail=f"submit not supported for {provider_id}"
-    )
-
-
-@app.get("/api/providers/oauth/{provider_id}/poll/{session_id}")
-async def poll_oauth_session(provider_id: str, session_id: str):
-    """Poll a device-code session's status (no auth — read-only state)."""
-    with _oauth_sessions_lock:
-        sess = _oauth_sessions.get(session_id)
-    if not sess:
-        raise HTTPException(status_code=404, detail="Session not found or expired")
-    if sess["provider"] != provider_id:
-        raise HTTPException(status_code=400, detail="Provider mismatch for session")
-    return {
-        "session_id": session_id,
-        "status": sess["status"],
-        "error_message": sess.get("error_message"),
-        "expires_at": sess.get("expires_at"),
-        # Surfaced once the (often-slow) device-auth call returns, so a UI that
-        # received a "starting" /start response can display the code on arrival.
-        "user_code": sess.get("user_code") or None,
-        "verification_url": sess.get("verification_url") or None,
-    }
-
-
-@app.delete("/api/providers/oauth/sessions/{session_id}")
-async def cancel_oauth_session(session_id: str, request: Request):
-    """Cancel a pending OAuth session. Token-protected."""
-    # Accept either the per-process session token OR the configured dashboard
-    # token (same dual-credential rule as /api/env/reveal). The desktop app and
-    # remote clients authenticate with the dashboard token, so a session-only
-    # check here made OAuth connect/disconnect 401 even though the rest of the
-    # dashboard was authorized.
-    if not _reveal_authorized(request):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    with _oauth_sessions_lock:
-        sess = _oauth_sessions.pop(session_id, None)
-    if sess is None:
-        return {"ok": False, "message": "session not found"}
-    return {"ok": True, "session_id": session_id}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -6482,7 +3908,7 @@ async def get_session_messages(
     request: Request,
     session_id: str,
     limit: int = 0,
-    before_id: Optional[str] = None,
+    before_id: str | None = None,
     include_tool_results: bool = False,
 ):
     def _load_page() -> tuple[str, dict[str, Any] | None]:
@@ -6572,11 +3998,11 @@ def _resolve_workspace_media_path(path: str) -> Path:
     workspace_root = _get_workspace_root()
     try:
         resolved.relative_to(workspace_root)
-    except ValueError:
+    except ValueError as err:
         raise HTTPException(
             status_code=403,
             detail="Media previews are limited to Spark workspace files",
-        )
+        ) from err
     if not resolved.exists():
         raise HTTPException(status_code=404, detail=f"Media file not found: {path!r}")
     if resolved.is_dir():
@@ -6605,7 +4031,7 @@ async def update_session_title(session_id: str, body: dict[str, Any]):
         try:
             updated = db.set_session_title(sid, title)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         if not updated:
             raise HTTPException(status_code=404, detail="Session not found")
         row = db.get_session(sid)
@@ -6616,10 +4042,10 @@ async def update_session_title(session_id: str, body: dict[str, Any]):
 
 
 class SessionSourceUpdate(BaseModel):
-    source: Optional[str] = None
+    source: str | None = None
 
 
-def _normalize_web_session_source(source: Optional[str]) -> str:
+def _normalize_web_session_source(source: str | None) -> str:
     raw = (source or "").strip()
     if raw in {"", "web"}:
         return "web"
@@ -6633,8 +4059,8 @@ def _normalize_web_session_source(source: Optional[str]) -> str:
     project_path = (_get_workspace_root() / slug).resolve()
     try:
         project_path.relative_to(_get_workspace_root().resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid workspace project: {slug!r}")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=f"Invalid workspace project: {slug!r}") from err
     if not project_path.is_dir():
         raise HTTPException(status_code=404, detail=f"Workspace project not found: {slug!r}")
     return f"workspace:{slug}"
@@ -6802,177 +4228,9 @@ async def warm_session_agent(session_id: str):
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/logs")
-async def get_logs(
-    file: str = "agent",
-    lines: int = 100,
-    level: Optional[str] = None,
-    component: Optional[str] = None,
-    search: Optional[str] = None,
-):
-    from spark_cli.logs import _read_tail, LOG_FILES
-
-    log_name = LOG_FILES.get(file)
-    if not log_name:
-        raise HTTPException(status_code=400, detail=f"Unknown log file: {file}")
-    log_path = get_spark_home() / "logs" / log_name
-    if not log_path.exists():
-        return {"file": file, "lines": []}
-
-    try:
-        from core.spark_logging import COMPONENT_PREFIXES
-    except ImportError:
-        COMPONENT_PREFIXES = {}
-
-    # Normalize "ALL" / "all" / empty → no filter. _matches_filters treats an
-    # empty tuple as "must match a prefix" (startswith(()) is always False),
-    # so passing () instead of None silently drops every line.
-    min_level = level if level and level.upper() != "ALL" else None
-    if component and component.lower() != "all":
-        comp_prefixes = COMPONENT_PREFIXES.get(component)
-        if comp_prefixes is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown component: {component}. "
-                f"Available: {', '.join(sorted(COMPONENT_PREFIXES))}",
-            )
-    else:
-        comp_prefixes = None
-
-    has_filters = bool(min_level or comp_prefixes or search)
-    result = _read_tail(
-        log_path,
-        min(lines, 500) if not search else 2000,
-        has_filters=has_filters,
-        min_level=min_level,
-        component_prefixes=comp_prefixes,
-    )
-    # Post-filter by search term (case-insensitive substring match).
-    # _read_tail doesn't support free-text search, so we filter here and
-    # trim to the requested line count afterward.
-    if search:
-        needle = search.lower()
-        result = [l for l in result if needle in l.lower()][-min(lines, 500) :]
-    return {"file": file, "lines": result}
-
-
-@app.get("/api/logs/download")
-async def download_log(file: str = "agent"):
-    from spark_cli.logs import LOG_FILES
-
-    log_name = LOG_FILES.get(file)
-    if not log_name:
-        raise HTTPException(status_code=400, detail=f"Unknown log file: {file}")
-    log_path = get_spark_home() / "logs" / log_name
-    if not log_path.exists():
-        raise HTTPException(status_code=404, detail=f"Log file not found: {file}")
-    return FileResponse(log_path, media_type="text/plain", filename=log_name)
-
-
 # ---------------------------------------------------------------------------
 # Cron job management endpoints
 # ---------------------------------------------------------------------------
-
-
-class CronJobCreate(BaseModel):
-    prompt: str
-    schedule: str
-    name: str = ""
-    deliver: str = "local"
-
-
-class CronJobUpdate(BaseModel):
-    updates: dict
-
-
-@app.get("/api/cron/jobs")
-async def list_cron_jobs():
-    from cron.jobs import list_jobs
-
-    return list_jobs(include_disabled=True)
-
-
-@app.get("/api/cron/jobs/{job_id}")
-async def get_cron_job(job_id: str):
-    from cron.jobs import get_job
-
-    job = get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
-
-
-@app.post("/api/cron/jobs")
-async def create_cron_job(body: CronJobCreate):
-    from cron.jobs import create_job
-
-    try:
-        job = create_job(
-            prompt=body.prompt,
-            schedule=body.schedule,
-            name=body.name,
-            deliver=body.deliver,
-        )
-        return job
-    except Exception as e:
-        _log.exception("POST /api/cron/jobs failed")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.put("/api/cron/jobs/{job_id}")
-async def update_cron_job(job_id: str, body: CronJobUpdate):
-    from cron.jobs import parse_schedule, update_job
-
-    try:
-        updates = dict(body.updates)
-        if isinstance(updates.get("schedule"), str):
-            updates["schedule"] = parse_schedule(updates["schedule"])
-        job = update_job(job_id, updates)
-    except Exception as e:
-        _log.exception("PUT /api/cron/jobs/%s failed", job_id)
-        raise HTTPException(status_code=400, detail=str(e))
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
-
-
-@app.post("/api/cron/jobs/{job_id}/pause")
-async def pause_cron_job(job_id: str):
-    from cron.jobs import pause_job
-
-    job = pause_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
-
-
-@app.post("/api/cron/jobs/{job_id}/resume")
-async def resume_cron_job(job_id: str):
-    from cron.jobs import resume_job
-
-    job = resume_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
-
-
-@app.post("/api/cron/jobs/{job_id}/trigger")
-async def trigger_cron_job(job_id: str):
-    from cron.jobs import trigger_job
-
-    job = trigger_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
-
-
-@app.delete("/api/cron/jobs/{job_id}")
-async def delete_cron_job(job_id: str):
-    from cron.jobs import remove_job
-
-    if not remove_job(job_id):
-        raise HTTPException(status_code=404, detail="Job not found")
-    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -6992,8 +4250,8 @@ class SkillSave(BaseModel):
 
 def _skill_public_records() -> list[dict[str, Any]]:
     """Return canonical skill records while keeping legacy list semantics."""
-    from tools.skills_tool import canonical_skill_metadata
     from spark_cli.skills_config import get_disabled_skills
+    from tools.skills_tool import canonical_skill_metadata
 
     config = load_config()
     disabled = get_disabled_skills(config)
@@ -7021,14 +4279,14 @@ def _apply_skill_quality_defaults(record: dict[str, Any]) -> None:
 
 @app.get("/api/skills")
 async def get_skills():
-    from tools.skills_tool import _find_all_skills
-    from tools.skills_sync import sync_skills
     from spark_cli.skills_config import get_disabled_skills
+    from tools.skills_sync import sync_skills
+    from tools.skills_tool import _find_all_skills
 
     try:
         sync_skills(quiet=True)
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_skills()", exc_info=True)
 
     # The metadata resolver is the source of truth for the web API.  Keep the
     # old fallback shape when a test/plugin provides synthetic skill rows that
@@ -7054,7 +4312,7 @@ async def get_skills():
         from tools.skill_usage import all_records
         usage_by_name = all_records()
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_skills()", exc_info=True)
 
     for s in skills:
         _apply_skill_quality_defaults(s)
@@ -7124,10 +4382,10 @@ async def get_skill_detail(skill_id: str):
         if size > 1_048_576:
             raise HTTPException(status_code=413, detail="SKILL.md exceeds the 1 MiB view limit.")
         content = skill_md.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=422, detail="SKILL.md is not valid UTF-8.")
-    except OSError:
-        raise HTTPException(status_code=404, detail="Skill content is unavailable.")
+    except UnicodeDecodeError as err:
+        raise HTTPException(status_code=422, detail="SKILL.md is not valid UTF-8.") from err
+    except OSError as err:
+        raise HTTPException(status_code=404, detail="Skill content is unavailable.") from err
 
     supporting_files: list[dict[str, Any]] = []
     allowed_roots = {"references", "templates", "scripts", "assets"}
@@ -7208,7 +4466,7 @@ async def delete_skill(skill_id: str):
 
                 set_state(record["name"], "archived")
             except Exception:
-                pass
+                _log.debug("Ignoring error in delete_skill()", exc_info=True)
             result = {"success": True, "name": record["name"]}
         except (OSError, ValueError) as exc:
             result = {"success": False, "error": str(exc)}
@@ -7220,7 +4478,7 @@ async def delete_skill(skill_id: str):
 
         set_state(record["name"], "archived")
     except Exception:
-        pass
+        _log.debug("Ignoring error in delete_skill()", exc_info=True)
     _publish_event("skills.updated", {"skill_id": skill_id, "action": "delete", "future_context": True})
     return {"ok": True, "name": record["name"], "future_context": True}
 
@@ -7240,19 +4498,19 @@ async def restore_skill(skill_id: str):
 
         set_state(record["name"], "active")
     except Exception:
-        pass
+        _log.debug("Ignoring error in restore_skill()", exc_info=True)
     _publish_event("skills.updated", {"skill_id": skill_id, "action": "restore", "future_context": True})
     return {"ok": True, "skill": (await get_skill_detail(skill_id)), "future_context": True}
 
 
 @app.get("/api/tools/toolsets")
 async def get_toolsets():
+    from core.toolsets import resolve_toolset
     from spark_cli.tools_config import (
         _get_effective_configurable_toolsets,
         _get_platform_tools,
         _toolset_has_keys,
     )
-    from core.toolsets import resolve_toolset
 
     config = load_config()
     enabled_toolsets = _get_platform_tools(
@@ -7310,87 +4568,12 @@ async def update_config_raw(body: RawConfigUpdate):
                 _close_web_agent(sid)
         return {"ok": True}
     except yaml.YAMLError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}") from e
 
 
 # ---------------------------------------------------------------------------
 # Token / cost analytics endpoint
 # ---------------------------------------------------------------------------
-
-
-@app.get("/api/analytics/usage")
-async def get_usage_analytics(days: int = 30):
-    from core.spark_state import SessionDB
-
-    db = SessionDB()
-    try:
-        cutoff = time.time() - (days * 86400)
-        cur = db._conn.execute(
-            """
-            SELECT date(started_at, 'unixepoch') as day,
-                   SUM(input_tokens) as input_tokens,
-                   SUM(output_tokens) as output_tokens,
-                   SUM(cache_read_tokens) as cache_read_tokens,
-                   SUM(reasoning_tokens) as reasoning_tokens,
-                   COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost,
-                   COALESCE(SUM(actual_cost_usd), 0) as actual_cost,
-                   COUNT(*) as sessions
-            FROM sessions WHERE started_at > ?
-            GROUP BY day ORDER BY day
-        """,
-            (cutoff,),
-        )
-        daily = [dict(r) for r in cur.fetchall()]
-
-        cur2 = db._conn.execute(
-            """
-            SELECT model,
-                   SUM(input_tokens) as input_tokens,
-                   SUM(output_tokens) as output_tokens,
-                   COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost,
-                   COUNT(*) as sessions
-            FROM sessions WHERE started_at > ? AND model IS NOT NULL
-            GROUP BY model ORDER BY SUM(input_tokens) + SUM(output_tokens) DESC
-        """,
-            (cutoff,),
-        )
-        by_model = [dict(r) for r in cur2.fetchall()]
-
-        cur3 = db._conn.execute(
-            """
-            SELECT SUM(input_tokens) as total_input,
-                   SUM(output_tokens) as total_output,
-                   SUM(cache_read_tokens) as total_cache_read,
-                   SUM(reasoning_tokens) as total_reasoning,
-                   COALESCE(SUM(estimated_cost_usd), 0) as total_estimated_cost,
-                   COALESCE(SUM(actual_cost_usd), 0) as total_actual_cost,
-                   COUNT(*) as total_sessions
-            FROM sessions WHERE started_at > ?
-        """,
-            (cutoff,),
-        )
-        totals = dict(cur3.fetchone())
-
-        return {
-            "daily": daily,
-            "by_model": by_model,
-            "totals": totals,
-            "period_days": days,
-        }
-    finally:
-        db.close()
-
-
-@app.get("/api/analytics/skills")
-async def get_skills_analytics(limit: int = 20):
-    try:
-        from tools.skill_usage import top_skills, lifecycle_counts
-        return {
-            "top_skills": top_skills(limit=limit),
-            "lifecycle_counts": lifecycle_counts(),
-        }
-    except Exception as e:
-        return {"top_skills": [], "lifecycle_counts": {"active": 0, "stale": 0, "archived": 0}, "error": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -7400,12 +4583,12 @@ async def get_skills_analytics(limit: int = 20):
 _KANBAN_STATUSES = {"backlog", "active", "review", "done"}
 
 # In-memory state for web chat sessions
-_web_queues: Dict[str, asyncio.Queue] = {}   # session_id → token queue (active streams)
+_web_queues: dict[str, asyncio.Queue] = {}   # session_id → token queue (active streams)
 _web_agents: "OrderedDict[str, Any]" = OrderedDict()  # session_id → AIAgent (multi-turn context)
-_web_agent_signatures: Dict[str, Any] = {}    # session_id → effective model/runtime signature
-_web_agent_last_used: Dict[str, float] = {}
+_web_agent_signatures: dict[str, Any] = {}    # session_id → effective model/runtime signature
+_web_agent_last_used: dict[str, float] = {}
 _web_warm_inflight: set[str] = set()
-_web_warm_recent: Dict[str, float] = {}
+_web_warm_recent: dict[str, float] = {}
 
 
 def _web_turn_worker_count() -> int:
@@ -7473,7 +4656,7 @@ def _has_pending_web_approval(session_id: str) -> bool:
         if isinstance(pending, dict):
             return session_id in pending
     except Exception:
-        pass
+        _log.debug("Ignoring error in _has_pending_web_approval()", exc_info=True)
     return False
 
 
@@ -7513,7 +4696,7 @@ def _web_max_iterations() -> int:
 
 # Codex usage-limit hit state — updated when a usage_limit_reached error occurs during inference.
 # Shape: {"hit_at": float, "resets_at": float | None, "resets_in_seconds": int | None}
-_codex_usage_limit_hit: Dict[str, Any] = {}
+_codex_usage_limit_hit: dict[str, Any] = {}
 
 
 class KanbanUpdate(BaseModel):
@@ -7522,29 +4705,29 @@ class KanbanUpdate(BaseModel):
 
 class ConversationCreate(BaseModel):
     message: str
-    model: Optional[str] = None
+    model: str | None = None
     context_items: list = []
-    source: Optional[str] = None
+    source: str | None = None
 
 
 class FakeStreamEvent(BaseModel):
     type: str
     text: str = ""
-    kind: Optional[str] = None
-    phase: Optional[str] = None
-    name: Optional[str] = None
-    tool_call_id: Optional[str] = None
-    args: Dict[str, Any] = Field(default_factory=dict)
+    kind: str | None = None
+    phase: str | None = None
+    name: str | None = None
+    tool_call_id: str | None = None
+    args: dict[str, Any] = Field(default_factory=dict)
     result: Any = None
     delay_ms: int = 0
 
 
 class FakeStreamStart(BaseModel):
     message: str
-    session_id: Optional[str] = None
-    model: Optional[str] = None
-    source: Optional[str] = None
-    title: Optional[str] = None
+    session_id: str | None = None
+    model: str | None = None
+    source: str | None = None
+    title: str | None = None
     reuse_existing: bool = False
     events: list[FakeStreamEvent] = Field(default_factory=list)
 
@@ -7555,7 +4738,7 @@ class ConversationMessage(BaseModel):
 
 
 class ConversationInterrupt(BaseModel):
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class ConversationModelBody(BaseModel):
@@ -7563,18 +4746,18 @@ class ConversationModelBody(BaseModel):
 
 
 class ConversationForkBody(BaseModel):
-    from_message_index: Optional[int] = None
+    from_message_index: int | None = None
 
 
 class ConversationRetryBody(BaseModel):
     message_index: int
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class ConversationApprovalBody(BaseModel):
     choice: str
     resolve_all: bool = False
-    action_id: Optional[str] = None
+    action_id: str | None = None
 
 
 class ConversationInputBody(BaseModel):
@@ -7582,7 +4765,7 @@ class ConversationInputBody(BaseModel):
     response: str
 
 
-def _publish_web_status(session_id: str, kind: str, message: str, *, phase: Optional[str] = None) -> None:
+def _publish_web_status(session_id: str, kind: str, message: str, *, phase: str | None = None) -> None:
     text = _truncate_str(message, 2000)
     _touch_web_turn(session_id, status=text, phase=phase or str(kind or "status"))
     _publish_event(
@@ -7603,11 +4786,11 @@ def _make_web_chat_callbacks(
     turn_context = _WebTurnCallbackContext(session_id)
     tool_started_monotonic: dict[str, float] = {}
 
-    def publish_status(kind: str, message: str, *, phase: Optional[str] = None) -> None:
+    def publish_status(kind: str, message: str, *, phase: str | None = None) -> None:
         _record_web_first_visible_event(turn_context.session_id, "status")
         _publish_web_status(turn_context.session_id, kind, message, phase=phase)
 
-    def token_callback(token: Optional[str]) -> None:
+    def token_callback(token: str | None) -> None:
         if token is None:
             return
         token = _sanitize_web_chat_text(token)
@@ -7767,8 +4950,8 @@ def _create_fake_stream_session(
     session_id: str,
     *,
     source: str,
-    model: Optional[str],
-    title: Optional[str],
+    model: str | None,
+    title: str | None,
     reuse_existing: bool = False,
 ) -> dict[str, Any] | None:
     try:
@@ -7819,7 +5002,7 @@ def _run_fake_stream_task(
     session_migrated_callback = callbacks[5]
     compaction_failed_callback = callbacks[7]
     final_text_chunks: list[str] = []
-    explicit_final: Optional[str] = None
+    explicit_final: str | None = None
     result: dict[str, Any] = {"final_response": ""}
     failed = False
     interrupted = False
@@ -7948,7 +5131,7 @@ def _run_fake_stream_task(
         try:
             loop.call_soon_threadsafe(queue.put_nowait, None)
         except Exception:
-            pass
+            _log.debug("Ignoring error in _run_fake_stream_task()", exc_info=True)
         _web_queues.pop(session_id, None)
         _publish_event(
             "chat.turn_done",
@@ -7961,7 +5144,7 @@ def _run_fake_stream_task(
         _emit_web_session_updated(session_id)
 
 
-def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
+def _last_assistant_message_info(session_id: str) -> dict[str, Any]:
     try:
         from core.spark_state import SessionDB
 
@@ -7982,14 +5165,14 @@ def _last_assistant_message_info(session_id: str) -> Dict[str, Any]:
 
 def _turn_done_payload(
     result: Any,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
     *,
     interrupted: bool = False,
-    migrated_session_id: Optional[str] = None,
+    migrated_session_id: str | None = None,
     turn_outcome: dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Extract token/cost stats from a run_conversation() result for chat.turn_done."""
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "session_id": session_id,
         "message_count": _session_message_count(session_id) if session_id else 0,
         "interrupted": interrupted,
@@ -8119,7 +5302,7 @@ def _web_cmd_computer_use(args: str) -> "str | None":
             suffix = f"\n\n{hint}" if hint else ""
             return "computer_use is enabled for the desktop app, but cua-driver is not available yet." + suffix
     except Exception:
-        pass
+        _log.debug("Ignoring error in _web_cmd_computer_use()", exc_info=True)
 
     return "Computer-use is enabled for the desktop app. Describe the desktop task in your next message."
 
@@ -8292,8 +5475,10 @@ def _web_cmd_tools(args: str) -> str:
         if not names:
             return f"Usage: `/tools {subcommand} <name> [name …]`"
         try:
-            import io, sys
+            import io
+            import sys
             from argparse import Namespace
+
             from spark_cli.tools_config import tools_disable_enable_command
             buf = io.StringIO()
             old_stdout, sys.stdout = sys.stdout, buf
@@ -8323,6 +5508,7 @@ def _web_cmd_tools(args: str) -> str:
 def _web_cmd_toolsets() -> str:
     try:
         from tools.toolsets import get_all_toolsets, get_toolset_info
+
         from spark_cli.tools_config import _get_platform_tools
         cfg = load_config()
         enabled = set(_get_platform_tools(cfg, "web") or [])
@@ -8375,6 +5561,7 @@ def _web_cmd_skills(args: str) -> str:
 def _web_cmd_cron() -> str:
     try:
         import json
+
         from tools.cronjob_tools import cronjob as cronjob_tool
         result = json.loads(cronjob_tool(action="list"))
         jobs = result.get("jobs", []) if isinstance(result, dict) else []
@@ -8442,6 +5629,7 @@ def _web_cmd_files() -> str:
 def _web_cmd_save(session_id: str) -> str:
     import json
     from datetime import datetime
+
     from core.spark_constants import get_spark_home
     try:
         from core.spark_state import SessionDB
@@ -8495,7 +5683,7 @@ def _web_cmd_status(session_id: str) -> str:
     return "\n".join(lines)
 
 
-def _get_workspace_root(slug: Optional[str] = None) -> "Path":
+def _get_workspace_root(slug: str | None = None) -> "Path":
     """Return the resolved workspace root, optionally scoped to a project slug."""
     base = (get_spark_home() / "workspace").resolve()
     if slug:
@@ -8526,7 +5714,7 @@ def _looks_like_binary_context_text(content: str) -> bool:
     return content.startswith(("\ufffdPNG", "\ufffdJFIF", "%PDF-", "PK\x03\x04"))
 
 
-def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional[str]:
+def _resolve_context_item_content(item: Any, workspace_root: "Path") -> str | None:
     """Return the text to inject for a context item, or None if nothing to inject."""
     from spark_cli.context_models import InclusionMode
 
@@ -8538,7 +5726,7 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional
         source_is_binary = bool(source_path and Path(source_path).suffix.lower() in _BINARY_EXTENSIONS)
         if source_is_binary or _looks_like_binary_context_text(content):
             return _binary_context_note(source_path)
-        return content
+        return cast("str | None", content)
 
     if not source_path:
         return None
@@ -8560,7 +5748,7 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional
 
     try:
         if mode == InclusionMode.full:
-            return resolved.read_text(errors="replace")
+            return cast("str | None", resolved.read_text(errors="replace"))
 
         if mode == InclusionMode.excerpt:
             import json as _json
@@ -8571,7 +5759,7 @@ def _resolve_context_item_content(item: Any, workspace_root: "Path") -> Optional
                     start, end = _json.loads(excerpt_range) if isinstance(excerpt_range, str) else excerpt_range
                     return "\n".join(lines[max(0, start - 1):end])
                 except Exception:
-                    pass
+                    _log.debug("Ignoring error in _resolve_context_item_content()", exc_info=True)
             return "\n".join(lines[:100])
 
         if mode == InclusionMode.search:
@@ -8661,7 +5849,7 @@ def _inject_brief_if_present(session_id: str, user_message: str) -> str:
         if brief and brief.strip():
             return f"[Session Brief]\n{brief.strip()}\n[/Session Brief]\n\n---\n\n{user_message}"
     except Exception:
-        pass
+        _log.debug("Ignoring error in _inject_brief_if_present()", exc_info=True)
     return user_message
 
 
@@ -8684,8 +5872,8 @@ def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
         enabled_toolsets = _get_platform_tools(load_config(), "cli")
         disabled_toolsets = getattr(agent, "disabled_toolsets", None)
         tool_defs = get_tool_definitions(
-            enabled_toolsets=enabled_toolsets,
-            disabled_toolsets=disabled_toolsets,
+            enabled_toolsets=list(enabled_toolsets),
+            disabled_toolsets=list(disabled_toolsets or []),
             quiet_mode=True,
         )
         agent.enabled_toolsets = enabled_toolsets
@@ -8704,8 +5892,8 @@ def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
-    conversation_history: Optional[list[dict[str, Any]]] = None,
-    context_items: Optional[list] = None,
+    conversation_history: list[dict[str, Any]] | None = None,
+    context_items: list | None = None,
 ) -> Any:
     from tools.approval import reset_current_session_key, set_current_session_key
 
@@ -8729,7 +5917,7 @@ def _run_web_agent_turn(
         reset_current_session_key(tok)
 
 
-def _final_web_turn_session_id(requested_session_id: str, agent: Any, turn: Optional[WebActiveTurn]) -> str:
+def _final_web_turn_session_id(requested_session_id: str, agent: Any, turn: WebActiveTurn | None) -> str:
     """Return the concrete session that owns the finished turn."""
     if turn and turn.active_agent_session_id:
         return turn.active_agent_session_id
@@ -8737,6 +5925,87 @@ def _final_web_turn_session_id(requested_session_id: str, agent: Any, turn: Opti
     if isinstance(agent_session_id, str) and agent_session_id:
         return agent_session_id
     return requested_session_id
+
+
+async def _complete_web_agent_turn(
+    *,
+    requested_session_id: str,
+    agent: Any,
+    active_turn: WebActiveTurn | None,
+    result: Any,
+    user_message: str,
+    before_message_count: int,
+    loop: asyncio.AbstractEventLoop,
+    token_queue: asyncio.Queue,
+    eager_user_id: int | None = None,
+    checkpoint_operation: str = "turn_completion",
+    before_persist: Callable[[], None] | None = None,
+    after_persist: Callable[[], None] | None = None,
+    log_context: str = "Web turn",
+) -> str:
+    """Finalize one web-agent task and always release its browser-facing state.
+
+    Persistence and projection are best-effort, but queue closure, ``turn_done``
+    publication, active-turn cleanup, and sidebar refresh are unconditional.
+    Keeping that invariant in one place prevents create, follow-up, retry, and
+    project-chat paths from drifting apart.
+    """
+    final_session_id = (
+        _final_web_turn_session_id(requested_session_id, agent, active_turn)
+        if agent is not None
+        else requested_session_id
+    )
+    turn_outcome = None
+    try:
+        if before_persist is not None:
+            before_persist()
+        if active_turn:
+            await _await_checkpoint_ready(
+                final_session_id,
+                active_turn,
+                operation=checkpoint_operation,
+            )
+        surviving_assistant_id = _persist_web_turn_if_missing(
+            final_session_id,
+            user_message,
+            result,
+            before_message_count,
+            eager_user_id=eager_user_id,
+            checkpoint_assistant_id=(
+                active_turn.assistant_message_id if active_turn else None
+            ),
+        )
+        if active_turn is not None and surviving_assistant_id is not None:
+            with active_turn.lock:
+                active_turn.assistant_message_id = surviving_assistant_id
+        turn_outcome = await _finalize_web_turn_projection_async(
+            final_session_id,
+            active_turn,
+            result,
+            agent=agent,
+        )
+        if agent is not None:
+            _maybe_auto_title_web(agent, final_session_id, user_message, result)
+        if after_persist is not None:
+            after_persist()
+    except (Exception, asyncio.CancelledError):
+        _log.exception("%s finalization failed session=%s", log_context, final_session_id)
+    finally:
+        try:
+            loop.call_soon_threadsafe(token_queue.put_nowait, None)
+        except RuntimeError:
+            _log.debug("Event loop gone before closing the token queue", exc_info=True)
+        _web_queues.pop(requested_session_id, None)
+        _publish_event(
+            "chat.turn_done",
+            _turn_done_payload(result, final_session_id, turn_outcome=turn_outcome),
+            final_session_id,
+        )
+        _clear_web_turn(final_session_id)
+        if final_session_id != requested_session_id:
+            _clear_web_turn(requested_session_id)
+        _emit_web_session_updated(final_session_id)
+    return final_session_id
 
 
 def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
@@ -8766,14 +6035,14 @@ def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
             if m:
                 resets_in = int(m.group(1)) * 3600
         except Exception:
-            pass
+            _log.debug("Ignoring error in _maybe_capture_codex_usage_limit()", exc_info=True)
         _codex_usage_limit_hit = {
             "hit_at": time.time(),
             "resets_in_seconds": resets_in,
             "resets_at": (time.time() + resets_in) if resets_in else None,
         }
     except Exception:
-        pass
+        _log.debug("Ignoring error in _maybe_capture_codex_usage_limit()", exc_info=True)
 
 
 def _close_web_agent(session_id: str) -> None:
@@ -8786,7 +6055,7 @@ def _close_web_agent(session_id: str) -> None:
         try:
             close()
         except Exception:
-            pass
+            _log.debug("Ignoring error in _close_web_agent()", exc_info=True)
 
 
 def _default_web_chat_model() -> str:
@@ -8799,7 +6068,7 @@ def _resolve_web_turn_route(
     user_message: str,
     *,
     explicit_model: str | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Resolve the effective global model/runtime for one web chat turn."""
     from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
     from spark_cli.model_config import read_global_model_config
@@ -8815,7 +6084,7 @@ def _resolve_web_turn_route(
 
             model = get_default_model_for_provider(runtime["provider"])
         except Exception:
-            pass
+            _log.debug("Ignoring error in _resolve_web_turn_route()", exc_info=True)
 
     primary = {
         "model": model,
@@ -8867,8 +6136,8 @@ def _new_web_agent(
     *,
     session_id: str,
     model: str,
-    runtime: Optional[dict[str, Any]] = None,
-    request_overrides: Optional[dict[str, Any]] = None,
+    runtime: dict[str, Any] | None = None,
+    request_overrides: dict[str, Any] | None = None,
     signature: Any = None,
     token_callback: Any,
     tool_start_callback: Any,
@@ -8877,7 +6146,7 @@ def _new_web_agent(
     status_callback: Any,
     session_migrated_callback: Any = None,
     subagent_event_callback: Any = None,
-    working_dir: Optional[str] = None,
+    working_dir: str | None = None,
 ) -> Any:
     from core.run_agent import AIAgent
     from core.spark_state import SessionDB
@@ -9387,10 +6656,10 @@ def _cached_web_agent_matches_history(
         flags["migrated"],
         matches,
     )
-    return matches
+    return cast("bool", matches)
 
 
-def _persist_interrupted_turn_boundary(session_id: str, message: Optional[str] = None) -> None:
+def _persist_interrupted_turn_boundary(session_id: str, message: str | None = None) -> None:
     """Persist a small assistant boundary if interruption leaves a dangling user row."""
     try:
         from core.spark_state import SessionDB
@@ -9415,7 +6684,7 @@ _MAX_CONTEXT_ITEMS = 20
 _MAX_CONTEXT_ITEM_BYTES = 500 * 1024  # 500 KB per item in full mode
 
 
-def _validate_context_items(raw_items: list, workspace_slug: Optional[str] = None) -> list:
+def _validate_context_items(raw_items: list, workspace_slug: str | None = None) -> list:
     """Validate incoming context items. Returns validated list or raises HTTPException."""
     if not raw_items:
         return []
@@ -9440,11 +6709,11 @@ def _validate_context_items(raw_items: list, workspace_slug: Optional[str] = Non
             try:
                 resolved = (project_root / item.source_path.lstrip("/")).resolve()
                 resolved.relative_to(project_root)
-            except ValueError:
+            except ValueError as err:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Path traversal detected in context item: {item.source_path!r}",
-                )
+                ) from err
 
         if item.inclusion_mode == InclusionMode.full and item.size_bytes > _MAX_CONTEXT_ITEM_BYTES:
             raise HTTPException(
@@ -9465,8 +6734,9 @@ def _persist_context_items(session_id: str, raw_items: list) -> None:
     try:
         import json as _json
         import time as _time
-        from spark_cli.context_models import ContextItem
+
         from core.spark_state import SessionDB
+        from spark_cli.context_models import ContextItem
 
         items = [ContextItem.model_validate(i) for i in raw_items]
         db = SessionDB()
@@ -9519,9 +6789,9 @@ class TokenEstimateRequest(BaseModel):
     prompt: str = ""
     context_items: list = []
     brief: str = ""
-    session_id: Optional[str] = None
+    session_id: str | None = None
     history_message_count: int = 0
-    model: Optional[str] = None
+    model: str | None = None
 
 
 @app.post("/api/estimate-tokens")
@@ -9534,7 +6804,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
     attached_tokens = 0
     item_buckets: list[ContextBucket] = []
     if body.context_items:
-        workspace_root: Optional[Path] = None
+        workspace_root: Path | None = None
         for raw in body.context_items:
             item = raw if isinstance(raw, dict) else (raw.model_dump() if hasattr(raw, "model_dump") else {})
             label = item.get("label") or item.get("source_path") or item.get("id", "item")
@@ -9554,7 +6824,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
                                 slug = sess["workspace_slug"]
                                 workspace_root = _get_workspace_root(slug)
                         except Exception:
-                            pass
+                            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
                 if not content and item.get("source_path") and workspace_root:
                     content = _resolve_context_item_content(item, workspace_root) or ""
                 t = _count_tokens_fast(content)
@@ -9576,7 +6846,7 @@ async def estimate_tokens(body: TokenEstimateRequest):
             for m in recent:
                 history_tokens += _count_tokens_fast(m.get("content") or "")
         except Exception:
-            pass
+            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
 
     total = prompt_tokens + attached_tokens + pinned_tokens + history_tokens
 
@@ -9585,11 +6855,14 @@ async def estimate_tokens(body: TokenEstimateRequest):
     if body.model:
         try:
             from agent.models_dev import get_model_capabilities
-            mc = get_model_capabilities(model=body.model)
+            route = _resolve_web_turn_route("", explicit_model=body.model)
+            route_runtime = route.get("runtime") or {}
+            route_provider = str(route_runtime.get("provider") or "")
+            mc = get_model_capabilities(provider=route_provider, model=body.model)
             if mc and mc.context_window > 0:
                 context_window = mc.context_window
         except Exception:
-            pass
+            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
 
     utilization = total / context_window if context_window > 0 else 0.0
     warning = None
@@ -9645,9 +6918,9 @@ async def update_session_kanban(session_id: str, body: KanbanUpdate):
             db.close()
     except HTTPException:
         raise
-    except Exception:
+    except Exception as err:
         _log.exception("PATCH /api/sessions/%s/kanban failed", session_id)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from err
 
 
 # ---------------------------------------------------------------------------
@@ -9692,7 +6965,7 @@ async def get_slash_commands():
                 }
             )
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_slash_commands()", exc_info=True)
 
     return out
 
@@ -9729,7 +7002,7 @@ async def get_conversation_models():
             "warning": catalog["warning"],
         }
     except Exception:
-        pass
+        _log.debug("Ignoring error in get_conversation_models()", exc_info=True)
     curated = [
         ("anthropic/claude-sonnet-4.6", "Fast, strong generalist"),
         ("anthropic/claude-opus-4.6", "Highest quality"),
@@ -9750,8 +7023,8 @@ async def get_conversation_models():
 class CanvasChatBody(BaseModel):
     message: str
     history: list[dict] = []
-    model: Optional[str] = None
-    slug: Optional[str] = None
+    model: str | None = None
+    slug: str | None = None
 
 
 @app.post("/api/canvas/chat")
@@ -9804,7 +7077,7 @@ async def canvas_chat(body: CanvasChatBody):
     try:
         reply = await _run_blocking(_run)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return {"ok": True, "reply": reply, "model": turn_route["model"]}
 
 
@@ -9817,7 +7090,7 @@ async def create_conversation(body: ConversationCreate):
     try:
         from tools.approval import register_gateway_notify, unregister_gateway_notify
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}") from e
 
     request_received_at = time.time()
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
@@ -9924,45 +7197,32 @@ async def create_conversation(body: ConversationCreate):
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, so `except Exception` below
+            # misses it and `result` would stay None.  The finally block then
+            # publishes chat.turn_done with status "completed" and no
+            # backend_error_class, i.e. a turn that never ran reports success.
+            # Record it as a failure and let the finally clean up; the task
+            # itself is not being cancelled here, only the work future.
+            _log.warning("Web chat turn cancelled session=%s", session_id)
+            result = {"backend_error_class": "CancelledError"}
         except Exception as exc:
             _log.exception("Web chat agent error session=%s", session_id)
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
-            if _active_turn:
-                await _await_checkpoint_ready(
-                    final_session_id, _active_turn, operation="turn_completion"
-                )
-            surviving_assistant_id = _persist_web_turn_if_missing(
-                final_session_id, message, result, before_message_count,
-                eager_user_id=eager_user_id,
-                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-            )
-            if _active_turn is not None and surviving_assistant_id is not None:
-                with _active_turn.lock:
-                    _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = await _finalize_web_turn_projection_async(
-                final_session_id,
-                _active_turn,
-                result,
+            await _complete_web_agent_turn(
+                requested_session_id=session_id,
                 agent=agent,
+                active_turn=_active_turn,
+                result=result,
+                user_message=message,
+                before_message_count=before_message_count,
+                eager_user_id=eager_user_id,
+                loop=loop,
+                token_queue=queue,
+                log_context="Web chat turn",
             )
-            if agent is not None:
-                _maybe_auto_title_web(agent, final_session_id, message, result)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-            _web_queues.pop(session_id, None)
-            _publish_event(
-                "chat.turn_done",
-                _turn_done_payload(
-                    result, final_session_id, turn_outcome=turn_outcome
-                ),
-                final_session_id,
-            )
-            _clear_web_turn(final_session_id)
-            if final_session_id != session_id:
-                _clear_web_turn(session_id)
-            _emit_web_session_updated(final_session_id)
 
     turn = await _run_blocking(
         _mark_web_turn_active,
@@ -10213,7 +7473,7 @@ async def interrupt_conversation_subagent(
     try:
         target_child.interrupt(body.message)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     status = "stopping"
     payload = {
@@ -10268,7 +7528,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
 
     from core.spark_state import SessionDB
 
-    conversation_history: Optional[list[dict[str, Any]]] = None
+    conversation_history: list[dict[str, Any]] | None = None
     db = SessionDB()
     try:
         requested_session_id = session_id
@@ -10356,7 +7616,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         try:
             db.reopen_session(session_id)
         except Exception:
-            pass
+            _log.debug("Ignoring error in send_conversation_message()", exc_info=True)
     finally:
         db.close()
 
@@ -10399,44 +7659,31 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn(agent, message, conversation_history, _items)
                 )
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, so `except Exception` below
+            # misses it and `result` would stay None.  The finally block then
+            # publishes chat.turn_done with status "completed" and no
+            # backend_error_class, i.e. a turn that never ran reports success.
+            # Record it as a failure and let the finally clean up; the task
+            # itself is not being cancelled here, only the work future.
+            _log.warning("Web chat follow-up cancelled session=%s", session_id)
+            result = {"backend_error_class": "CancelledError"}
         except Exception as exc:
             _log.exception("Web chat follow-up error session=%s", session_id)
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
-            if _active_turn:
-                await _await_checkpoint_ready(
-                    final_session_id, _active_turn, operation="turn_completion"
-                )
-            surviving_assistant_id = _persist_web_turn_if_missing(
-                final_session_id, message, result, before_message_count,
-                eager_user_id=eager_user_id,
-                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-            )
-            if _active_turn is not None and surviving_assistant_id is not None:
-                with _active_turn.lock:
-                    _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = await _finalize_web_turn_projection_async(
-                final_session_id,
-                _active_turn,
-                result,
+            await _complete_web_agent_turn(
+                requested_session_id=session_id,
                 agent=agent,
+                active_turn=_active_turn,
+                result=result,
+                user_message=message,
+                before_message_count=before_message_count,
+                eager_user_id=eager_user_id,
+                loop=loop,
+                token_queue=queue,
             )
-            _maybe_auto_title_web(agent, final_session_id, message, result)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-            _web_queues.pop(session_id, None)
-            _publish_event(
-                "chat.turn_done",
-                _turn_done_payload(
-                    result, final_session_id, turn_outcome=turn_outcome
-                ),
-                final_session_id,
-            )
-            _clear_web_turn(final_session_id)
-            if final_session_id != session_id:
-                _clear_web_turn(session_id)
-            _emit_web_session_updated(final_session_id)
 
     turn = await _run_blocking(
         _mark_web_turn_active,
@@ -10501,7 +7748,7 @@ async def interrupt_conversation(session_id: str, body: ConversationInterrupt):
             )
         _persist_interrupted_turn_boundary(agent_session_id or session_id, body.message)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     _publish_event(
         "chat.status",
         {"kind": "interrupt_requested", "message": status},
@@ -10691,14 +7938,15 @@ _SUMMARIZE_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 
 class SummarizeFileRequest(BaseModel):
     path: str
-    workspace_slug: Optional[str] = None
+    workspace_slug: str | None = None
 
 
 async def _generate_summary(text: str, filename: str) -> str:
     """Generate a summary via the configured LLM."""
+    import openai as _openai
+
     from spark_cli.model_config import read_global_model_config
     from spark_cli.runtime_provider import resolve_runtime_provider
-    import openai as _openai
 
     runtime = resolve_runtime_provider(requested=None)
     model_cfg = read_global_model_config()
@@ -10735,8 +7983,8 @@ async def summarize_file(body: SummarizeFileRequest):
     try:
         resolved = (workspace_root / body.path.lstrip("/")).resolve()
         resolved.relative_to(workspace_root)
-    except (ValueError, Exception):
-        raise HTTPException(status_code=400, detail="Path traversal not allowed")
+    except (ValueError, Exception) as err:
+        raise HTTPException(status_code=400, detail="Path traversal not allowed") from err
 
     if not resolved.exists() or not resolved.is_file():
         raise HTTPException(status_code=404, detail="File not found")
@@ -10894,46 +8142,30 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
                 loop,
                 lambda: _run_web_agent_turn(agent, user_msg, conv_hist),
             )
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, so `except Exception` below
+            # misses it and `result` would stay None.  The finally block then
+            # publishes chat.turn_done with status "completed" and no
+            # backend_error_class, i.e. a turn that never ran reports success.
+            # Record it as a failure and let the finally clean up; the task
+            # itself is not being cancelled here, only the work future.
+            _log.warning("Web chat retry cancelled session=%s", session_id)
+            result = {"backend_error_class": "CancelledError"}
         except Exception as exc:
             _log.exception("Web chat retry error session=%s", session_id)
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn)
-            if _active_turn:
-                await _await_checkpoint_ready(
-                    final_session_id, _active_turn, operation="turn_completion"
-                )
-            surviving_assistant_id = _persist_web_turn_if_missing(
-                final_session_id,
-                user_msg,
-                result,
-                before_message_count,
-                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-            )
-            if _active_turn is not None and surviving_assistant_id is not None:
-                with _active_turn.lock:
-                    _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = await _finalize_web_turn_projection_async(
-                final_session_id,
-                _active_turn,
-                result,
+            await _complete_web_agent_turn(
+                requested_session_id=session_id,
                 agent=agent,
+                active_turn=_active_turn,
+                result=result,
+                user_message=user_msg,
+                before_message_count=before_message_count,
+                loop=loop,
+                token_queue=queue,
             )
-            _maybe_auto_title_web(agent, final_session_id, user_msg, result)
-            _web_queues.pop(session_id, None)
-            _publish_event(
-                "chat.turn_done",
-                _turn_done_payload(
-                    result, final_session_id, turn_outcome=turn_outcome
-                ),
-                final_session_id,
-            )
-            _clear_web_turn(final_session_id)
-            if final_session_id != session_id:
-                _clear_web_turn(session_id)
-            _emit_web_session_updated(final_session_id)
 
     await _run_blocking(
         _mark_web_turn_active,
@@ -11046,7 +8278,7 @@ async def conversation_input(session_id: str, body: ConversationInputBody):
             try:
                 response_queue.put_nowait(body.response)
             except thread_queue.Full:
-                pass
+                _log.debug("Ignoring error in conversation_input()", exc_info=True)
         _publish_event(
             "chat.input_resolved",
             {"action_id": body.action_id, "response": body.response},
@@ -11073,7 +8305,7 @@ async def conversation_feedback(session_id: str, body: FeedbackSubmitBody):
             )
             resp.raise_for_status()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to submit feedback: {exc}")
+        raise HTTPException(status_code=502, detail=f"Failed to submit feedback: {exc}") from exc
 
     _publish_event("chat.feedback_submitted", {}, session_id)
     return {"ok": True}
@@ -11093,7 +8325,7 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
     state, reason, idle_for = _web_turn_state(turn)
-    diagnostics = {
+    diagnostics: dict[str, Any] = {
         "requested_session_id": ids.get("requested") or session_id,
         "resolved_session_id": ids.get("resolved") or session_id,
         "latest_session_id": ids.get("latest") or ids.get("resolved") or session_id,
@@ -11159,8 +8391,8 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
 @app.get("/api/conversations/{session_id}/stream-snapshot")
 async def conversation_stream_snapshot(
     session_id: str,
-    after_chars: Optional[int] = None,
-    tail_chars: Optional[int] = None,
+    after_chars: int | None = None,
+    tail_chars: int | None = None,
 ):
     """Return the accumulated in-flight assistant text for recovery.
 
@@ -11218,8 +8450,8 @@ async def conversation_plan(session_id: str):
 def _bounded_stream_snapshot_text(
     stream_text: str | _ChunkedStreamText | tuple[tuple[str, ...], int],
     *,
-    after_chars: Optional[int] = None,
-    tail_chars: Optional[int] = None,
+    after_chars: int | None = None,
+    tail_chars: int | None = None,
 ) -> tuple[str, int, str, bool]:
     if isinstance(stream_text, tuple):
         chunks, total_chars = stream_text
@@ -11246,8 +8478,8 @@ def _bounded_stream_snapshot_text(
 def _conversation_stream_snapshot_payload(
     session_id: str,
     *,
-    after_chars: Optional[int] = None,
-    tail_chars: Optional[int] = None,
+    after_chars: int | None = None,
+    tail_chars: int | None = None,
 ) -> dict[str, Any]:
     ids = _resolve_web_turn_ids(session_id)
     active_key, turn = _get_web_turn(session_id)
@@ -11356,15 +8588,105 @@ def mount_spa(application: FastAPI):
         )
 
 
+register_cron_routes(app)
+register_analytics_routes(app)
+@app.get("/api/diagnostics/summary")
+async def diagnostics_summary():
+    cfg = load_config()
+    env = load_env()
+    missing_required: list[str] = []
+    for key, meta in OPTIONAL_ENV_VARS.items():
+        if meta.get("required") and not env.get(key):
+            missing_required.append(key)
+    return {
+        "ok": True,
+        "spark_home": str(get_spark_home()),
+        "config_path": str(get_config_path()),
+        "env_path": str(get_env_path()),
+        "config_version": cfg.get("_config_version") if isinstance(cfg, dict) else None,
+        "platform": platform.platform(),
+        "python": sys.version.split()[0],
+        "missing_required_env": missing_required,
+        "gateway_running": get_running_pid() is not None,
+        "dashboard_auth": {
+            "token_file": str(dashboard_token_path()),
+            "configured": bool(get_configured_dashboard_secret()),
+        },
+        "actions": [a.to_metadata() for a in ADMIN_ACTIONS.values()],
+    }
+
+
+@app.get("/api/diagnostics/webview")
+async def diagnostics_webview(
+    active_session_id: str | None = None,
+    safe_mode: bool | None = None,
+    recent_long_task_count: int | None = None,
+    connection_mode: str | None = None,
+):
+    """Runtime diagnostics for the desktop/web chat shell.
+
+    The browser owns safe-mode and long-task state, so callers can pass those
+    values as query params when collecting a complete diagnostic snapshot.
+    """
+    candidates = {active_session_id} if active_session_id else set()
+    if active_session_id:
+        try:
+            from core.spark_state import SessionDB
+
+            db = SessionDB()
+            try:
+                sid = db.resolve_session_id(active_session_id)
+                if sid:
+                    candidates.add(sid)
+                    latest = db.resolve_latest_descendant(sid)
+                    if latest:
+                        candidates.add(latest)
+            finally:
+                db.close()
+        except Exception:
+            _log.debug("diagnostic session resolution failed session=%s", active_session_id, exc_info=True)
+
+    active_turn = any(_is_web_turn_active(sid) for sid in candidates if sid)
+    return {
+        "ok": True,
+        "sidecar_pid": os.getpid(),
+        "desktop": _is_desktop_app(),
+        "desktop_version": _desktop_app_version(),
+        "active_session_id": active_session_id,
+        "active_turn": active_turn,
+        "safe_mode": safe_mode,
+        "recent_long_task_count": recent_long_task_count,
+        "connection_mode": connection_mode,
+        "activity_monitor_process_name_note": (
+            "Spark desktop is a Tauri shell that navigates its main webview to "
+            "the local sidecar at http://127.0.0.1:9119, so macOS may show the "
+            "webview page URL rather than the Spark app name for the busy renderer."
+        ),
+    }
+
+
 register_kanban_routes(app)
+register_providers_routes(app)
+register_mac_routes(app)
+register_onboarding_routes(app)
+register_env_routes(app)
+register_gateway_routes(app)
+register_plugins_routes(app)
+register_admin_routes(app)
+register_mcp_routes(app)
+register_model_routes(app)
+register_profiles_routes(app)
+register_logs_routes(app)
 register_workspace_routes(app)
 register_connectors_routes(app)
 register_canvas_routes(app)
 from spark_cli.memory_routes import register_memory_routes
+
 register_memory_routes(app)
 register_workflow_routes(app)
 from spark_cli.artifacts_routes import register_artifacts_routes
 from spark_cli.messaging_routes import register_messaging_routes
+
 register_messaging_routes(app)
 register_artifacts_routes(app)
 
@@ -11374,7 +8696,7 @@ register_artifacts_routes(app)
 
 class WorkspaceConvCreate(BaseModel):
     message: str
-    model: Optional[str] = None
+    model: str | None = None
     context_items: list = []
 
 
@@ -11408,7 +8730,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     try:
         from tools.approval import register_gateway_notify, unregister_gateway_notify
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent module unavailable: {e}") from e
 
     from spark_cli.workspace_routes import _project_dir
 
@@ -11496,6 +8818,16 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
 
     raw_message = body.message
 
+    def _start_workspace_preview_after_turn() -> None:
+        try:
+            from spark_cli.workspace_routes import start_preview
+
+            start_preview(slug, None)
+        except Exception:
+            _log.debug(
+                "workspace preview auto-start skipped slug=%s", slug, exc_info=True
+            )
+
     async def run_agent_task() -> None:
         agent = None
         _active_turn = None
@@ -11525,54 +8857,36 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn(agent, message, None, _items)
                 )
+        except asyncio.CancelledError:
+            # CancelledError is a BaseException, so `except Exception` below
+            # misses it and `result` would stay None.  The finally block then
+            # publishes chat.turn_done with status "completed" and no
+            # backend_error_class, i.e. a turn that never ran reports success.
+            # Record it as a failure and let the finally clean up; the task
+            # itself is not being cancelled here, only the work future.
+            _log.warning("Workspace chat turn cancelled session=%s slug=%s", session_id, slug)
+            result = {"backend_error_class": "CancelledError"}
         except Exception as exc:
             _log.exception("Workspace chat agent error session=%s slug=%s", session_id, slug)
             result = {"backend_error_class": type(exc).__name__}
         finally:
             unregister_gateway_notify(session_id)
-            _strip_user_message_prefix(session_id, context_prefix, raw_message)
-            final_session_id = _final_web_turn_session_id(session_id, agent, _active_turn) if agent is not None else session_id
-            if _active_turn:
-                await _await_checkpoint_ready(
-                    final_session_id,
-                    _active_turn,
-                    operation="workspace_turn_completion",
-                )
-            surviving_assistant_id = _persist_web_turn_if_missing(
-                final_session_id, raw_message, result, before_message_count,
-                eager_user_id=eager_user_id,
-                checkpoint_assistant_id=_active_turn.assistant_message_id if _active_turn else None,
-            )
-            if _active_turn is not None and surviving_assistant_id is not None:
-                with _active_turn.lock:
-                    _active_turn.assistant_message_id = surviving_assistant_id
-            turn_outcome = await _finalize_web_turn_projection_async(
-                final_session_id,
-                _active_turn,
-                result,
+            await _complete_web_agent_turn(
+                requested_session_id=session_id,
                 agent=agent,
-            )
-            if agent is not None:
-                _maybe_auto_title_web(agent, final_session_id, raw_message, result)
-            try:
-                from spark_cli.workspace_routes import start_preview
-
-                start_preview(slug, None)
-            except Exception:
-                _log.debug("workspace preview auto-start skipped slug=%s", slug, exc_info=True)
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-            _web_queues.pop(session_id, None)
-            _publish_event(
-                "chat.turn_done",
-                _turn_done_payload(
-                    result, final_session_id, turn_outcome=turn_outcome
+                active_turn=_active_turn,
+                result=result,
+                user_message=raw_message,
+                before_message_count=before_message_count,
+                eager_user_id=eager_user_id,
+                checkpoint_operation="workspace_turn_completion",
+                before_persist=lambda: _strip_user_message_prefix(
+                    session_id, context_prefix, raw_message
                 ),
-                final_session_id,
+                after_persist=_start_workspace_preview_after_turn,
+                loop=loop,
+                token_queue=queue,
             )
-            _clear_web_turn(final_session_id)
-            if final_session_id != session_id:
-                _clear_web_turn(session_id)
-            _emit_web_session_updated(final_session_id)
 
     await _run_blocking(
         _mark_web_turn_active,
@@ -11607,6 +8921,7 @@ mount_spa(app)
 def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool = True):
     """Start the web UI server."""
     import uvicorn
+
     from core.spark_constants import get_public_base_url, is_server_environment
 
     ensure_dashboard_token_file()
@@ -11617,7 +8932,7 @@ def start_server(host: str = "127.0.0.1", port: int = 9119, open_browser: bool =
         from spark_cli.google_connector import apply_process_env as _apply_gws_env
         _apply_gws_env()
     except Exception:
-        pass
+        _log.debug("Ignoring error in start_server()", exc_info=True)
     public_url = get_public_base_url(host, port)
 
     _LOOPBACK = {"127.0.0.1", "::1", "localhost"}

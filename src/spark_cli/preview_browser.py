@@ -12,15 +12,18 @@ is imported lazily — callers get a clear error when it isn't installed.
 
 from __future__ import annotations
 
+import logging
 import queue
 import re
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from spark_cli.config import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 _VIEWPORT = (1280, 800)
 _COMMAND_TIMEOUT = 20.0
@@ -59,7 +62,7 @@ def _harden_dir_permissions(path: Path) -> None:
         if parent.name == _safe_slug(parent.name) or parent.name:
             os.chmod(parent, 0o700)
     except OSError:
-        pass
+        logger.debug("Ignoring error in _harden_dir_permissions()", exc_info=True)
 
 
 class StreamedBrowserSession:
@@ -90,7 +93,7 @@ class StreamedBrowserSession:
     # ── thread body ────────────────────────────────────────────────────────
     def _run(self) -> None:
         try:
-            from playwright.sync_api import sync_playwright  # type: ignore
+            from playwright.sync_api import sync_playwright
         except ImportError:
             self._start_error = BrowserUnavailable(
                 "Playwright is not installed — run `pip install playwright && playwright install chromium`"
@@ -131,7 +134,7 @@ class StreamedBrowserSession:
             try:
                 self.on_log(text, stream)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _log()", exc_info=True)
 
     def _wire_logging(self, page: Any) -> None:
         """Forward the page's console + network activity to the log callback."""
@@ -160,10 +163,10 @@ class StreamedBrowserSession:
             self.title = page.title()
             return {"url": self.current_url, "title": self.title}
 
-        return self._submit(_go)
+        return cast("dict[str, Any]", self._submit(_go))
 
     def screenshot(self) -> bytes:
-        return self._submit(lambda page: page.screenshot(type="png"))
+        return cast("bytes", self._submit(lambda page: page.screenshot(type="png")))
 
     def click(self, x: float, y: float) -> None:
         self._submit(lambda page: page.mouse.click(x, y))
@@ -184,7 +187,7 @@ class StreamedBrowserSession:
             self.title = page.title()
             return {"url": self.current_url, "title": self.title}
 
-        return self._submit(_back)
+        return cast("dict[str, Any]", self._submit(_back))
 
     def cookies(self) -> list[dict[str, str]]:
         """List cookies (name + domain only) from the persistent context."""
@@ -195,7 +198,7 @@ class StreamedBrowserSession:
                 for c in page.context.cookies()
             ]
 
-        return self._submit(_cookies)
+        return cast("list[dict[str, str]]", self._submit(_cookies))
 
     def go_forward(self) -> dict[str, Any]:
         def _fwd(page: Any) -> dict[str, Any]:
@@ -204,7 +207,7 @@ class StreamedBrowserSession:
             self.title = page.title()
             return {"url": self.current_url, "title": self.title}
 
-        return self._submit(_fwd)
+        return cast("dict[str, Any]", self._submit(_fwd))
 
     def close(self) -> None:
         if self._closed:

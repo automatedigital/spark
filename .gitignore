@@ -72,6 +72,8 @@ htmlcov/
 
 # Release script temp files
 .release_notes.md
+.release-*/
+references/t3code/
 mini-swe-agent/
 
 # Nix

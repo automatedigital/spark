@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 import wave
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,8 @@ def _import_audio():
     Raises ImportError or OSError if the libraries are not available
     (e.g. PortAudio missing on headless servers).
     """
-    import sounddevice as sd
     import numpy as np
+    import sounddevice as sd
     return sd, np
 
 
@@ -57,7 +57,7 @@ def _voice_capture_install_hint() -> str:
     return "pip install sounddevice numpy"
 
 
-def _termux_microphone_command() -> Optional[str]:
+def _termux_microphone_command() -> str | None:
     if not _is_termux_environment():
         return None
     return shutil.which("termux-microphone-record")
@@ -121,7 +121,7 @@ def detect_audio_environment() -> dict:
                         "  3. Verify with: arecord -d 3 /tmp/test.wav && aplay /tmp/test.wav"
                     )
     except (FileNotFoundError, PermissionError, OSError):
-        pass
+        logger.debug("Ignoring error in detect_audio_environment()", exc_info=True)
 
     # Check audio libraries
     try:
@@ -250,7 +250,7 @@ class TermuxAudioRecorder:
         self._lock = threading.Lock()
         self._recording = False
         self._start_time = 0.0
-        self._recording_path: Optional[str] = None
+        self._recording_path: str | None = None
         self._current_rms = 0
 
     @property
@@ -317,7 +317,7 @@ class TermuxAudioRecorder:
             return
         subprocess.run([mic_cmd, "-q"], capture_output=True, text=True, timeout=15, check=False)
 
-    def stop(self) -> Optional[str]:
+    def stop(self) -> str | None:
         with self._lock:
             if not self._recording:
                 return None
@@ -334,13 +334,13 @@ class TermuxAudioRecorder:
             try:
                 os.unlink(path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in stop()", exc_info=True)
             return None
         if os.path.getsize(path) <= 0:
             try:
                 os.unlink(path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in stop()", exc_info=True)
             return None
         logger.info("Termux voice recording stopped: %s", path)
         return path
@@ -354,12 +354,12 @@ class TermuxAudioRecorder:
         try:
             self._stop_termux_recording()
         except Exception:
-            pass
+            logger.debug("Ignoring error in cancel()", exc_info=True)
         if path and os.path.isfile(path):
             try:
                 os.unlink(path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in cancel()", exc_info=True)
         logger.info("Termux voice recording cancelled")
 
     def shutdown(self) -> None:
@@ -390,7 +390,7 @@ class AudioRecorder:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._stream: Any = None
-        self._frames: List[Any] = []
+        self._frames: list[Any] = []
         self._recording = False
         self._start_time: float = 0.0
         # Silence detection state
@@ -555,7 +555,7 @@ class AudioRecorder:
                 try:
                     stream.close()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _ensure_stream()", exc_info=True)
             raise RuntimeError(
                 f"Failed to open audio input stream: {e}. "
                 "Check that a microphone is connected and accessible."
@@ -622,7 +622,7 @@ class AudioRecorder:
                 stream.stop()
                 stream.close()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _do_close()", exc_info=True)
 
         t = threading.Thread(target=_do_close, daemon=True)
         t.start()
@@ -633,7 +633,7 @@ class AudioRecorder:
         if t.is_alive():
             logger.warning("Audio stream close timed out after %.1fs — forcing ahead", timeout)
 
-    def stop(self) -> Optional[str]:
+    def stop(self) -> str | None:
         """Stop recording and write captured audio to a WAV file.
 
         The underlying stream is kept alive for reuse — only frame
@@ -786,7 +786,7 @@ def is_whisper_hallucination(transcript: str) -> bool:
 # ============================================================================
 # STT dispatch
 # ============================================================================
-def transcribe_recording(wav_path: str, model: Optional[str] = None) -> Dict[str, Any]:
+def transcribe_recording(wav_path: str, model: str | None = None) -> dict[str, Any]:
     """Transcribe a WAV recording using the existing Whisper pipeline.
 
     Delegates to ``tools.transcription_tools.transcribe_audio()``.
@@ -816,7 +816,7 @@ def transcribe_recording(wav_path: str, model: Optional[str] = None) -> Dict[str
 # ============================================================================
 
 # Global reference to the active playback process so it can be interrupted.
-_active_playback: Optional[subprocess.Popen] = None
+_active_playback: subprocess.Popen | None = None
 _playback_lock = threading.Lock()
 
 
@@ -831,13 +831,13 @@ def stop_playback() -> None:
             proc.terminate()
             logger.info("Audio playback interrupted")
         except Exception:
-            pass
+            logger.debug("Ignoring error in stop_playback()", exc_info=True)
     # Also stop sounddevice playback if active
     try:
         sd, _ = _import_audio()
         sd.stop()
     except Exception:
-        pass
+        logger.debug("Ignoring error in stop_playback()", exc_info=True)
 
 
 def play_audio_file(file_path: str) -> bool:
@@ -878,7 +878,8 @@ def play_audio_file(file_path: str) -> bool:
             sd.stop()
             return True
         except (ImportError, OSError):
-            pass  # audio libs not available, fall through to system players
+            # audio libs not available, fall through to system players
+            logger.debug("Ignored exception in play_audio_file", exc_info=True)
         except Exception as e:
             logger.debug("sounddevice playback failed: %s", e)
 
@@ -921,7 +922,7 @@ def play_audio_file(file_path: str) -> bool:
 # ============================================================================
 # Requirements check
 # ============================================================================
-def check_voice_requirements() -> Dict[str, Any]:
+def check_voice_requirements() -> dict[str, Any]:
     """Check if all voice mode requirements are met.
 
     Returns:
@@ -935,7 +936,7 @@ def check_voice_requirements() -> Dict[str, Any]:
     stt_provider = _get_provider(stt_config)
     stt_available = stt_enabled and stt_provider != "none"
 
-    missing: List[str] = []
+    missing: list[str] = []
     termux_capture = _termux_voice_capture_available()
     has_audio = _audio_available() or termux_capture
 
@@ -1010,7 +1011,7 @@ def cleanup_temp_recordings(max_age_seconds: int = 3600) -> int:
                     os.unlink(entry.path)
                     deleted += 1
             except OSError:
-                pass
+                logger.debug("Ignoring error in cleanup_temp_recordings()", exc_info=True)
 
     if deleted:
         logger.debug("Cleaned up %d old voice recordings", deleted)

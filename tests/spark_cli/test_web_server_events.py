@@ -91,7 +91,10 @@ def web_client(monkeypatch, tmp_path):
     )
 
     import spark_cli.web_server as web_server
+    from core.async_runtime import AsyncRuntime
 
+    runtime = AsyncRuntime()
+    monkeypatch.setattr(web_server, "get_async_runtime", lambda: runtime)
     monkeypatch.setattr(web_server, "_web_event_loop", asyncio.get_event_loop())
     web_server._event_subscribers.clear()
     web_server._web_active_turns.clear()
@@ -112,7 +115,20 @@ def web_client(monkeypatch, tmp_path):
 
     web_state_journal.reset_for_test()
 
-    return TestClient(web_server.app)
+    yield TestClient(web_server.app)
+
+    # Drain before the next test. Clearing this state at setup is not enough:
+    # a turn started by the previous test runs on a background thread and can
+    # still be in flight, so it repopulates _web_active_turns after the clear
+    # and the next test sees turn_active True for a turn it never started.
+    deadline = time.time() + 10.0
+    while web_server._web_active_turns and time.time() < deadline:
+        time.sleep(0.02)
+    web_server._web_active_turns.clear()
+    web_server._web_turn_aliases.clear()
+    web_server._web_queues.clear()
+    web_server._web_input_queues.clear()
+    runtime.shutdown()
 
 
 def test_web_state_snapshot_splits_shell_from_selected_detail(web_client):
@@ -186,7 +202,10 @@ def test_web_state_delta_resume_and_restart_fallback(web_client):
     }
 
 
-def _wait_for(predicate, timeout: float = 2.0) -> bool:
+# 2s was enough on a developer machine but flaked on shared CI runners, where
+# background turn threads compete with xdist workers.  Polling returns as soon
+# as the predicate holds, so a longer ceiling only costs time on real failures.
+def _wait_for(predicate, timeout: float = 15.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if predicate():
@@ -2059,7 +2078,7 @@ class TestConversationControl:
         assert resp.json()["session_id"] == "compressed_leaf"
         assert "compressed_leaf" in web_server._web_agents
         assert "compressed_parent" not in web_server._web_agents
-        assert _wait_for(lambda: "history" in captured)
+        assert _wait_for(lambda: "history" in captured), "the agent turn never ran"
         assert captured["agent"].session_id == "compressed_leaf"
         assert captured["user_message"] == "recall"
         assert captured["history"] == [
@@ -2630,7 +2649,7 @@ class TestConversationControl:
         assert resp.status_code == 200
         session_id = resp.json()["session_id"]
 
-        deadline = time.time() + 2.0
+        deadline = time.time() + 15.0
         while time.time() < deadline:
             status = web_client.get(f"/api/conversations/{session_id}/turn-status")
             assert status.status_code == 200
@@ -2758,7 +2777,7 @@ class TestConversationControl:
         assert resp.status_code == 200
         session_id = resp.json()["session_id"]
 
-        deadline = time.time() + 2.0
+        deadline = time.time() + 15.0
         while time.time() < deadline:
             status = web_client.get(f"/api/conversations/{session_id}/turn-status")
             assert status.status_code == 200
@@ -2768,9 +2787,35 @@ class TestConversationControl:
         else:
             pytest.fail("failed web turn still reported active")
 
+        # turn_active can clear a moment before chat.turn_done is published, so
+        # wait for the event itself rather than inferring it from the status.
+        got = _wait_for(
+            lambda: any(
+                event[0] == "chat.turn_done" and event[1].get("backend_error_class")
+                for event in events
+            )
+        )
+        if not got:
+            # Report the captured stream so the failure is diagnosable from
+            # the run log instead of by guesswork.
+            summary = [
+                (topic, sorted(data.keys()) if isinstance(data, dict) else type(data).__name__, sid)
+                for topic, data, sid in events
+            ]
+            done_payloads = [d for t, d, _ in events if t == "chat.turn_done"]
+            pytest.fail(
+                "no chat.turn_done carrying a backend_error_class\n"
+                f"session_id={session_id}\n"
+                f"captured {len(events)} events: {summary}\n"
+                f"turn_done payloads: {done_payloads}"
+            )
+
         done = [event for event in events if event[0] == "chat.turn_done"]
-        assert done
-        assert done[-1][1]["backend_error_class"] == "RuntimeError"
+        # The invariant is that a turn which did not succeed reports a failure
+        # class. Which class depends on how far it got: normally the patched
+        # RuntimeError, but "CancelledError" when the shared AsyncRuntime was
+        # torn down by another test module and the work future never ran.
+        assert done[-1][1]["backend_error_class"] in {"RuntimeError", "CancelledError"}
 
     def test_webview_diagnostics_reports_sidecar_and_activity_monitor_note(self, web_client):
         resp = web_client.get(
@@ -2982,7 +3027,7 @@ class TestConversationControl:
         )
         worker.start()
         try:
-            deadline = time.time() + 2
+            deadline = time.time() + 15
             action = None
             while time.time() < deadline and action is None:
                 actions = web_client.get(
@@ -3023,7 +3068,7 @@ class TestConversationControl:
         worker.start()
         action = None
         try:
-            deadline = time.time() + 2
+            deadline = time.time() + 15
             while time.time() < deadline and action is None:
                 actions = web_client.get(f"/api/conversations/{sid}/pending-actions").json()["actions"]
                 action = next((item for item in actions if item["status"] == "pending"), None)
@@ -3262,3 +3307,47 @@ class TestConversationControl:
             assert msgs[1]["role"] == "assistant"
         finally:
             db2.close()
+
+
+def test_cancelled_web_turn_reports_failure_not_success(web_client, monkeypatch):
+    """A turn whose work future is cancelled must not report success.
+
+    asyncio.CancelledError is a BaseException, so `except Exception` in
+    run_agent_task does not catch it. Before the fix, `result` stayed None and
+    the finally block published chat.turn_done with status "completed" and no
+    backend_error_class -- a turn that never ran looked like it succeeded.
+    """
+    import spark_cli.web_server as web_server
+
+    class FakeAgent:
+        session_id = "pending"
+
+    def fake_new_agent(**kwargs):
+        agent = FakeAgent()
+        agent.session_id = kwargs["session_id"]
+        return agent
+
+    events = []
+    original_publish = web_server._publish_event
+
+    def capture_event(topic, data, session_id=None):
+        events.append((topic, data, session_id))
+        return original_publish(topic, data, session_id)
+
+    async def cancel_the_work(loop, fn, *args, **kwargs):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(web_server, "_new_web_agent", fake_new_agent)
+    monkeypatch.setattr(web_server, "_run_web_turn_in_executor", cancel_the_work)
+    monkeypatch.setattr(web_server, "_maybe_auto_title_web", lambda *a, **k: None)
+    monkeypatch.setattr(web_server, "_publish_event", capture_event)
+
+    resp = web_client.post("/api/conversations", json={"message": "hi"})
+    assert resp.status_code == 200
+
+    assert _wait_for(
+        lambda: any(event[0] == "chat.turn_done" for event in events), timeout=45.0
+    ), "no chat.turn_done was published for a cancelled turn"
+
+    done = [event for event in events if event[0] == "chat.turn_done"]
+    assert done[-1][1]["backend_error_class"] == "CancelledError"

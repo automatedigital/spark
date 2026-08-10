@@ -16,15 +16,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from spark_cli.config import get_spark_home, get_config_path, load_config, save_config
 from core.spark_constants import get_optional_skills_dir
+from spark_cli.config import get_config_path, get_spark_home, load_config, save_config
 from spark_cli.setup import (
     Colors,
     color,
+    print_error,
     print_header,
     print_info,
     print_success,
-    print_error,
     prompt_yes_no,
 )
 
@@ -71,7 +71,7 @@ def _detect_openclaw_processes() -> list[str]:
             if result.stdout.strip() == "active":
                 found.append("systemd service: openclaw-gateway.service")
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+            logger.debug("Ignoring error in _detect_openclaw_processes()", exc_info=True)
 
     # -- process scan ------------------------------------------------------
     if sys.platform == "win32":
@@ -98,7 +98,7 @@ def _detect_openclaw_processes() -> list[str]:
             if result.stdout.strip():
                 found.append(f"node.exe process with openclaw in command line (PID {result.stdout.strip()})")
         except Exception:
-            pass
+            logger.debug("Ignoring error in _detect_openclaw_processes()", exc_info=True)
     else:
         try:
             result = subprocess.run(
@@ -109,7 +109,7 @@ def _detect_openclaw_processes() -> list[str]:
                 pids = result.stdout.strip().split()
                 found.append(f"openclaw process(es) (PIDs: {', '.join(pids)})")
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+            logger.debug("Ignoring error in _detect_openclaw_processes()", exc_info=True)
 
     return found
 
@@ -588,7 +588,7 @@ def _cmd_cleanup(args):
         if state_files:
             print()
             print(color(f"  {len(state_files)} state file(s) found:", Colors.YELLOW))
-            for path, desc in state_files[:8]:
+            for _path, desc in state_files[:8]:
                 print(f"      {desc}")
             if len(state_files) > 8:
                 print(f"      ... and {len(state_files) - 8} more")

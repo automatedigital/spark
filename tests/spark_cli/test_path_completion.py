@@ -182,3 +182,23 @@ class TestFileSizeLabel:
 
     def test_nonexistent(self):
         assert _file_size_label("/nonexistent_xyz") == ""
+
+
+class TestContextCompletion:
+    """Bare ``@`` completion delegates to an instance method, so the completer
+    must not be invoked through an unbound/static path (regression: NameError).
+    """
+
+    def test_bare_at_does_not_raise(self, completer, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "alpha.py").write_text("x = 1\n")
+        doc = Document("@", cursor_position=1)
+        completions = list(completer.get_completions(doc, MagicMock()))
+        assert isinstance(completions, list)
+
+    def test_at_partial_reaches_fuzzy_search(self, completer, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "alpha.py").write_text("x = 1\n")
+        doc = Document("@alph", cursor_position=5)
+        names = _display_names(list(completer.get_completions(doc, MagicMock())))
+        assert any("alpha" in n for n in names)

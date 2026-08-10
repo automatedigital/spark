@@ -6,12 +6,15 @@ Handles: spark honcho setup | status | sessions | map | peer
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
-from plugins.memory.honcho.client import resolve_active_host, resolve_config_path, HOST
+from plugins.memory.honcho.client import HOST, resolve_active_host, resolve_config_path
+
+logger = logging.getLogger(__name__)
 
 
 def clone_honcho_for_profile(profile_name: str) -> bool:
@@ -259,7 +262,7 @@ def _read_config() -> dict:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _read_config()", exc_info=True)
     return {}
 
 
@@ -300,7 +303,7 @@ def _ensure_sdk_installed() -> bool:
         import honcho  # noqa: F401
         return True
     except ImportError:
-        pass
+        logger.debug("Ignoring error in _ensure_sdk_installed()", exc_info=True)
 
     print("  honcho-ai is not installed.")
     answer = _prompt("Install it now? (honcho-ai>=2.0.1)", default="y")
@@ -471,7 +474,11 @@ def cmd_setup(args) -> None:
     # --- Test connection ---
     print("  Testing connection... ", end="", flush=True)
     try:
-        from plugins.memory.honcho.client import HonchoClientConfig, get_honcho_client, reset_honcho_client
+        from plugins.memory.honcho.client import (
+            HonchoClientConfig,
+            get_honcho_client,
+            reset_honcho_client,
+        )
         reset_honcho_client()
         hcfg = HonchoClientConfig.from_global_config(host=_host_key())
         get_honcho_client(hcfg)
@@ -1038,8 +1045,8 @@ def cmd_migrate(args) -> None:
         print("  (Spark calls migrate_memory_files() on first session init.)")
         print()
         print("  If you want to migrate them now without starting a session:")
-        for f in user_files:
-            print("    spark honcho migrate  — this step handles it interactively")
+        # One instruction, not one per file — the message is the same regardless.
+        print("    spark honcho migrate  — this step handles it interactively")
         if has_key:
             answer = _prompt("  Upload user memory files to Honcho now?", default="y")
             if answer.lower() in ("y", "yes"):

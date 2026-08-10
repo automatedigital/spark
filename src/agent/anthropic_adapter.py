@@ -16,15 +16,17 @@ import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any, cast
 
 from core.network_tls import urllib_request_kwargs
 from core.spark_constants import get_spark_home
 
 try:
-    import anthropic as _anthropic_sdk
+    import anthropic as _anthropic_sdk_impl
+
+    _anthropic_sdk: Any = _anthropic_sdk_impl
 except ImportError:
-    _anthropic_sdk = None  # type: ignore[assignment]
+    _anthropic_sdk = None
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +149,7 @@ def _detect_claude_code_version() -> str:
                 if version and version[0].isdigit():
                     return version
         except Exception:
-            pass
+            logger.debug("Ignoring error in _detect_claude_code_version()", exc_info=True)
     return _CLAUDE_CODE_VERSION_FALLBACK
 
 
@@ -241,7 +243,7 @@ def _common_betas_for_base_url(base_url: str | None) -> list[str]:
     return _COMMON_BETAS
 
 
-def build_anthropic_client(api_key: str, base_url: Optional[str] = None):
+def build_anthropic_client(api_key: str, base_url: str | None = None):
     """Create an Anthropic client, auto-detecting setup-tokens vs API keys.
 
     Returns an anthropic.Anthropic instance.
@@ -254,7 +256,7 @@ def build_anthropic_client(api_key: str, base_url: Optional[str] = None):
     from httpx import Timeout
 
     normalized_base_url = _normalize_base_url_text(base_url)
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "timeout": Timeout(timeout=900.0, connect=10.0),
     }
     if normalized_base_url:
@@ -326,7 +328,7 @@ def read_claude_code_credentials() -> dict[str, Any] | None:
                         "expiresAt": oauth_data.get("expiresAt", 0),
                         "source": "claude_code_credentials_file",
                     }
-        except (json.JSONDecodeError, OSError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.debug("Failed to read ~/.claude/.credentials.json: %s", e)
 
     return None
@@ -341,7 +343,7 @@ def read_claude_managed_key() -> str | None:
             primary_key = data.get("primaryApiKey", "")
             if isinstance(primary_key, str) and primary_key.strip():
                 return primary_key.strip()
-        except (json.JSONDecodeError, OSError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.debug("Failed to read ~/.claude.json: %s", e)
     return None
 
@@ -358,7 +360,7 @@ def is_claude_code_token_valid(creds: dict[str, Any]) -> bool:
     # expiresAt is in milliseconds since epoch
     now_ms = int(time.time() * 1000)
     # Allow 60 seconds of buffer
-    return now_ms < (expires_at - 60_000)
+    return cast("bool", now_ms < (expires_at - 60_000))
 
 
 def refresh_anthropic_oauth_pure(refresh_token: str, *, use_json: bool = False) -> dict[str, Any]:
@@ -440,7 +442,7 @@ def _refresh_oauth_token(creds: dict[str, Any]) -> str | None:
             refreshed["expires_at_ms"],
         )
         logger.debug("Successfully refreshed Claude Code OAuth token")
-        return refreshed["access_token"]
+        return cast("str | None", refreshed["access_token"])
     except Exception as e:
         logger.debug("Failed to refresh Claude Code token: %s", e)
         return None
@@ -485,7 +487,7 @@ def _write_claude_code_credentials(
         cred_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
         # Restrict permissions (credentials file)
         cred_path.chmod(0o600)
-    except (OSError, IOError) as e:
+    except OSError as e:
         logger.debug("Failed to write refreshed credentials: %s", e)
 
 
@@ -494,7 +496,7 @@ def _resolve_claude_code_token_from_credentials(creds: dict[str, Any] | None = N
     creds = creds or read_claude_code_credentials()
     if creds and is_claude_code_token_valid(creds):
         logger.debug("Using Claude Code credentials (auto-detected)")
-        return creds["accessToken"]
+        return cast("str | None", creds["accessToken"])
     if creds:
         logger.debug("Claude Code credentials expired — attempting refresh")
         refreshed = _refresh_oauth_token(creds)
@@ -599,7 +601,7 @@ def run_oauth_setup_token() -> str | None:
     # Check if credentials were saved to Claude Code's config files
     creds = read_claude_code_credentials()
     if creds and is_claude_code_token_valid(creds):
-        return creds["accessToken"]
+        return cast("str | None", creds["accessToken"])
 
     # Check env vars that may have been set
     for env_var in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_TOKEN"):
@@ -670,7 +672,7 @@ def run_spark_oauth_login_pure() -> dict[str, Any] | None:
         webbrowser.open(auth_url)
         print("  (Browser opened automatically)")
     except Exception:
-        pass
+        logger.debug("Ignoring error in run_spark_oauth_login_pure()", exc_info=True)
 
     print()
     print("After authorizing, you'll see a code. Paste it below.")
@@ -738,8 +740,8 @@ def read_spark_oauth_credentials() -> dict[str, Any] | None:
         try:
             data = json.loads(_SPARK_OAUTH_FILE.read_text(encoding="utf-8"))
             if data.get("accessToken"):
-                return data
-        except (json.JSONDecodeError, OSError, IOError) as e:
+                return cast("dict[str, Any] | None", data)
+        except (json.JSONDecodeError, OSError) as e:
             logger.debug("Failed to read Spark OAuth credentials: %s", e)
     return None
 
@@ -933,8 +935,8 @@ def convert_messages_to_anthropic(
     Anthropic-proprietary — third-party endpoints cannot validate them and will
     reject them with HTTP 400 "Invalid signature in thinking block".
     """
-    system = None
-    result = []
+    system: Any = None
+    result: list[dict[str, Any]] = []
 
     for m in messages:
         role = m.get("role", "user")
@@ -992,7 +994,7 @@ def convert_messages_to_anthropic(
             result_content = content if isinstance(content, str) else json.dumps(content)
             if not result_content:
                 result_content = "(no output)"
-            tool_result = {
+            tool_result: dict[str, Any] = {
                 "type": "tool_result",
                 "tool_use_id": _sanitize_tool_id(m.get("tool_call_id", "")),
                 "content": result_content,
@@ -1067,7 +1069,7 @@ def convert_messages_to_anthropic(
                 m["content"] = [{"type": "text", "text": "(tool result removed)"}]
 
     # Enforce strict role alternation (Anthropic rejects consecutive same-role messages)
-    fixed = []
+    fixed: list[dict[str, Any]] = []
     for m in result:
         if fixed and fixed[-1]["role"] == m["role"]:
             if m["role"] == "user":

@@ -11,7 +11,8 @@ import asyncio
 import json
 import logging
 from collections import deque
-from typing import Any, Callable, Deque, Dict
+from collections.abc import Callable
+from typing import Any
 
 import acp
 
@@ -48,7 +49,7 @@ def make_tool_progress_cb(
     conn: acp.Client,
     session_id: str,
     loop: asyncio.AbstractEventLoop,
-    tool_call_ids: Dict[str, Deque[str]],
+    tool_call_ids: dict[str, deque[str]],
 ) -> Callable:
     """Create a ``tool_progress_callback`` for AIAgent.
 
@@ -118,7 +119,7 @@ def make_step_cb(
     conn: acp.Client,
     session_id: str,
     loop: asyncio.AbstractEventLoop,
-    tool_call_ids: Dict[str, Deque[str]],
+    tool_call_ids: dict[str, deque[str]],
 ) -> Callable:
     """Create a ``step_callback`` for AIAgent.
 

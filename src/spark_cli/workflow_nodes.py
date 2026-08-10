@@ -308,7 +308,7 @@ def _read_table_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -
         rows = list(csv.DictReader(StringIO(file_path.read_text(encoding="utf-8", errors="replace"))))
     else:
         try:
-            import pandas as pd  # type: ignore
+            import pandas as pd
         except ImportError as exc:
             raise ValueError("Spreadsheet reading requires pandas/openpyxl") from exc
         rows = pd.read_excel(file_path).to_dict(orient="records")
@@ -332,7 +332,7 @@ def _write_table_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) 
         file_path.write_text(text, encoding="utf-8")
     elif file_path.suffix.lower() == ".xlsx":
         try:
-            import pandas as pd  # type: ignore
+            import pandas as pd
         except ImportError as exc:
             raise ValueError("Spreadsheet writing requires pandas/openpyxl") from exc
         pd.DataFrame(rows).to_excel(file_path, index=False)
@@ -525,7 +525,7 @@ def _tool_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> list
         try:
             args = json.loads(args) if args.strip() else {}
         except json.JSONDecodeError as exc:
-            raise ValueError(f"Tool args are not valid JSON: {exc}")
+            raise ValueError(f"Tool args are not valid JSON: {exc}") from exc
     raw = registry.dispatch(tool_name, args)
     try:
         parsed = json.loads(raw) if isinstance(raw, str) else raw
@@ -562,7 +562,7 @@ def _agent_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> lis
         session_id="wf_" + ctx.execution_id,
         model=runtime["model"],
         max_iterations=max_iterations,
-        enabled_toolsets=toolsets or None,
+        enabled_toolsets=toolsets or [],
         api_key=runtime["runtime"].get("api_key"),
         base_url=runtime["runtime"].get("base_url"),
         provider=runtime["runtime"].get("provider"),
@@ -570,12 +570,12 @@ def _agent_node(node: WorkflowNode, inputs: list[Item], ctx: ExecContext) -> lis
         command=runtime["runtime"].get("command"),
         args=list(runtime["runtime"].get("args") or []),
         credential_pool=runtime["runtime"].get("credential_pool"),
-        request_overrides=runtime.get("request_overrides"),
+        request_overrides=runtime.get("request_overrides") or {},
         quiet_mode=True,
         platform="web",
         session_db=None,
         skip_memory=skip_memory,
-        working_dir=working_dir,
+        working_dir=working_dir or "",
     )
     ctx.emit("agent.started", {"nodeId": node.id, "model": runtime["model"], "maxIterations": max_iterations})
     reply = agent.chat(prompt)
@@ -658,7 +658,7 @@ def _coerce_list(value: Any) -> list[str]:
             if isinstance(parsed, list):
                 return [str(v).strip() for v in parsed if str(v).strip()]
         except json.JSONDecodeError:
-            pass
+            _log.debug("Ignoring error in _coerce_list()", exc_info=True)
         return [v.strip() for v in value.split(",") if v.strip()]
     return [str(value)]
 

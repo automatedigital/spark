@@ -332,6 +332,18 @@ async function run() {
         }),
       });
     });
+    await page.route("**/api/sessions/contracts_forked", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "contracts_forked",
+          source: "web",
+          model: "fake-model",
+          title: "Contract forked",
+        }),
+      });
+    });
     await page.route("**/api/sessions/contracts_forked/forks", async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ forks: [], fork_count: 0 }) });
     });
@@ -484,9 +496,21 @@ async function run() {
     await waitForText(page, "Reconnect first.");
     await page.reload({ waitUntil: "domcontentloaded" });
     await openChat(page, "contracts_reconnect", "Contract reconnect");
-    await waitForText(page, "Reconnect final.", 12_000);
+    await waitForTurnIdle(apiBase, "contracts_reconnect");
+    await page.evaluate(() => { window.__reconnectStableFrames = 0; });
+    await page.waitForFunction(() => {
+      const chatPanel = document.querySelector('[data-testid="chat-panel"]');
+      const count = (chatPanel?.innerText.match(/Reconnect final\./g) || []).length;
+      window.__reconnectStableFrames = count === 1
+        ? (window.__reconnectStableFrames ?? 0) + 1
+        : 0;
+      return window.__reconnectStableFrames >= 5;
+    }, undefined, { timeout: 12_000 });
     const reconnectText = await panel.innerText();
-    if ((reconnectText.match(/Reconnect final\./g) || []).length !== 1) throw new Error("Reconnect final response duplicated");
+    const reconnectFinalCount = (reconnectText.match(/Reconnect final\./g) || []).length;
+    if (reconnectFinalCount !== 1) {
+      throw new Error(`Reconnect final response count was ${reconnectFinalCount}, expected 1`);
+    }
 
     // Switching while responses are delayed must not bleed one session into another.
     await Promise.all([
@@ -567,7 +591,10 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+run().then(
+  () => process.exit(0),
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

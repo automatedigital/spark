@@ -41,7 +41,7 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 _SUBAGENT_JSON_LIMIT = 24_000
 _SUBAGENT_TEXT_LIMIT = 16_000
@@ -389,7 +389,7 @@ class SessionDB:
                         try:
                             self._conn.rollback()
                         except Exception:
-                            pass
+                            logger.debug("Ignoring error in _execute_write()", exc_info=True)
                         raise
                 # Success — periodic best-effort checkpoint.
                 self._write_count += 1
@@ -447,7 +447,8 @@ class SessionDB:
                         result[2], result[1],
                     )
         except Exception:
-            pass  # Best effort — never fatal.
+            # Best effort — never fatal.
+            logger.debug("Ignored exception in _try_wal_checkpoint", exc_info=True)
 
     def close(self):
         """Close the database connection.
@@ -460,7 +461,7 @@ class SessionDB:
                 try:
                     self._conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in close()", exc_info=True)
                 self._conn.close()
                 self._conn = None
 
@@ -487,14 +488,16 @@ class SessionDB:
                 try:
                     cursor.execute("ALTER TABLE messages ADD COLUMN finish_reason TEXT")
                 except sqlite3.OperationalError:
-                    pass  # Column already exists
+                    # Column already exists
+                    logger.debug("Ignored exception in _init_schema", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 2")
             if current_version < 3:
                 # v3: add title column to sessions
                 try:
                     cursor.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
                 except sqlite3.OperationalError:
-                    pass  # Column already exists
+                    # Column already exists
+                    logger.debug("Ignored exception in _init_schema", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 3")
             if current_version < 4:
                 # v4: add unique index on title (NULLs allowed, only non-NULL must be unique)
@@ -504,7 +507,8 @@ class SessionDB:
                         "ON sessions(title) WHERE title IS NOT NULL"
                     )
                 except sqlite3.OperationalError:
-                    pass  # Index already exists
+                    # Index already exists
+                    logger.debug("Ignored exception in _init_schema", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 4")
             if current_version < 5:
                 new_columns = [
@@ -528,7 +532,7 @@ class SessionDB:
                         safe_name = name.replace('"', '""')
                         cursor.execute(f'ALTER TABLE sessions ADD COLUMN "{safe_name}" {column_type}')
                     except sqlite3.OperationalError:
-                        pass
+                        logger.debug("Ignoring error in _init_schema()", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 5")
             if current_version < 6:
                 # v6: add reasoning columns to messages table — preserves assistant
@@ -547,7 +551,8 @@ class SessionDB:
                             f'ALTER TABLE messages ADD COLUMN "{safe}" {col_type}'
                         )
                     except sqlite3.OperationalError:
-                        pass  # Column already exists
+                        # Column already exists
+                        logger.debug("Ignored exception in _init_schema", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 6")
             if current_version < 7:
                 # v7: add kanban_status for web UI board view
@@ -556,7 +561,8 @@ class SessionDB:
                         "ALTER TABLE sessions ADD COLUMN kanban_status TEXT DEFAULT 'backlog'"
                     )
                 except sqlite3.OperationalError:
-                    pass  # Column already exists
+                    # Column already exists
+                    logger.debug("Ignored exception in _init_schema", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 7")
             if current_version < 8:
                 # v8: auto-classify ended sessions as 'done' so Backlog isn't flooded
@@ -566,7 +572,7 @@ class SessionDB:
                         "WHERE kanban_status = 'backlog' AND ended_at IS NOT NULL"
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _init_schema()", exc_info=True)
                 cursor.execute("UPDATE schema_version SET version = 8")
             if current_version < 9:
                 cursor.executescript(
@@ -748,7 +754,8 @@ class SessionDB:
                 "ON sessions(title) WHERE title IS NOT NULL"
             )
         except sqlite3.OperationalError:
-            pass  # Index already exists
+            # Index already exists
+            logger.debug("Ignored exception in _init_schema", exc_info=True)
 
         # FTS5 setup (separate because CREATE VIRTUAL TABLE can't be in executescript with IF NOT EXISTS reliably)
         try:
@@ -766,11 +773,11 @@ class SessionDB:
         self,
         session_id: str,
         source: str,
-        model: str = None,
-        model_config: dict[str, Any] = None,
-        system_prompt: str = None,
-        user_id: str = None,
-        parent_session_id: str = None,
+        model: str | None = None,
+        model_config: dict[str, Any] | None = None,
+        system_prompt: str | None = None,
+        user_id: str | None = None,
+        parent_session_id: str | None = None,
     ) -> str:
         """Create a new session record. Returns the session_id."""
         payload = {"source": source, "model": model, "parent_session_id": parent_session_id}
@@ -1420,8 +1427,8 @@ class SessionDB:
 
     def list_sessions_rich(
         self,
-        source: str = None,
-        exclude_sources: list[str] = None,
+        source: str | None = None,
+        exclude_sources: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
         include_children: bool = False,
@@ -2260,13 +2267,13 @@ class SessionDB:
         self,
         session_id: str,
         role: str,
-        content: str = None,
-        tool_name: str = None,
+        content: str | None = None,
+        tool_name: str | None = None,
         tool_calls: Any = None,
-        tool_call_id: str = None,
-        token_count: int = None,
-        finish_reason: str = None,
-        reasoning: str = None,
+        tool_call_id: str | None = None,
+        token_count: int | None = None,
+        finish_reason: str | None = None,
+        reasoning: str | None = None,
         reasoning_details: Any = None,
         codex_reasoning_items: Any = None,
     ) -> int:
@@ -2695,9 +2702,9 @@ class SessionDB:
     def search_messages(
         self,
         query: str,
-        source_filter: list[str] = None,
-        exclude_sources: list[str] = None,
-        role_filter: list[str] = None,
+        source_filter: list[str] | None = None,
+        exclude_sources: list[str] | None = None,
+        role_filter: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -2836,7 +2843,7 @@ class SessionDB:
     # Utility
     # =========================================================================
 
-    def session_count(self, source: str = None, include_children: bool = True) -> int:
+    def session_count(self, source: str | None = None, include_children: bool = True) -> int:
         """Count sessions, optionally filtered by source."""
         where_clauses = []
         params = []

@@ -14,14 +14,20 @@ if str(PROJECT_ROOT) not in sys.path:
 
 @pytest.fixture(autouse=True)
 def _isolate_spark_home(tmp_path, monkeypatch):
-    """Redirect SPARK_HOME to a temp dir so tests never write to ~/.spark/."""
+    """Redirect app auth/state homes so tests never write to real user data."""
     fake_home = tmp_path / "spark_test"
+    fake_codex_home = tmp_path / "codex_test"
     fake_home.mkdir()
+    fake_codex_home.mkdir()
     (fake_home / "sessions").mkdir()
     (fake_home / "cron").mkdir()
     (fake_home / "memories").mkdir()
     (fake_home / "skills").mkdir()
     monkeypatch.setenv("SPARK_HOME", str(fake_home))
+    # Codex OAuth refresh writes rotated tokens back to CODEX_HOME. Isolate it
+    # globally: a credential-pool test that only redirected SPARK_HOME once
+    # replaced the developer's real ~/.codex/auth.json with fixture tokens.
+    monkeypatch.setenv("CODEX_HOME", str(fake_codex_home))
     # Reset plugin singleton so tests don't leak plugins from ~/.spark/plugins/
     try:
         import spark_cli.plugins as _plugins_mod
@@ -42,7 +48,7 @@ def _isolate_spark_home(tmp_path, monkeypatch):
     monkeypatch.delenv("SPARK_SESSION_CHAT_NAME", raising=False)
     monkeypatch.delenv("SPARK_SESSION_CHAT_TYPE", raising=False)
     monkeypatch.delenv("SPARK_GATEWAY_SESSION", raising=False)
-    # Avoid making real calls during tests if this key is set in the env files
+    # Avoid making real calls during tests if this key is set in the env files.
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     # Prevent API server env vars from leaking between tests
     monkeypatch.delenv("API_SERVER_KEY", raising=False)
@@ -112,3 +118,36 @@ def _ensure_current_event_loop(request):
                 loop.close()
             finally:
                 asyncio.set_event_loop(None)
+
+@pytest.fixture(autouse=True)
+def _block_desktop_app_spawn(monkeypatch):
+    """Stop a test from driving the installed desktop app.
+
+    A mac-update test patched subprocess.Popen through a module attribute.
+    When the handler moved to another module the patch stopped covering it,
+    the real installer ran: it quit Spark.app, installed a DMG, and relaunched
+    the app with pytest's SPARK_HOME, so the app came back pointed at a temp
+    directory and showed an empty session list.
+
+    Ordinary subprocess use is untouched. Only commands that would act on the
+    installed app are refused.
+    """
+    import subprocess
+
+    real_popen = subprocess.Popen
+    danger = ("/Applications/Spark.app", "spark.app", "hdiutil", "osascript")
+
+    class _GuardedPopen(real_popen):  # type: ignore[misc,valid-type]
+        def __init__(self, args, *a, **kw):
+            argv = args if isinstance(args, str) else " ".join(str(x) for x in args)
+            low = argv.lower()
+            if any(d in low for d in danger):
+                raise AssertionError(
+                    "A test tried to drive the installed desktop app:\n"
+                    f"  {argv[:300]}\n"
+                    "Patch subprocess.Popen at its source module, not through a "
+                    "module attribute that stops matching when code moves."
+                )
+            super().__init__(args, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", _GuardedPopen)

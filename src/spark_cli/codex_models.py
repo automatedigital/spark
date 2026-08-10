@@ -120,7 +120,7 @@ def _fetch_model_entries_from_api(
             return None
         data = resp.json()
         if not isinstance(data, dict):
-            return []
+            return None
         entries = _visible_model_entries(data.get("models", []))
         freshness = _first_string(data, ("fetched_at", "updated_at", "created_at"))
         return entries, freshness
@@ -225,7 +225,7 @@ def _first_int(payload: dict[str, Any], keys: tuple[str, ...]) -> int | None:
         if isinstance(value, bool) or value in (None, ""):
             continue
         try:
-            result = int(value)
+            result = int(str(value))
         except (TypeError, ValueError):
             continue
         if result > 0:

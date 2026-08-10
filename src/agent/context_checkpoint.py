@@ -259,7 +259,7 @@ def assemble_checkpoint_context(
 ) -> list[dict[str, Any]]:
     """Fit checkpoint plus a bounded recent tail within the target ratio."""
 
-    checkpoint_message = {
+    checkpoint_message: dict[str, Any] = {
         "role": "assistant",
         "content": render_checkpoint(checkpoint),
         # Model context only: do not present deterministic state as an assistant
@@ -268,7 +268,7 @@ def assemble_checkpoint_context(
     }
     budget = max(1, int(context_window * max_ratio))
     tail = [dict(message) for message in recent_messages]
-    while tail and estimate_tokens_rough(checkpoint_message["content"]) + estimate_messages_tokens_rough(tail) > budget:
+    while tail and estimate_tokens_rough(str(checkpoint_message["content"])) + estimate_messages_tokens_rough(tail) > budget:
         # A single current item is allowed to exceed the target.
         if len(tail) == 1:
             break

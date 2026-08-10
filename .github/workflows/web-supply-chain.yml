@@ -23,8 +23,8 @@ jobs:
   pinned-and-lockfile:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
@@ -47,6 +47,9 @@ jobs:
 
       - name: Install with frozen lockfile
         run: npm ci
+
+      - name: Reject high-severity dependency advisories
+        run: npm audit --audit-level=high
 
       - name: Detect package-lock.json drift
         run: git diff --exit-code package-lock.json

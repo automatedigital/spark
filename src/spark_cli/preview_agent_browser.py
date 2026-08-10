@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
 import subprocess
 import tempfile
@@ -45,6 +46,8 @@ from pathlib import Path
 from typing import Any
 
 from spark_cli.config import get_spark_home
+
+logger = logging.getLogger(__name__)
 
 _VIEWPORT = (1280, 800)
 _COMMAND_TIMEOUT = 20.0
@@ -112,7 +115,7 @@ class ScreencastHandle:
         try:
             asyncio.run(self._pump())
         except Exception:  # noqa: BLE001 — background thread must not crash
-            pass
+            logger.debug("Ignoring error in _run_loop()", exc_info=True)
 
     async def _pump(self) -> None:
         import asyncio
@@ -171,11 +174,11 @@ class ScreencastHandle:
                         try:
                             self._on_frame(frame)
                         except Exception:  # noqa: BLE001 — consumer errors isolated
-                            pass
+                            logger.debug("Ignoring error in _pump()", exc_info=True)
                 try:
                     await ws.send(_cmd("Page.stopScreencast"))
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _pump()", exc_info=True)
         finally:
             self._started.set()
 
@@ -253,7 +256,7 @@ class ConsoleCapture:
         try:
             asyncio.run(self._pump())
         except Exception:  # noqa: BLE001 — background thread must not crash
-            pass
+            logger.debug("Ignoring error in _run_loop()", exc_info=True)
 
     async def _pump(self) -> None:
         import asyncio
@@ -426,13 +429,13 @@ class AgentBrowserSession:
         try:
             self.downloads_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
-            pass
+            logger.debug("Ignoring error in __init__()", exc_info=True)
         self._harden_profile()
         # Ensure viewport matches the pane's render size so click coords line up.
         try:
             self._run(["set", "viewport", str(viewport[0]), str(viewport[1])])
         except AgentBrowserUnavailable:
-            pass
+            logger.debug("Ignoring error in __init__()", exc_info=True)
         # Best-effort: point Chromium downloads at the workspace dir.
         try:
             self._run(
@@ -445,7 +448,7 @@ class AgentBrowserSession:
                 ]
             )
         except AgentBrowserUnavailable:
-            pass
+            logger.debug("Ignoring error in __init__()", exc_info=True)
 
     def _harden_profile(self) -> None:
         import os
@@ -454,7 +457,7 @@ class AgentBrowserSession:
             os.chmod(self.profile_dir, 0o700)
             os.chmod(self.profile_dir.parent, 0o700)
         except OSError:
-            pass
+            logger.debug("Ignoring error in _harden_profile()", exc_info=True)
 
     # ── CLI plumbing ────────────────────────────────────────────────────────
     def _run(self, args: list[str], *, timeout: float = _COMMAND_TIMEOUT) -> dict[str, Any]:
@@ -809,7 +812,7 @@ class AgentBrowserSession:
             try:
                 images.append(Image.open(io.BytesIO(png)).convert("RGB"))
             except Exception:  # noqa: BLE001 — skip a bad frame
-                pass
+                logger.debug("Ignoring error in record_gif()", exc_info=True)
             _time.sleep(max(interval, 0.05))
         if not images:
             return None
@@ -948,13 +951,13 @@ class AgentBrowserSession:
             try:
                 self._console.stop()
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Ignoring error in close()", exc_info=True)
             self._console = None
         self._closed = False  # allow the close command itself to run
         try:
             self._run(["close"])
         except AgentBrowserUnavailable:
-            pass
+            logger.debug("Ignoring error in close()", exc_info=True)
         finally:
             self._closed = True
 

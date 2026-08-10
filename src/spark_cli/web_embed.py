@@ -51,7 +51,7 @@ async def run_dashboard_server(
     try:
         await server.serve()
     finally:
-        _uvicorn_server = None
+        _uvicorn_server = None  # type: ignore[assignment]
 
 
 def stop_dashboard_server() -> None:

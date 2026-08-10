@@ -14,7 +14,6 @@ from pathlib import Path
 
 from core.spark_constants import get_spark_home
 
-
 # ---------------------------------------------------------------------------
 # Curses-based interactive picker (same pattern as spark tools)
 # ---------------------------------------------------------------------------
@@ -152,7 +151,7 @@ def _get_available_providers() -> list:
         raw = []
 
     results = []
-    for name, desc, available in raw:
+    for name, _desc, _available in raw:
         try:
             provider = load_memory_provider(name)
             if not provider:

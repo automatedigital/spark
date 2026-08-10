@@ -19,7 +19,10 @@ Improvements over v2:
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from agent.context_checkpoint import ContextCheckpoint
 
 from agent.context_engine import ContextEngine
 from agent.model_metadata import (
@@ -83,9 +86,9 @@ class ContextCompressor(ContextEngine):
         super().on_session_reset()
         self._context_probed = False
         self._context_probe_persistable = False
-        self._previous_summary = None
-        self._typed_checkpoint = None
-        self._last_shadow_checkpoint = None
+        self._previous_summary: str | None = None
+        self._typed_checkpoint: ContextCheckpoint | None = None
+        self._last_shadow_checkpoint: ContextCheckpoint | None = None
 
     def update_model(
         self,
@@ -116,7 +119,7 @@ class ContextCompressor(ContextEngine):
         protect_last_n: int = 20,
         summary_target_ratio: float = 0.20,
         quiet_mode: bool = False,
-        summary_model_override: str = None,
+        summary_model_override: str | None = None,
         base_url: str = "",
         api_key: str = "",
         config_context_length: int | None = None,
@@ -181,7 +184,7 @@ class ContextCompressor(ContextEngine):
         self.summary_model = summary_model_override or ""
 
         # Stores the previous compaction summary for iterative updates
-        self._previous_summary: Optional[str] = None
+        self._previous_summary = None
         self._typed_checkpoint = None
         self._last_shadow_checkpoint = None
         self._deterministic_plan: list[dict[str, Any]] = []
@@ -192,7 +195,7 @@ class ContextCompressor(ContextEngine):
     def set_deterministic_state(
         self,
         *,
-        current_plan: List[Dict[str, Any]] | None = None,
+        current_plan: list[dict[str, Any]] | None = None,
         task_identity: str = "",
         context_epoch: int = 0,
     ) -> None:
@@ -200,12 +203,12 @@ class ContextCompressor(ContextEngine):
         self._task_identity = task_identity
         self._context_epoch = int(context_epoch)
 
-    def update_from_response(self, usage: Dict[str, Any]):
+    def update_from_response(self, usage: dict[str, Any]):
         """Update tracked token usage from API response."""
         self.last_prompt_tokens = usage.get("prompt_tokens", 0)
         self.last_completion_tokens = usage.get("completion_tokens", 0)
 
-    def should_compress(self, prompt_tokens: int = None) -> bool:
+    def should_compress(self, prompt_tokens: int | None = None) -> bool:
         """Check if context exceeds the compression threshold."""
         tokens = prompt_tokens if prompt_tokens is not None else self.last_prompt_tokens
         return tokens >= self.threshold_tokens
@@ -215,9 +218,9 @@ class ContextCompressor(ContextEngine):
     # ------------------------------------------------------------------
 
     def _prune_old_tool_results(
-        self, messages: List[Dict[str, Any]], protect_tail_count: int,
+        self, messages: list[dict[str, Any]], protect_tail_count: int,
         protect_tail_tokens: int | None = None,
-    ) -> tuple[List[Dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], int]:
         """Replace old tool result contents with a short placeholder.
 
         Walks backward from the end, protecting the most recent messages that
@@ -275,7 +278,7 @@ class ContextCompressor(ContextEngine):
     # Summarization
     # ------------------------------------------------------------------
 
-    def _compute_summary_budget(self, turns_to_summarize: List[Dict[str, Any]]) -> int:
+    def _compute_summary_budget(self, turns_to_summarize: list[dict[str, Any]]) -> int:
         """Scale summary token budget with the amount of content being compressed.
 
         The maximum scales with the model's context window (5% of context,
@@ -295,7 +298,7 @@ class ContextCompressor(ContextEngine):
     _TOOL_ARGS_MAX = 1500     # tool call argument chars
     _TOOL_ARGS_HEAD = 1200    # kept from the start of tool args
 
-    def _serialize_for_summary(self, turns: List[Dict[str, Any]]) -> str:
+    def _serialize_for_summary(self, turns: list[dict[str, Any]]) -> str:
         """Serialize conversation turns into labeled text for the summarizer.
 
         Includes tool call arguments and result content (up to
@@ -346,7 +349,7 @@ class ContextCompressor(ContextEngine):
 
         return "\n\n".join(parts)
 
-    def _generate_summary(self, turns_to_summarize: List[Dict[str, Any]], focus_topic: str = None) -> Optional[str]:
+    def _generate_summary(self, turns_to_summarize: list[dict[str, Any]], focus_topic: str | None = None) -> str | None:
         """Generate a structured summary of conversation turns.
 
         Uses a structured template (Goal, Progress, Decisions, Resolved/Pending
@@ -534,10 +537,10 @@ The user has requested that this compaction PRIORITISE preserving all informatio
     def _get_tool_call_id(tc) -> str:
         """Extract the call ID from a tool_call entry (dict or SimpleNamespace)."""
         if isinstance(tc, dict):
-            return tc.get("id", "")
+            return cast("str", tc.get("id", ""))
         return getattr(tc, "id", "") or ""
 
-    def _sanitize_tool_pairs(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _sanitize_tool_pairs(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Fix orphaned tool_call / tool_result pairs after compression.
 
         Two failure modes:
@@ -562,9 +565,9 @@ The user has requested that this compaction PRIORITISE preserving all informatio
         result_call_ids: set = set()
         for msg in messages:
             if msg.get("role") == "tool":
-                cid = msg.get("tool_call_id")
-                if cid:
-                    result_call_ids.add(cid)
+                result_cid = msg.get("tool_call_id")
+                if result_cid:
+                    result_call_ids.add(result_cid)
 
         # 1. Remove tool results whose call_id has no matching assistant tool_call
         orphaned_results = result_call_ids - surviving_call_ids
@@ -579,7 +582,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
         # 2. Add stub results for assistant tool_calls whose results were dropped
         missing_results = surviving_call_ids - result_call_ids
         if missing_results:
-            patched: List[Dict[str, Any]] = []
+            patched: list[dict[str, Any]] = []
             for msg in messages:
                 patched.append(msg)
                 if msg.get("role") == "assistant":
@@ -597,7 +600,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
 
         return messages
 
-    def _align_boundary_forward(self, messages: List[Dict[str, Any]], idx: int) -> int:
+    def _align_boundary_forward(self, messages: list[dict[str, Any]], idx: int) -> int:
         """Push a compress-start boundary forward past any orphan tool results.
 
         If ``messages[idx]`` is a tool result, slide forward until we hit a
@@ -607,7 +610,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
             idx += 1
         return idx
 
-    def _align_boundary_backward(self, messages: List[Dict[str, Any]], idx: int) -> int:
+    def _align_boundary_backward(self, messages: list[dict[str, Any]], idx: int) -> int:
         """Pull a compress-end boundary backward to avoid splitting a
         tool_call / result group.
 
@@ -636,7 +639,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
     # ------------------------------------------------------------------
 
     def _find_tail_cut_by_tokens(
-        self, messages: List[Dict[str, Any]], head_end: int,
+        self, messages: list[dict[str, Any]], head_end: int,
         token_budget: int | None = None,
     ) -> int:
         """Walk backward from the end of messages, accumulating tokens until
@@ -697,7 +700,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
     # Main compression entry point
     # ------------------------------------------------------------------
 
-    def compress(self, messages: List[Dict[str, Any]], current_tokens: int = None, focus_topic: str = None) -> List[Dict[str, Any]]:
+    def compress(self, messages: list[dict[str, Any]], current_tokens: int | None = None, focus_topic: str | None = None) -> list[dict[str, Any]]:
         """Compress conversation messages by summarizing middle turns.
 
         Algorithm:

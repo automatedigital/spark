@@ -26,8 +26,8 @@ import logging
 import os
 import shutil
 from pathlib import Path
+
 from core.spark_constants import get_spark_home
-from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ def _get_bundled_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "skills"
 
 
-def _read_manifest() -> Dict[str, str]:
+def _read_manifest() -> dict[str, str]:
     """
     Read the manifest as a dict of {skill_name: origin_hash}.
 
@@ -80,11 +80,11 @@ def _read_manifest() -> Dict[str, str]:
                 # v1 format: plain name — empty hash triggers migration
                 result[line] = ""
         return result
-    except (OSError, IOError):
+    except OSError:
         return {}
 
 
-def _write_manifest(entries: Dict[str, str]):
+def _write_manifest(entries: dict[str, str]):
     """Write the manifest file atomically in v2 format (name:hash).
 
     Uses a temp file + os.replace() to avoid corruption if the process
@@ -111,7 +111,7 @@ def _write_manifest(entries: Dict[str, str]):
             try:
                 os.unlink(tmp_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in _write_manifest()", exc_info=True)
             raise
     except Exception as e:
         logger.debug("Failed to write skills manifest %s: %s", MANIFEST_FILE, e, exc_info=True)
@@ -125,7 +125,7 @@ def _read_tombstones() -> set[str]:
             for line in TOMBSTONE_FILE.read_text(encoding="utf-8").splitlines()
             if line.strip()
         }
-    except (OSError, IOError):
+    except OSError:
         return set()
 
 
@@ -148,7 +148,7 @@ def _write_tombstones(names: set[str]) -> None:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in _write_tombstones()", exc_info=True)
         raise
 
 
@@ -260,7 +260,7 @@ def _read_skill_name(skill_md: Path, fallback: str) -> str:
     return fallback
 
 
-def _discover_bundled_skills(bundled_dir: Path) -> List[Tuple[str, Path]]:
+def _discover_bundled_skills(bundled_dir: Path) -> list[tuple[str, Path]]:
     """
     Find all SKILL.md files in the bundled directory.
     Returns list of (skill_name, skill_directory_path) tuples.
@@ -298,12 +298,12 @@ def _dir_hash(directory: Path) -> str:
                 rel = fpath.relative_to(directory)
                 hasher.update(str(rel).encode("utf-8"))
                 hasher.update(fpath.read_bytes())
-    except (OSError, IOError):
-        pass
+    except OSError:
+        logger.debug("Ignoring error in _dir_hash()", exc_info=True)
     return hasher.hexdigest()
 
 
-def sync_skills(quiet: bool = False, only: Optional[set] = None) -> dict:
+def sync_skills(quiet: bool = False, only: set | None = None) -> dict:
     """
     Sync bundled skills into ~/.spark/skills/ using the manifest.
 
@@ -357,7 +357,7 @@ def sync_skills(quiet: bool = False, only: Optional[set] = None) -> dict:
                     manifest[skill_name] = bundled_hash
                     if not quiet:
                         print(f"  + {skill_name}")
-            except (OSError, IOError) as e:
+            except OSError as e:
                 if not quiet:
                     print(f"  ! Failed to copy {skill_name}: {e}")
                 # Do NOT add to manifest — next sync should retry
@@ -399,12 +399,12 @@ def sync_skills(quiet: bool = False, only: Optional[set] = None) -> dict:
                             print(f"  ↑ {skill_name} (updated)")
                         # Remove backup after successful copy
                         shutil.rmtree(backup, ignore_errors=True)
-                    except (OSError, IOError):
+                    except OSError:
                         # Restore from backup
                         if backup.exists() and not dest.exists():
                             shutil.move(str(backup), str(dest))
                         raise
-                except (OSError, IOError) as e:
+                except OSError as e:
                     if not quiet:
                         print(f"  ! Failed to update {skill_name}: {e}")
             else:
@@ -435,8 +435,8 @@ def sync_skills(quiet: bool = False, only: Optional[set] = None) -> dict:
                         try:
                             stale.parent.rmdir()
                         except OSError:
-                            pass
-                    except (OSError, IOError) as e:
+                            logger.debug("Ignoring error in sync_skills()", exc_info=True)
+                    except OSError as e:
                         if not quiet:
                             print(f"  ! Failed to relocate {skill_name}: {e}")
                 else:
@@ -459,7 +459,7 @@ def sync_skills(quiet: bool = False, only: Optional[set] = None) -> dict:
             try:
                 dest_desc.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(desc_md, dest_desc)
-            except (OSError, IOError) as e:
+            except OSError as e:
                 logger.debug("Could not copy %s: %s", desc_md, e)
 
     _write_manifest(manifest)
@@ -493,8 +493,8 @@ def reset_skills(*, dry_run: bool = False) -> dict:
     manifest = _read_manifest()
     bundled_names = set(manifest.keys())
 
-    removed: List[str] = []
-    errors: List[str] = []
+    removed: list[str] = []
+    errors: list[str] = []
 
     # Walk SKILLS_DIR for all SKILL.md files, collect non-bundled skill dirs.
     for skill_md in SKILLS_DIR.rglob("SKILL.md"):

@@ -12,6 +12,12 @@ from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _streaming_test_provider(monkeypatch):
+    """Keep transport-only tests independent of developer credentials."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 

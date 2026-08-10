@@ -21,7 +21,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any, cast
 
 _IS_WINDOWS = platform.system() == "Windows"
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -100,7 +100,6 @@ import yaml
 from spark_cli.colors import Colors, color
 from spark_cli.default_soul import read_default_soul_md, should_replace_with_default_soul
 
-
 # =============================================================================
 # Managed mode (NixOS declarative config)
 # =============================================================================
@@ -114,7 +113,7 @@ _MANAGED_SYSTEM_NAMES = {
 }
 
 
-def get_managed_system() -> Optional[str]:
+def get_managed_system() -> str | None:
     """Return the package manager owning this install, if any."""
     raw = os.getenv("SPARK_MANAGED", "").strip()
     if raw:
@@ -139,7 +138,7 @@ def is_managed() -> bool:
     return get_managed_system() is not None
 
 
-def get_managed_update_command() -> Optional[str]:
+def get_managed_update_command() -> str | None:
     """Return the preferred upgrade command for a managed install."""
     managed_system = get_managed_system()
     if managed_system == "Homebrew":
@@ -193,7 +192,7 @@ def managed_error(action: str = "modify configuration"):
 # =============================================================================
 
 
-def get_container_exec_info() -> Optional[dict]:
+def get_container_exec_info() -> dict | None:
     """Read container mode metadata from SPARK_HOME/.container-mode.
 
     Returns a dict with keys: backend, container_name, exec_user, spark_bin
@@ -244,7 +243,11 @@ def get_container_exec_info() -> Optional[dict]:
 # =============================================================================
 
 # Re-export from spark_constants — canonical definition lives there.
+import logging
+
 from core.spark_constants import get_spark_home  # noqa: F811,E402
+
+logger = logging.getLogger(__name__)
 
 
 def get_config_path() -> Path:
@@ -285,7 +288,7 @@ def _secure_dir(path):
     try:
         os.chmod(path, mode)
     except (OSError, NotImplementedError):
-        pass
+        logger.debug("Ignoring error in _secure_dir()", exc_info=True)
 
 
 def _secure_file(path):
@@ -300,7 +303,7 @@ def _secure_file(path):
         if os.path.exists(str(path)):
             os.chmod(path, 0o600)
     except (OSError, NotImplementedError):
-        pass
+        logger.debug("Ignoring error in _secure_file()", exc_info=True)
 
 
 def _ensure_default_wiki_readme(home: Path) -> None:
@@ -886,7 +889,7 @@ DEFAULT_CONFIG = {
 
 # Track which env vars were introduced in each config version.
 # Migration only mentions vars new since the user's previous version.
-ENV_VARS_BY_VERSION: Dict[int, List[str]] = {
+ENV_VARS_BY_VERSION: dict[int, list[str]] = {
     3: [
         "FIRECRAWL_API_KEY",
         "BROWSERBASE_API_KEY",
@@ -910,10 +913,10 @@ ENV_VARS_BY_VERSION: Dict[int, List[str]] = {
 # LLM provider is required but handled in the setup wizard's provider
 # selection step (OpenRouter / Anthropic / Custom endpoint), so this
 # dict is intentionally empty — no single env var is universally required.
-REQUIRED_ENV_VARS = {}
+REQUIRED_ENV_VARS: dict[str, dict[str, Any]] = {}
 
 # Optional environment variables that enhance functionality
-OPTIONAL_ENV_VARS = {
+OPTIONAL_ENV_VARS: dict[str, dict[str, Any]] = {
     # ── Provider (handled in provider selection, not shown in checklists) ──
     "OPENROUTER_API_KEY": {
         "description": "OpenRouter API key (for vision, web scraping helpers, and MoA)",
@@ -1726,7 +1729,7 @@ for _hidden_var in (
     OPTIONAL_ENV_VARS.pop(_hidden_var, None)
 
 
-def get_missing_env_vars(required_only: bool = False) -> List[Dict[str, Any]]:
+def get_missing_env_vars(required_only: bool = False) -> list[dict[str, Any]]:
     """
     Check which environment variables are missing.
 
@@ -1763,7 +1766,7 @@ def _set_nested(config: dict, dotted_key: str, value):
     current[parts[-1]] = value
 
 
-def get_missing_config_fields() -> List[Dict[str, Any]]:
+def get_missing_config_fields() -> list[dict[str, Any]]:
     """
     Check which config fields are missing or outdated (recursive).
 
@@ -1793,7 +1796,7 @@ def get_missing_config_fields() -> List[Dict[str, Any]]:
     return missing
 
 
-def get_missing_skill_config_vars() -> List[Dict[str, Any]]:
+def get_missing_skill_config_vars() -> list[dict[str, Any]]:
     """Return skill-declared config vars that are missing or empty in config.yaml.
 
     Scans all enabled skills for ``metadata.spark.config`` entries, then checks
@@ -1802,8 +1805,8 @@ def get_missing_skill_config_vars() -> List[Dict[str, Any]]:
     """
     try:
         from agent.skill_utils import (
-            discover_all_skill_config_vars,
             SKILL_CONFIG_PREFIX,
+            discover_all_skill_config_vars,
         )
     except Exception:
         return []
@@ -1813,7 +1816,7 @@ def get_missing_skill_config_vars() -> List[Dict[str, Any]]:
         return []
 
     config = load_config()
-    missing: List[Dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
     for var in all_vars:
         # Skill config is stored under skills.config.<logical_key>
         storage_key = f"{SKILL_CONFIG_PREFIX}.{var['key']}"
@@ -1837,7 +1840,7 @@ def _normalize_custom_provider_entry(
     entry: Any,
     *,
     provider_key: str = "",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Return a runtime-compatible custom provider entry or ``None``."""
     if not isinstance(entry, dict):
         return None
@@ -1860,7 +1863,7 @@ def _normalize_custom_provider_entry(
     if not name:
         return None
 
-    normalized: Dict[str, Any] = {
+    normalized: dict[str, Any] = {
         "name": name,
         "base_url": base_url,
     }
@@ -1900,12 +1903,12 @@ def _normalize_custom_provider_entry(
     return normalized
 
 
-def providers_dict_to_custom_providers(providers_dict: Any) -> List[Dict[str, Any]]:
+def providers_dict_to_custom_providers(providers_dict: Any) -> list[dict[str, Any]]:
     """Normalize ``providers`` config entries into the legacy custom-provider shape."""
     if not isinstance(providers_dict, dict):
         return []
 
-    custom_providers: List[Dict[str, Any]] = []
+    custom_providers: list[dict[str, Any]] = []
     for key, entry in providers_dict.items():
         normalized = _normalize_custom_provider_entry(entry, provider_key=str(key))
         if normalized is not None:
@@ -1915,8 +1918,8 @@ def providers_dict_to_custom_providers(providers_dict: Any) -> List[Dict[str, An
 
 
 def get_compatible_custom_providers(
-    config: Optional[Dict[str, Any]] = None,
-) -> List[Dict[str, Any]]:
+    config: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Return a deduplicated custom-provider view across legacy and v12+ config.
 
     ``custom_providers`` remains the on-disk legacy format, while ``providers``
@@ -1927,11 +1930,11 @@ def get_compatible_custom_providers(
     if config is None:
         config = load_config()
 
-    compatible: List[Dict[str, Any]] = []
+    compatible: list[dict[str, Any]] = []
     seen_provider_keys: set = set()
     seen_name_url_pairs: set = set()
 
-    def _append_if_new(entry: Optional[Dict[str, Any]]) -> None:
+    def _append_if_new(entry: dict[str, Any] | None) -> None:
         if entry is None:
             return
         provider_key = str(entry.get("provider_key", "") or "").strip().lower()
@@ -1964,15 +1967,15 @@ def get_compatible_custom_providers(
     return compatible
 
 
-def check_config_version() -> Tuple[int, int]:
+def check_config_version() -> tuple[int, int]:
     """
     Check config version.
 
     Returns (current_version, latest_version).
     """
     config = load_config()
-    current = config.get("_config_version", 0)
-    latest = DEFAULT_CONFIG.get("_config_version", 1)
+    current = int(config.get("_config_version", 0))
+    latest = int(cast(Any, DEFAULT_CONFIG.get("_config_version", 1)))
     return current, latest
 
 
@@ -2040,8 +2043,8 @@ class ConfigIssue:
 
 
 def validate_config_structure(
-    config: Optional[Dict[str, Any]] = None,
-) -> List["ConfigIssue"]:
+    config: dict[str, Any] | None = None,
+) -> list["ConfigIssue"]:
     """Validate config.yaml structure and return a list of detected issues.
 
     Catches common YAML formatting mistakes that produce confusing runtime
@@ -2061,7 +2064,7 @@ def validate_config_structure(
                 )
             ]
 
-    issues: List[ConfigIssue] = []
+    issues: list[ConfigIssue] = []
 
     # ── providers must be a keyed dict of OpenAI-compatible endpoints ─────
     providers_cfg = config.get("providers")
@@ -2274,7 +2277,7 @@ def validate_config_structure(
     return issues
 
 
-def print_config_warnings(config: Optional[Dict[str, Any]] = None) -> None:
+def print_config_warnings(config: dict[str, Any] | None = None) -> None:
     """Print config structure warnings to stderr at startup.
 
     Called early in CLI and gateway init so users see problems before
@@ -2298,7 +2301,7 @@ def print_config_warnings(config: Optional[Dict[str, Any]] = None) -> None:
     sys.stderr.write("\n".join(lines) + "\n\n")
 
 
-def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, Any]:
+def migrate_config(interactive: bool = True, quiet: bool = False) -> dict[str, Any]:
     """
     Migrate config to latest version, prompting for new required fields.
 
@@ -2309,7 +2312,11 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     Returns:
         Dict with migration results: {"env_added": [...], "config_added": [...], "warnings": [...]}
     """
-    results = {"env_added": [], "config_added": [], "warnings": []}
+    results: dict[str, list[str]] = {
+        "env_added": [],
+        "config_added": [],
+        "warnings": [],
+    }
 
     # ── Always: sanitize .env (split concatenated keys) ──
     try:
@@ -2317,7 +2324,8 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
         if fixes and not quiet:
             print(f"  ✓ Repaired .env file ({fixes} corrupted entries fixed)")
     except Exception:
-        pass  # best-effort; don't block migration on sanitize failure
+        # best-effort; don't block migration on sanitize failure
+        logger.debug("Ignored exception in migrate_config", exc_info=True)
 
     # Check config version
     current_ver, latest_ver = check_config_version()
@@ -2379,7 +2387,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                 if not quiet:
                     print("  ✓ Cleared ANTHROPIC_TOKEN from .env (no longer used)")
         except Exception:
-            pass
+            logger.debug("Ignoring error in migrate_config()", exc_info=True)
 
     # ── Version 11 → 12: migrate custom_providers list → providers dict ──
     if current_ver < 12:
@@ -2468,7 +2476,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                             f"  ✓ Cleared {dead_var} from .env (no longer used — config.yaml is source of truth)"
                         )
             except Exception:
-                pass
+                logger.debug("Ignoring error in migrate_config()", exc_info=True)
 
     # ── Version 13 → 14: migrate legacy flat stt.model to provider section ──
     # Old configs (and cli-config.yaml.example) had a flat `stt.model` key
@@ -2732,12 +2740,12 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             if var.get("password"):
                 import getpass
 
-                value = getpass.getpass(f"  {var['prompt']}: ")
+                env_value = getpass.getpass(f"  {var['prompt']}: ")
             else:
-                value = input(f"  {var['prompt']}: ").strip()
+                env_value = input(f"  {var['prompt']}: ").strip()
 
-            if value:
-                save_env_value(var["name"], value)
+            if env_value:
+                save_env_value(var["name"], env_value)
                 results["env_added"].append(var["name"])
                 print(f"  ✓ Saved {var['name']}")
             else:
@@ -2788,15 +2796,15 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                     if info.get("password"):
                         import getpass
 
-                        value = getpass.getpass(
+                        optional_value = getpass.getpass(
                             f"  {info.get('prompt', name)} (Enter to skip): "
                         )
                     else:
-                        value = input(
+                        optional_value = input(
                             f"  {info.get('prompt', name)} (Enter to skip): "
                         ).strip()
-                    if value:
-                        save_env_value(name, value)
+                    if optional_value:
+                        save_env_value(name, optional_value)
                         results["env_added"].append(name)
                         print(f"  ✓ Saved {name}")
                     print()
@@ -2855,14 +2863,14 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             for var in missing_skill_config:
                 default = var.get("default", "")
                 default_hint = f" (default: {default})" if default else ""
-                value = input(f"  {var['prompt']}{default_hint}: ").strip()
-                if not value and default:
-                    value = str(default)
-                if value:
+                skill_value = input(f"  {var['prompt']}{default_hint}: ").strip()
+                if not skill_value and default:
+                    skill_value = str(default)
+                if skill_value:
                     storage_key = f"{SKILL_CONFIG_PREFIX}.{var['key']}"
-                    _set_nested(config, storage_key, value)
+                    _set_nested(config, storage_key, skill_value)
                     results["config_added"].append(var["key"])
-                    print(f"  ✓ Saved {var['key']} = {value}")
+                    print(f"  ✓ Saved {var['key']} = {skill_value}")
                 else:
                     results["warnings"].append(
                         f"Skipped {var['key']} — skill '{var.get('skill', '?')}' may ask for it later"
@@ -2911,7 +2919,7 @@ def _expand_env_vars(obj):
     return obj
 
 
-def _normalize_root_model_keys(config: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_root_model_keys(config: dict[str, Any]) -> dict[str, Any]:
     """Move stale root-level provider/base_url into model section.
 
     Some users (or older code) placed ``provider:`` and ``base_url:`` at the
@@ -2941,7 +2949,7 @@ def _normalize_root_model_keys(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
-def _normalize_max_turns_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_max_turns_config(config: dict[str, Any]) -> dict[str, Any]:
     """Normalize legacy root-level max_turns into agent.max_turns."""
     config = dict(config)
     agent_config = dict(config.get("agent") or {})
@@ -2950,14 +2958,15 @@ def _normalize_max_turns_config(config: Dict[str, Any]) -> Dict[str, Any]:
         agent_config["max_turns"] = config["max_turns"]
 
     if "max_turns" not in agent_config:
-        agent_config["max_turns"] = DEFAULT_CONFIG["agent"]["max_turns"]
+        default_agent = cast(dict[str, Any], DEFAULT_CONFIG["agent"])
+        agent_config["max_turns"] = default_agent["max_turns"]
 
     config["agent"] = agent_config
     config.pop("max_turns", None)
     return config
 
 
-def read_raw_config() -> Dict[str, Any]:
+def read_raw_config() -> dict[str, Any]:
     """Read ~/.spark/config.yaml as-is, without merging defaults or migrating.
 
     Returns the raw YAML dict, or ``{}`` if the file doesn't exist or can't
@@ -2971,11 +2980,11 @@ def read_raw_config() -> Dict[str, Any]:
             with open(config_path, encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
     except Exception:
-        pass
+        logger.debug("Ignoring error in read_raw_config()", exc_info=True)
     return {}
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load configuration from ~/.spark/config.yaml."""
     import copy
 
@@ -3000,8 +3009,9 @@ def load_config() -> Dict[str, Any]:
         except Exception as e:
             print(f"Warning: Failed to load config: {e}")
 
-    return _expand_env_vars(
-        _normalize_root_model_keys(_normalize_max_turns_config(config))
+    return cast(
+        dict[str, Any],
+        _expand_env_vars(_normalize_root_model_keys(_normalize_max_turns_config(config))),
     )
 
 
@@ -3108,7 +3118,7 @@ _COMMENTED_SECTIONS = """
 """
 
 
-def save_config(config: Dict[str, Any]):
+def save_config(config: dict[str, Any]):
     """Save configuration to ~/.spark/config.yaml."""
     if is_managed():
         managed_error("save configuration")
@@ -3137,7 +3147,7 @@ def save_config(config: Dict[str, Any]):
     _secure_file(config_path)
 
 
-def load_env() -> Dict[str, str]:
+def load_env() -> dict[str, str]:
     """Load environment variables from ~/.spark/.env.
 
     Sanitizes lines before parsing so that corrupted files (e.g.
@@ -3151,7 +3161,7 @@ def load_env() -> Dict[str, str]:
     if env_path.exists():
         # On Windows, open() defaults to the system locale (cp1252) which can
         # fail on UTF-8 .env files. Use explicit UTF-8 only on Windows.
-        open_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+        open_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
         with open(env_path, **open_kw) as f:
             raw_lines = f.readlines()
         # Sanitize before parsing: split concatenated lines & drop stale
@@ -3231,8 +3241,8 @@ def sanitize_env_file() -> int:
     if not env_path.exists():
         return 0
 
-    read_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
-    write_kw = {"encoding": "utf-8"} if _IS_WINDOWS else {}
+    read_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+    write_kw: dict[str, Any] = {"encoding": "utf-8"} if _IS_WINDOWS else {}
 
     with open(env_path, **read_kw) as f:
         original_lines = f.readlines()
@@ -3246,7 +3256,7 @@ def sanitize_env_file() -> int:
     fixes = abs(len(sanitized) - len(original_lines))
     if fixes == 0:
         # Lines changed content (e.g. *** removal) even if count is same
-        fixes = sum(1 for a, b in zip(original_lines, sanitized) if a != b)
+        fixes = sum(1 for a, b in zip(original_lines, sanitized, strict=False) if a != b)
         fixes += abs(len(sanitized) - len(original_lines))
 
     fd, tmp_path = tempfile.mkstemp(
@@ -3262,7 +3272,7 @@ def sanitize_env_file() -> int:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in sanitize_env_file()", exc_info=True)
         raise
     _secure_file(env_path)
     return fixes
@@ -3281,8 +3291,8 @@ def save_env_value(key: str, value: str):
 
     # On Windows, open() defaults to the system locale (cp1252) which can
     # cause OSError errno 22 on UTF-8 .env files.
-    read_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
-    write_kw = {"encoding": "utf-8"} if _IS_WINDOWS else {}
+    read_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+    write_kw: dict[str, Any] = {"encoding": "utf-8"} if _IS_WINDOWS else {}
 
     lines = []
     if env_path.exists():
@@ -3318,7 +3328,7 @@ def save_env_value(key: str, value: str):
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_env_value()", exc_info=True)
         raise
     _secure_file(env_path)
 
@@ -3329,7 +3339,7 @@ def save_env_value(key: str, value: str):
         try:
             os.chmod(env_path, stat.S_IRUSR | stat.S_IWUSR)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_env_value()", exc_info=True)
 
 
 # Defaults for gateway HTTP API (OpenAI-compatible); must match gateway.platforms.api_server
@@ -3373,8 +3383,8 @@ def save_http_api_env_block(api_key: str) -> None:
 
     ensure_spark_home()
     env_path = get_env_path()
-    read_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
-    write_kw = {"encoding": "utf-8"} if _IS_WINDOWS else {}
+    read_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+    write_kw: dict[str, Any] = {"encoding": "utf-8"} if _IS_WINDOWS else {}
 
     lines: list[str] = []
     if env_path.exists():
@@ -3406,7 +3416,7 @@ def save_http_api_env_block(api_key: str) -> None:
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_http_api_env_block()", exc_info=True)
         raise
     _secure_file(env_path)
 
@@ -3419,7 +3429,7 @@ def save_http_api_env_block(api_key: str) -> None:
         try:
             os.chmod(env_path, stat.S_IRUSR | stat.S_IWUSR)
         except OSError:
-            pass
+            logger.debug("Ignoring error in save_http_api_env_block()", exc_info=True)
 
 
 def remove_env_value(key: str) -> bool:
@@ -3437,8 +3447,8 @@ def remove_env_value(key: str) -> bool:
         os.environ.pop(key, None)
         return False
 
-    read_kw = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
-    write_kw = {"encoding": "utf-8"} if _IS_WINDOWS else {}
+    read_kw: dict[str, Any] = {"encoding": "utf-8", "errors": "replace"} if _IS_WINDOWS else {}
+    write_kw: dict[str, Any] = {"encoding": "utf-8"} if _IS_WINDOWS else {}
 
     with open(env_path, **read_kw) as f:
         lines = f.readlines()
@@ -3461,7 +3471,7 @@ def remove_env_value(key: str) -> bool:
             try:
                 os.unlink(tmp_path)
             except OSError:
-                pass
+                logger.debug("Ignoring error in remove_env_value()", exc_info=True)
             raise
         _secure_file(env_path)
 
@@ -3490,7 +3500,7 @@ def save_anthropic_api_key(value: str, save_fn=None):
     writer("ANTHROPIC_TOKEN", "")
 
 
-def save_env_value_secure(key: str, value: str) -> Dict[str, Any]:
+def save_env_value_secure(key: str, value: str) -> dict[str, Any]:
     save_env_value(key, value)
     return {
         "success": True,
@@ -3521,7 +3531,7 @@ def reload_env() -> int:
     return count
 
 
-def get_env_value(key: str) -> Optional[str]:
+def get_env_value(key: str) -> str | None:
     """Get a value from ~/.spark/.env or environment."""
     # Check environment first
     if key in os.environ:
@@ -3733,7 +3743,7 @@ def show_config():
                     f"  {key:<20s} {display_val}  {color(f'[{skill_name}]', Colors.DIM)}"
                 )
     except Exception:
-        pass
+        logger.debug("Ignoring error in show_config()", exc_info=True)
 
     print()
     print(color("─" * 60, Colors.DIM))
@@ -3827,7 +3837,7 @@ def set_config_value(key: str, value: str):
     # Read the raw user config (not merged with defaults) to avoid
     # dumping all default values back to the file
     config_path = get_config_path()
-    user_config = {}
+    user_config: dict[str, Any] = {}
     if config_path.exists():
         try:
             with open(config_path, encoding="utf-8") as f:
@@ -3845,16 +3855,17 @@ def set_config_value(key: str, value: str):
         current = current[part]
 
     # Convert value to appropriate type
+    parsed_value: Any = value
     if value.lower() in ("true", "yes", "on"):
-        value = True
+        parsed_value = True
     elif value.lower() in ("false", "no", "off"):
-        value = False
+        parsed_value = False
     elif value.isdigit():
-        value = int(value)
+        parsed_value = int(value)
     elif value.replace(".", "", 1).isdigit():
-        value = float(value)
+        parsed_value = float(value)
 
-    current[parts[-1]] = value
+    current[parts[-1]] = parsed_value
 
     # Write only user config back (not the full merged defaults)
     ensure_spark_home()

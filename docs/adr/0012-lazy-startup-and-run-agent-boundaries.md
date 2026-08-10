@@ -16,9 +16,11 @@ behind their owning route.
 `from core.run_agent import AIAgent` remains the public contract. Internally,
 provider payload validation, response normalization, retry policy, persistence
 transformations, turn initialization, prompt caching, scheduling, sanitization,
-and stdio safety live in responsibility-specific modules. The large orchestration
-loop remains in the facade until each provider's golden transcript coverage is
-strong enough to move it mechanically.
+and stdio safety live in responsibility-specific modules. After byte-exact
+golden transcript coverage was added for Chat Completions, Anthropic Messages,
+and Codex Responses, the orchestration loop moved mechanically to
+`core.run_agent.turn_loop._TurnLoopMixin`. `AIAgent.run_conversation` remains
+available through inheritance without changing the public import contract.
 
 ## Cache contract
 

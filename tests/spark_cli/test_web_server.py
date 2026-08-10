@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import subprocess
 import urllib.request
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -200,10 +201,13 @@ class TestWebServerEndpoints:
         data = resp.json()
         assert data["provider"] == "openai-codex"
         assert data["strict"] is True
-        assert data["source"] in {"live", "offline-fallback"}
+        assert data["source"] in {"live", "cache", "offline-fallback"}
         if not data["live"]:
-            assert "gpt-5.6-sol" not in data["models"]
             assert data["warning"]
+            # "cache" is a real account catalog fetched earlier, so it may list
+            # any model.  Only the hardcoded offline fallback is constrained.
+            if data["source"] == "offline-fallback":
+                assert "gpt-5.6-sol" not in data["models"]
 
     def test_available_models_codex_uses_exact_live_account_catalog(self):
         with (
@@ -248,7 +252,7 @@ class TestWebServerEndpoints:
         }
 
     def test_direct_openai_catalog_keeps_documented_gpt_56_models_separate(self):
-        from spark_cli.web_server import _PROVIDER_MODEL_SUGGESTIONS
+        from spark_cli.model_routes import _PROVIDER_MODEL_SUGGESTIONS
 
         direct = _PROVIDER_MODEL_SUGGESTIONS["openai"]
         codex = _PROVIDER_MODEL_SUGGESTIONS["openai-codex"]
@@ -325,7 +329,7 @@ class TestWebServerEndpoints:
 
     def test_available_models_config_defined_provider(self):
         """Config-defined providers expose their curated model list to the dashboard."""
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as ws
 
         with patch.object(
             ws,
@@ -353,7 +357,7 @@ class TestWebServerEndpoints:
         assert data["strict"] is False
 
     def test_mac_update_installer_script_stages_and_installs_app(self, tmp_path):
-        import spark_cli.web_server as ws
+        import spark_cli.mac_routes as ws
 
         script = ws._build_mac_update_installer_script(
             dmg_path=tmp_path / "Spark-1.3.11.dmg",
@@ -376,12 +380,15 @@ class TestWebServerEndpoints:
         assert "Install verification failed" in script
 
     def test_run_mac_update_downloads_and_starts_detached_installer(self, monkeypatch, tmp_path):
-        import spark_cli.web_server as ws
+        import spark_cli.mac_routes as ws
 
         work_dir = tmp_path / "spark-update"
         popen_calls = []
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",
@@ -401,8 +408,14 @@ class TestWebServerEndpoints:
             def __init__(self, args, **kwargs):
                 popen_calls.append((args, kwargs))
 
-        monkeypatch.setattr(ws.urllib.request, "urlretrieve", fake_urlretrieve)
-        monkeypatch.setattr(ws.subprocess, "Popen", FakePopen)
+        # Patch the source modules, not this module's references to them.
+        # A module-attribute patch silently stops covering the handler if the
+        # handler moves to another module, and then this test runs the REAL
+        # installer: it quits Spark.app, installs a DMG, and relaunches the
+        # app with pytest's environment. That happened once during the route
+        # extraction and left the desktop app pointed at a temp SPARK_HOME.
+        monkeypatch.setattr(urllib.request, "urlretrieve", fake_urlretrieve)
+        monkeypatch.setattr(subprocess, "Popen", FakePopen)
 
         resp = self.client.post("/api/mac/update/run")
 
@@ -423,9 +436,12 @@ class TestWebServerEndpoints:
         assert "expected_version=info.get" in script or "EXPECTED_VERSION" in script
 
     def test_run_mac_update_requires_downloadable_release_asset(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.mac_routes as ws
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",
@@ -438,11 +454,14 @@ class TestWebServerEndpoints:
         assert "No downloadable macOS release found" in resp.json()["detail"]
 
     def test_run_mac_update_reports_download_failure(self, monkeypatch, tmp_path):
-        import spark_cli.web_server as ws
+        import spark_cli.mac_routes as ws
 
         work_dir = tmp_path / "spark-update"
 
         monkeypatch.setenv("SPARK_DESKTOP", "1")
+        # The endpoint also gates on sys.platform, so pin it: this logic
+        # must stay covered when the suite runs on Linux CI.
+        monkeypatch.setattr(ws.sys, "platform", "darwin")
         monkeypatch.setattr(
             ws,
             "_check_mac_update",
@@ -486,9 +505,12 @@ class TestWebServerEndpoints:
     def test_oauth_start_accepts_trusted_local_client(self):
         """Local desktop/web clients should pass the same auth rule as the
         dashboard middleware instead of being forced through session-token auth."""
-        import spark_cli.web_server as ws
+        import spark_cli.env_routes as env_routes
+        import spark_cli.providers_routes as ws
 
-        with patch.object(ws, "get_configured_dashboard_secret", return_value="testsecret"), \
+        # The auth check lives in env_routes (_reveal_authorized), which
+        # providers_routes reuses, so the secret lookup is patched there.
+        with patch.object(env_routes, "get_configured_dashboard_secret", return_value="testsecret"), \
              patch.object(ws, "_start_device_code_flow", return_value={"session_id": "s", "flow": "device_code"}):
             resp = self.client.post(
                 "/api/providers/oauth/openai-codex/start",
@@ -500,7 +522,7 @@ class TestWebServerEndpoints:
     def test_codex_cli_auth_preference_only_when_installed(self, monkeypatch):
         """Auto mode uses the official Codex CLI only when it is installed; users
         without Codex installed still get Spark's built-in device-code flow."""
-        import spark_cli.web_server as ws
+        import spark_cli.providers_routes as ws
 
         monkeypatch.delenv("SPARK_CODEX_DEVICE_AUTH_IMPL", raising=False)
         monkeypatch.setattr(ws.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)
@@ -516,7 +538,7 @@ class TestWebServerEndpoints:
     def test_codex_cli_auth_returns_false_when_no_code_is_emitted(self, monkeypatch):
         """The WebUI must not sit forever at "requesting code" if an installed
         Codex CLI does not print a device code; Spark should fall back inline."""
-        import spark_cli.web_server as ws
+        import spark_cli.providers_routes as ws
 
         class SilentCodexProcess:
             stdout = []
@@ -989,16 +1011,16 @@ class TestWebServerEndpoints:
         assert "Confirmation required" in blocked.text
 
     def test_admin_action_run_lifecycle(self, monkeypatch):
-        import spark_cli.web_server as web_server
+        import spark_cli.admin_runs as admin_runs
 
-        action = web_server.AdminAction(
+        action = admin_runs.AdminAction(
             "test.echo",
             "Echo",
             "Test action",
             "low",
             lambda _args: [sys.executable, "-c", "print('admin-ok')"],
         )
-        monkeypatch.setitem(web_server.ADMIN_ACTIONS, "test.echo", action)
+        monkeypatch.setitem(admin_runs.ADMIN_ACTIONS, "test.echo", action)
 
         started = self.client.post("/api/admin/actions/test.echo", json={})
         assert started.status_code == 200
@@ -1092,8 +1114,14 @@ class TestWebServerEndpoints:
                 "feishu": {"state": "connected", "updated_at": "2026-07-09T01:47:00+00:00"},
             },
         }
+        # /api/status still resolves these itself, while the
+        # _runtime_gateway_* helpers it calls now live in gateway_routes.
+        import spark_cli.gateway_routes as gateway_routes
+
         monkeypatch.setattr(web_server, "get_running_pid", lambda: None)
         monkeypatch.setattr(web_server, "read_runtime_status", lambda: runtime)
+        monkeypatch.setattr(gateway_routes, "get_running_pid", lambda: None)
+        monkeypatch.setattr(gateway_routes, "read_runtime_status", lambda: runtime)
         monkeypatch.setattr(web_server, "check_config_version", lambda: (1, 1))
         monkeypatch.setattr(gateway_config, "load_gateway_config", lambda: _GatewayConfig())
 
@@ -1568,7 +1596,14 @@ class TestNewEndpoints:
 
         assert resp.status_code == 200
         assert sync_calls == [True]
-        assert resp.json() == [
+        # Compare only the keys this test is about, so that adding a field to
+        # the /api/skills payload does not break an unrelated assertion.
+        _KEYS = (
+            "name", "description", "category", "enabled",
+            "use_count", "view_count", "patch_count", "skill_state",
+        )
+        actual = [{k: entry[k] for k in _KEYS} for entry in resp.json()]
+        assert actual == [
             {
                 "name": "active-skill",
                 "description": "active",
@@ -2016,9 +2051,9 @@ class TestModelInfoEndpoint:
         assert "capabilities" in data
 
     def test_model_info_with_dict_config(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": {
                 "default": "anthropic/claude-opus-4.6",
                 "provider": "openrouter",
@@ -2037,9 +2072,9 @@ class TestModelInfoEndpoint:
         assert data["effective_context_length"] == 100000  # override wins
 
     def test_model_info_auto_detect_when_no_override(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": {"default": "anthropic/claude-opus-4.6", "provider": "openrouter"}
         })
 
@@ -2052,9 +2087,9 @@ class TestModelInfoEndpoint:
         assert data["effective_context_length"] == 200000  # auto wins
 
     def test_model_info_empty_model(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {"model": ""})
+        monkeypatch.setattr(mr, "load_config", lambda: {"model": ""})
 
         resp = self.client.get("/api/model/info")
         data = resp.json()
@@ -2062,9 +2097,9 @@ class TestModelInfoEndpoint:
         assert data["effective_context_length"] == 0
 
     def test_model_info_bare_string_model(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": "anthropic/claude-sonnet-4"
         })
 
@@ -2078,9 +2113,9 @@ class TestModelInfoEndpoint:
         assert data["effective_context_length"] == 200000
 
     def test_model_info_capabilities(self, monkeypatch):
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": {"default": "anthropic/claude-opus-4.6", "provider": "openrouter"}
         })
 
@@ -2105,9 +2140,9 @@ class TestModelInfoEndpoint:
 
     def test_model_info_graceful_on_metadata_error(self, monkeypatch):
         """Endpoint should return zeros on import/resolution errors, not 500."""
-        import spark_cli.web_server as ws
+        import spark_cli.model_routes as mr
 
-        monkeypatch.setattr(ws, "load_config", lambda: {
+        monkeypatch.setattr(mr, "load_config", lambda: {
             "model": "some/obscure-model"
         })
 

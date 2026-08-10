@@ -957,7 +957,7 @@ class TestVoiceSubmission:
         with patch("tools.voice_mode.play_beep"):
             with patch("tools.voice_mode.transcribe_recording", return_value={"success": True, "transcript": "hello"}):
                 with patch("os.path.isfile", return_value=False):
-                    with patch("core.cli._cprint"):
+                    with patch("core.cli.main_loop._cprint"):
                         cli._voice_stop_and_transcribe()
 
         assert cli._attached_images == []

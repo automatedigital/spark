@@ -11,6 +11,7 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const repoRoot = path.resolve(webRoot, "../../..");
 const pythonBin = process.env.PYTHON || path.join(repoRoot, ".venv", "bin", "python");
 const screenshotsDir = path.join(webRoot, "screenshots", "e2e");
+const uiReadyTimeoutMs = 15_000;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -125,7 +126,10 @@ async function status(apiBase, sessionId) {
 async function clickChat(page, title, marker) {
   await page.getByRole("button", { name: new RegExp(title) }).click();
   const chatPanel = page.getByTestId("chat-panel");
-  await chatPanel.getByText(`${marker} chunk 1.`, { exact: true }).first().waitFor({ timeout: 5000 });
+  await chatPanel
+    .getByText(`${marker} chunk 1.`, { exact: true })
+    .first()
+    .waitFor({ timeout: uiReadyTimeoutMs });
   const body = await chatPanel.innerText();
   if (body.includes("LOADING LLM RESPONSE") && !body.includes(`${marker} chunk 1.`)) {
     throw new Error(`${title} showed stale loading without stream text`);
@@ -149,10 +153,10 @@ async function run() {
   );
   await mkdir(screenshotsDir, { recursive: true });
 
-  const backend = startProcess(
-    pythonBin,
-    ["-m", "spark_cli.main", "dashboard", "--host", "127.0.0.1", "--port", String(apiPort), "--no-open"],
-    {
+  const startBackend = () => startProcess(
+      pythonBin,
+      ["-m", "spark_cli.main", "dashboard", "--host", "127.0.0.1", "--port", String(apiPort), "--no-open"],
+      {
       cwd: repoRoot,
       env: {
         ...process.env,
@@ -161,6 +165,7 @@ async function run() {
       },
     },
   );
+  let backend = startBackend();
   const vite = startProcess("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(webPort)], {
     cwd: webRoot,
     env: {
@@ -238,7 +243,10 @@ async function run() {
     await createFakeCompactionFailure(apiBase);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /E2E compaction failure chat/ }).click();
-    await page.getByText("context before compaction.", { exact: true }).first().waitFor({ timeout: 5000 });
+    await page
+      .getByText("context before compaction.", { exact: true })
+      .first()
+      .waitFor({ timeout: uiReadyTimeoutMs });
     await page.getByText("Context compression failed; retry this message to continue.").waitFor({ timeout: 8000 });
     const deadline = Date.now() + 10_000;
     let compactionTurnCleared = false;
@@ -254,6 +262,20 @@ async function run() {
     const compactionBody = await page.locator("body").innerText();
     if (compactionBody.includes("LOADING LLM RESPONSE")) {
       throw new Error("compaction failure left stale Loading LLM response visible");
+    }
+
+    // A backend/gateway restart must not strand the browser in stale state or
+    // lose the persisted transcript when the same Spark home returns.
+    await stopProcess(backend);
+    await page.waitForTimeout(1_000);
+    backend = startBackend();
+    await waitFor(`${apiBase}/api/status`);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: /E2E compaction failure chat/ }).click();
+    await page.getByText("context before compaction.", { exact: true }).first().waitFor({ timeout: 8_000 });
+    const restartedBody = await page.locator("body").innerText();
+    if (restartedBody.includes("LOADING LLM RESPONSE")) {
+      throw new Error("backend restart left stale Loading LLM response visible");
     }
   } catch (error) {
     if (browser) {
@@ -273,7 +295,10 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+run().then(
+  () => process.exit(0),
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 def _load_dotenv_with_fallback(path: Path, *, override: bool) -> None:
@@ -34,9 +37,8 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
     except ImportError:
         return  # early bootstrap — config module not available yet
 
-    read_kw = {"encoding": "utf-8", "errors": "replace"}
     try:
-        with open(path, **read_kw) as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             original = f.readlines()
         sanitized = _sanitize_env_lines(original)
         if sanitized != original:
@@ -54,10 +56,11 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
                 try:
                     os.unlink(tmp)
                 except OSError:
-                    pass
+                    logger.debug("Ignoring error in _sanitize_env_file_if_needed()", exc_info=True)
                 raise
     except Exception:
-        pass  # best-effort — don't block gateway startup
+        # best-effort — don't block gateway startup
+        logger.debug("Ignored exception in _sanitize_env_file_if_needed", exc_info=True)
 
 
 def load_spark_dotenv(
@@ -75,7 +78,7 @@ def load_spark_dotenv(
     """
     loaded: list[Path] = []
 
-    home_path = Path(spark_home or os.getenv("SPARK_HOME", Path.home() / ".spark"))
+    home_path = Path(spark_home or os.getenv("SPARK_HOME") or Path.home() / ".spark")
     user_env = home_path / ".env"
     project_env_path = Path(project_env) if project_env else None
 

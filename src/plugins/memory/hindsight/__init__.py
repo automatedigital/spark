@@ -23,9 +23,8 @@ import json
 import logging
 import os
 import threading
-
-from core.spark_constants import get_spark_home
-from typing import Any, Dict, List
+from datetime import UTC
+from typing import Any
 
 from agent.memory_provider import MemoryProvider
 from core.spark_constants import get_spark_home
@@ -155,7 +154,7 @@ def _load_config() -> dict:
         try:
             return json.loads(profile_path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_config()", exc_info=True)
 
     # Legacy shared path (backward compat)
     legacy_path = Path.home() / ".hindsight" / "config.json"
@@ -163,7 +162,7 @@ def _load_config() -> dict:
         try:
             return json.loads(legacy_path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            logger.debug("Ignoring error in _load_config()", exc_info=True)
 
     return {
         "mode": os.environ.get("HINDSIGHT_MODE", "cloud"),
@@ -254,20 +253,19 @@ class HindsightMemoryProvider(MemoryProvider):
             try:
                 existing = json.loads(config_path.read_text())
             except Exception:
-                pass
+                logger.debug("Ignoring error in save_config()", exc_info=True)
         existing.update(values)
         config_path.write_text(json.dumps(existing, indent=2))
 
     def post_setup(self, spark_home: str, config: dict) -> None:
         """Custom setup wizard — installs only the deps needed for the selected mode."""
         import getpass
-        import subprocess
         import shutil
+        import subprocess
         import sys
         from pathlib import Path
 
         from spark_cli.config import save_config
-
         from spark_cli.memory_setup import _curses_select
 
         print("\n  Configuring Hindsight memory:\n")
@@ -372,7 +370,6 @@ class HindsightMemoryProvider(MemoryProvider):
         # Step 4: Save everything
         provider_config["bank_id"] = "spark"
         provider_config["recall_budget"] = "mid"
-        bank_id = "spark"
         config["memory"]["provider"] = "hindsight"
         save_config(config)
 
@@ -472,12 +469,15 @@ class HindsightMemoryProvider(MemoryProvider):
         # Check client version and auto-upgrade if needed
         try:
             from importlib.metadata import version as pkg_version
+
             from packaging.version import Version
             installed = pkg_version("hindsight-client")
             if Version(installed) < Version(_MIN_CLIENT_VERSION):
                 logger.warning("hindsight-client %s is outdated (need >=%s), attempting upgrade...",
                                installed, _MIN_CLIENT_VERSION)
-                import shutil, subprocess, sys
+                import shutil
+                import subprocess
+                import sys
                 uv_path = shutil.which("uv")
                 if uv_path:
                     try:
@@ -493,7 +493,8 @@ class HindsightMemoryProvider(MemoryProvider):
                 else:
                     logger.warning("uv not found. Run: pip install 'hindsight-client>=%s'", _MIN_CLIENT_VERSION)
         except Exception:
-            pass  # packaging not available or other issue — proceed anyway
+            # packaging not available or other issue — proceed anyway
+            logger.debug("Ignored exception in initialize", exc_info=True)
 
         self._config = _load_config()
         self._mode = self._config.get("mode", "cloud")
@@ -543,7 +544,7 @@ class HindsightMemoryProvider(MemoryProvider):
             from importlib.metadata import version as pkg_version
             _client_version = pkg_version("hindsight-client")
         except Exception:
-            pass
+            logger.debug("Ignoring error in initialize()", exc_info=True)
         logger.info("Hindsight initialized: mode=%s, api_url=%s, bank=%s, budget=%s, memory_mode=%s, prefetch_method=%s, client=%s",
                      self._mode, self._api_url, self._bank_id, self._budget, self._memory_mode, self._prefetch_method, _client_version)
         logger.debug("Hindsight config: auto_retain=%s, auto_recall=%s, retain_every_n=%d, "
@@ -721,8 +722,8 @@ class HindsightMemoryProvider(MemoryProvider):
             logger.debug("sync_turn: skipped (auto_retain disabled)")
             return
 
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
+        from datetime import datetime
+        now = datetime.now(UTC).isoformat()
 
         messages = [
             {"role": "user", "content": user_content, "timestamp": now},
@@ -771,7 +772,7 @@ class HindsightMemoryProvider(MemoryProvider):
         self._sync_thread = threading.Thread(target=_sync, daemon=True, name="hindsight-sync")
         self._sync_thread.start()
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         if self._memory_mode == "context":
             return []
         return [RETAIN_SCHEMA, RECALL_SCHEMA, REFLECT_SCHEMA]
@@ -863,11 +864,11 @@ class HindsightMemoryProvider(MemoryProvider):
                     try:
                         self._client.close()
                     except RuntimeError:
-                        pass
+                        logger.debug("Ignoring error in shutdown()", exc_info=True)
                 else:
                     _run_sync(self._client.aclose())
             except Exception:
-                pass
+                logger.debug("Ignoring error in shutdown()", exc_info=True)
             self._client = None
         # Stop the background event loop so no tasks are pending at exit
         if _loop is not None and _loop.is_running():

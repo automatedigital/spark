@@ -8,6 +8,7 @@ SparkCLI via inheritance; methods run with full access to SparkCLI state (self).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import threading
@@ -26,6 +27,8 @@ from core.cli.render import _ACCENT, _DIM, _RST, _accent_hex, _cprint, _rich_tex
 from core.run_agent import AIAgent
 from core.spark_constants import display_spark_home
 from cron import get_job
+
+logger = logging.getLogger(__name__)
 
 
 class _CommandHandlersMixin:
@@ -84,6 +87,7 @@ class _CommandHandlersMixin:
     def _handle_cron_command(self, cmd: str):
         """Handle the /cron command to manage scheduled tasks."""
         import shlex
+
         from tools.cronjob_tools import cronjob as cronjob_tool
 
         def _cron_api(**kwargs):
@@ -348,6 +352,7 @@ class _CommandHandlersMixin:
     def _handle_dream_command(self, cmd: str):
         """Handle /dream — reflective consolidation pass over sessions + memory."""
         import shlex
+
         from core import dream as dream_mod
 
         tokens = shlex.split(cmd)
@@ -580,6 +585,7 @@ class _CommandHandlersMixin:
         """Handle /goal — durable cross-session objective tracking via Kanban board."""
         import re as _re
         import shlex
+
         from core import goal as goal_mod
 
         tokens = shlex.split(cmd)
@@ -1109,7 +1115,7 @@ class _CommandHandlersMixin:
                         self.conversation_history,
                     )
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_computer_use_command()", exc_info=True)
             _cprint(
                 "  Computer-use enabled. Describe the desktop task in your next message."
             )
@@ -1127,7 +1133,7 @@ class _CommandHandlersMixin:
                 if _hint:
                     _cprint(_hint)
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_computer_use_command()", exc_info=True)
 
     def _handle_browser_command(self, cmd: str):
         """Handle /browser connect|disconnect|status - manage live Chrome CDP connection."""
@@ -1154,7 +1160,7 @@ class _CommandHandlersMixin:
 
                 cleanup_all_browsers()
             except Exception:
-                pass
+                logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
 
             print()
 
@@ -1163,7 +1169,7 @@ class _CommandHandlersMixin:
             try:
                 _port = int(cdp_url.rsplit(":", 1)[-1].split("/")[0])
             except (ValueError, IndexError):
-                pass
+                logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
 
             # Check if Chrome is already listening on the debug port
             import socket
@@ -1175,8 +1181,8 @@ class _CommandHandlersMixin:
                 s.connect(("127.0.0.1", _port))
                 s.close()
                 _already_open = True
-            except (OSError, socket.timeout):
-                pass
+            except (TimeoutError, OSError):
+                logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
 
             if _already_open:
                 print(f"   OK: Chrome is already listening on port {_port}")
@@ -1198,7 +1204,7 @@ class _CommandHandlersMixin:
                             s.close()
                             _already_open = True
                             break
-                        except (OSError, socket.timeout):
+                        except (TimeoutError, OSError):
                             _time.sleep(0.5)
                     if _already_open:
                         print(f"   OK: Chrome launched and listening on port {_port}")
@@ -1264,7 +1270,7 @@ class _CommandHandlersMixin:
 
                     cleanup_all_browsers()
                 except Exception:
-                    pass
+                    logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
                 print()
                 print("🌐 Browser disconnected from live Chrome")
                 print(
@@ -1294,7 +1300,7 @@ class _CommandHandlersMixin:
                 try:
                     _port = int(current.rsplit(":", 1)[-1].split("/")[0])
                 except (ValueError, IndexError):
-                    pass
+                    logger.debug("Ignoring error in _handle_browser_command()", exc_info=True)
                 try:
                     import socket
 
@@ -1335,9 +1341,9 @@ class _CommandHandlersMixin:
         """Handle /skin [name] - show or change the display skin."""
         try:
             from spark_cli.skin_engine import (
+                get_active_skin_name,
                 list_skins,
                 set_active_skin,
-                get_active_skin_name,
             )
         except ImportError:
             print("Skin engine not available.")
@@ -1649,8 +1655,8 @@ class _CommandHandlersMixin:
 
         original_count = len(self.conversation_history)
         try:
-            from agent.model_metadata import estimate_messages_tokens_rough
             from agent.manual_compression_feedback import summarize_manual_compression
+            from agent.model_metadata import estimate_messages_tokens_rough
 
             original_history = list(self.conversation_history)
             approx_tokens = estimate_messages_tokens_rough(original_history)
@@ -1730,8 +1736,9 @@ class _CommandHandlersMixin:
 
     def _handle_debug_command(self):
         """Handle /debug - upload debug report + logs and print paste URLs."""
-        from spark_cli.debug import run_debug_share
         from types import SimpleNamespace
+
+        from spark_cli.debug import run_debug_share
 
         args = SimpleNamespace(lines=200, expire=7, local=False)
         run_debug_share(args)

@@ -8,9 +8,10 @@ import os
 import tempfile
 import threading
 from pathlib import Path
-from tools.binary_extensions import has_binary_extension
-from tools.file_operations import ShellFileOperations, NativeFileOperations
+
 from agent.redact import redact_sensitive_text
+from tools.binary_extensions import has_binary_extension
+from tools.file_operations import NativeFileOperations, ShellFileOperations
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ def _get_max_read_chars() -> int:
             _max_read_chars_cached = int(val)
             return _max_read_chars_cached
     except Exception:
-        pass
+        logger.debug("Ignoring error in _get_max_read_chars()", exc_info=True)
     _max_read_chars_cached = _DEFAULT_MAX_READ_CHARS
     return _max_read_chars_cached
 
@@ -207,17 +208,18 @@ def _get_file_ops(task_id: str = "default") -> ShellFileOperations:
     Thread-safe: uses the same per-task creation locks as terminal_tool to
     prevent duplicate sandbox creation from concurrent tool calls.
     """
+    import time
+
     from tools.terminal_tool import (
         _active_environments,
-        _env_lock,
         _create_environment,
+        _creation_locks,
+        _creation_locks_lock,
+        _env_lock,
         _get_env_config,
         _last_activity,
         _start_cleanup_thread,
-        _creation_locks,
-        _creation_locks_lock,
     )
-    import time
 
     # Fast path: check cache -- but also verify the underlying environment
     # is still alive (it may have been killed by the cleanup thread).
@@ -398,7 +400,7 @@ def read_file_tool(
                     }
                 )
             except ValueError:
-                pass
+                logger.debug("Ignoring error in read_file_tool()", exc_info=True)
 
         # ── Dedup check ───────────────────────────────────────────────
         # If we already read this exact (path, offset, limit) and the
@@ -435,7 +437,8 @@ def read_file_tool(
                         ensure_ascii=False,
                     )
             except OSError:
-                pass  # stat failed — fall through to full read
+                # stat failed — fall through to full read
+                logger.debug("Ignored exception in read_file_tool", exc_info=True)
 
         # ── Perform the read ──────────────────────────────────────────
         file_ops = _get_file_ops(task_id)
@@ -519,7 +522,8 @@ def read_file_tool(
                 task_data["dedup"][dedup_key] = _mtime_now
                 task_data.setdefault("read_timestamps", {})[resolved_str] = _mtime_now
             except OSError:
-                pass  # Can't stat — skip tracking for this entry
+                # Can't stat — skip tracking for this entry
+                logger.debug("Ignored exception in read_file_tool", exc_info=True)
 
         if count >= 4:
             # Hard block: stop returning content to break the loop

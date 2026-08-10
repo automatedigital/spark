@@ -21,25 +21,26 @@ OpenRouter variant suffixes (``:free``, ``:extended``, ``:fast``).
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, NamedTuple, Optional
+from typing import NamedTuple
 
-from spark_cli.providers import (
-    custom_provider_slug,
-    determine_api_mode,
-    get_label,
-    is_aggregator,
-    resolve_provider_full,
-)
-from spark_cli.model_normalize import (
-    normalize_model_for_provider,
-)
 from agent.models_dev import (
     ModelCapabilities,
     ModelInfo,
     get_model_capabilities,
     get_model_info,
     list_provider_models,
+)
+from spark_cli.model_normalize import (
+    normalize_model_for_provider,
+)
+from spark_cli.providers import (
+    custom_provider_slug,
+    determine_api_mode,
+    get_label,
+    is_aggregator,
+    resolve_provider_full,
 )
 
 logger = logging.getLogger(__name__)
@@ -160,7 +161,7 @@ def _load_direct_aliases() -> dict[str, DirectAlias]:
                         base_url=base_url,
                     )
     except Exception:
-        pass
+        logger.debug("Ignoring error in _load_direct_aliases()", exc_info=True)
     return merged
 
 
@@ -191,8 +192,8 @@ class ModelSwitchResult:
     warning_message: str = ""
     provider_label: str = ""
     resolved_via_alias: str = ""
-    capabilities: Optional[ModelCapabilities] = None
-    model_info: Optional[ModelInfo] = None
+    capabilities: ModelCapabilities | None = None
+    model_info: ModelInfo | None = None
     is_global: bool = False
 
 
@@ -257,7 +258,7 @@ def parse_model_flags(raw_args: str) -> tuple[str, str, bool]:
 def resolve_alias(
     raw_input: str,
     current_provider: str,
-) -> Optional[tuple[str, str, str]]:
+) -> tuple[str, str, str] | None:
     """Resolve a short alias against the current provider's catalog.
 
     Looks up *raw_input* in :data:`MODEL_ALIASES`, then searches the
@@ -317,7 +318,7 @@ def resolve_alias(
 
 def get_authenticated_provider_slugs(
     current_provider: str = "",
-    user_providers: dict = None,
+    user_providers: dict | None = None,
     custom_providers: list | None = None,
 ) -> list[str]:
     """Return slugs of providers that have credentials.
@@ -339,8 +340,8 @@ def get_authenticated_provider_slugs(
 
 def _resolve_alias_fallback(
     raw_input: str,
-    authenticated_providers: list[str] = (),
-) -> Optional[tuple[str, str, str]]:
+    authenticated_providers: Sequence[str] = (),
+) -> tuple[str, str, str] | None:
     """Try to resolve an alias on the user's authenticated providers.
 
     Falls back to ``("openrouter",)`` only when no authenticated
@@ -367,7 +368,7 @@ def switch_model(
     current_api_key: str = "",
     is_global: bool = False,
     explicit_provider: str = "",
-    user_providers: dict = None,
+    user_providers: dict | None = None,
     custom_providers: list | None = None,
 ) -> ModelSwitchResult:
     """Core model-switching pipeline shared between CLI and gateway.
@@ -409,8 +410,8 @@ def switch_model(
     """
     from spark_cli.models import (
         detect_provider_for_model,
-        validate_requested_model,
         opencode_model_api_mode,
+        validate_requested_model,
     )
     from spark_cli.runtime_provider import resolve_runtime_provider
 
@@ -444,7 +445,7 @@ def switch_model(
                     for _ci in _cfg_issues[:3]:
                         _switch_err += f"\n  • {_ci.message}"
             except Exception:
-                pass
+                logger.debug("Ignoring error in switch_model()", exc_info=True)
             return ModelSwitchResult(
                 success=False,
                 is_global=is_global,
@@ -579,9 +580,11 @@ def switch_model(
         )
 
         if target_provider == current_provider and not is_custom and not resolved_alias:
-            detected = detect_provider_for_model(new_model, current_provider)
-            if detected:
-                target_provider, new_model = detected
+            detected_provider: tuple[str, str] | None = detect_provider_for_model(
+                new_model, current_provider
+            )
+            if detected_provider:
+                target_provider, new_model = detected_provider
 
     # =================================================================
     # COMMON PATH: Resolve credentials, normalize, get metadata
@@ -627,7 +630,7 @@ def switch_model(
             base_url = runtime.get("base_url", "")
             api_mode = runtime.get("api_mode", "")
         except Exception:
-            pass
+            logger.debug("Ignoring error in switch_model()", exc_info=True)
 
     # --- Direct alias override: use exact base_url from the alias if set ---
     if resolved_alias:
@@ -673,7 +676,7 @@ def switch_model(
         new_model = validation["corrected_model"]
 
     # --- OpenCode api_mode override ---
-    if target_provider in {"opencode-zen", "opencode-go", "opencode", "opencode-go"}:
+    if target_provider in {"opencode-zen", "opencode-go", "opencode"}:
         api_mode = opencode_model_api_mode(target_provider, new_model)
 
     # --- Determine api_mode if not already set ---
@@ -719,10 +722,10 @@ def switch_model(
 
 def list_authenticated_providers(
     current_provider: str = "",
-    user_providers: dict = None,
+    user_providers: dict | None = None,
     custom_providers: list | None = None,
     max_models: int = 8,
-) -> List[dict]:
+) -> list[dict]:
     """Detect which providers have credentials and list their curated models.
 
     Uses the curated model lists from spark_cli/models.py (OPENROUTER_MODELS,
@@ -741,15 +744,18 @@ def list_authenticated_providers(
     Only includes providers that have API keys set or are user-defined endpoints.
     """
     import os
+
     from agent.models_dev import (
         PROVIDER_TO_MODELS_DEV,
         fetch_models_dev,
+    )
+    from agent.models_dev import (
         get_provider_info as _mdev_pinfo,
     )
     from spark_cli.auth import PROVIDER_REGISTRY
-    from spark_cli.models import OPENROUTER_MODELS, _PROVIDER_MODELS
+    from spark_cli.models import _PROVIDER_MODELS, OPENROUTER_MODELS
 
-    results: List[dict] = []
+    results: list[dict] = []
     seen_slugs: set = set()
 
     data = fetch_models_dev()
@@ -802,8 +808,8 @@ def list_authenticated_providers(
         seen_slugs.add(slug)
 
     # --- 2. Check Spark-only providers (openai-codex, copilot, opencode-go) ---
-    from spark_cli.providers import SPARK_OVERLAYS
     from spark_cli.auth import PROVIDER_REGISTRY as _auth_registry
+    from spark_cli.providers import SPARK_OVERLAYS
 
     # Build reverse mapping: models.dev ID → Spark provider ID.
     # SPARK_OVERLAYS keys may be models.dev IDs (e.g. "github-copilot")
@@ -941,7 +947,7 @@ def list_authenticated_providers(
                 ):
                     _cp_has_creds = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in list_authenticated_providers()", exc_info=True)
         if not _cp_has_creds:
             try:
                 from agent.credential_pool import load_pool
@@ -950,7 +956,7 @@ def list_authenticated_providers(
                 if _cp_pool.has_credentials():
                     _cp_has_creds = True
             except Exception:
-                pass
+                logger.debug("Ignoring error in list_authenticated_providers()", exc_info=True)
 
         if not _cp_has_creds:
             continue
@@ -1028,7 +1034,7 @@ def list_authenticated_providers(
     if custom_providers and isinstance(custom_providers, list):
         from collections import OrderedDict
 
-        groups: "OrderedDict[str, dict]" = OrderedDict()
+        groups: OrderedDict[str, dict] = OrderedDict()
         for entry in custom_providers:
             if not isinstance(entry, dict):
                 continue

@@ -3,7 +3,6 @@
 import logging
 import os
 import uuid
-from typing import Dict
 
 import requests
 
@@ -30,7 +29,7 @@ class FirecrawlProvider(CloudBrowserProvider):
     def _api_url(self) -> str:
         return os.environ.get("FIRECRAWL_API_URL", _BASE_URL)
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         api_key = os.environ.get("FIRECRAWL_API_KEY")
         if not api_key:
             raise ValueError(
@@ -42,10 +41,10 @@ class FirecrawlProvider(CloudBrowserProvider):
             "Authorization": f"Bearer {api_key}",
         }
 
-    def create_session(self, task_id: str) -> Dict[str, object]:
+    def create_session(self, task_id: str) -> dict[str, object]:
         ttl = int(os.environ.get("FIRECRAWL_BROWSER_TTL", "300"))
 
-        body: Dict[str, object] = {"ttl": ttl}
+        body: dict[str, object] = {"ttl": ttl}
 
         response = requests.post(
             f"{self._api_url()}/v2/browser",

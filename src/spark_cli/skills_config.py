@@ -11,11 +11,14 @@ Config stored in ~/.spark/config.yaml under:
       telegram: [skill-c]
       cli: []
 """
-from typing import List, Optional, Set
 
-from spark_cli.config import load_config, save_config
+import logging
+
 from spark_cli.colors import Colors, color
+from spark_cli.config import load_config, save_config
 from spark_cli.platforms import PLATFORMS as _PLATFORMS
+
+logger = logging.getLogger(__name__)
 
 # Backward-compatible view: {key: label_string} so existing code that
 # iterates ``PLATFORMS.items()`` or calls ``PLATFORMS.get(key)`` keeps
@@ -24,7 +27,7 @@ PLATFORMS = {k: info.label for k, info in _PLATFORMS.items() if k != "api_server
 
 # ─── Config Helpers ───────────────────────────────────────────────────────────
 
-def get_disabled_skills(config: dict, platform: Optional[str] = None) -> Set[str]:
+def get_disabled_skills(config: dict, platform: str | None = None) -> set[str]:
     """Return disabled skill names. Platform-specific list falls back to global."""
     skills_cfg = config.get("skills", {})
     global_disabled = set(skills_cfg.get("disabled", []))
@@ -36,7 +39,7 @@ def get_disabled_skills(config: dict, platform: Optional[str] = None) -> Set[str
     return set(platform_disabled)
 
 
-def save_disabled_skills(config: dict, disabled: Set[str], platform: Optional[str] = None):
+def save_disabled_skills(config: dict, disabled: set[str], platform: str | None = None):
     """Persist disabled skill names to config."""
     config.setdefault("skills", {})
     if platform is None:
@@ -49,7 +52,7 @@ def save_disabled_skills(config: dict, disabled: Set[str], platform: Optional[st
 
 # ─── Skill Discovery ─────────────────────────────────────────────────────────
 
-def _list_all_skills() -> List[dict]:
+def _list_all_skills() -> list[dict]:
     """Return all installed skills (ignoring disabled state)."""
     try:
         from tools.skills_tool import _find_all_skills
@@ -58,19 +61,19 @@ def _list_all_skills() -> List[dict]:
         return []
 
 
-def _get_categories(skills: List[dict]) -> List[str]:
+def _get_categories(skills: list[dict]) -> list[str]:
     """Return sorted unique category names (None -> 'uncategorized')."""
     return sorted({s["category"] or "uncategorized" for s in skills})
 
 
 # ─── Platform Selection ──────────────────────────────────────────────────────
 
-def _select_platform() -> Optional[str]:
+def _select_platform() -> str | None:
     """Ask user which platform to configure, or global."""
     options = [("global", "All platforms (global default)")] + list(PLATFORMS.items())
     print()
     print(color("  Configure skills for:", Colors.BOLD))
-    for i, (key, label) in enumerate(options, 1):
+    for i, (_key, label) in enumerate(options, 1):
         print(f"  {i}. {label}")
     print()
     try:
@@ -85,13 +88,13 @@ def _select_platform() -> Optional[str]:
             key = options[idx][0]
             return None if key == "global" else key
     except ValueError:
-        pass
+        logger.debug("Ignoring error in _select_platform()", exc_info=True)
     return None
 
 
 # ─── Category Toggle ─────────────────────────────────────────────────────────
 
-def _toggle_by_category(skills: List[dict], disabled: Set[str]) -> Set[str]:
+def _toggle_by_category(skills: list[dict], disabled: set[str]) -> set[str]:
     """Toggle all skills in a category at once."""
     from spark_cli.curses_ui import curses_checklist
 
@@ -110,13 +113,15 @@ def _toggle_by_category(skills: List[dict], disabled: Set[str]) -> Set[str]:
         cat_labels, pre_selected, cancel_returns=pre_selected,
     )
 
-    new_disabled = set(disabled)
+    new_disabled: set[str] = set(disabled)
     for i, cat in enumerate(categories):
-        cat_skills = {s["name"] for s in skills if (s["category"] or "uncategorized") == cat}
+        cat_skill_names: set[str] = {
+            str(s["name"]) for s in skills if (s["category"] or "uncategorized") == cat
+        }
         if i in chosen:
-            new_disabled -= cat_skills  # category enabled → remove from disabled
+            new_disabled -= cat_skill_names  # category enabled → remove from disabled
         else:
-            new_disabled |= cat_skills  # category disabled → add to disabled
+            new_disabled |= cat_skill_names  # category disabled → add to disabled
     return new_disabled
 
 

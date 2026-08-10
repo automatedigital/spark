@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import queue
 import re
-import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from plugins.memory.honcho.client import get_honcho_client
 

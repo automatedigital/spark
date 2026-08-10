@@ -15,14 +15,14 @@ Architecture:
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
 import os
-import shutil
 import shlex
+import shutil
 import stat
-import base64
-import hashlib
 import subprocess
 import threading
 import time
@@ -30,26 +30,26 @@ import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, cast, overload
 
 import httpx
 import yaml
 
-from spark_cli.config import get_spark_home, get_config_path, read_raw_config
 from core.spark_constants import OPENROUTER_BASE_URL
+from spark_cli.config import get_config_path, get_spark_home, read_raw_config
 
 logger = logging.getLogger(__name__)
 
 try:
     import fcntl
 except Exception:
-    fcntl = None
+    fcntl = None  # type: ignore[assignment]
 try:
     import msvcrt
 except Exception:
-    msvcrt = None
+    msvcrt = None  # type: ignore[assignment]
 
 # =============================================================================
 # Constants
@@ -77,18 +77,18 @@ _DEPRECATED_PROVIDERS = {"nous", "nous-research"}
 # Multi-model setup UI (SMART / FAST slot for prompts)
 # =============================================================================
 
-_MODEL_ROUTING_SLOT_SELECTION: ContextVar[Optional[str]] = ContextVar(
+_MODEL_ROUTING_SLOT_SELECTION: ContextVar[str | None] = ContextVar(
     "_model_routing_slot_selection", default=None
 )
 
 
-def get_model_routing_slot_selection() -> Optional[str]:
+def get_model_routing_slot_selection() -> str | None:
     """During multi-model setup, which slot is being configured: ``smart`` or ``fast``."""
     return _MODEL_ROUTING_SLOT_SELECTION.get()
 
 
 @contextmanager
-def model_routing_slot_selection_context(slot: Optional[str]):
+def model_routing_slot_selection_context(slot: str | None):
     """Scope SMART/FAST labels on provider and model prompts."""
     if not slot:
         yield
@@ -116,14 +116,14 @@ class ProviderConfig:
     inference_base_url: str = ""
     client_id: str = ""
     scope: str = ""
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
     # For API-key providers: env vars to check (in priority order)
     api_key_env_vars: tuple = ()
     # Optional env var for base URL override
     base_url_env_var: str = ""
 
 
-PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
+PROVIDER_REGISTRY: dict[str, ProviderConfig] = {
     "openai-codex": ProviderConfig(
         id="openai-codex",
         name="OpenAI Codex",
@@ -393,7 +393,7 @@ def _resolve_api_key_provider_secret(
         except ValueError as exc:
             logger.warning("Copilot token validation failed: %s", exc)
         except Exception:
-            pass
+            logger.debug("Ignoring error in _resolve_api_key_provider_secret()", exc_info=True)
         return "", ""
 
     for env_var in pconfig.api_key_env_vars:
@@ -431,7 +431,7 @@ ZAI_ENDPOINTS = [
 ]
 
 
-def detect_zai_endpoint(api_key: str, timeout: float = 8.0) -> Optional[Dict[str, str]]:
+def detect_zai_endpoint(api_key: str, timeout: float = 8.0) -> dict[str, str] | None:
     """Probe z.ai endpoints to find one that accepts this API key.
 
     Returns {"id": ..., "base_url": ..., "model": ..., "label": ...} for the
@@ -486,7 +486,7 @@ def _resolve_zai_base_url(api_key: str, default_url: str, env_override: str) -> 
         key_hash = cached.get("key_hash", "")
         if key_hash == hashlib.sha256(api_key.encode()).hexdigest()[:16]:
             logger.debug("Z.AI: using cached endpoint %s", cached["base_url"])
-            return cached["base_url"]
+            return cast("str", cached["base_url"])
 
     # Probe — may take up to ~8s per endpoint.
     detected = detect_zai_endpoint(api_key)
@@ -525,7 +525,7 @@ class AuthError(RuntimeError):
         message: str,
         *,
         provider: str = "",
-        code: Optional[str] = None,
+        code: str | None = None,
         relogin_required: bool = False,
     ) -> None:
         super().__init__(message)
@@ -560,7 +560,7 @@ def format_auth_error(error: Exception) -> str:
     return str(error)
 
 
-def _token_fingerprint(token: Any) -> Optional[str]:
+def _token_fingerprint(token: Any) -> str | None:
     """Return a short hash fingerprint for telemetry without leaking token bytes."""
     if not isinstance(token, str):
         return None
@@ -576,11 +576,11 @@ def _oauth_trace_enabled() -> bool:
 
 
 def _oauth_trace(
-    event: str, *, sequence_id: Optional[str] = None, **fields: Any
+    event: str, *, sequence_id: str | None = None, **fields: Any
 ) -> None:
     if not _oauth_trace_enabled():
         return
-    payload: Dict[str, Any] = {"event": event}
+    payload: dict[str, Any] = {"event": event}
     if sequence_id:
         payload["sequence_id"] = sequence_id
     payload.update(fields)
@@ -641,11 +641,13 @@ def _auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 else:
                     lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    msvcrt.locking(  # type: ignore[attr-defined]
+                        lock_file.fileno(), msvcrt.LK_NBLCK, 1  # type: ignore[attr-defined]
+                    )
                 break
-            except (BlockingIOError, OSError, PermissionError):
+            except (BlockingIOError, OSError, PermissionError) as err:
                 if time.time() >= deadline:
-                    raise TimeoutError("Timed out waiting for auth store lock")
+                    raise TimeoutError("Timed out waiting for auth store lock") from err
                 time.sleep(0.05)
 
         _auth_lock_holder.depth = 1
@@ -658,12 +660,14 @@ def _auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
             elif msvcrt:
                 try:
                     lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-                except (OSError, IOError):
-                    pass
+                    msvcrt.locking(  # type: ignore[attr-defined]
+                        lock_file.fileno(), msvcrt.LK_UNLCK, 1  # type: ignore[attr-defined]
+                    )
+                except OSError:
+                    logger.debug("Ignoring error in _auth_store_lock()", exc_info=True)
 
 
-def _load_auth_store(auth_file: Optional[Path] = None) -> Dict[str, Any]:
+def _load_auth_store(auth_file: Path | None = None) -> dict[str, Any]:
     auth_file = auth_file or _auth_file_path()
     if not auth_file.exists():
         return {"version": AUTH_STORE_VERSION, "providers": {}}
@@ -683,11 +687,11 @@ def _load_auth_store(auth_file: Optional[Path] = None) -> Dict[str, Any]:
     return {"version": AUTH_STORE_VERSION, "providers": {}}
 
 
-def _save_auth_store(auth_store: Dict[str, Any]) -> Path:
+def _save_auth_store(auth_store: dict[str, Any]) -> Path:
     auth_file = _auth_file_path()
     auth_file.parent.mkdir(parents=True, exist_ok=True)
     auth_store["version"] = AUTH_STORE_VERSION
-    auth_store["updated_at"] = datetime.now(timezone.utc).isoformat()
+    auth_store["updated_at"] = datetime.now(UTC).isoformat()
     payload = json.dumps(auth_store, indent=2) + "\n"
     tmp_path = auth_file.with_name(
         f"{auth_file.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}"
@@ -712,18 +716,18 @@ def _save_auth_store(auth_store: Dict[str, Any]) -> Path:
             if tmp_path.exists():
                 tmp_path.unlink()
         except OSError:
-            pass
+            logger.debug("Ignoring error in _save_auth_store()", exc_info=True)
     # Restrict file permissions to owner only
     try:
         auth_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
     except OSError:
-        pass
+        logger.debug("Ignoring error in _save_auth_store()", exc_info=True)
     return auth_file
 
 
 def _load_provider_state(
-    auth_store: Dict[str, Any], provider_id: str
-) -> Optional[Dict[str, Any]]:
+    auth_store: dict[str, Any], provider_id: str
+) -> dict[str, Any] | None:
     providers = auth_store.get("providers")
     if not isinstance(providers, dict):
         return None
@@ -732,7 +736,7 @@ def _load_provider_state(
 
 
 def _save_provider_state(
-    auth_store: Dict[str, Any], provider_id: str, state: Dict[str, Any]
+    auth_store: dict[str, Any], provider_id: str, state: dict[str, Any]
 ) -> None:
     providers = auth_store.setdefault("providers", {})
     if not isinstance(providers, dict):
@@ -742,7 +746,17 @@ def _save_provider_state(
     auth_store["active_provider"] = provider_id
 
 
-def read_credential_pool(provider_id: Optional[str] = None) -> Dict[str, Any]:
+@overload
+def read_credential_pool(provider_id: None = None) -> dict[str, Any]: ...
+
+
+@overload
+def read_credential_pool(provider_id: str) -> list[dict[str, Any]]: ...
+
+
+def read_credential_pool(
+    provider_id: str | None = None,
+) -> dict[str, Any] | list[dict[str, Any]]:
     """Return the persisted credential pool, or one provider slice."""
     auth_store = _load_auth_store()
     pool = auth_store.get("credential_pool")
@@ -754,7 +768,7 @@ def read_credential_pool(provider_id: Optional[str] = None) -> Dict[str, Any]:
     return list(provider_entries) if isinstance(provider_entries, list) else []
 
 
-def write_credential_pool(provider_id: str, entries: List[Dict[str, Any]]) -> Path:
+def write_credential_pool(provider_id: str, entries: list[dict[str, Any]]) -> Path:
     """Persist one provider's credential pool under auth.json."""
     with _auth_store_lock():
         auth_store = _load_auth_store()
@@ -787,13 +801,13 @@ def is_source_suppressed(provider_id: str, source: str) -> bool:
         return False
 
 
-def get_provider_auth_state(provider_id: str) -> Optional[Dict[str, Any]]:
+def get_provider_auth_state(provider_id: str) -> dict[str, Any] | None:
     """Return persisted auth state for a provider, or None."""
     auth_store = _load_auth_store()
     return _load_provider_state(auth_store, provider_id)
 
 
-def get_active_provider() -> Optional[str]:
+def get_active_provider() -> str | None:
     """Return the currently active provider ID from auth store."""
     auth_store = _load_auth_store()
     return auth_store.get("active_provider")
@@ -821,7 +835,7 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
         if active and active == normalized:
             return True
     except Exception:
-        pass
+        logger.debug("Ignoring error in is_provider_explicitly_configured()", exc_info=True)
 
     # 2. Check config.yaml model.provider
     try:
@@ -834,7 +848,7 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
             if cfg_provider == normalized:
                 return True
     except Exception:
-        pass
+        logger.debug("Ignoring error in is_provider_explicitly_configured()", exc_info=True)
 
     # 3. Check provider-specific env vars
     # Exclude CLAUDE_CODE_OAUTH_TOKEN — it's set by Claude Code itself,
@@ -851,7 +865,7 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
     return False
 
 
-def clear_provider_auth(provider_id: Optional[str] = None) -> bool:
+def clear_provider_auth(provider_id: str | None = None) -> bool:
     """
     Clear auth state for a provider. Used by `spark logout`.
     If provider_id is None, clears the active provider.
@@ -933,10 +947,10 @@ def _get_config_hint_for_unknown_provider(provider_name: str) -> str:
 
 
 def resolve_provider(
-    requested: Optional[str] = None,
+    requested: str | None = None,
     *,
-    explicit_api_key: Optional[str] = None,
-    explicit_base_url: Optional[str] = None,
+    explicit_api_key: str | None = None,
+    explicit_base_url: str | None = None,
 ) -> str:
     """
     Determine which inference provider to use.
@@ -1034,7 +1048,7 @@ def resolve_provider(
         if active and active in PROVIDER_REGISTRY:
             status = get_auth_status(active)
             if status.get("logged_in"):
-                return active
+                return cast("str", active)
     except Exception as e:
         logger.debug("Could not detect active auth provider: %s", e)
 
@@ -1069,7 +1083,7 @@ def resolve_provider(
 # =============================================================================
 
 
-def _parse_iso_timestamp(value: Any) -> Optional[float]:
+def _parse_iso_timestamp(value: Any) -> float | None:
     if not isinstance(value, str) or not value:
         return None
     text = value.strip()
@@ -1082,7 +1096,7 @@ def _parse_iso_timestamp(value: Any) -> Optional[float]:
     except Exception:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed.timestamp()
 
 
@@ -1101,14 +1115,14 @@ def _coerce_ttl_seconds(expires_in: Any) -> int:
     return max(0, ttl)
 
 
-def _optional_base_url(value: Any) -> Optional[str]:
+def _optional_base_url(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     cleaned = value.strip().rstrip("/")
     return cleaned if cleaned else None
 
 
-def _decode_jwt_claims(token: Any) -> Dict[str, Any]:
+def _decode_jwt_claims(token: Any) -> dict[str, Any]:
     if not isinstance(token, str) or token.count(".") != 2:
         return {}
     payload = token.split(".")[1]
@@ -1144,7 +1158,7 @@ def _qwen_cli_auth_path() -> Path:
     return Path.home() / ".qwen" / "oauth_creds.json"
 
 
-def _read_qwen_cli_tokens() -> Dict[str, Any]:
+def _read_qwen_cli_tokens() -> dict[str, Any]:
     auth_path = _qwen_cli_auth_path()
     if not auth_path.exists():
         raise AuthError(
@@ -1169,7 +1183,7 @@ def _read_qwen_cli_tokens() -> Dict[str, Any]:
     return data
 
 
-def _save_qwen_cli_tokens(tokens: Dict[str, Any]) -> Path:
+def _save_qwen_cli_tokens(tokens: dict[str, Any]) -> Path:
     auth_path = _qwen_cli_auth_path()
     auth_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = auth_path.with_suffix(".tmp")
@@ -1192,8 +1206,8 @@ def _qwen_access_token_is_expiring(
 
 
 def _refresh_qwen_cli_tokens(
-    tokens: Dict[str, Any], timeout_seconds: float = 20.0
-) -> Dict[str, Any]:
+    tokens: dict[str, Any], timeout_seconds: float = 20.0
+) -> dict[str, Any]:
     refresh_token = str(tokens.get("refresh_token", "") or "").strip()
     if not refresh_token:
         raise AuthError(
@@ -1253,8 +1267,12 @@ def _refresh_qwen_cli_tokens(
 
     expires_in = payload.get("expires_in")
     try:
-        expires_in_seconds = int(expires_in)
-    except Exception:
+        expires_in_seconds = (
+            int(expires_in)
+            if isinstance(expires_in, (str, int, float))
+            else 6 * 60 * 60
+        )
+    except (TypeError, ValueError):
         expires_in_seconds = 6 * 60 * 60
 
     refreshed = {
@@ -1281,7 +1299,7 @@ def resolve_qwen_runtime_credentials(
     force_refresh: bool = False,
     refresh_if_expiring: bool = True,
     refresh_skew_seconds: int = QWEN_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     tokens = _read_qwen_cli_tokens()
     access_token = str(tokens.get("access_token", "") or "").strip()
     should_refresh = bool(force_refresh)
@@ -1313,7 +1331,7 @@ def resolve_qwen_runtime_credentials(
     }
 
 
-def get_qwen_auth_status() -> Dict[str, Any]:
+def get_qwen_auth_status() -> dict[str, Any]:
     auth_path = _qwen_cli_auth_path()
     try:
         creds = resolve_qwen_runtime_credentials(refresh_if_expiring=False)
@@ -1351,7 +1369,7 @@ def _is_remote_session() -> bool:
 # =============================================================================
 
 
-def _read_codex_tokens(*, _lock: bool = True) -> Dict[str, Any]:
+def _read_codex_tokens(*, _lock: bool = True) -> dict[str, Any]:
     """Read Codex OAuth tokens from Spark auth store (~/.spark/auth.json).
 
     Returns dict with 'tokens' (access_token, refresh_token) and 'last_refresh'.
@@ -1404,8 +1422,8 @@ def _write_codex_cli_tokens(
     access_token: str,
     refresh_token: str,
     *,
-    id_token: Optional[str] = None,
-    last_refresh: Optional[str] = None,
+    id_token: str | None = None,
+    last_refresh: str | None = None,
 ) -> None:
     """Write refreshed tokens back to ~/.codex/auth.json.
 
@@ -1422,7 +1440,7 @@ def _write_codex_cli_tokens(
         codex_home = str(Path.home() / ".codex")
     auth_path = Path(codex_home).expanduser() / "auth.json"
     try:
-        existing: Dict[str, Any] = {}
+        existing: dict[str, Any] = {}
         if auth_path.is_file():
             existing = json.loads(auth_path.read_text(encoding="utf-8"))
         if not isinstance(existing, dict):
@@ -1442,14 +1460,14 @@ def _write_codex_cli_tokens(
         auth_path.parent.mkdir(parents=True, exist_ok=True)
         auth_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
         auth_path.chmod(0o600)
-    except (OSError, IOError) as exc:
+    except OSError as exc:
         logger.debug("Failed to write refreshed tokens to %s: %s", auth_path, exc)
 
 
-def _save_codex_tokens(tokens: Dict[str, str], last_refresh: str = None) -> None:
+def _save_codex_tokens(tokens: dict[str, str], last_refresh: str | None = None) -> None:
     """Save Codex OAuth tokens to Spark auth store (~/.spark/auth.json)."""
     if last_refresh is None:
-        last_refresh = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        last_refresh = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     with _auth_store_lock():
         auth_store = _load_auth_store()
         state = _load_provider_state(auth_store, "openai-codex") or {}
@@ -1465,7 +1483,7 @@ def refresh_codex_oauth_pure(
     refresh_token: str,
     *,
     timeout_seconds: float = 20.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Refresh Codex OAuth tokens without mutating Spark auth state."""
     del (
         access_token
@@ -1506,7 +1524,7 @@ def refresh_codex_oauth_pure(
                 if isinstance(err_desc, str) and err_desc.strip():
                     message = f"Codex token refresh failed: {err_desc.strip()}"
         except Exception:
-            pass
+            logger.debug("Ignoring error in refresh_codex_oauth_pure()", exc_info=True)
         if code in {"invalid_grant", "invalid_token", "invalid_request"}:
             relogin_required = True
         if code == "refresh_token_reused":
@@ -1546,7 +1564,7 @@ def refresh_codex_oauth_pure(
     updated = {
         "access_token": refreshed_access.strip(),
         "refresh_token": refresh_token.strip(),
-        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "last_refresh": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     next_refresh = refresh_payload.get("refresh_token")
     if isinstance(next_refresh, str) and next_refresh.strip():
@@ -1560,9 +1578,9 @@ def refresh_codex_oauth_pure(
 
 
 def _refresh_codex_auth_tokens(
-    tokens: Dict[str, str],
+    tokens: dict[str, str],
     timeout_seconds: float,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Refresh Codex access token using the refresh token.
 
     Saves the new tokens to Spark auth store automatically.
@@ -1589,7 +1607,7 @@ def _refresh_codex_auth_tokens(
     return updated_tokens
 
 
-def _import_codex_cli_tokens() -> Optional[Dict[str, str]]:
+def _import_codex_cli_tokens() -> dict[str, str] | None:
     """Try to read tokens from ~/.codex/auth.json (Codex CLI shared file).
 
     Returns tokens dict if valid and not expired, None otherwise.
@@ -1629,7 +1647,7 @@ def resolve_codex_runtime_credentials(
     force_refresh: bool = False,
     refresh_if_expiring: bool = True,
     refresh_skew_seconds: int = CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Resolve runtime credentials from Spark's own Codex token store."""
     try:
         data = _read_codex_tokens()
@@ -1706,9 +1724,9 @@ def resolve_codex_runtime_credentials(
 
 def _resolve_verify(
     *,
-    insecure: Optional[bool] = None,
-    ca_bundle: Optional[str] = None,
-    auth_state: Optional[Dict[str, Any]] = None,
+    insecure: bool | None = None,
+    ca_bundle: str | None = None,
+    auth_state: dict[str, Any] | None = None,
 ) -> bool | str:
     tls_state = auth_state.get("tls") if isinstance(auth_state, dict) else {}
     tls_state = tls_state if isinstance(tls_state, dict) else {}
@@ -1750,8 +1768,8 @@ def _request_device_code(
     client: httpx.Client,
     portal_base_url: str,
     client_id: str,
-    scope: Optional[str],
-) -> Dict[str, Any]:
+    scope: str | None,
+) -> dict[str, Any]:
     """POST to the device code endpoint. Returns device_code, user_code, etc."""
     response = client.post(
         f"{portal_base_url}/api/oauth/device/code",
@@ -1774,7 +1792,7 @@ def _request_device_code(
     missing = [f for f in required_fields if f not in data]
     if missing:
         raise ValueError(f"Device code response missing fields: {', '.join(missing)}")
-    return data
+    return cast("dict[str, Any]", data)
 
 
 def _poll_for_token(
@@ -1784,7 +1802,7 @@ def _poll_for_token(
     device_code: str,
     expires_in: int,
     poll_interval: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Poll the token endpoint until the user approves or the code expires."""
     deadline = time.time() + max(1, expires_in)
     current_interval = max(1, min(poll_interval, DEVICE_AUTH_POLL_INTERVAL_CAP_SECONDS))
@@ -1803,13 +1821,13 @@ def _poll_for_token(
             payload = response.json()
             if "access_token" not in payload:
                 raise ValueError("Token response did not include access_token")
-            return payload
+            return cast("dict[str, Any]", payload)
 
         try:
             error_payload = response.json()
-        except Exception:
+        except Exception as err:
             response.raise_for_status()
-            raise RuntimeError("Token endpoint returned a non-JSON error response")
+            raise RuntimeError("Token endpoint returned a non-JSON error response") from err
 
         error_code = error_payload.get("error", "")
         if error_code == "authorization_pending":
@@ -1834,7 +1852,7 @@ def _poll_for_token(
 
 
 
-def get_codex_auth_status() -> Dict[str, Any]:
+def get_codex_auth_status() -> dict[str, Any]:
     """Status snapshot for Codex auth.
 
     Checks the credential pool first (where `spark auth` stores credentials),
@@ -1862,7 +1880,7 @@ def get_codex_auth_status() -> Dict[str, Any]:
                         "api_key": api_key,
                     }
     except Exception:
-        pass
+        logger.debug("Ignoring error in get_codex_auth_status()", exc_info=True)
 
     # Fall back to legacy provider state
     try:
@@ -1883,7 +1901,7 @@ def get_codex_auth_status() -> Dict[str, Any]:
         }
 
 
-def get_api_key_provider_status(provider_id: str) -> Dict[str, Any]:
+def get_api_key_provider_status(provider_id: str) -> dict[str, Any]:
     """Status snapshot for API-key providers (z.ai, Kimi, MiniMax)."""
     pconfig = PROVIDER_REGISTRY.get(provider_id)
     if not pconfig or pconfig.auth_type != "api_key":
@@ -1914,7 +1932,7 @@ def get_api_key_provider_status(provider_id: str) -> Dict[str, Any]:
     }
 
 
-def get_external_process_provider_status(provider_id: str) -> Dict[str, Any]:
+def get_external_process_provider_status(provider_id: str) -> dict[str, Any]:
     """Status snapshot for providers that run a local subprocess."""
     pconfig = PROVIDER_REGISTRY.get(provider_id)
     if not pconfig or pconfig.auth_type != "external_process":
@@ -1948,7 +1966,7 @@ def get_external_process_provider_status(provider_id: str) -> Dict[str, Any]:
     }
 
 
-def get_auth_status(provider_id: Optional[str] = None) -> Dict[str, Any]:
+def get_auth_status(provider_id: str | None = None) -> dict[str, Any]:
     """Generic auth status dispatcher."""
     target = provider_id or get_active_provider()
     if target == "openai-codex":
@@ -1962,6 +1980,7 @@ def get_auth_status(provider_id: Optional[str] = None) -> Dict[str, Any]:
         # active provider (model.provider == "ollama") or the env var is set.
         try:
             import os as _os
+
             from spark_cli.config import load_config as _load_config
 
             _cfg = _load_config()
@@ -1973,16 +1992,18 @@ def get_auth_status(provider_id: Optional[str] = None) -> Dict[str, Any]:
             if _is_active or _has_env:
                 return {"logged_in": True, "configured": True, "auth_type": "none"}
         except Exception:
-            pass
+            logger.debug("Ignoring error in get_auth_status()", exc_info=True)
         return {"logged_in": False, "configured": False}
     # API-key providers
+    if target is None:
+        return {"logged_in": False}
     pconfig = PROVIDER_REGISTRY.get(target)
     if pconfig and pconfig.auth_type == "api_key":
         return get_api_key_provider_status(target)
     return {"logged_in": False}
 
 
-def resolve_api_key_provider_credentials(provider_id: str) -> Dict[str, Any]:
+def resolve_api_key_provider_credentials(provider_id: str) -> dict[str, Any]:
     """Resolve API key and base URL for an API-key provider.
 
     Returns dict with: provider, api_key, base_url, source.
@@ -2020,7 +2041,7 @@ def resolve_api_key_provider_credentials(provider_id: str) -> Dict[str, Any]:
     }
 
 
-def resolve_external_process_provider_credentials(provider_id: str) -> Dict[str, Any]:
+def resolve_external_process_provider_credentials(provider_id: str) -> dict[str, Any]:
     """Resolve runtime details for local subprocess-backed providers."""
     pconfig = PROVIDER_REGISTRY.get(provider_id)
     if not pconfig or pconfig.auth_type != "external_process":
@@ -2072,7 +2093,7 @@ def resolve_external_process_provider_credentials(provider_id: str) -> Dict[str,
 def _update_config_for_provider(
     provider_id: str,
     inference_base_url: str,
-    default_model: Optional[str] = None,
+    default_model: str | None = None,
 ) -> Path:
     """Update config.yaml and auth.json to reflect the active provider.
 
@@ -2144,12 +2165,12 @@ def _reset_config_provider() -> Path:
 
 
 def _prompt_model_selection(
-    model_ids: List[str],
+    model_ids: list[str],
     current_model: str = "",
-    pricing: Optional[Dict[str, Dict[str, str]]] = None,
-    unavailable_models: Optional[List[str]] = None,
+    pricing: dict[str, dict[str, str]] | None = None,
+    unavailable_models: list[str] | None = None,
     portal_url: str = "",
-) -> Optional[str]:
+) -> str | None:
     """Interactive model selection. Puts current_model first with a marker. Returns chosen model ID or None.
 
     If *pricing* is provided (``{model_id: {prompt, completion}}``), a compact
@@ -2286,13 +2307,13 @@ def _prompt_model_selection(
             return None
         print()
         if idx < len(ordered):
-            return ordered[idx]
+            return cast("str | None", ordered[idx])
         elif idx == len(ordered):
             custom = input("Enter model name: ").strip()
             return custom if custom else None
         return None
     except (ImportError, NotImplementedError, OSError, subprocess.SubprocessError):
-        pass
+        logger.debug("Ignoring error in _prompt_model_selection()", exc_info=True)
 
     # Fallback: numbered list
     print(menu_title)
@@ -2384,7 +2405,7 @@ def _login_openai_codex(args, pconfig: ProviderConfig) -> None:
         else:
             print("Existing Codex credentials are expired. Starting fresh login...")
     except AuthError:
-        pass
+        logger.debug("Ignoring error in _login_openai_codex()", exc_info=True)
 
     # Check for existing Codex CLI tokens we can import
     cli_tokens = _import_codex_cli_tokens()
@@ -2437,7 +2458,7 @@ def _login_openai_codex(args, pconfig: ProviderConfig) -> None:
     print(f"  Config updated: {config_path} (model.provider=openai-codex)")
 
 
-def _codex_device_code_login() -> Dict[str, Any]:
+def _codex_device_code_login() -> dict[str, Any]:
     """Run the OpenAI device code login flow and return credentials dict."""
     import time as _time
 
@@ -2461,7 +2482,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
             f"Failed to request device code: {exc}",
             provider="openai-codex",
             code="device_code_request_failed",
-        )
+        ) from exc
 
     if resp.status_code != 200:
         raise AuthError(
@@ -2519,9 +2540,9 @@ def _codex_device_code_login() -> Dict[str, Any]:
                         provider="openai-codex",
                         code="device_code_poll_error",
                     )
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as err:
         print("\nLogin cancelled.")
-        raise SystemExit(130)
+        raise SystemExit(130) from err
 
     if code_resp is None:
         raise AuthError(
@@ -2560,7 +2581,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
             f"Token exchange failed: {exc}",
             provider="openai-codex",
             code="token_exchange_failed",
-        )
+        ) from exc
 
     if token_resp.status_code != 200:
         raise AuthError(
@@ -2594,7 +2615,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
             "id_token": id_token,
         },
         "base_url": base_url,
-        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "last_refresh": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "auth_mode": "chatgpt",
         "source": "device-code",
     }
@@ -2621,7 +2642,7 @@ def _codex_user_code_hint(user_code: str) -> str:
     return "Character hint: " + ", ".join(deduped)
 
 
-def _codex_cli_device_code_login() -> Optional[Dict[str, Any]]:
+def _codex_cli_device_code_login() -> dict[str, Any] | None:
     """Use official Codex CLI device auth when installed, then import tokens."""
     if os.getenv("SPARK_CODEX_DEVICE_AUTH_IMPL", "").strip().lower() == "inline":
         return None
@@ -2662,7 +2683,7 @@ def _codex_cli_device_code_login() -> Optional[Dict[str, Any]]:
     return {
         "tokens": tokens,
         "base_url": base_url,
-        "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "last_refresh": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "auth_mode": "chatgpt",
         "source": "codex-cli-device-auth",
     }

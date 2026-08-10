@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
 
-
-def detect_provider() -> Optional[str]:
+def detect_provider() -> str | None:
     """Resolve the active Spark runtime provider, or None if unavailable."""
     try:
         from spark_cli.runtime_provider import resolve_runtime_provider

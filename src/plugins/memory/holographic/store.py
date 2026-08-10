@@ -3,10 +3,13 @@ SQLite-backed fact store with entity resolution and trust scoring.
 Single-user Spark memory store plugin.
 """
 
+import logging
 import re
 import sqlite3
 import threading
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 try:
     from . import holographic as hrr
@@ -147,7 +150,7 @@ class MemoryStore:
         try:
             self._conn.close()
         except Exception:
-            pass
+            logger.debug("Ignoring error in _recover_corrupt_db()", exc_info=True)
         ts = time.strftime("%Y%m%d-%H%M%S")
         quarantined = False
         # Move the main DB plus any WAL/SHM sidecars out of the way.
@@ -162,7 +165,7 @@ class MemoryStore:
                     try:
                         sidecar.unlink()
                     except OSError:
-                        pass
+                        logger.debug("Ignoring error in _recover_corrupt_db()", exc_info=True)
         logging.getLogger("plugins.memory.holographic").warning(
             "memory_store.db was corrupted (%s); quarantined to "
             "%s.corrupt-%s and rebuilt an empty store.",

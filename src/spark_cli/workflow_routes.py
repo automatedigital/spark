@@ -113,7 +113,7 @@ def _run_and_record(
             max_iterations=_clamp_iterations(max_iterations),
         )
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     nodes_payload = _node_results_payload(result)
     try:
@@ -205,7 +205,7 @@ def run_single_node(body: RunNodeBody) -> dict[str, Any]:
     try:
         result = execute_workflow(doc, execution_id=execution_id, start_node=body.nodeId, seed=seed)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "executionId": execution_id,
         "status": result.status,

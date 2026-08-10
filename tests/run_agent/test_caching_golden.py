@@ -137,6 +137,13 @@ _CODEX_GOLDEN = {
     "include": ["reasoning.encrypted_content"],
 }
 
+_CHAT_COMPLETIONS_GOLDEN = {
+    "model": "deepseek-chat",
+    "messages": _CONVERSATION,
+    "timeout": 1800.0,
+    "tools": _tool_defs("web_search", "terminal"),
+}
+
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -166,6 +173,19 @@ def test_codex_responses_serialization_is_byte_exact():
     )
     kwargs = agent._build_api_kwargs(_CONVERSATION)
     assert _canonical(kwargs) == _canonical(_CODEX_GOLDEN)
+
+
+def test_chat_completions_serialization_is_byte_exact():
+    """The standard provider transcript and tool schemas must remain byte exact."""
+    agent = _make_agent(
+        provider="deepseek",
+        api_mode="chat_completions",
+        base_url="https://api.deepseek.com",
+        model="deepseek-chat",
+    )
+    kwargs = agent._build_api_kwargs(_CONVERSATION)
+    assert agent.api_mode == "chat_completions"
+    assert _canonical(kwargs) == _canonical(_CHAT_COMPLETIONS_GOLDEN)
 
 
 def test_cache_breakpoint_count_never_exceeds_anthropic_max():
