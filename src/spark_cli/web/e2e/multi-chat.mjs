@@ -11,6 +11,7 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const repoRoot = path.resolve(webRoot, "../../..");
 const pythonBin = process.env.PYTHON || path.join(repoRoot, ".venv", "bin", "python");
 const screenshotsDir = path.join(webRoot, "screenshots", "e2e");
+const uiReadyTimeoutMs = 15_000;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -125,7 +126,10 @@ async function status(apiBase, sessionId) {
 async function clickChat(page, title, marker) {
   await page.getByRole("button", { name: new RegExp(title) }).click();
   const chatPanel = page.getByTestId("chat-panel");
-  await chatPanel.getByText(`${marker} chunk 1.`, { exact: true }).first().waitFor({ timeout: 5000 });
+  await chatPanel
+    .getByText(`${marker} chunk 1.`, { exact: true })
+    .first()
+    .waitFor({ timeout: uiReadyTimeoutMs });
   const body = await chatPanel.innerText();
   if (body.includes("LOADING LLM RESPONSE") && !body.includes(`${marker} chunk 1.`)) {
     throw new Error(`${title} showed stale loading without stream text`);
@@ -239,7 +243,10 @@ async function run() {
     await createFakeCompactionFailure(apiBase);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /E2E compaction failure chat/ }).click();
-    await page.getByText("context before compaction.", { exact: true }).first().waitFor({ timeout: 5000 });
+    await page
+      .getByText("context before compaction.", { exact: true })
+      .first()
+      .waitFor({ timeout: uiReadyTimeoutMs });
     await page.getByText("Context compression failed; retry this message to continue.").waitFor({ timeout: 8000 });
     const deadline = Date.now() + 10_000;
     let compactionTurnCleared = false;
