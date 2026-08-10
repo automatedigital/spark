@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import time
 
-import pytest
-
 
 def _write_auth_store(tmp_path, payload: dict) -> None:
     spark_home = tmp_path / "spark"
@@ -387,6 +385,12 @@ def test_try_refresh_current_updates_only_current_entry(tmp_path, monkeypatch):
     assert primary["refresh_token"] == "refresh-new"
     assert secondary["access_token"] == "access-other"
     assert secondary["refresh_token"] == "refresh-other"
+
+    # Pool refreshes also synchronize Codex CLI credentials. The autouse
+    # fixture must keep that write inside the test sandbox, never ~/.codex/.
+    codex_auth = json.loads((tmp_path / "codex_test" / "auth.json").read_text())
+    assert codex_auth["tokens"]["access_token"] == "access-new"
+    assert codex_auth["tokens"]["refresh_token"] == "refresh-new"
 
 
 def test_load_pool_seeds_env_api_key(tmp_path, monkeypatch):

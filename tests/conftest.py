@@ -14,14 +14,20 @@ if str(PROJECT_ROOT) not in sys.path:
 
 @pytest.fixture(autouse=True)
 def _isolate_spark_home(tmp_path, monkeypatch):
-    """Redirect SPARK_HOME to a temp dir so tests never write to ~/.spark/."""
+    """Redirect app auth/state homes so tests never write to real user data."""
     fake_home = tmp_path / "spark_test"
+    fake_codex_home = tmp_path / "codex_test"
     fake_home.mkdir()
+    fake_codex_home.mkdir()
     (fake_home / "sessions").mkdir()
     (fake_home / "cron").mkdir()
     (fake_home / "memories").mkdir()
     (fake_home / "skills").mkdir()
     monkeypatch.setenv("SPARK_HOME", str(fake_home))
+    # Codex OAuth refresh writes rotated tokens back to CODEX_HOME. Isolate it
+    # globally: a credential-pool test that only redirected SPARK_HOME once
+    # replaced the developer's real ~/.codex/auth.json with fixture tokens.
+    monkeypatch.setenv("CODEX_HOME", str(fake_codex_home))
     # Reset plugin singleton so tests don't leak plugins from ~/.spark/plugins/
     try:
         import spark_cli.plugins as _plugins_mod
