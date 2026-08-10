@@ -28,11 +28,6 @@ def _isolate_spark_home(tmp_path, monkeypatch):
     # globally: a credential-pool test that only redirected SPARK_HOME once
     # replaced the developer's real ~/.codex/auth.json with fixture tokens.
     monkeypatch.setenv("CODEX_HOME", str(fake_codex_home))
-    # A few unit tests construct an SDK client before replacing its transport.
-    # Give every test its own deterministic non-secret baseline instead of
-    # relying on the developer shell or CI job environment. Tests that verify
-    # missing-credential behavior explicitly delete this value.
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-a-real-key")
     # Reset plugin singleton so tests don't leak plugins from ~/.spark/plugins/
     try:
         import spark_cli.plugins as _plugins_mod
