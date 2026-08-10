@@ -48,5 +48,8 @@ jobs:
       - name: Install with frozen lockfile
         run: npm ci
 
+      - name: Reject high-severity dependency advisories
+        run: npm audit --audit-level=high
+
       - name: Detect package-lock.json drift
         run: git diff --exit-code package-lock.json
