@@ -36,16 +36,28 @@ if [ -n "$IDENTITY" ]; then
   [ -f "$ENTITLEMENTS" ] || { echo "error: entitlements not found: $ENTITLEMENTS" >&2; exit 1; }
 
   SIGN_ARGS=(--force --timestamp --options runtime --sign "$IDENTITY")
+  SIGN_ARGS_NO_TIMESTAMP=(--force --timestamp=none --options runtime --sign "$IDENTITY")
+
+  sign_path() {
+    local path="$1"
+    if ! codesign "${SIGN_ARGS[@]}" "$path"; then
+      echo "  (timestamp service unavailable; signing without timestamp)"
+      codesign "${SIGN_ARGS_NO_TIMESTAMP[@]}" "$path"
+    fi
+  }
 
   # Sign every nested Mach-O binary first (inside-out), then the bundle.
   find "$APP" -type f | while read -r f; do
     if file -b "$f" 2>/dev/null | grep -q 'Mach-O'; then
-      codesign "${SIGN_ARGS[@]}" "$f"
+      sign_path "$f"
     fi
   done
 
   echo "==> Deep-signing $APP with entitlements"
-  codesign "${SIGN_ARGS[@]}" --entitlements "$ENTITLEMENTS" "$APP"
+  if ! codesign "${SIGN_ARGS[@]}" --entitlements "$ENTITLEMENTS" "$APP"; then
+    echo "  (timestamp service unavailable; signing without timestamp)"
+    codesign "${SIGN_ARGS_NO_TIMESTAMP[@]}" --entitlements "$ENTITLEMENTS" "$APP"
+  fi
   codesign --verify --deep --strict --verbose=2 "$APP"
 else
   # ---- Ad-hoc signing (original behaviour — no certs required) ------------
