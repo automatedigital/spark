@@ -221,7 +221,6 @@ async function run() {
     await clickChat(page, "E2E charlie chat", "charlie");
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: /E2E alpha chat/ }).click();
     const recovered = await clickChat(page, "E2E alpha chat", "alpha");
     const alphaOccurrences = (recovered.match(/alpha chunk 1\./g) || []).length;
     if (alphaOccurrences < 1) {
