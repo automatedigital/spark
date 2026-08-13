@@ -185,6 +185,11 @@ async function run() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 980 } });
     await page.goto(webBase);
     await page.getByText("Spark").first().waitFor({ timeout: 15_000 });
+    const sidebar = page.getByRole("complementary");
+    await sidebar.getByRole("button", { name: "New project", exact: true }).click();
+    const sourceDialog = page.getByRole("dialog", { name: "New project", exact: true });
+    await sourceDialog.waitFor({ timeout: 5000 });
+    await sourceDialog.getByRole("button", { name: "Close", exact: true }).click();
 
     await Promise.all([
       createFakeStream(apiBase, {
@@ -209,7 +214,6 @@ async function run() {
     await page.getByText("Spark").first().waitFor({ timeout: 15_000 });
     await page.getByRole("button", { name: /E2E alpha chat/ }).waitFor({ timeout: 10_000 });
     await page.getByRole("button", { name: /E2E charlie chat/ }).waitFor({ timeout: 10_000 });
-    const sidebar = page.getByRole("complementary");
     await sidebar.getByRole("button", { name: "Project: all projects", exact: true }).click();
     await sidebar.getByRole("menuitemradio", { name: "particles", exact: true }).click();
     await page.getByRole("button", { name: /E2E bravo project chat/ }).waitFor({ timeout: 10_000 });
