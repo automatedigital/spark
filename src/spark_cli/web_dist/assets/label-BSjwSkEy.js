@@ -1,0 +1,1 @@
+import{j as r}from"./vendor-react-Dc-lrgX9.js";import{i as s}from"./index-BznkBMDe.js";function i({className:e,...a}){return r.jsx("label",{className:s("font-display text-xs tracking-[0.1em] uppercase leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",e),...a})}export{i as L};

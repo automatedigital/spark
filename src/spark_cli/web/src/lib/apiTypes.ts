@@ -952,6 +952,9 @@ export interface ProjectTemplatesResponse {
 
 export interface ProjectCreateRequest {
   name: string;
+  source?: "new_folder" | "local_folder" | "git_url" | "github";
+  path?: string;
+  clone_url?: string;
   template?: string;
   project_type?: ProjectType;
   starter_stack?: string;

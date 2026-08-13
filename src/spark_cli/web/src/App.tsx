@@ -241,7 +241,7 @@ function AppShell() {
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
 
   // ── Shared session store (global sidebar + ChatPage) ──
-  const { selectSession, newProjectThread } = useSessionStore();
+  const { selectSession } = useSessionStore();
 
   useEventBus((env) => {
     if (!isTauri()) return;
@@ -323,11 +323,6 @@ function AppShell() {
   const openSidebarSession = (id: string) => {
     navigateTo("chat");
     selectSession(id);
-  };
-
-  const openProjectCompose = (slug: string) => {
-    navigateTo("chat");
-    newProjectThread(slug);
   };
 
   // ── Desktop shell: tray "new chat" + spark:// deep links (§3.2) ──
@@ -642,7 +637,7 @@ function AppShell() {
           {sidebarOpen ? (
             <InboxSidebarSessions
               onOpenSession={openSidebarSession}
-              onNewProjectThread={openProjectCompose}
+              onNewThread={handleNewSession}
             />
           ) : (
             <div className="flex-1" />

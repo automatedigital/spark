@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUp, Brain, Check, ChevronDown, FolderOpen, Loader2, Settings, Square } from "lucide-react";
+import { ArrowUp, Box, Brain, Check, ChevronDown, FolderOpen, Loader2, Settings, Square } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ModelStatusResponse, ModelSuggestionsResponse, WorkspaceProject } from "@/lib/api";
 import { shortModelName } from "@/lib/modelName";
@@ -449,6 +449,7 @@ function ModelQuickSettings({
   const [savingSmartModel, setSavingSmartModel] = useState(false);
   const [savingFastModel, setSavingFastModel] = useState(false);
   const [savingReasoning, setSavingReasoning] = useState(false);
+  const [modelSearch, setModelSearch] = useState("");
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -506,25 +507,64 @@ function ModelQuickSettings({
     }
   };
 
+  const modelChoices = Array.from(new Set([
+    "auto",
+    status.smart_model,
+    ...(suggestions?.smart ?? []),
+    ...(suggestions?.fast ?? []),
+  ].filter(Boolean)));
+  const filteredModelChoices = modelChoices.filter((model) => model.toLowerCase().includes(modelSearch.trim().toLowerCase()));
+
   return (
     <div
       ref={ref}
       role="dialog"
       aria-label="Model and reasoning settings"
-      className="absolute bottom-full mb-2 left-0 right-0 mx-3 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden"
+      className="absolute bottom-full mb-3 left-0 right-0 mx-3 z-50 overflow-hidden rounded-2xl border border-border/80 bg-[#111]/[0.98] shadow-2xl shadow-black/40 backdrop-blur-xl"
     >
-      <div className="px-3 pt-3 pb-2 space-y-3">
-
-        {/* Smart model */}
-        <ModelDropdown
-          value={status.smart_model}
-          suggestions={suggestions?.smart ?? []}
-          provider={status.smart_provider}
-          label="Routing"
-          saving={savingSmartModel}
-          autoFocus
-          onChange={(v) => void saveSmartModel(v)}
-        />
+      <div className="flex min-h-[248px]">
+        <div className="flex w-11 shrink-0 flex-col items-center border-r border-border/70 bg-foreground/[0.025] py-2">
+          <button type="button" aria-label="Favorites" className="grid h-8 w-8 place-items-center rounded-md text-lg text-foreground transition hover:bg-foreground/[0.08]">☆</button>
+          <div className="mt-1 h-px w-6 bg-border/70" />
+        </div>
+        <div className="min-w-0 flex-1 px-3 pb-3 pt-3">
+          <div className="flex items-center gap-2 border-b border-border/70 pb-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/45">Models</span>
+            <input
+              value={modelSearch}
+              onChange={(event) => setModelSearch(event.target.value)}
+              placeholder="Search models…"
+              className="ml-auto w-32 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/35"
+              aria-label="Search models"
+            />
+          </div>
+          <div className="max-h-[184px] overflow-y-auto py-1.5">
+            {filteredModelChoices.map((model, index) => {
+              const current = model === status.smart_model;
+              const label = model.toLowerCase() === "auto" ? "Auto" : shortModelName(model);
+              const provider = model.includes("/") ? model.split("/", 1)[0] : status.smart_provider;
+              return (
+                <button
+                  key={`${model}-${index}`}
+                  type="button"
+                  disabled={savingSmartModel}
+                  onClick={() => void saveSmartModel(model)}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition ${current ? "bg-foreground/[0.08] text-foreground" : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"}`}
+                >
+                  <Box className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-medium">{label}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground/40">{provider || "Spark"}</span>
+                  </span>
+                  {savingSmartModel && current ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground/60" /> : current ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
+                </button>
+              );
+            })}
+            {!filteredModelChoices.length && <p className="px-2 py-3 text-xs text-muted-foreground/45">No models match your search.</p>}
+          </div>
+        </div>
+      </div>
+      <div className="space-y-3 border-t border-border/70 px-3 py-3">
 
         {status.selection === "auto" && (
           <div className="rounded-lg border border-primary/20 bg-primary/[0.05] px-3 py-2.5">
@@ -888,7 +928,7 @@ export function PromptBar({
       )}
 
       {/* Unified card — no focus ring */}
-      <div className={`relative rounded-lg border border-input bg-card/58 shadow-lg shadow-black/10 backdrop-blur-xl ${inputBlocked ? "opacity-60" : ""}`}>
+      <div className={`relative rounded-2xl border border-border/80 bg-[#111]/80 shadow-xl shadow-black/15 backdrop-blur-xl ${inputBlocked ? "opacity-60" : ""}`}>
         {/* Textarea */}
         <div className="relative min-h-[52px]">
           <div
@@ -956,6 +996,7 @@ export function PromptBar({
                   : "text-muted-foreground/60 hover:bg-foreground/7 hover:text-foreground"
               }`}
             >
+              <Box className="h-3.5 w-3.5 shrink-0 text-muted-foreground/65" />
               <span>{modelLabel}</span>
               {effortLabel && modelStatus?.reasoning_supported && (
                 <>

@@ -404,7 +404,7 @@ const DESIGN_INTEGRATION_OPTIONS = [
   { id: "figma", label: "Figma", icon: PenTool },
 ];
 
-function ProjectWizard({
+export function ProjectWizard({
   open,
   onClose,
   onCreate,

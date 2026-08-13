@@ -292,6 +292,9 @@ def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = Fa
 
 class ProjectCreate(BaseModel):
     name: str
+    source: str = "new_folder"
+    path: str | None = None
+    clone_url: str | None = None
     template: str | None = None
     project_type: str | None = None
     starter_stack: str | None = None
@@ -702,31 +705,99 @@ def list_projects():
 
 @router.post("/projects")
 def create_project(body: ProjectCreate):
-    name = body.name.strip()
+    source = body.source.strip().lower() or "new_folder"
+    if source not in {"new_folder", "local_folder", "git_url", "github"}:
+        raise HTTPException(status_code=400, detail=f"Unknown project source: {body.source!r}")
+
+    source_path: Path | None = None
+    if source == "local_folder":
+        if not body.path or not body.path.strip():
+            raise HTTPException(status_code=400, detail="A local folder path is required")
+        source_path = Path(body.path).expanduser().resolve()
+        if not source_path.is_dir():
+            raise HTTPException(status_code=400, detail=f"Local folder not found: {body.path!r}")
+        name = body.name.strip() or source_path.name
+    else:
+        name = body.name.strip()
+        if not name and source in {"git_url", "github"} and body.clone_url:
+            clone_name = body.clone_url.strip().rstrip("/").rsplit("/", 1)[-1]
+            clone_name = clone_name.rsplit(":", 1)[-1].removesuffix(".git")
+            name = clone_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required")
     slug = _slug_from_project_name(name)
-    template_id = body.starter_stack or body.template or DEFAULT_TEMPLATE
-    if not is_valid_template(template_id):
-        raise HTTPException(status_code=400, detail=f"Unknown or unavailable template: {template_id!r}")
-    template = get_template(template_id)
-    if template is None:
-        raise HTTPException(status_code=400, detail=f"Unknown template: {template_id!r}")
     root = _workspace_root()
     project_path = root / slug
     if project_path.exists():
         raise HTTPException(status_code=409, detail=f"Project already exists: {slug!r}")
-    project_path.mkdir(parents=True)
-    written = materialize_template(template_id, project_path)
-    options_result = _apply_project_options(project_path, template_id, template, body)
+
+    template_id = body.starter_stack or body.template or DEFAULT_TEMPLATE
+    template = get_template(template_id)
+    written: list[str] = []
+    options_result: dict[str, Any] = {"applied_options": [], "skipped_options": []}
+
+    if source == "local_folder":
+        assert source_path is not None
+        if source_path == root.resolve():
+            raise HTTPException(status_code=400, detail="The Spark workspace root cannot be added as a project")
+        try:
+            # Keep an existing checkout in place. The workspace entry is a
+            # symlink so Spark can operate on the user's real folder without
+            # copying or deleting its contents when the project is removed.
+            project_path.symlink_to(source_path, target_is_directory=True)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"Could not link local folder: {exc}") from exc
+    elif source in {"git_url", "github"}:
+        clone_url = (body.clone_url or "").strip()
+        if not clone_url:
+            raise HTTPException(status_code=400, detail="A Git clone URL is required")
+        if not (
+            clone_url.startswith(("https://", "http://", "ssh://", "git@"))
+            and "\n" not in clone_url
+            and "\r" not in clone_url
+        ):
+            raise HTTPException(status_code=400, detail="Git clone URL must be an HTTP(S), SSH, or git@ URL")
+        try:
+            result = subprocess.run(
+                ["git", "clone", "--depth", "1", clone_url, str(project_path)],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            if project_path.exists():
+                shutil.rmtree(project_path, ignore_errors=True)
+            raise HTTPException(status_code=502, detail=f"Could not clone repository: {exc}") from exc
+        if result.returncode != 0:
+            if project_path.exists():
+                shutil.rmtree(project_path, ignore_errors=True)
+            detail = (result.stderr or result.stdout or "git clone failed").strip()
+            raise HTTPException(status_code=502, detail=detail[-1000:])
+    else:
+        if not is_valid_template(template_id):
+            raise HTTPException(status_code=400, detail=f"Unknown or unavailable template: {template_id!r}")
+        if template is None:
+            raise HTTPException(status_code=400, detail=f"Unknown template: {template_id!r}")
+        project_path.mkdir(parents=True)
+        written = materialize_template(template_id, project_path)
+        options_result = _apply_project_options(project_path, template_id, template, body)
+
+    stat = project_path.stat()
     return {
         "ok": True,
         "slug": slug,
         "name": slug,
         "path": str(project_path),
         "template": template_id,
+        "source": source,
+        "source_path": str(source_path) if source_path else None,
         "starter_stack": template_id,
-        "project_type": body.project_type or template.project_type,
-        "package_manager": body.package_manager or template.default_package_manager or None,
+        "project_type": body.project_type or (template.project_type if template else None),
+        "package_manager": body.package_manager or (template.default_package_manager if template else None),
         "written": written,
+        "mtime": stat.st_mtime,
         **options_result,
     }
 
@@ -954,7 +1025,10 @@ def delete_project(slug: str):
     if slug in _preview_sessions:
         _stop_preview_session(slug)
     try:
-        shutil.rmtree(project_dir)
+        if project_dir.is_symlink():
+            project_dir.unlink()
+        else:
+            shutil.rmtree(project_dir)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"ok": True, "deleted": slug}

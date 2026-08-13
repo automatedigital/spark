@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from spark_cli import project_templates as pt
-from spark_cli.workspace_routes import ProjectCreate, create_project, list_project_templates
+from spark_cli.workspace_routes import ProjectCreate, create_project, delete_project, list_project_templates
 
 
 def test_list_templates_includes_all_ids():
@@ -269,3 +269,50 @@ def test_create_project_can_initialize_git_with_commit():
 
     proj = _workspace_root() / result["slug"]
     assert (proj / ".git").is_dir()
+
+
+def test_create_project_links_existing_folder_without_owning_contents(tmp_path):
+    existing = tmp_path / "existing-checkout"
+    existing.mkdir()
+    (existing / "README.md").write_text("keep me")
+
+    result = create_project(
+        ProjectCreate(name="", source="local_folder", path=str(existing))
+    )
+
+    from spark_cli.workspace_routes import _workspace_root
+
+    project = _workspace_root() / result["slug"]
+    assert result["source"] == "local_folder"
+    assert project.is_symlink()
+    assert project.resolve() == existing.resolve()
+    delete_project(result["slug"])
+    assert existing.is_dir()
+    assert (existing / "README.md").read_text() == "keep me"
+
+
+def test_create_project_clones_remote_repository(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        destination = command[-1]
+        from pathlib import Path
+
+        Path(destination).mkdir(parents=True)
+        (Path(destination) / "README.md").write_text("cloned")
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("spark_cli.workspace_routes.subprocess.run", fake_run)
+    result = create_project(
+        ProjectCreate(
+            name="",
+            source="github",
+            clone_url="https://github.com/example/demo.git",
+        )
+    )
+
+    assert result["slug"] == "demo"
+    assert result["source"] == "github"
+    assert calls[0][0][:4] == ["git", "clone", "--depth", "1"]
+    assert calls[0][0][4] == "https://github.com/example/demo.git"
