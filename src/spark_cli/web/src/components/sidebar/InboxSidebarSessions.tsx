@@ -6,6 +6,7 @@ import {
   CircleDashed,
   Folder,
   FolderOpen,
+  FolderPlus,
   MessageSquare,
   Pencil,
   Search,
@@ -222,6 +223,7 @@ function ProjectScopeMenu({
   dropTarget,
   onChange,
   onNewProject,
+  onNewChat,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -232,6 +234,7 @@ function ProjectScopeMenu({
   dropTarget: string | null;
   onChange: (slug: string | null) => void;
   onNewProject: () => void;
+  onNewChat?: () => void;
   onDragOver: (target: string, event: DragEvent<HTMLButtonElement>) => void;
   onDragLeave: (target: string) => void;
   onDrop: (slug: string | null, event: DragEvent<HTMLButtonElement>) => void;
@@ -332,9 +335,14 @@ function ProjectScopeMenu({
               <X className="h-3.5 w-3.5" /> No project
             </button>
           )}
-          <button type="button" onClick={onNewProject} className="mt-1 flex h-8 w-full items-center gap-2 border-t border-border/60 px-2 text-left text-[11px] font-medium text-muted-foreground transition hover:text-foreground">
-            <Pencil className="h-3.5 w-3.5" /> New project
+          <button type="button" onClick={() => { onNewProject(); setOpen(false); }} className="mt-1 flex h-8 w-full items-center gap-2 border-t border-border/60 px-2 text-left text-[11px] font-medium text-muted-foreground transition hover:text-foreground">
+            <FolderPlus className="h-3.5 w-3.5" /> New project
           </button>
+          {onNewChat && (
+            <button type="button" onClick={() => { onNewChat(); setOpen(false); }} className="flex h-8 w-full items-center gap-2 px-2 text-left text-[11px] font-medium text-muted-foreground transition hover:text-foreground">
+              <Pencil className="h-3.5 w-3.5" /> New chat
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -503,15 +511,14 @@ export function InboxSidebarSessions({
           onNewProject={() => {
             setSourceDialogOpen(true);
           }}
+          onNewChat={onNewThread}
           onDragOver={allowProjectDrop}
           onDragLeave={(target) => setDropTarget((current) => current === target ? null : current)}
           onDrop={(slug, event) => void dropSession(slug, event)}
         />
-        {onNewThread && (
-          <button type="button" onClick={onNewThread} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground/65 transition hover:bg-foreground/[0.06] hover:text-foreground" aria-label="New chat" title="New chat">
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-        )}
+        <button type="button" onClick={() => setSourceDialogOpen(true)} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground/65 transition hover:bg-foreground/[0.06] hover:text-foreground" aria-label="New project" title="New project">
+          <FolderPlus className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {dragError && (
