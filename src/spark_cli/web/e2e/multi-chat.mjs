@@ -209,11 +209,12 @@ async function run() {
     await page.getByText("Spark").first().waitFor({ timeout: 15_000 });
     await page.getByRole("button", { name: /E2E alpha chat/ }).waitFor({ timeout: 10_000 });
     await page.getByRole("button", { name: /E2E charlie chat/ }).waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Project: all projects", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "particles", exact: true }).click();
+    const sidebar = page.getByRole("complementary");
+    await sidebar.getByRole("button", { name: "Project: all projects", exact: true }).click();
+    await sidebar.getByRole("menuitemradio", { name: "particles", exact: true }).click();
     await page.getByRole("button", { name: /E2E bravo project chat/ }).waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Project: particles", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "All projects", exact: true }).click();
+    await sidebar.getByRole("button", { name: "Project: particles", exact: true }).click();
+    await sidebar.getByRole("menuitemradio", { name: "All projects", exact: true }).click();
 
     await clickChat(page, "E2E alpha chat", "alpha");
     await clickChat(page, "E2E bravo project chat", "bravo");
