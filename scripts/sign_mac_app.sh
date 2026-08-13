@@ -36,14 +36,22 @@ if [ -n "$IDENTITY" ]; then
   [ -f "$ENTITLEMENTS" ] || { echo "error: entitlements not found: $ENTITLEMENTS" >&2; exit 1; }
 
   SIGN_ARGS=(--force --timestamp --options runtime --sign "$IDENTITY")
-  SIGN_ARGS_NO_TIMESTAMP=(--force --timestamp=none --options runtime --sign "$IDENTITY")
+  TIMESTAMP_RETRIES="${SPARK_CODESIGN_TIMESTAMP_RETRIES:-5}"
 
   sign_path() {
     local path="$1"
-    if ! codesign "${SIGN_ARGS[@]}" "$path"; then
-      echo "  (timestamp service unavailable; signing without timestamp)"
-      codesign "${SIGN_ARGS_NO_TIMESTAMP[@]}" "$path"
-    fi
+    local attempt
+    for attempt in $(seq 1 "$TIMESTAMP_RETRIES"); do
+      if codesign "${SIGN_ARGS[@]}" "$path"; then
+        return 0
+      fi
+      if [ "$attempt" -lt "$TIMESTAMP_RETRIES" ]; then
+        echo "  (timestamp signing failed for $path; retrying $attempt/$TIMESTAMP_RETRIES)"
+        sleep 2
+      fi
+    done
+    echo "error: unable to obtain a secure timestamp while signing $path" >&2
+    return 1
   }
 
   # Sign every nested Mach-O binary first (inside-out), then the bundle.
@@ -54,9 +62,20 @@ if [ -n "$IDENTITY" ]; then
   done
 
   echo "==> Deep-signing $APP with entitlements"
-  if ! codesign "${SIGN_ARGS[@]}" --entitlements "$ENTITLEMENTS" "$APP"; then
-    echo "  (timestamp service unavailable; signing without timestamp)"
-    codesign "${SIGN_ARGS_NO_TIMESTAMP[@]}" --entitlements "$ENTITLEMENTS" "$APP"
+  signed_app=false
+  for attempt in $(seq 1 "$TIMESTAMP_RETRIES"); do
+    if codesign "${SIGN_ARGS[@]}" --entitlements "$ENTITLEMENTS" "$APP"; then
+      signed_app=true
+      break
+    fi
+    if [ "$attempt" -lt "$TIMESTAMP_RETRIES" ]; then
+      echo "  (timestamp signing failed for $APP; retrying $attempt/$TIMESTAMP_RETRIES)"
+      sleep 2
+    fi
+  done
+  if [ "$signed_app" != true ]; then
+    echo "error: unable to obtain a secure timestamp while signing $APP" >&2
+    exit 1
   fi
   codesign --verify --deep --strict --verbose=2 "$APP"
 else

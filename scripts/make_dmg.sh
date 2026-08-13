@@ -72,12 +72,21 @@ hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$OUT" >/dev/nu
 
 if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   echo "==> Signing DMG with Developer ID identity: $APPLE_SIGNING_IDENTITY"
-  if ! codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$OUT"; then
-    # A DMG can still be distributed and notarized later when Apple's
-    # timestamp service is temporarily unavailable. Never leave the build
-    # half-finished or silently publish an unsigned image.
-    echo "  (timestamp service unavailable; signing DMG without timestamp)"
-    codesign --force --timestamp=none --sign "$APPLE_SIGNING_IDENTITY" "$OUT"
+  TIMESTAMP_RETRIES="${SPARK_CODESIGN_TIMESTAMP_RETRIES:-5}"
+  signed_dmg=false
+  for attempt in $(seq 1 "$TIMESTAMP_RETRIES"); do
+    if codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$OUT"; then
+      signed_dmg=true
+      break
+    fi
+    if [ "$attempt" -lt "$TIMESTAMP_RETRIES" ]; then
+      echo "  (timestamp signing failed for $OUT; retrying $attempt/$TIMESTAMP_RETRIES)"
+      sleep 2
+    fi
+  done
+  if [ "$signed_dmg" != true ]; then
+    echo "error: unable to obtain a secure timestamp while signing $OUT" >&2
+    exit 1
   fi
 fi
 
