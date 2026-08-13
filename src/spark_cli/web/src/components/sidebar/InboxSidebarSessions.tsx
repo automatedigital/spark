@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
+  ChevronDown,
   Check,
   CircleCheck,
   CircleDashed,
   Folder,
+  FolderOpen,
   MessageSquare,
+  Pencil,
   Search,
   Undo2,
   X,
@@ -14,6 +17,8 @@ import { threadTitle } from "@/components/chat/ThreadRow";
 import { sortSessionsNewestFirst } from "@/components/sidebar/sidebarRows";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
 import { cn, timeAgo } from "@/lib/utils";
+import { ProjectSourceDialog } from "@/components/sidebar/ProjectSourceDialog";
+import { ProjectWizard } from "@/components/sidebar/SidebarSessions";
 
 const SETTLED_KEY = "spark.sidebar-beta.settled";
 const SESSION_DRAG_MIME = "application/x-spark-session-id";
@@ -210,12 +215,138 @@ function SlimRow({
   );
 }
 
+function ProjectScopeMenu({
+  projects,
+  value,
+  draggingSessionId,
+  dropTarget,
+  onChange,
+  onNewProject,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  projects: Array<{ slug: string; name: string }>;
+  value: string | null;
+  draggingSessionId: string | null;
+  dropTarget: string | null;
+  onChange: (slug: string | null) => void;
+  onNewProject: () => void;
+  onDragOver: (target: string, event: DragEvent<HTMLButtonElement>) => void;
+  onDragLeave: (target: string) => void;
+  onDrop: (slug: string | null, event: DragEvent<HTMLButtonElement>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = projects.find((project) => project.slug === value);
+  const filtered = projects.filter((project) => !query.trim() || project.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  const select = (slug: string | null) => {
+    onChange(slug);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={selected ? `Project: ${selected.name}` : "Project: all projects"}
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-8 w-full items-center gap-2 rounded-md px-1.5 text-left text-[12px] text-muted-foreground transition hover:bg-foreground/[0.06] hover:text-foreground"
+      >
+        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+        <span className="min-w-0 flex-1 truncate">{selected?.name ?? "All projects"}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+6px)] z-[160] w-[min(270px,calc(100vw-1rem))] overflow-hidden rounded-lg border border-border bg-popover/95 p-1 shadow-2xl shadow-black/35 backdrop-blur-xl" role="menu">
+          {projects.length > 6 && (
+            <div className="flex items-center gap-2 border-b border-border/60 px-2 py-1.5">
+              <Search className="h-3.5 w-3.5 text-muted-foreground/50" />
+              <input
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search projects…"
+                className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/40"
+                aria-label="Search projects"
+              />
+            </div>
+          )}
+          <div className="max-h-64 overflow-y-auto py-1">
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={value === null}
+              onClick={() => select(null)}
+              onDragOver={(event) => onDragOver("__all__", event)}
+              onDragLeave={() => onDragLeave("__all__")}
+              onDrop={(event) => onDrop(null, event)}
+              className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition", value === null ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground", dropTarget === "__all__" && "ring-1 ring-emerald-400/40")}
+            >
+              <Folder className="h-3.5 w-3.5 shrink-0 opacity-60" />
+              <span className="truncate">All projects</span>
+            </button>
+            {filtered.map((project) => (
+              <button
+                key={project.slug}
+                type="button"
+                role="menuitemradio"
+                aria-checked={value === project.slug}
+                onClick={() => select(project.slug)}
+                onDragOver={(event) => onDragOver(project.slug, event)}
+                onDragLeave={() => onDragLeave(project.slug)}
+                onDrop={(event) => onDrop(project.slug, event)}
+                className={cn("flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition", value === project.slug ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground", dropTarget === project.slug && "ring-1 ring-emerald-400/40")}
+              >
+                <Folder className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                <span className="min-w-0 flex-1 truncate">{project.name}</span>
+              </button>
+            ))}
+            {!filtered.length && <p className="px-2 py-2 text-[11px] text-muted-foreground/45">No projects found</p>}
+          </div>
+          {draggingSessionId && (
+            <button
+              type="button"
+              onDragOver={(event) => onDragOver("__unfiled__", event)}
+              onDragLeave={() => onDragLeave("__unfiled__")}
+              onDrop={(event) => onDrop(null, event)}
+              className={cn("flex h-8 w-full items-center gap-2 rounded-md border-t border-border/60 px-2 text-left text-[11px] text-muted-foreground transition hover:text-foreground", dropTarget === "__unfiled__" && "text-emerald-300")}
+            >
+              <X className="h-3.5 w-3.5" /> No project
+            </button>
+          )}
+          <button type="button" onClick={onNewProject} className="mt-1 flex h-8 w-full items-center gap-2 border-t border-border/60 px-2 text-left text-[11px] font-medium text-muted-foreground transition hover:text-foreground">
+            <Pencil className="h-3.5 w-3.5" /> New project
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function InboxSidebarSessions({
   onOpenSession,
-  onNewProjectThread,
+  onNewThread,
 }: {
   onOpenSession: (id: string) => void;
-  onNewProjectThread: (slug: string) => void;
+  onNewThread?: () => void;
 }) {
   const {
     projects,
@@ -228,6 +359,7 @@ export function InboxSidebarSessions({
     sidebarProjectScope: projectScope,
     setSidebarProjectScope: setProjectScope,
     moveSessionToProject,
+    createProject,
   } = useSessionStore();
   const searchRef = useRef<HTMLInputElement>(null);
   const [settled, setSettled] = useState<SettledRecord>(readSettled);
@@ -235,6 +367,8 @@ export function InboxSidebarSessions({
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [dragError, setDragError] = useState<string | null>(null);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.slug, project.name])), [projects]);
   const visible = useMemo(
@@ -324,6 +458,24 @@ export function InboxSidebarSessions({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <ProjectWizard
+        open={creatingProject}
+        onClose={() => setCreatingProject(false)}
+        onCreate={async (request) => {
+          await createProject(request);
+        }}
+      />
+      <ProjectSourceDialog
+        open={sourceDialogOpen}
+        onClose={() => setSourceDialogOpen(false)}
+        onChooseNewFolder={() => {
+          setSourceDialogOpen(false);
+          setCreatingProject(true);
+        }}
+        onCreate={async (request) => {
+          await createProject(request);
+        }}
+      />
       <div className="shrink-0 px-2 pb-1 pt-2">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/55" />
@@ -341,58 +493,26 @@ export function InboxSidebarSessions({
           )}
         </div>
       </div>
-
-      {projects.length > 0 && (
-        <div className="flex shrink-0 items-center px-2 py-2">
-          <div className="scrollbar-none flex min-w-0 flex-1 gap-1 overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setProjectScope(null)}
-              className={cn("shrink-0 rounded-full border px-2.5 py-1 text-[11px] transition", projectScope === null ? "border-foreground/20 bg-foreground/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}
-            >
-              All
-            </button>
-            {projects.map((project) => (
-              <button
-                key={project.slug}
-                type="button"
-                onClick={() => setProjectScope(project.slug)}
-                onDoubleClick={() => onNewProjectThread(project.slug)}
-                onDragOver={(event) => allowProjectDrop(project.slug, event)}
-                onDragLeave={() => setDropTarget((current) => current === project.slug ? null : current)}
-                onDrop={(event) => void dropSession(project.slug, event)}
-                title={draggingSessionId ? `Move thread to ${project.name}` : "Double-click to start a thread"}
-                className={cn(
-                  "shrink-0 rounded-full border px-2.5 py-1 text-[11px] transition",
-                  projectScope === project.slug
-                    ? "border-foreground/20 bg-foreground/10 text-foreground"
-                    : "border-border text-muted-foreground hover:text-foreground",
-                  dropTarget === project.slug && "border-emerald-400/60 bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-400/25",
-                )}
-              >
-                {project.name}
-              </button>
-            ))}
-            {draggingSessionId && (
-              <button
-                type="button"
-                onDragOver={(event) => allowProjectDrop("__unfiled__", event)}
-                onDragLeave={() => setDropTarget((current) => current === "__unfiled__" ? null : current)}
-                onDrop={(event) => void dropSession(null, event)}
-                title="Remove thread from its project"
-                className={cn(
-                  "shrink-0 rounded-full border border-dashed px-2.5 py-1 text-[11px] text-muted-foreground transition",
-                  dropTarget === "__unfiled__"
-                    ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-400/25"
-                    : "border-border hover:text-foreground",
-                )}
-              >
-                No project
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <div className="flex shrink-0 items-center gap-1 border-b border-border/40 px-2 pb-2 pt-1">
+        <ProjectScopeMenu
+          projects={projects}
+          value={projectScope}
+          draggingSessionId={draggingSessionId}
+          dropTarget={dropTarget}
+          onChange={setProjectScope}
+          onNewProject={() => {
+            setSourceDialogOpen(true);
+          }}
+          onDragOver={allowProjectDrop}
+          onDragLeave={(target) => setDropTarget((current) => current === target ? null : current)}
+          onDrop={(slug, event) => void dropSession(slug, event)}
+        />
+        {onNewThread && (
+          <button type="button" onClick={onNewThread} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground/65 transition hover:bg-foreground/[0.06] hover:text-foreground" aria-label="New chat" title="New chat">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
 
       {dragError && (
         <p role="alert" className="shrink-0 px-3 pb-1 text-[11px] text-destructive">

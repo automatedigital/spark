@@ -472,7 +472,6 @@ concurrently, then merge their findings before creating tickets. See
    ideas from:
    - <https://github.com/nousresearch/hermes-agent>
    - <https://github.com/openclaw/openclaw>
-   - <https://github.com/pingdotgg/t3code>
 
    Use web fetch/search or `gh` (`gh api repos/<owner>/<repo>/commits`,
    releases, recent merged PRs, README/changelog diffs) to find features,

@@ -75,7 +75,6 @@ never be copied into or committed with this repository.
 - `.app`, `.dmg`, Windows installer, signing, notarization, stapling, and release
   publication.
 - Mobile, gateway-platform, or CLI redesign unrelated to shared API contracts.
-- A wholesale copy of T3 Code's architecture, styling, dependencies, or source.
 - Vendored copies of externally installed Matt Pocock or `i-have-adhd` skills.
 - Committing the temporary clones or generated reference screenshots.
 
@@ -95,30 +94,6 @@ refreshed on 2026-08-04 from current primary documentation and the local system.
   documents `gh stack init`, `gh stack add`, and `gh stack submit`.
 - Transfer to Spark: small dependency-correct review layers and explicit stack
   maps. Do not force independent routing, skills, and thread work into one chain.
-
-### T3 Code
-
-- Repository: [pingdotgg/t3code](https://github.com/pingdotgg/t3code)
-- Inspected commit: `e60821f0e0d82a5d671ca3b94719c49d333921c8`
-- Most relevant code:
-  - `apps/web/src/components/chat/MessagesTimeline.tsx` and
-    `MessagesTimeline.logic.ts` derive a turn-oriented timeline, keep the final
-    answer visible, fold settled reasoning/tool work behind a duration summary,
-    group tool calls, preserve copy/revert actions, show changed files, and keep
-    a minimap useful on long threads.
-  - `apps/web/src/components/chat/ChatComposer.tsx` combines prompt drafts,
-    attachments, contextual chips, model/provider selection, reasoning effort,
-    context-window pressure, approvals, stop/redirect behavior, and plan actions
-    in one persistent surface.
-  - `apps/web/src/components/PlanSidebar.tsx`, `ProposedPlanCard.tsx`, and
-    `ChangedFilesTree.tsx` make plans and file outcomes first-class without
-    forcing raw tool output into the final response.
-  - `apps/web/src/session-logic.ts` derives presentation state before rendering;
-    the useful lesson is the typed turn model, not the size of `ChatView.tsx`.
-- Transfer to Spark: turn-level hierarchy, compact settled work, visible final
-  outcomes, contextual composer controls, and pure tested presentation models.
-- Do not transfer: provider-specific assumptions, Effect/TanStack state
-  architecture, Electron behavior, or T3 branding.
 
 ### i-have-adhd
 
@@ -227,10 +202,6 @@ refreshed on 2026-08-04 from current primary documentation and the local system.
 - Skills earn their prompt cost. User-only orchestration skills consume no
   model-index tokens; overlapping skills have one canonical source of truth;
   external skills retain their source rather than being copied into Spark.
-- T3 Code is a visual as well as structural reference: borrow its restrained
-  surfaces, spacing, density, composer treatment, work summaries, and thread
-  rhythm while retaining Spark branding, color system, typography character,
-  terminology, and distinctive controls.
 - Visual acceptance means inspecting the rendered web UI at representative
   widths with real long, streaming, tool-heavy, and subagent conversations.
 
