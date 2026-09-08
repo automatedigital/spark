@@ -1,7 +1,7 @@
 # Spark Web UI and Desktop Improvement Plan
 
 Date: 2026-09-08
-Status: Proposed; implementation has not started.
+Status: In progress — first shared web/desktop slice implemented on `feat/webui-work-recovery`.
 Source baseline: local checkout `3b883aff`.
 
 ## Goal
@@ -12,8 +12,8 @@ previous results, and making the desktop app feel dependable day to day.
 
 This is a fresh roadmap written into the empty working-copy PLAN.md. The previous
 plan remains in Git history. Tasks below are proposals, not verified bugs or
-claims that features have shipped. This pass reviewed source and repository
-workflows; it did not run the app or test installed desktop packages.
+claims that features have shipped. Execution evidence below distinguishes verified
+web behavior from the remaining installed-desktop and wider-roadmap work.
 
 ## Existing foundations
 
@@ -59,17 +59,17 @@ do not wait for the entire roadmap before making useful improvements available.
 - [ ] BASE-01: Run the current web UI and installed desktop app; inventory existing draft persistence, recovery, search, notification and restoration behavior. Narrow each proposal to the missing behavior before implementation.
 - [ ] BASE-02: Capture light/dark screenshots at 1440, 1024 and 768px, plus a narrow 390px browser view. Include a long thread, empty project, pending approval, disconnected chat and concurrent runs.
 - [ ] BASE-03: Record first-token latency, gateway startup, reconnect recovery, sidebar refresh time and scroll continuity with reproducible fixtures. Include 2,000 message rows and 1,000 sessions.
-- [ ] BASE-04: Record branch/commit, browser/OS, backend mode and test commands. Use isolated Spark profiles and synthetic content; preserve unrelated working-copy edits.
+- [x] BASE-04: Record branch/commit, browser/OS, backend mode and test commands. Use isolated Spark profiles and synthetic content; preserve unrelated working-copy edits.
 
 ## 1. Recoverable drafts and attachment staging
 
 Outcome: write in chat A, switch to B, refresh or restart, then return to the
 same unsent text and context selection in A.
 
-- [ ] DRAFT-01: Define a versioned draft keyed by backend identity, profile, project and thread, including a distinct unsent-new-chat key. Audit existing storage before adding another store.
-- [ ] DRAFT-02: Persist text and context references with a debounce; show a quiet saved/recovered indicator and an explicit discard action. Handle unavailable storage without losing the in-memory draft.
-- [ ] DRAFT-03: Show attachment states before send: uploading, ready, missing and failed. Persist valid references, not an assumption that browser File objects survive restart; offer reattachment where necessary.
-- [ ] DRAFT-04: Clear a draft only after confirmed submission. Preserve it on failures and prevent an acknowledgement for chat A from clearing chat B. Detect competing tab edits rather than silently overwriting them.
+- [x] DRAFT-01: Define a versioned draft keyed by backend identity, profile, project and thread, including a distinct unsent-new-chat key. Audit existing storage before adding another store.
+- [x] DRAFT-02: Persist text and context references with a debounce; show a quiet saved/recovered indicator and an explicit discard action. Handle unavailable storage without losing the in-memory draft.
+- [x] DRAFT-03: Show attachment states before send: uploading, ready, missing and failed. Persist valid references, not an assumption that browser File objects survive restart; offer reattachment where necessary.
+- [x] DRAFT-04: Clear a draft only after confirmed submission. Preserve it on failures and prevent an acknowledgement for chat A from clearing chat B. Detect competing tab edits rather than silently overwriting them.
 - [ ] DRAFT-05: Verify refresh, rapid switching, failed send, duplicate acknowledgement, app restart and profile/backend isolation.
 
 Acceptance: no lost text or cross-thread draft leakage in those flows; recovered
@@ -80,8 +80,8 @@ attachments are usable or explicitly identified as needing reattachment.
 Outcome: an interrupted chat says what is known and presents the appropriate
 next action instead of leaving the user to interpret a permanent spinner.
 
-- [ ] REC-01: Audit backend lifecycle states and expose the distinction between running, waiting for approval/input, reconnecting, interrupted, failed and complete. Include last confirmed activity and reconcile on reconnect.
-- [ ] REC-02: Add an inline recovery card with state-appropriate actions: reconnect, inspect failure, or explicitly retry. Do not automatically replay tool actions or resubmit a possibly accepted prompt.
+- [x] REC-01: Audit backend lifecycle states and expose the distinction between running, waiting for approval/input, reconnecting, interrupted, failed and complete. Include last confirmed activity and reconcile on reconnect.
+- [x] REC-02: Add an inline recovery card with state-appropriate actions: reconnect, inspect failure, or explicitly retry. Do not automatically replay tool actions or resubmit a possibly accepted prompt.
 - [ ] REC-03: Preserve pending approvals, exact transcript content and the user's scroll anchor through recovery; reuse the existing stream/session controllers.
 - [ ] REC-04: Test network loss before/after submit acknowledgement, gateway restart, refresh during tools, stop during disconnect and switching between three active chats.
 
@@ -195,7 +195,8 @@ no inaccessible controls or page-level horizontal overflow at tested widths.
 
 - Make source changes on descriptive feature branches from verified current main;
   never use a `codex/` prefix. Keep independently reviewable slices and preserve
-  unrelated edits. No source implementation or release is part of this planning task.
+  unrelated edits. Implementation was authorized on 2026-09-08; release publication
+  is not part of this execution slice.
 - Extend existing components, APIs and state stores before introducing new ones.
   Backend session/task state remains authoritative; local presentation state must
   reconcile. Resolve backend state paths through `get_spark_home()`.
@@ -215,7 +216,8 @@ no inaccessible controls or page-level horizontal overflow at tested widths.
   baseline measurements; investigate measurement noise before changing scope.
 - Web acceptance precedes desktop packaging. Installed macOS and Windows smoke
   tests are separate gates; a successful web build is not desktop acceptance.
-  Do not edit ignored bundles as source or publish a release as part of planning.
+  Do not edit ignored bundles as source. Commit the verified generated web bundle
+  at the final web gate; desktop packaging and publication remain separate.
 
 ## Completion evidence
 
@@ -224,9 +226,105 @@ For each delivered slice, record:
 
 | Slice | Commit / PR | Automated checks | Browser evidence | Installed macOS | Installed Windows | Limitations |
 | --- | --- | --- | --- | --- | --- | --- |
-| Pending | — | — | — | — | — | Planning only |
+| Drafts and recovery | `7c84d260` on `feat/webui-work-recovery` | See execution record | Draft/recovery E2E and screenshots below | Not rebuilt/tested | Not rebuilt/tested | Remaining acceptance matrix stays open |
 
 A release slice is complete when its selected tasks pass, shared chat recovery
 still works, the served assets match the intended build, and each claimed desktop
 platform has been checked in an installed package. Other roadmap items remain
 explicitly unchecked.
+
+
+## Execution record — 2026-09-08
+
+### Delivered first slice
+
+- Used Luna subagents at low reasoning effort for draft/recovery implementation,
+  tests and baseline auditing; parent review corrected gaps and verified results.
+- `draftStore.ts` and `useChatDraft.ts` now own versioned drafts for all three
+  composers. Keys use the effective backend URL and confirmed `spark_home`, plus
+  project/thread identity. In-memory updates are immediate; persisted writes are
+  debounced and flushed on navigation/page hide. Storage failure preserves input.
+- Submission captures a revision. Only confirmed acceptance clears that exact
+  draft; late acknowledgements and failures cannot change the selected chat.
+  Competing tabs get an explicit choice rather than overwriting one another.
+- Uploaded attachments show uploading/ready/failed states. An upload interrupted
+  by browser restart recovers as missing and blocks sending until removed or
+  reattached. Server file references survive refresh. Uploads follow the selected
+  backend, and late upload results remain attached to their originating draft.
+- The recovery card uses backend status, durable turn outcomes and pending
+  decisions. It distinguishes failed/interrupted work from active work, preserves
+  pending decisions, and offers reconnect/diagnostics/explicit retry. Backend
+  status now reconciles the stream reducer and composer controls together.
+- The composer uses the theme background so recovered draft text remains readable
+  in the light theme. No installed desktop package or release was produced.
+
+### Environment and reproducible checks
+
+- Base: `origin/main` verified equal to local `3b883aff` before branching.
+  Roadmap commit: `5e674831`; implementation and generated bundle: `7c84d260`.
+  Branch: `feat/webui-work-recovery`.
+- Host: macOS 26.6.2; Node v22.22.1; Python 3.11.7 in `.venv`.
+  Browser: headless Chromium, through Node Playwright 1.59.1 and Python Playwright
+  1.62.0. Every backend fixture used a temporary `SPARK_HOME`, ephemeral localhost
+  ports and synthetic messages; no model-provider calls were required.
+- `npm run lint`, TypeScript and all **382 frontend tests** passed.
+- `npm run build` passed; the final initial JavaScript graph is **226.42 KiB gzip**
+  against the 600 KiB budget (`assets/index-DFiJUvqX.js`). The generated bundle
+  is committed with the source.
+- `python -m pytest tests/spark_cli/test_web_server.py tests/spark_cli/test_web_server_events.py tests/test_web_turn_persistence.py -q`:
+  **256 passed**. The full Python suite was not run for this frontend slice.
+- `ruff check src/`: **305 existing findings in unchanged Python files**.
+  Ruff passes on the added Python acceptance script. These repository-wide
+  findings remain open; this is not a claim of a clean global lint gate.
+- `npm run test:e2e` and `node e2e/chat-contracts.mjs`: passed the existing
+  multi-chat/reconnect/gateway-restart and chat-contract flows.
+- `python src/spark_cli/web/e2e/work-recovery.py` from the root with `.venv`
+  active: **10 browser scenarios passed** — rapid switches/refresh, failed send,
+  late acknowledgement, conflicting tabs, project destination isolation, new
+  chat recovery, attachment reference recovery, interrupted upload, failed upload
+  and profile isolation. Light/dark screenshots cover 1440/1024/768/390px; no
+  page-level horizontal overflow was observed.
+- `npm run test:e2e:recovery`: passed stalled reconnect without prompt replay,
+  durable failure, approval visibility, three-chat switching and gateway restart
+  without reloading the page. The interrupted card and idle composer are required
+  within five seconds of backend readiness. The test shortens the stale threshold
+  to one second only in its isolated backend process.
+- `SPARK_E2E_BASELINE_CASE=dark:2000:1440 npm run test:e2e:baseline`: passed
+  the 2,000-row long-thread fixture. Filtered runs deliberately leave historical
+  canonical baseline outputs unchanged; they are not a complete performance
+  comparison.
+- The draft acceptance scenarios also passed with `SPARK_E2E_BUILT_WEB=1`,
+  serving the generated web bundle directly from the isolated backend instead
+  of Vite. Screenshots were visually inspected after the light-theme fix.
+- New draft and recovery acceptance scripts are wired into `web-quality.yml`.
+  Hosted CI has not run because this branch has not been pushed.
+
+### Evidence files and unfinished checks
+
+Current local screenshots/reports (generated, not committed):
+
+- `src/spark_cli/web/screenshots/work-recovery/report.json`
+- `src/spark_cli/web/screenshots/work-recovery/draft-conflict.png`
+- `src/spark_cli/web/screenshots/work-recovery/draft-codex-1440.png`
+- `src/spark_cli/web/screenshots/work-recovery/draft-daylight-390.png`
+- `src/spark_cli/web/screenshots/e2e-recovery-state.png`
+- `src/spark_cli/web/screenshots/e2e-recovery-gateway-restart.png`
+
+Items deliberately left unchecked:
+
+- **BASE-01/02:** the source/web audit and draft viewport captures are done, but
+  the full baseline state/theme matrix and installed-app behavior are not.
+  `/Applications/Spark.app` reported version 1.3.38 from metadata only; it was
+  not launched or treated as current implementation evidence.
+- **BASE-03:** full baseline capture failed at `dark:500:1024` because a stable
+  scroll sample was absent. The 1,000-session sidebar attempt timed out waiting
+  for the second page (`offset=50`). The fixture now accepts
+  `SPARK_E2E_SESSION_COUNT=1000` and starts the backend without an auto-build race,
+  but pagination and a complete performance comparison remain unresolved.
+- **DRAFT-05:** browser recovery, failures and scope tests pass; installed-app
+  restart and the complete cross-backend/native matrix still need verification.
+- **REC-03/04:** transcript/approval recovery and concurrent switching pass, but
+  the complete scrolled-up recovery matrix and stop-during-disconnect case have
+  not yet been demonstrated. These broader acceptance tasks remain open.
+- **SEARCH through UX, desktop restoration and installed-platform gates:** remain
+  future slices. No checkbox represents an untested macOS/Windows package.
