@@ -36,9 +36,12 @@ import { TimelineTurnGroup } from "@/components/chat/MessagesTimeline";
 import { ChangedFilesCard } from "@/components/chat/ChangedFilesCard";
 import { PlanCard } from "@/components/chat/PlanCard";
 import { PendingActionTray } from "@/components/chat/PendingActionTray";
+import { RecoveryCard } from "@/components/chat/RecoveryCard";
+import { recoveryCardState } from "@/lib/chatRecovery";
 import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
 import { makeFileContextItem, briefApi } from "@/lib/context";
+import { uploadDraftFiles } from "@/lib/attachmentStaging";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 import {
   nextChatTurnState,
@@ -89,6 +92,8 @@ import { useChatSessionController, type ChatSessionResetInput } from "@/hooks/us
 import { useChatComposerActions } from "@/hooks/useChatComposerActions";
 import { useChatStreamController } from "@/hooks/useChatStreamController";
 import type { ChatStreamSnapshot } from "@/lib/chatStreamReducer";
+import { useChatDraft } from "@/hooks/useChatDraft";
+import { DraftStatus } from "@/components/chat/DraftStatus";
 
 let _msgId = 0;
 const nid = () => `m${++_msgId}`;
@@ -144,20 +149,8 @@ export function ChatPanel({
   useEffect(() => {
     recordWebEfficiency("reactCommits");
   });
-  const [input, setInput] = useState(() => {
-    // First-run "try this" prompt seeded by onboarding — pre-fill once.
-    try {
-      const starter = localStorage.getItem("spark-starter-prompt");
-      if (starter) {
-        localStorage.removeItem("spark-starter-prompt");
-        return starter;
-      }
-    } catch {
-      /* ignore */
-    }
-    return "";
-  });
-  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
+  const draft = useChatDraft(workspaceSlug ?? null, sessionId);
+  const { input, setInput, contextItems, setContextItems } = draft;
   const [turnState, setTurnState] = useState<ChatTurnState>("idle");
   const streaming = turnState !== "idle";
   const setStreaming = useCallback((active: boolean) => {
@@ -169,6 +162,7 @@ export function ChatPanel({
   const [conversationPlan, setConversationPlan] = useState<WebPlan | null>(null);
   const [pendingActions, setPendingActions] = useState<WebPendingAction[]>([]);
   const [confirmedTurnStatus, setConfirmedTurnStatus] = useState<Awaited<ReturnType<typeof api.getTurnStatus>> | null>(null);
+  const [statusDisconnected, setStatusDisconnected] = useState(false);
   const turnSurfaceRefreshGenerationRef = useRef(0);
   const [busyActionIds, setBusyActionIds] = useState<Set<string>>(() => new Set());
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
@@ -195,7 +189,7 @@ export function ChatPanel({
       element.scrollTop += nextTop - previousTop;
     }
     scrollViewportTopRef.current = nextTop;
-  }, [safeMode]);
+  }, [safeMode, confirmedTurnStatus, statusDisconnected, pendingActions]);
   const streamingRef = useRef(false);
   const turnStateRef = useRef<ChatTurnState>("idle");
   const safeModeRef = useRef(safeMode);
@@ -317,6 +311,7 @@ export function ChatPanel({
     },
   });
   const syncStreamMessages = streamController.syncMessages;
+  const applyStreamSnapshot = streamController.applySnapshot;
 
   const bridgeStreamSnapshot = useCallback((snapshot: ChatStreamSnapshot) => {
     streamController.applySnapshot(snapshot);
@@ -369,6 +364,8 @@ export function ChatPanel({
       });
       setDetachedFromBottom(false);
     },
+    captureDraftSubmission: draft.capture,
+    scopeId: draft.scopeKey,
     onEdit: (messageIndex, text) => setEditingUser({ sessionIdx: messageIndex, text }),
     retryAction: doRetry,
     forkAction: doFork,
@@ -381,6 +378,7 @@ export function ChatPanel({
     editMessage,
     forkMessage,
     forkSession,
+    isSubmitting,
   } = composerActions;
 
   streamingRef.current = streaming;
@@ -690,29 +688,35 @@ export function ChatPanel({
     void refreshTurnSurfaces();
   });
 
+  useEffect(() => { setConfirmedTurnStatus(null); setStatusDisconnected(false); }, [activeSessionId]);
+
   useEffect(() => {
     const sid = activeSessionId;
     let cancelled = false;
-    setConfirmedTurnStatus(null);
     if (!sid) return;
     const refresh = async () => {
       try {
         const status = await api.getTurnStatus(sid);
-        if (!cancelled && activeSessionRef.current === sid) setConfirmedTurnStatus(status);
+        if (!cancelled && activeSessionRef.current === sid) {
+          setConfirmedTurnStatus((previous) => ({ ...status, last_event_at: status.last_event_at ?? previous?.last_event_at ?? null }));
+          setStatusDisconnected(false);
+          // Reconcile both the visible controls and the stream reducer from the
+          // same backend result. An unacknowledged submission may not yet have
+          // entered the active-turn registry, so don't finalize it prematurely.
+          if (!isSubmitting() && (status.turn_active || streamingRef.current)) applyStreamSnapshot(status);
+        }
       } catch {
-        // Keep the last confirmed status; transport recovery owns user-facing
-        // connectivity labels and a transient poll failure must not resurrect
-        // stale optimistic state.
+        if (!cancelled && activeSessionRef.current === sid) setStatusDisconnected(true);
       }
     };
     void refresh();
-    if (!streaming) return () => { cancelled = true; };
+    if (!streaming && !statusDisconnected) return () => { cancelled = true; };
     const timer = window.setInterval(() => void refresh(), 2_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [activeSessionId, activeSessionRef, streaming]);
+  }, [activeSessionId, activeSessionRef, applyStreamSnapshot, isSubmitting, streaming, statusDisconnected]);
   const refreshConversationDiagnostics = useCallback(async () => {
     const sid = activeSessionRef.current;
     if (!sid) return null;
@@ -797,6 +801,7 @@ export function ChatPanel({
     setRecoveryActionBusy(id);
     try {
       if (id === "reload") {
+        await resyncTurnStateRef.current?.({ allowIdle: true });
         await refreshLatestTranscript();
       } else if (id === "retry") {
         if (latestUserMessage?.sessionIdx != null) await retryMessage(latestUserMessage.sessionIdx);
@@ -915,23 +920,16 @@ export function ChatPanel({
       .catch(() => navigator.clipboard.writeText(msg.content));
   }, [loadExactMessages]);
 
-  const uploadFiles = useCallback(async (files: File[]) => {
-    const res = workspaceSlug
-      ? await api.uploadWorkspaceFiles(workspaceSlug, files, "files")
-      : await api.uploadChatFiles(files);
-    for (const f of res.saved) {
-      const path = "path" in f ? (f as { path: string }).path : `files/${f.filename}`;
-      const sizeBytes = "size" in f ? (f as { size?: number }).size ?? 0 : 0;
-      setContextItems((prev) => [...prev, makeFileContextItem(path, sizeBytes)]);
-    }
-  }, [workspaceSlug]);
+  const uploadFiles = useCallback((files: File[]) => uploadDraftFiles(files, setContextItems,
+    (file) => workspaceSlug ? api.uploadWorkspaceFiles(workspaceSlug, [file], "files") : api.uploadChatFiles([file])),
+  [setContextItems, workspaceSlug]);
 
   const attachPath = useCallback((path: string, sizeBytes = 0) => {
     setContextItems((prev) => {
       if (prev.some((i) => i.source_path === path)) return prev;
       return [...prev, makeFileContextItem(path, sizeBytes)];
     });
-  }, []);
+  }, [setContextItems]);
 
   const fetchFullToolResult = useCallback(async (toolId: string) => {
     const sid = activeSessionRef.current;
@@ -950,19 +948,19 @@ export function ChatPanel({
 
   const removeContextItem = useCallback((id: string) => {
     setContextItems((prev) => prev.filter((i) => i.id !== id));
-  }, []);
+  }, [setContextItems]);
 
   const updateContextMode = useCallback((id: string, mode: InclusionMode) => {
     setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, inclusion_mode: mode } : i));
-  }, []);
+  }, [setContextItems]);
 
   const updateContextScope = useCallback((id: string, scope: ContextScope) => {
     setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, scope } : i));
-  }, []);
+  }, [setContextItems]);
 
   const updateContextItem = useCallback((id: string, patch: Partial<ContextItem>) => {
     setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
-  }, []);
+  }, [setContextItems]);
 
   // Stable handlers passed to memoized row components
   const handleEdit = useCallback((idx: number) => {
@@ -987,7 +985,7 @@ export function ChatPanel({
     } catch {
       // silently ignore — user can retry
     }
-  }, [contextItems, workspaceSlug, updateContextMode]);
+  }, [contextItems, setContextItems, workspaceSlug, updateContextMode]);
 
   const handlePromoteToBrief = useCallback((msg: AssistantMsg) => {
     if (!activeSessionId) return;
@@ -1031,7 +1029,7 @@ export function ChatPanel({
     };
     window.addEventListener("spark:compose", handler as EventListener);
     return () => window.removeEventListener("spark:compose", handler as EventListener);
-  }, []);
+  }, [setInput]);
 
   // Build match positions from messages — debounced so a streaming update at
   // 60fps doesn't trigger a full scan every frame when search is open.
@@ -1606,6 +1604,18 @@ export function ChatPanel({
   const diagnosticsMessageCount = typeof conversationDiagnostics?.message_count === "number"
     ? conversationDiagnostics.message_count
     : null;
+  const confirmedRecoveryState = recoveryCardState({
+    turnActive: confirmedTurnStatus?.turn_active,
+    state: confirmedTurnStatus?.state,
+    phase: confirmedTurnStatus?.phase,
+    outcome: confirmedTurnStatus?.turn_outcome,
+    connection: statusDisconnected ? "reconnecting" : null,
+    pendingKind: pendingActions.find((action) => action.session_id === activeSessionId && action.status === "pending")?.kind,
+  });
+  const showRecoveryCard = Boolean(activeSessionId && (confirmedTurnStatus || statusDisconnected) && (
+    confirmedRecoveryState === "reconnecting" || confirmedRecoveryState === "interrupted" || confirmedRecoveryState === "failed"
+      || confirmedRecoveryState === "waiting-approval" || confirmedRecoveryState === "waiting-input"
+  ));
   const stressReasoningVisibleChars = chatMessages.reduce(
     (total, msg) => total + (msg.role === "reasoning" ? msg.text.length : 0),
     0,
@@ -1839,6 +1849,19 @@ export function ChatPanel({
         </div>
       )}
 
+      {showRecoveryCard && (
+        <RecoveryCard
+          state={confirmedRecoveryState}
+          label={statusDisconnected ? "Connection lost. Your conversation is kept; reconnect to check whether the response is still running." : confirmedTurnStatus?.status}
+          lastEventAt={confirmedTurnStatus?.last_event_at ?? confirmedTurnStatus?.turn_outcome?.ended_at}
+          busyAction={recoveryActionBusy === "reload" ? "reconnect" : recoveryActionBusy === "copy" ? "inspect" : recoveryActionBusy === "retry" ? "retry" : null}
+          onReconnect={() => void runRecoveryAction("reload")}
+          onInspect={() => setDiagnosticsOpen(true)}
+          onRetry={() => void runRecoveryAction("retry")}
+          canRetry={latestUserMessage?.sessionIdx != null}
+        />
+      )}
+
       <div className="relative min-h-0 flex-1">
         <div
           data-testid="chat-scroll"
@@ -2037,11 +2060,12 @@ export function ChatPanel({
         onAttachPath={attachPath}
         onRemoveContextItem={removeContextItem}
         onUpdateContextMode={updateContextMode}
-        disabled={!!editingUser}
+        disabled={!!editingUser || !draft.ready}
         workspaceSlug={workspaceSlug}
         contextItems={contextItems}
         sessionId={activeSessionId}
       />
+      <DraftStatus draft={draft} />
     </div>
   );
 }

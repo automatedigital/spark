@@ -3,6 +3,7 @@
 import {
   authHeaders,
   fetchJSON,
+  getApiBase,
   sseUrl,
 } from "./apiHelpers";
 import type {
@@ -67,7 +68,7 @@ export const workspaceApi = {
     for (const f of files) form.append("files", f);
     const qs = path ? `?path=${encodeURIComponent(path)}` : "";
     const res = await fetch(
-      `/api/workspace/projects/${encodeURIComponent(slug)}/upload${qs}`,
+      `${getApiBase()}/api/workspace/projects/${encodeURIComponent(slug)}/upload${qs}`,
       { method: "POST", headers: authHeaders(), body: form },
     );
     if (!res.ok) {

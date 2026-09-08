@@ -25,6 +25,9 @@ import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/ChatPanel";
 import { BrandLogo } from "@/components/BrandLogo";
 import { PromptBar } from "@/components/chat/PromptBar";
+import { DraftStatus, DraftContextTray } from "@/components/chat/DraftStatus";
+import { uploadDraftFiles } from "@/lib/attachmentStaging";
+import { useChatDraft } from "@/hooks/useChatDraft";
 import { useEventBus } from "@/hooks/useEventBus";
 import type { SparkEventEnvelope } from "@/hooks/useEventBus";
 import { threadTitle } from "@/components/chat/ThreadRow";
@@ -107,7 +110,6 @@ function NewSessionHero({
   projects: WorkspaceProject[];
   initialProjectSlug: string | null;
 }) {
-  const [msg, setMsg] = useState("");
   const [starting, setStarting] = useState(false);
   // Selected project slug, or "" for a plain chat thread (no project).
   // Restore the last-used selection so "new chat in the same project" is a
@@ -120,6 +122,9 @@ function NewSessionHero({
       return "";
     }
   });
+  const draft = useChatDraft(projectSlug || null, null);
+  const { input: msg, setInput: setMsg } = draft;
+  const [sendError, setSendError] = useState<string | null>(null);
 
   // Drop a stale selection if the remembered project was deleted since.
   useEffect(() => {
@@ -146,45 +151,26 @@ function NewSessionHero({
 
   const handleSend = async () => {
     const text = msg.trim();
-    if (!text || starting) return;
+    if (!text || starting || !draft.ready) return;
+    const acknowledge = draft.capture();
     setStarting(true);
+    setSendError(null);
     try {
-      // A selected project routes the new thread through the workspace endpoint
-      // (reuses the same plumbing as NewThreadCompose) so it lands in that
-      // project's sidebar group. Blank selection = plain chat thread.
-      if (projectSlug) {
-        const res = await api.startWorkspaceConversation(projectSlug, text);
-        onCreated(res.session_id, text, { source: res.source, projectSlug });
-      } else {
-        const res = await api.postConversation(text);
-        onCreated(res.session_id, text);
-      }
-    } catch (e) {
-      console.error("Failed to start conversation", e);
-      setStarting(false);
+      const res = projectSlug
+        ? await api.startWorkspaceConversation(projectSlug, text, undefined, draft.contextItems)
+        : await api.postConversation(text, undefined, draft.contextItems);
+      if (!res.ok) throw new Error("Submission was not accepted.");
+      acknowledge();
+      if (draft.isCurrent()) onCreated(res.session_id, text, projectSlug ? { source: "source" in res ? String(res.source) : `workspace:${projectSlug}`, projectSlug } : undefined);
+    } catch {
+      if (draft.isCurrent()) setSendError("Could not confirm submission. Your draft is kept; check the thread before retrying.");
+    } finally {
+      if (draft.isCurrent()) setStarting(false);
     }
   };
-
-  // Upload into the shared chat workspace (no project yet on the hero) and
-  // insert @files/<name> references into the draft so the new turn can read
-  // them. Mirrors NewThreadCompose.handleUpload.
-  const handleUpload = async (files: File[]) => {
-    if (projectSlug) {
-      const res = await api.uploadWorkspaceFiles(projectSlug, files, "files");
-      const refs = res.saved.map((f) => `@files/${f.filename}`).join(" ");
-      setMsg((prev) => {
-        const prefix = prev.trimEnd();
-        return prefix ? `${prefix}\n${refs} ` : `${refs} `;
-      });
-      return;
-    }
-    const res = await api.uploadChatFiles(files);
-    const refs = res.saved.map((f) => `@${f.path}`).join(" ");
-    setMsg((prev) => {
-      const prefix = prev.trimEnd();
-      return prefix ? `${prefix}\n${refs} ` : `${refs} `;
-    });
-  };
+  const handleUpload = (files: File[]) => uploadDraftFiles(files, draft.setContextItems, (file) => projectSlug
+    ? api.uploadWorkspaceFiles(projectSlug, [file], "files")
+    : api.uploadChatFiles([file]));
 
   const [isDragOver, setIsDragOver] = useState(false);
   const handleDrop = (e: React.DragEvent) => {
@@ -221,6 +207,9 @@ function NewSessionHero({
         </div>
       </div>
       <div className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-6 sm:pb-8">
+        <DraftContextTray draft={draft} />
+        {sendError && <p role="alert" className="px-3 text-xs text-destructive">{sendError}</p>}
+        <DraftStatus draft={draft} />
         <PromptBar
           input={msg}
           setInput={setMsg}
@@ -228,7 +217,8 @@ function NewSessionHero({
           onSend={() => void handleSend()}
           onStop={() => {}}
           onUploadFiles={handleUpload}
-          disabled={starting}
+          disabled={starting || !draft.ready}
+          contextItems={draft.contextItems}
           placeholder="Describe a task or ask a question"
           workspaceSlug={projectSlug || undefined}
           projectOptions={projects}
@@ -253,30 +243,30 @@ function NewThreadCompose({
   onCreated: (sessionId: string, initialMessage: string, meta?: ThreadCreatedMeta) => void;
   onCancel: () => void;
 }) {
-  const [msg, setMsg] = useState("");
   const [starting, setStarting] = useState(false);
+  const draft = useChatDraft(projectSlug, null);
+  const { input: msg, setInput: setMsg } = draft;
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const handleSend = async () => {
     const text = msg.trim();
-    if (!text || starting) return;
+    if (!text || starting || !draft.ready) return;
+    const acknowledge = draft.capture();
     setStarting(true);
+    setSendError(null);
     try {
-      const res = await api.startWorkspaceConversation(projectSlug, text);
-      onCreated(res.session_id, text, { source: res.source, projectSlug });
-    } catch (e) {
-      console.error("Failed to start conversation", e);
-      setStarting(false);
+      const res = await api.startWorkspaceConversation(projectSlug, text, undefined, draft.contextItems);
+      if (!res.ok) throw new Error("Submission was not accepted.");
+      acknowledge();
+      if (draft.isCurrent()) onCreated(res.session_id, text, { source: res.source, projectSlug });
+    } catch {
+      if (draft.isCurrent()) setSendError("Could not confirm submission. Your draft is kept; check the thread before retrying.");
+    } finally {
+      if (draft.isCurrent()) setStarting(false);
     }
   };
-
-  const handleUpload = async (files: File[]) => {
-    const res = await api.uploadWorkspaceFiles(projectSlug, files, "files");
-    const refs = res.saved.map((f) => `@files/${f.filename}`).join(" ");
-    setMsg((prev) => {
-      const prefix = prev.trimEnd();
-      return prefix ? `${prefix}\n${refs} ` : `${refs} `;
-    });
-  };
+  const handleUpload = (files: File[]) => uploadDraftFiles(files, draft.setContextItems,
+    (file) => api.uploadWorkspaceFiles(projectSlug, [file], "files"));
 
   return (
     <div className="flex flex-1 flex-col">
@@ -296,14 +286,18 @@ function NewThreadCompose({
           Spark has context of the workspace files for this project.
         </p>
       </div>
-      <PromptBar
+      <DraftContextTray draft={draft} />
+        {sendError && <p role="alert" className="px-3 text-xs text-destructive">{sendError}</p>}
+        <DraftStatus draft={draft} />
+        <PromptBar
         input={msg}
         setInput={setMsg}
         streaming={false}
         onSend={() => void handleSend()}
         onStop={() => {}}
         onUploadFiles={handleUpload}
-        disabled={starting}
+        disabled={starting || !draft.ready}
+          contextItems={draft.contextItems}
         workspaceSlug={projectSlug}
       />
     </div>

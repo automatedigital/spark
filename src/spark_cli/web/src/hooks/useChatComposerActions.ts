@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { api as defaultApi } from "@/lib/api";
 import type { ContextItem } from "@/lib/context";
 import type { ChatMessage } from "@/lib/chatTranscriptMerge";
@@ -123,6 +123,8 @@ export interface UseChatComposerActionsOptions {
     meta?: { source?: string | null; projectSlug?: string | null },
   ) => void;
   onPrepareSend?: (optimisticMessageCount: number) => void;
+  captureDraftSubmission?: () => () => boolean;
+  scopeId?: string | null;
   onEdit: (messageIndex: number, text: string) => void;
   retryAction: (messageIndex: number, edited?: string) => Promise<void>;
   forkAction: (fromMessageIndex?: number) => Promise<void>;
@@ -157,12 +159,25 @@ export function useChatComposerActions({
   createMessageId,
   onSessionCreated,
   onPrepareSend,
+  captureDraftSubmission,
+  scopeId,
   onEdit,
   retryAction,
   forkAction,
   resyncTurnState,
   apiClient,
 }: UseChatComposerActionsOptions) {
+  const scopeGeneration = useRef({ id: scopeId, generation: 0 });
+  if (scopeGeneration.current.id !== scopeId) {
+    scopeGeneration.current = { id: scopeId, generation: scopeGeneration.current.generation + 1 };
+  }
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const submissions = useRef(new Set<number>());
+  const currentRequest = useCallback(() => {
+    const generation = scopeGeneration.current.generation;
+    return () => mounted.current && scopeGeneration.current.generation === generation;
+  }, []);
   const setTurn = useCallback((next: ChatTurnState) => {
     turnStateRef.current = next;
     setTurnState(next);
@@ -191,7 +206,7 @@ export function useChatComposerActions({
       setTurnState: setTurn,
       setStatusLabel,
       appendUserRow: (row) => setChatMessages((previous) => [...previous, row]),
-      retainContext: (items) => setContextItems(items),
+      retainContext: (items) => { if (plan.action !== "send") setContextItems(items); },
       openEdit: onEdit,
     });
   }, [onEdit, setChatMessages, setContextItems, setStatusLabel, setTurn]);
@@ -240,57 +255,70 @@ export function useChatComposerActions({
     if (options.applyIntents !== false) applyIntents(plan);
     const effect = plan.effects[0];
     if (!effect) return true;
+    const isCurrent = currentRequest();
     try {
       const result = await executeComposerEffect(effect, runner());
-      updateSessionFromResponse(plan, result);
+      if (result && typeof result === "object" && "ok" in result && result.ok === false) throw new Error("Submission was not accepted.");
+      if (plan.action === "send" && (!result || typeof result !== "object" || !("ok" in result) || result.ok !== true || !("session_id" in result) || typeof result.session_id !== "string" || !result.session_id)) {
+        throw new Error("Could not confirm submission. Your draft is kept; check the thread before retrying.");
+      }
+      if (isCurrent()) updateSessionFromResponse(plan, result);
       return true;
     } catch (error) {
-      if (options.rollbackOnError) {
+      if (options.rollbackOnError && isCurrent()) {
         const rollback = rollbackFailedPlan(previousState, plan);
         setChatMessages(rollback.transcript.slice());
-        setContextItems(rollback.contextItems.slice());
         setTurn(rollback.turnState);
         setStatusLabel(rollback.statusLabel);
         setError(errorText(error));
       }
       return false;
     }
-  }, [applyIntents, runner, setChatMessages, setContextItems, setError, setStatusLabel, setTurn, updateSessionFromResponse]);
+  }, [applyIntents, currentRequest, runner, setChatMessages, setError, setStatusLabel, setTurn, updateSessionFromResponse]);
 
   const sendMessage = useCallback(async () => {
+    const generation = scopeGeneration.current.generation;
+    if (submissions.current.has(generation)) return;
+    const isCurrent = currentRequest();
     const previousState = state();
     const plan = planComposerAction(previousState, {
       action: "send",
-      request: {
-        messageId: createMessageId(),
-        text: input,
-        workspaceSlug,
-      },
+      request: { messageId: createMessageId(), text: input, workspaceSlug },
     });
     if (!plan.accepted) return;
-
-    if (plan.action === "send") {
-      setInput("");
-      setError(null);
-      applyIntents(plan);
-      if (input.trim() === "/feedback") {
-        setChatMessages((previous) => [...previous, { id: createMessageId(), role: "feedback_form" }]);
-      }
-      onPrepareSend?.(plan.optimisticState.transcript.length);
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-      await executePlan(plan, previousState, { applyIntents: false, rollbackOnError: true });
-      return;
-    }
-
-    applyIntents(plan);
+    const acknowledge = captureDraftSubmission?.();
+    submissions.current.add(generation);
     try {
-      await executeComposerEffect(plan.effects[0]!, runner());
-      setInput("");
-    } catch {
-      setStatusLabel("Redirect requested; waiting for backend state…");
-      void resyncTurnState();
+      if (plan.action === "send") {
+        setError(null);
+        applyIntents(plan);
+        if (input.trim() === "/feedback") {
+          setChatMessages((previous) => [...previous, { id: createMessageId(), role: "feedback_form" }]);
+        }
+        onPrepareSend?.(plan.optimisticState.transcript.length);
+        const accepted = await executePlan(plan, previousState, { applyIntents: false, rollbackOnError: true });
+        if (accepted) {
+          if (acknowledge) acknowledge();
+          else if (isCurrent()) setInput((current) => current === input ? "" : current);
+        }
+      } else {
+        applyIntents(plan);
+        try {
+          const result = await executeComposerEffect(plan.effects[0]!, runner());
+          if (!result || typeof result !== "object" || !("ok" in result) || result.ok !== true) throw new Error("Redirect was not confirmed.");
+          if (acknowledge) acknowledge();
+          else if (isCurrent()) setInput((current) => current === input ? "" : current);
+        } catch {
+          if (isCurrent()) {
+            setStatusLabel("Redirect requested; waiting for backend state…");
+            void resyncTurnState();
+          }
+        }
+      }
+    } finally {
+      submissions.current.delete(generation);
     }
-  }, [applyIntents, createMessageId, executePlan, input, onPrepareSend, resyncTurnState, runner, setError, setInput, setChatMessages, setStatusLabel, state, workspaceSlug]);
+  }, [applyIntents, captureDraftSubmission, createMessageId, currentRequest, executePlan, input, onPrepareSend, resyncTurnState, runner, setError, setInput, setChatMessages, setStatusLabel, state, workspaceSlug]);
 
   const stop = useCallback(async () => {
     const previousState = state();
@@ -329,5 +357,6 @@ export function useChatComposerActions({
     await forkAction();
   }, [forkAction]);
 
-  return { sendMessage, stop, retryMessage, editMessage, forkMessage, forkSession };
+  const isSubmitting = useCallback(() => submissions.current.has(scopeGeneration.current.generation), []);
+  return { sendMessage, stop, retryMessage, editMessage, forkMessage, forkSession, isSubmitting };
 }

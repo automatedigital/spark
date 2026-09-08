@@ -86,3 +86,16 @@ jobs:
         env:
           PYTHON: python
         run: node ./e2e/chat-contracts.mjs
+
+      - name: Recovery end-to-end
+        env:
+          PYTHON: python
+        run: npm run test:e2e:recovery
+
+      - name: Install draft acceptance browser
+        run: |
+          python -m pip install playwright==1.62.0
+          python -m playwright install --with-deps chromium
+
+      - name: Draft recovery end-to-end
+        run: python ./e2e/work-recovery.py

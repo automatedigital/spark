@@ -15,6 +15,16 @@ function reduce(state: ReturnType<typeof createChatStreamState>, next: ChatStrea
 }
 
 describe("chatStreamReducer", () => {
+  it("clears finalizing status once recovered history is synchronized", () => {
+    const initial = createChatStreamState({ sessionId: "s1" });
+    const stopped = reduceChatStream(initial, { type: "reconnect-snapshot", snapshot: { session_id: "s1", turn_active: false } });
+    expect(stopped.state.turnState).toBe("finalizing");
+    const history: ChatMessage[] = [{ id: "saved", role: "assistant", content: "Saved partial answer" }];
+    const recovered = reduceChatStream(stopped.state, { type: "sync-messages", messages: history });
+    expect(recovered.state.turnState).toBe("idle");
+    expect(recovered.state.statusLabel).toBeNull();
+    expect(recovered.state.messages).toEqual(history);
+  });
   it("rejects events for another session and duplicate or out-of-order sequences", () => {
     const initial = createChatStreamState({ sessionId: "s1" });
     const foreign = reduce(initial, event("chat.token", { t: "bad" }, "s2", 1));

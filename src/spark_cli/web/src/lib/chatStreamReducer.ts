@@ -755,7 +755,14 @@ export function reduceChatStream(state: ChatStreamState, action: ChatStreamActio
     case "finalize":
       return { state: flushAndFinalize(state), effects: [], accepted: true };
     case "sync-messages":
-      return { state: copyState(state, { messages: [...action.messages] }), effects: [], accepted: true };
+      return {
+        state: copyState(state, {
+          messages: [...action.messages],
+          ...(state.turnState === "finalizing" ? { turnState: "idle", statusLabel: null } as const : {}),
+        }),
+        effects: [],
+        accepted: true,
+      };
     case "set-session": {
       const sessionId = action.sessionId;
       const aliases = sessionId

@@ -5,6 +5,7 @@ import {
   type ChatTurnEvent,
   type ChatTurnState,
 } from "./chatTurnState";
+import { attachmentsBlockSend } from "./attachmentStaging";
 
 export const COMPOSER_LOADING_STATUS = "Loading LLM response";
 export const COMPOSER_REDIRECTING_STATUS = "Redirecting…";
@@ -14,6 +15,7 @@ export type ComposerAction = "send" | "redirect" | "stop" | "retry" | "edit" | "
 
 export type ComposerGuardReason =
   | "empty-message"
+  | "attachment-not-ready"
   | "no-session"
   | "no-active-turn"
   | "interrupt-in-flight"
@@ -302,6 +304,7 @@ function planRedirect(state: ChatComposerState, request: SendRequest): ComposerP
 export function planSend(state: ChatComposerState, request: SendRequest): ComposerPlan {
   const text = request.text.trim();
   if (!text) return rejected("send", "empty-message");
+  if (attachmentsBlockSend(state.contextItems)) return rejected("send", "attachment-not-ready");
   if (state.turnState !== "idle") return planRedirect(state, { ...request, text });
 
   const target = resolveTargetSession({
