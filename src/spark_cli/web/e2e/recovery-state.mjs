@@ -220,7 +220,9 @@ async function run() {
       await rm(home, { recursive: true, force: true });
   }
 }
-run().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+run()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
