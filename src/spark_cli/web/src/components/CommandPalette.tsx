@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, MessageSquare, MessageCircle, Clock, Package, Plug, Settings, FolderOpen, Loader2, Brain, Blocks } from "lucide-react";
 import { api } from "@/lib/api";
-import type { CronJob, SessionInfo, SkillInfo, WorkspaceProject } from "@/lib/api";
+import type { CronJob, SessionInfo, SessionSearchResult, SkillInfo, WorkspaceProject } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { cn } from "@/lib/utils";
 import { threadTitle } from "@/components/chat/ThreadRow";
@@ -41,6 +41,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [messageResults, setMessageResults] = useState<SessionSearchResult[]>([]);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
 
@@ -50,6 +51,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
       setActiveIdx(0);
       setTimeout(() => inputRef.current?.focus(), 10);
       setLoading(true);
+      setMessageResults([]);
       Promise.allSettled([
         api.listWorkspaceProjects(),
         api.getSessions(500, 0),
@@ -63,6 +65,25 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
       }).finally(() => setLoading(false));
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !query.trim()) {
+      setMessageResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      api.searchSessions(query.trim(), 30).then((response) => {
+        if (!cancelled) setMessageResults(response.results);
+      }).catch(() => {
+        if (!cancelled) setMessageResults([]);
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, query]);
 
   const allItems: CommandItem[] = useMemo(() => [
     ...projects.map((project) => ({
@@ -85,6 +106,18 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
       icon: MessageSquare,
       action: () => {
         setGlobalNavTarget({ type: "thread", id: session.id });
+        onNavigate("chat");
+        onClose();
+      },
+    })),
+    ...messageResults.map((result) => ({
+      id: `message:${result.message_id ?? result.session_id}`,
+      label: result.title || "Conversation match",
+      description: result.snippet.replaceAll(">>>", "").replaceAll("<<<", ""),
+      group: "Messages",
+      icon: MessageSquare,
+      action: () => {
+        setGlobalNavTarget({ type: "thread", id: result.session_id });
         onNavigate("chat");
         onClose();
       },
@@ -126,7 +159,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
       icon: Settings,
       action: () => { onOpenSettings(); onClose(); },
     },
-  ], [jobs, onClose, onNavigate, onOpenSettings, projects, sessions, skills]);
+  ], [jobs, messageResults, onClose, onNavigate, onOpenSettings, projects, sessions, skills]);
 
   const filtered = query.trim()
     ? allItems.filter((item) => {

@@ -20,6 +20,7 @@ import {
 import { api, type SubagentRun, type WebPendingAction, type WebPlan, type WebTurnOutcome } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/BrandLogo";
+import { saveOutput } from "@/lib/savedOutputs";
 import { Button } from "@/components/ui/button";
 import {
   useEventBus,
@@ -1932,6 +1933,10 @@ export function ChatPanel({
                     onCopyText={copyText}
                     onPromoteToBrief={activeSessionId ? (message) => handlePromoteToBrief(message.source as AssistantMsg) : undefined}
                     onCopyExact={(message) => copyAssistant(message.source as AssistantMsg)}
+                    onSaveOutput={(message) => {
+                      const source = message.source as AssistantMsg;
+                      saveOutput({ id: source.id, title: "Saved answer", sourceSessionId: activeSessionId ?? "", projectSlug: workspaceSlug ?? null, content: source.content });
+                    }}
                     onAttachPath={attachPath}
                     onFetchFullResult={fetchFullToolResult}
                     onSubagentSelect={onSubagentSelect}

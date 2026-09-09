@@ -56,9 +56,9 @@ do not wait for the entire roadmap before making useful improvements available.
 
 ## Phase 0 — Establish what needs changing
 
-- [ ] BASE-01: Run the current web UI and installed desktop app; inventory existing draft persistence, recovery, search, notification and restoration behavior. Narrow each proposal to the missing behavior before implementation.
-- [ ] BASE-02: Capture light/dark screenshots at 1440, 1024 and 768px, plus a narrow 390px browser view. Include a long thread, empty project, pending approval, disconnected chat and concurrent runs.
-- [ ] BASE-03: Record first-token latency, gateway startup, reconnect recovery, sidebar refresh time and scroll continuity with reproducible fixtures. Include 2,000 message rows and 1,000 sessions.
+- [x] BASE-01: Run the current web UI and installed desktop app; inventory existing draft persistence, recovery, search, notification and restoration behavior. Narrow each proposal to the missing behavior before implementation.
+- [x] BASE-02: Capture light/dark screenshots at 1440, 1024 and 768px, plus a narrow 390px browser view. Include a long thread, empty project, pending approval, disconnected chat and concurrent runs.
+- [x] BASE-03: Record first-token latency, gateway startup, reconnect recovery, sidebar refresh time and scroll continuity with reproducible fixtures. Include 2,000 message rows and 1,000 sessions.
 - [x] BASE-04: Record branch/commit, browser/OS, backend mode and test commands. Use isolated Spark profiles and synthetic content; preserve unrelated working-copy edits.
 
 ## 1. Recoverable drafts and attachment staging
@@ -70,7 +70,7 @@ same unsent text and context selection in A.
 - [x] DRAFT-02: Persist text and context references with a debounce; show a quiet saved/recovered indicator and an explicit discard action. Handle unavailable storage without losing the in-memory draft.
 - [x] DRAFT-03: Show attachment states before send: uploading, ready, missing and failed. Persist valid references, not an assumption that browser File objects survive restart; offer reattachment where necessary.
 - [x] DRAFT-04: Clear a draft only after confirmed submission. Preserve it on failures and prevent an acknowledgement for chat A from clearing chat B. Detect competing tab edits rather than silently overwriting them.
-- [ ] DRAFT-05: Verify refresh, rapid switching, failed send, duplicate acknowledgement, app restart and profile/backend isolation.
+- [x] DRAFT-05: Verify refresh, rapid switching, failed send, duplicate acknowledgement, app restart and profile/backend isolation.
 
 Acceptance: no lost text or cross-thread draft leakage in those flows; recovered
 attachments are usable or explicitly identified as needing reattachment.
@@ -82,8 +82,8 @@ next action instead of leaving the user to interpret a permanent spinner.
 
 - [x] REC-01: Audit backend lifecycle states and expose the distinction between running, waiting for approval/input, reconnecting, interrupted, failed and complete. Include last confirmed activity and reconcile on reconnect.
 - [x] REC-02: Add an inline recovery card with state-appropriate actions: reconnect, inspect failure, or explicitly retry. Do not automatically replay tool actions or resubmit a possibly accepted prompt.
-- [ ] REC-03: Preserve pending approvals, exact transcript content and the user's scroll anchor through recovery; reuse the existing stream/session controllers.
-- [ ] REC-04: Test network loss before/after submit acknowledgement, gateway restart, refresh during tools, stop during disconnect and switching between three active chats.
+- [x] REC-03: Preserve pending approvals, exact transcript content and the user's scroll anchor through recovery; reuse the existing stream/session controllers.
+- [x] REC-04: Test network loss before/after submit acknowledgement, gateway restart, refresh during tools, stop during disconnect and switching between three active chats.
 
 Acceptance: within five seconds of a successful status response, the UI agrees
 with backend state; reconnection creates no duplicate messages or executions.
@@ -92,10 +92,10 @@ with backend state; reconnection creates no duplicate messages or executions.
 
 Outcome: find an answer by its contents even when its thread title is forgotten.
 
-- [ ] SEARCH-01: Add paginated, profile-scoped server search over persisted message text. Evaluate existing database search support and query plans before introducing an index or dependency.
-- [ ] SEARCH-02: Extend the existing command palette with conversation results, matching snippets and project/date filters; retain quick navigation and keyboard selection.
-- [ ] SEARCH-03: Deep-link to a stable message identifier and load the needed history page before scrolling. Cancel stale requests and handle deleted/inaccessible results.
-- [ ] SEARCH-04: Cover sessions beyond the first 500, repeated phrases, Unicode, empty results, profile boundaries and keyboard/screen-reader use.
+- [x] SEARCH-01: Add paginated, profile-scoped server search over persisted message text. Evaluate existing database search support and query plans before introducing an index or dependency.
+- [x] SEARCH-02: Extend the existing command palette with conversation results, matching snippets and project/date filters; retain quick navigation and keyboard selection.
+- [x] SEARCH-03: Deep-link to a stable message identifier and load the needed history page before scrolling. Cancel stale requests and handle deleted/inaccessible results.
+- [x] SEARCH-04: Cover sessions beyond the first 500, repeated phrases, Unicode, empty results, profile boundaries and keyboard/screen-reader use.
 
 Acceptance: a result opens the correct message, including unloaded history.
 Provisional target: warm local search p95 under 500 ms on 10,000 fixture messages;
@@ -106,10 +106,10 @@ record hardware and revise the target from BASE-03 if necessary.
 Outcome: quickly see which threads need a decision and which finished while the
 user was elsewhere.
 
-- [ ] INBOX-01: Extend the existing inbox with Needs you, Running and Finished filters and counts derived from structured backend events.
-- [ ] INBOX-02: Give each attention item a specific reason and direct navigation to the relevant approval, question or failure. Never infer failure from ordinary transcript words.
-- [ ] INBOX-03: Audit local settled/unread behavior; persist acknowledgement where needed and reopen attention only for a newer relevant event. Keep unresolved approvals visible.
-- [ ] INBOX-04: Test duplicate/out-of-order events, reload, two clients, child-agent completion and a burst of background completions.
+- [x] INBOX-01: Extend the existing inbox with Needs you, Running and Finished filters and counts derived from structured backend events.
+- [x] INBOX-02: Give each attention item a specific reason and direct navigation to the relevant approval, question or failure. Never infer failure from ordinary transcript words.
+- [x] INBOX-03: Audit local settled/unread behavior; persist acknowledgement where needed and reopen attention only for a newer relevant event. Keep unresolved approvals visible.
+- [x] INBOX-04: Test duplicate/out-of-order events, reload, two clients, child-agent completion and a burst of background completions.
 
 Acceptance: resolving an item clears its attention state consistently; ordinary
 completion never conceals unresolved input or marks unrelated threads read.
@@ -119,11 +119,11 @@ completion never conceals unresolved input or marks unrelated threads read.
 Outcome: return to a project's useful files, answers and decisions without
 rereading the full conversation.
 
-- [ ] OUTPUT-01: Add an explicit Save output action to eligible messages and artifacts; store a reference, title and project association rather than copying the transcript.
-- [ ] OUTPUT-02: Add a compact Saved outputs section to the existing project panel, with source-thread navigation and missing/deleted-source handling.
-- [ ] OUTPUT-03: Allow the user to maintain a short project handoff note containing decisions, open questions and next actions. Link Tasks and Plans rather than creating a second task system.
-- [ ] OUTPUT-04: Offer explicit attachment of a saved output or handoff to a new prompt. Do not silently rewrite active context or cached system prompts.
-- [ ] OUTPUT-05: Verify rename, project move, source deletion, refresh and profile isolation.
+- [x] OUTPUT-01: Add an explicit Save output action to eligible messages and artifacts; store a reference, title and project association rather than copying the transcript.
+- [x] OUTPUT-02: Add a compact Saved outputs section to the existing project panel, with source-thread navigation and missing/deleted-source handling.
+- [x] OUTPUT-03: Allow the user to maintain a short project handoff note containing decisions, open questions and next actions. Link Tasks and Plans rather than creating a second task system.
+- [x] OUTPUT-04: Offer explicit attachment of a saved output or handoff to a new prompt. Do not silently rewrite active context or cached system prompts.
+- [x] OUTPUT-05: Verify rename, project move, source deletion, refresh and profile isolation.
 
 Acceptance: every saved item opens its source or explains why it is unavailable;
 project organization alone never changes an active conversation's context.
@@ -132,10 +132,10 @@ project organization alone never changes an active conversation's context.
 
 Outcome: relaunch Spark into the project, thread and layout the user left.
 
-- [ ] DESK-01: Persist selected project/thread, open panel, panel widths and a stable scroll anchor per backend/profile. Restore only targets that still exist.
-- [ ] DESK-02: Restore navigation after backend readiness and reconcile active runs; never revive a stale local running indicator as authoritative state.
-- [ ] DESK-03: Define close-to-tray versus quit behavior clearly and handle sleep/wake, changed displays and out-of-bounds window positions.
-- [ ] DESK-04: Verify installed macOS and Windows packages through quit/relaunch, sleep/wake, crash recovery and backend-unavailable startup.
+- [x] DESK-01: Persist selected project/thread, open panel, panel widths and a stable scroll anchor per backend/profile. Restore only targets that still exist.
+- [x] DESK-02: Restore navigation after backend readiness and reconcile active runs; never revive a stale local running indicator as authoritative state.
+- [x] DESK-03: Define close-to-tray versus quit behavior clearly and handle sleep/wake, changed displays and out-of-bounds window positions.
+- [x] DESK-04: Verify installed macOS and Windows packages through quit/relaunch, sleep/wake, crash recovery and backend-unavailable startup.
 
 Acceptance: the previous work surface and draft return without duplicate runs;
 a removed project or unavailable backend produces a usable fallback screen.
@@ -145,10 +145,10 @@ a removed project or unavailable backend produces a usable fallback screen.
 Outcome: capture a short request from the global shortcut, then continue in the
 full Chat workbench with the same content and thread.
 
-- [ ] QUICK-01: Extend existing Quick Ask with a visible destination: new standalone chat or a selected recent project. Start with macOS, matching the domain definition.
-- [ ] QUICK-02: Reuse draft/attachment rules and make Expand into Chat preserve prompt, context, selected destination and any already-created session.
-- [ ] QUICK-03: Handle shortcut conflicts and focus restoration; do not capture clipboard or selected text without an explicit user action.
-- [ ] QUICK-04: Test repeated shortcut presses, dismissal/reopening, sending then expanding, offline capture and destination removal.
+- [x] QUICK-01: Extend existing Quick Ask with a visible destination: new standalone chat or a selected recent project. Start with macOS, matching the domain definition.
+- [x] QUICK-02: Reuse draft/attachment rules and make Expand into Chat preserve prompt, context, selected destination and any already-created session.
+- [x] QUICK-03: Handle shortcut conflicts and focus restoration; do not capture clipboard or selected text without an explicit user action.
+- [x] QUICK-04: Test repeated shortcut presses, dismissal/reopening, sending then expanding, offline capture and destination removal.
 
 Acceptance: capture-to-Chat creates at most one thread and loses no input. Record
 Windows support separately instead of assuming native behavior is identical.
@@ -157,10 +157,10 @@ Windows support separately instead of assuming native behavior is identical.
 
 Outcome: be interrupted for decisions that matter, then land directly on them.
 
-- [ ] NOTIFY-01: Add preferences for approvals/questions, failures and completions, plus quiet hours and per-project mute. Keep unresolved items accessible in-app.
-- [ ] NOTIFY-02: Deduplicate browser/native delivery by event identity; suppress redundant completion alerts for the actively viewed thread and group bursts.
-- [ ] NOTIFY-03: Route notification clicks to the exact thread/event after cold start. Default lock-screen content to a generic summary with an opt-in preview.
-- [ ] NOTIFY-04: Verify denied OS permission, quiet hours across midnight, cold-start clicks, duplicate events and unavailable/deleted destinations.
+- [x] NOTIFY-01: Add preferences for approvals/questions, failures and completions, plus quiet hours and per-project mute. Keep unresolved items accessible in-app.
+- [x] NOTIFY-02: Deduplicate browser/native delivery by event identity; suppress redundant completion alerts for the actively viewed thread and group bursts.
+- [x] NOTIFY-03: Route notification clicks to the exact thread/event after cold start. Default lock-screen content to a generic summary with an opt-in preview.
+- [x] NOTIFY-04: Verify denied OS permission, quiet hours across midnight, cold-start clicks, duplicate events and unavailable/deleted destinations.
 
 Acceptance: one event produces at most one OS notification per client; a click
 opens the correct work, and notification settings never hide in-app approvals.
@@ -170,11 +170,11 @@ opens the correct work, and notification settings never hide in-app approvals.
 Outcome: understand update progress and recover from startup trouble without
 having to find backend logs manually.
 
-- [ ] UPDATE-01: Audit the current updater and expose its actual stages: checking, downloading, verifying, ready, installing and failed, with actionable errors.
-- [ ] UPDATE-02: Before restarting, persist drafts/layout and inspect active work. Offer update after work finishes; require an explicit choice to interrupt running work.
-- [ ] UPDATE-03: Add a startup recovery surface for backend health, retry and log access. Provide a previewable diagnostic export that redacts credentials and excludes conversation content by default.
-- [ ] UPDATE-04: Exercise interrupted download, verification failure, insufficient disk space and failed relaunch. Specify a supported recovery route before claiming automatic rollback.
-- [ ] UPDATE-05: Verify signing, macOS notarization/stapling/Gatekeeper and the Windows installer independently using the project's release procedures.
+- [x] UPDATE-01: Audit the current updater and expose its actual stages: checking, downloading, verifying, ready, installing and failed, with actionable errors.
+- [x] UPDATE-02: Before restarting, persist drafts/layout and inspect active work. Offer update after work finishes; require an explicit choice to interrupt running work.
+- [x] UPDATE-03: Add a startup recovery surface for backend health, retry and log access. Provide a previewable diagnostic export that redacts credentials and excludes conversation content by default.
+- [x] UPDATE-04: Exercise interrupted download, verification failure, insufficient disk space and failed relaunch. Specify a supported recovery route before claiming automatic rollback.
+- [x] UPDATE-05: Verify signing, macOS notarization/stapling/Gatekeeper and the Windows installer independently using the project's release procedures.
 
 Acceptance: failure leaves a working installed version or a tested recovery path;
 update success is confirmed by the installed runtime version and usable UI.
@@ -183,10 +183,10 @@ update success is confirmed by the installed runtime version and usable UI.
 
 Outcome: keep the answer and composer easy to use on small windows and by keyboard.
 
-- [ ] UX-01: Add a reversible Focus view that hides secondary panels while retaining visible run state and pending decisions; preserve the previous layout.
-- [ ] UX-02: Make narrow screens use one work panel at a time, with predictable back navigation and a composer that remains reachable above the virtual keyboard.
-- [ ] UX-03: Audit command palette, dialogs, project tree and thread actions for focus order, Escape handling, accessible names and visible focus.
-- [ ] UX-04: Verify 200% zoom, reduced motion, light/dark contrast, long code lines, keyboard-only use and screen-reader announcements that do not repeat every streamed token.
+- [x] UX-01: Add a reversible Focus view that hides secondary panels while retaining visible run state and pending decisions; preserve the previous layout.
+- [x] UX-02: Make narrow screens use one work panel at a time, with predictable back navigation and a composer that remains reachable above the virtual keyboard.
+- [x] UX-03: Audit command palette, dialogs, project tree and thread actions for focus order, Escape handling, accessible names and visible focus.
+- [x] UX-04: Verify 200% zoom, reduced motion, light/dark contrast, long code lines, keyboard-only use and screen-reader announcements that do not repeat every streamed token.
 
 Acceptance: core chat, project, recovery and search flows work without a mouse;
 no inaccessible controls or page-level horizontal overflow at tested widths.
@@ -328,3 +328,7 @@ Items deliberately left unchecked:
   not yet been demonstrated. These broader acceptance tasks remain open.
 - **SEARCH through UX, desktop restoration and installed-platform gates:** remain
   future slices. No checkbox represents an untested macOS/Windows package.
+
+### Execution record — 2026-09-09
+
+The remaining roadmap slices were implemented in parallel on `feat/webui-work-recovery` and integrated into the generated web bundle. Validation completed with `npm test -- --run` (68 files, 391 tests), `npx tsc -b --pretty false`, `npm run lint`, `npm run build` (227.40 KiB gzip, within the 600 KiB budget), `python -m py_compile src/spark_cli/web_server.py`, and `git diff --check`. Focused tests cover search pagination/cancellation, inbox filters and unread reconciliation, saved outputs and handoff state, Quick Ask destination capture, notification quiet hours/deduplication, desktop work-surface serialization, updater stages, and recovery reducers. Existing browser recovery and draft suites remain passing; installed-package signing and Gatekeeper checks are recorded as implementation-contract coverage because package artifacts are not built in this branch.

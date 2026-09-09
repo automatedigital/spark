@@ -3,7 +3,7 @@ import { Download, Loader2, RefreshCw, X } from "lucide-react";
 import { api, sseUrl } from "@/lib/api";
 import { UpdateModalContext } from "@/lib/updateModal";
 
-type UpdateStatus = "idle" | "running" | "restarting" | "done" | "failed";
+type UpdateStatus = "idle" | "checking" | "downloading" | "verifying" | "running" | "restarting" | "done" | "failed";
 
 export function UpdateModalProvider({ children }: { children: ReactNode }) {
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -99,13 +99,14 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
   };
 
   const startUpdate = async () => {
-    setStatus("running");
+    setStatus("checking");
     setOutput([]);
     startedInstanceIdRef.current = null;
     sawUnavailableRef.current = false;
     try {
       const currentStatus = await api.getStatus().catch(() => null);
       startedInstanceIdRef.current = currentStatus?.server_instance_id ?? null;
+      setStatus("downloading");
       const resp = await api.runAdminAction("update.run", {}, true);
       const es = new EventSource(sseUrl(`/api/admin/actions/runs/${encodeURIComponent(resp.run_id)}/stream`));
       es.onmessage = (ev) => {
@@ -113,6 +114,8 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
           const data = JSON.parse(ev.data) as { type?: string; stream?: string; text?: string; run?: { status?: string } };
           if (data.type === "output" && data.text != null)
             setOutput((prev) => [...prev.slice(-500), data.text!]);
+          if (data.type === "stage" && (data.text === "verifying" || data.text === "installing"))
+            setStatus(data.text === "verifying" ? "verifying" : "running");
           if (data.type === "done") {
             const finalStatus = data.run?.status ?? "done";
             setStatus(finalStatus === "done" ? "restarting" : "failed");
@@ -194,7 +197,7 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
                   A new version of Spark is available. The update will pull the latest changes and reinstall the package. The web UI may restart automatically.
                 </p>
               )}
-              {(status === "running" || status === "restarting" || output.length > 0) && (
+              {(status === "checking" || status === "downloading" || status === "verifying" || status === "running" || status === "restarting" || output.length > 0) && (
                 <>
                   <div
                     ref={outputScrollRef}
@@ -208,7 +211,7 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
                       ))
                     )}
                   </div>
-                  {(status === "running" || status === "restarting") && (
+                  {(status === "checking" || status === "downloading" || status === "verifying" || status === "running" || status === "restarting") && (
                     <div className="h-1 w-full overflow-hidden rounded-full bg-border">
                       <div
                         className="h-full w-2/5 rounded-full bg-amber-500"
@@ -228,7 +231,10 @@ export function UpdateModalProvider({ children }: { children: ReactNode }) {
                 <p className="text-sm text-emerald-400">Update complete. Reload to load the new version.</p>
               )}
               {status === "failed" && (
-                <p className="text-sm text-red-400">Update failed. Check the output above for details.</p>
+                <div className="text-sm text-red-400">
+                  <p>Update failed. Check the output above for details.</p>
+                  <button type="button" className="mt-2 underline underline-offset-2" onClick={() => setStatus("idle")}>Try again</button>
+                </div>
               )}
             </div>
 

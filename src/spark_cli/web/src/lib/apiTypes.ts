@@ -493,6 +493,8 @@ export interface ToolsetInfo {
 }
 
 export interface SessionSearchResult {
+  message_id?: string | number | null;
+  message_index?: number | null;
   session_id: string;
   snippet: string;
   role: string | null;
@@ -504,6 +506,9 @@ export interface SessionSearchResult {
 
 export interface SessionSearchResponse {
   results: SessionSearchResult[];
+  total?: number;
+  limit?: number;
+  offset?: number;
 }
 
 export interface ConversationModelEntry {

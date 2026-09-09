@@ -37,6 +37,7 @@ import { recordChatDiagnosticCounter } from "@/lib/chatDiagnostics";
 
 const PINNED_KEY = "spark-pinned-sessions";
 const EXPANDED_KEY = "spark-chat-expanded";
+const SELECTED_SESSION_KEY = "spark-selected-session-v1";
 export const SESSION_PAGE_SIZE = 50;
 
 export type PendingInitialMessages = Record<string, string>;
@@ -230,7 +231,9 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const [hasMoreSessions, setHasMoreSessions] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    try { return localStorage.getItem(SELECTED_SESSION_KEY); } catch { return null; }
+  });
   const [composingFor, setComposingFor] = useState<string | null>(null);
   const [sidebarProjectScope, setSidebarProjectScope] = useState<string | null>(null);
   const [pendingInitialMessages, setPendingInitialMessages] = useState<PendingInitialMessages>({});
@@ -535,6 +538,10 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     }
     if (id && !sessionsRef.current.some((session) => session.id === id)) void hydrateSession(id);
     setSelectedId(id);
+    try {
+      if (id) localStorage.setItem(SELECTED_SESSION_KEY, id);
+      else localStorage.removeItem(SELECTED_SESSION_KEY);
+    } catch { /* private or unavailable storage: memory state still works */ }
     setComposingFor(null);
   }, [hydrateSession]);
 
