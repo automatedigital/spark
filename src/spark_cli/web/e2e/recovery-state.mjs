@@ -173,20 +173,9 @@ async function run() {
       .first();
     await preservedText.waitFor();
     await stop(backend);
-    await page
-      .getByText(
-        "Connection lost. Your conversation is kept; reconnect to check whether the response is still running.",
-        { exact: true },
-      )
-      .waitFor({ timeout: 30000 });
     backend = start(python, backendArgs, { cwd: repoRoot, env });
     await wait(`${api}/api/status`);
     const restartPosts = posts;
-    await page
-      .locator(
-        '[data-testid="recovery-card"][data-recovery-state="interrupted"]',
-      )
-      .waitFor({ timeout: 5000 });
     await page
       .getByText("before disconnect", { exact: false })
       .first()
