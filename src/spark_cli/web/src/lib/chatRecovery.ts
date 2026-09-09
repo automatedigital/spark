@@ -32,6 +32,31 @@ export interface RecoveryPollDecision {
   nextIdlePollAt: number;
 }
 
+export type RecoveryCardState = "running" | "waiting-approval" | "waiting-input" | "reconnecting" | "interrupted" | "failed" | "complete";
+
+export function recoveryCardState(input: {
+  turnActive?: boolean | null;
+  state?: string | null;
+  phase?: string | null;
+  connection?: ChatConnectionState | null;
+  outcome?: { status?: string | null } | null;
+  pendingKind?: string | null;
+}): RecoveryCardState {
+  const state = (input.state ?? "").toLowerCase();
+  const phase = (input.phase ?? "").toLowerCase();
+  const outcome = (input.outcome?.status ?? "").toLowerCase();
+  // Unresolved decisions remain visible even if the connection drops or the
+  // backend has finalized a response while waiting for user input.
+  if (input.pendingKind === "approval" || state === "awaiting-approval" || state === "awaiting_approval" || (input.turnActive && phase === "approval")) return "waiting-approval";
+  if (input.pendingKind === "requested_input" || state === "awaiting-input" || state === "awaiting_input" || (input.turnActive && phase === "input")) return "waiting-input";
+  if (input.connection === "reconnecting" || state === "stalled") return "reconnecting";
+  if (state === "failed" || (!input.turnActive && outcome === "failed")) return "failed";
+  if (state === "interrupted" || (!input.turnActive && outcome === "interrupted")) return "interrupted";
+  if (input.turnActive === false && outcome === "running") return "interrupted";
+  if (input.turnActive === false || state === "complete" || state === "completed") return "complete";
+  return "running";
+}
+
 export const RECOVERY_SIGNAL_COOLDOWN_MS = 2_000;
 export const RECOVERY_SIGNAL_WINDOW_MS = 30_000;
 export const RECOVERY_SIGNAL_MAX_PER_WINDOW = 3;

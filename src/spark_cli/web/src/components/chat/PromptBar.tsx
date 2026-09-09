@@ -681,6 +681,7 @@ export function PromptBar({
   const [slashQuery, setSlashQuery] = useState("");
   const [cursorPos, setCursorPos] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const stopRequestedRef = useRef(false);
 
   const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
@@ -688,9 +689,9 @@ export function PromptBar({
   const [showSettings, setShowSettings] = useState(false);
 
   const [isFocused, setIsFocused] = useState(false);
-  const [showHint, setShowHint] = useState(
-    () => !localStorage.getItem("spark-prompt-hint-dismissed")
-  );
+  const [showHint, setShowHint] = useState(() => {
+    try { return !localStorage.getItem("spark-prompt-hint-dismissed"); } catch { return false; }
+  });
 
   const { estimate, loading: estimateLoading } = useTokenEstimate(input, contextItems, sessionId);
 
@@ -741,9 +742,10 @@ export function PromptBar({
   };
 
   const handleSend = () => {
+    if (!canSend && !canRedirect) return;
     if (showHint) {
       setShowHint(false);
-      localStorage.setItem("spark-prompt-hint-dismissed", "1");
+      try { localStorage.setItem("spark-prompt-hint-dismissed", "1"); } catch { /* Draft remains editable without storage. */ }
     }
     onSend();
   };
@@ -838,9 +840,12 @@ export function PromptBar({
     const arr = Array.from(files);
     if (!arr.length) return;
     setUploading(true);
+    setUploadError(null);
     try {
       await onUploadFiles(arr);
       textareaRef.current?.focus();
+    } catch {
+      setUploadError("Upload failed. Choose the file again to reattach it.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -868,11 +873,11 @@ export function PromptBar({
   const blocked = disabled || streaming || uploading;
   // The textarea stays editable while streaming so the user can type a redirect
   // ("actually, do X instead") that interrupts the running turn on Enter.
-  const inputBlocked = disabled || uploading;
+  const inputBlocked = disabled;
   const availability = promptBarAvailability({
     input,
     streaming,
-    disabled: !!disabled,
+    disabled: !!disabled || contextItems.some((item) => item.attachment_status && item.attachment_status !== "ready"),
     uploading,
     stopRequested: stopRequestedRef.current,
   });
@@ -901,6 +906,8 @@ export function PromptBar({
 
   return (
     <div className="px-3 pb-3 pt-2 shrink-0 relative">
+      {uploading && <p role="status" className="mb-1 text-xs text-muted-foreground">Uploading attachments…</p>}
+      {uploadError && <p role="alert" className="mb-1 text-xs text-destructive">{uploadError}</p>}
       {showMenu && (
         <SlashCommandMenu
           query={slashQuery}
@@ -928,7 +935,7 @@ export function PromptBar({
       )}
 
       {/* Unified card — no focus ring */}
-      <div className={`relative rounded-2xl border border-border/80 bg-[#111]/80 shadow-xl shadow-black/15 backdrop-blur-xl ${inputBlocked ? "opacity-60" : ""}`}>
+      <div className={`relative rounded-2xl border border-border/80 bg-background/80 shadow-xl shadow-black/15 backdrop-blur-xl ${inputBlocked ? "opacity-60" : ""}`}>
         {/* Textarea */}
         <div className="relative min-h-[52px]">
           <div

@@ -17,6 +17,7 @@ export interface MessagesTimelineProps extends Pick<TurnWorkGroupProps, "safeMod
   onCopyText?: (text: string) => void;
   onPromoteToBrief?: (message: TimelineAssistantMessage) => void;
   onCopyExact?: (message: TimelineAssistantMessage) => void;
+  onSaveOutput?: (message: TimelineAssistantMessage) => void;
   className?: string;
   emptyLabel?: string;
 }
@@ -40,6 +41,7 @@ export function TimelineTurnGroup({
   onCopyText,
   onPromoteToBrief,
   onCopyExact,
+  onSaveOutput,
 }: Omit<MessagesTimelineProps, "turns" | "className" | "emptyLabel"> & { turn: TimelineTurn }) {
   return (
     <article className="space-y-3" data-turn-id={turn.id} data-turn-status={turn.status}>
@@ -61,6 +63,7 @@ export function TimelineTurnGroup({
           defaultWrap={defaultWrap}
           onPromoteToBrief={onPromoteToBrief}
           onCopyExact={onCopyExact}
+          onSaveOutput={onSaveOutput}
         />
       )}
       <TurnWorkGroup

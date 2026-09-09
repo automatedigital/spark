@@ -92,3 +92,7 @@ Spark.dmg
 # Local release-signing config (Developer ID identity + notary profile name).
 # Sourced by build_desktop.sh. Never commit — use scripts/release.env.example.
 scripts/release.env
+
+# Generated acceptance evidence for the work recovery slice.
+src/spark_cli/web/screenshots/work-recovery/
+src/spark_cli/web/screenshots/e2e-recovery-*.png

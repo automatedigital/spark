@@ -89,6 +89,12 @@ const ContextTrayItem = memo(function ContextTrayItem({
         <span className="text-[9px] text-muted-foreground/50 shrink-0">{sizeLabel}</span>
       )}
 
+      {item.attachment_status && (
+        <span className={cn("text-[10px]", item.attachment_status === "failed" || item.attachment_status === "missing" ? "text-destructive" : "text-muted-foreground")} title={item.attachment_error}>
+          {item.attachment_status === "uploading" ? "Uploading…" : item.attachment_status === "ready" ? "Ready" : item.attachment_status === "missing" ? "Missing · reattach file" : "Upload failed · reattach file"}
+        </span>
+      )}
+
       {isLargeFullContent && (
         <span title="Large file in full mode — consider switching to summary or excerpt">
           <AlertTriangle className="h-3 w-3 shrink-0 text-warning" />

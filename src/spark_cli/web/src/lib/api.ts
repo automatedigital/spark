@@ -11,6 +11,7 @@ export * from "./apiTypes";
 import {
   authHeaders,
   fetchJSON,
+  getApiBase,
   mediaFileUrl,
 } from "./apiHelpers";
 import { sessionApi } from "./api_session";
@@ -109,6 +110,7 @@ export const api = {
       last_event_at: number | null;
       interrupt_requested: boolean;
       active_agent_session_id: string | null;
+      turn_outcome?: { status?: string | null; ended_at?: number | null } | null;
       stream_revision?: number;
       stream_text_chars?: number;
       timings?: {
@@ -368,7 +370,7 @@ export const api = {
   uploadChatFiles: async (files: File[]) => {
     const form = new FormData();
     for (const f of files) form.append("files", f);
-    const res = await fetch("/api/workspace/files/upload", {
+    const res = await fetch(`${getApiBase()}/api/workspace/files/upload`, {
       method: "POST",
       headers: authHeaders(),
       body: form,

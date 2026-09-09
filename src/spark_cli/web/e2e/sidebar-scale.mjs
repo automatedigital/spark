@@ -15,6 +15,10 @@ const repoRoot = path.resolve(webRoot, "../../..");
 const pythonBin = process.env.PYTHON || path.join(repoRoot, ".venv", "bin", "python");
 const viteBin = path.join(fixtureWebRoot, "node_modules", ".bin", "vite");
 const baseline = process.env.SPARK_E2E_BASELINE === "1";
+const sessionCount = Number(process.env.SPARK_E2E_SESSION_COUNT || 500);
+if (!Number.isInteger(sessionCount) || sessionCount < 1) {
+  throw new Error("SPARK_E2E_SESSION_COUNT must be a positive integer");
+}
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -97,7 +101,7 @@ from core.spark_state import SessionDB
 
 db = SessionDB()
 now = time.time()
-for index in range(500):
+for index in range(${sessionCount}):
     sid = f"scale-{index:03d}"
     source = f"workspace:project-{index % 10}"
     db.create_session(sid, source, model="test-model")
@@ -116,7 +120,11 @@ db.close()
 
   const backend = startProcess(
     pythonBin,
-    ["-m", "spark_cli.main", "dashboard", "--host", "127.0.0.1", "--port", String(apiPort), "--no-open"],
+    [
+      "-c",
+      "from spark_cli.web_server import start_server; import sys; start_server('127.0.0.1', int(sys.argv[1]), False)",
+      String(apiPort),
+    ],
     {
       cwd: repoRoot,
       env: {

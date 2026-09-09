@@ -61,8 +61,8 @@ export const sessionApi = {
         body: JSON.stringify({ title }),
       },
     ),
-  searchSessions: (q: string, limit = 20, source?: string) => {
-    const qs = new URLSearchParams({ q, limit: String(limit) });
+  searchSessions: (q: string, limit = 20, source?: string, offset = 0) => {
+    const qs = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
     if (source) qs.set("source", source);
     return fetchJSON<SessionSearchResponse>(`/api/sessions/search?${qs.toString()}`);
   },

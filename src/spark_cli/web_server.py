@@ -3474,10 +3474,10 @@ async def get_sessions(limit: int = 20, offset: int = 0, source: str | None = No
 
 
 @app.get("/api/sessions/search")
-async def search_sessions(q: str = "", limit: int = 20, source: str | None = None):
+async def search_sessions(q: str = "", limit: int = 20, offset: int = 0, source: str | None = None):
     """Full-text search across session message content using FTS5."""
     if not q or not q.strip():
-        return {"results": []}
+        return {"results": [], "total": 0, "limit": limit, "offset": offset}
     try:
         from core.spark_state import SessionDB
 
@@ -3496,14 +3496,16 @@ async def search_sessions(q: str = "", limit: int = 20, source: str | None = Non
                     terms.append(token + "*")
             prefix_query = " ".join(terms)
             source_filter = [source] if source else None
-            matches = db.search_messages(query=prefix_query, source_filter=source_filter, limit=limit)
-            # Group by session_id — return unique sessions with their best snippet
-            seen: dict = {}
-            for m in matches:
-                sid = m["session_id"]
-                if sid not in seen:
-                    seen[sid] = {
-                        "session_id": sid,
+            # Return matching messages rather than collapsing to the first 500
+            # sessions. The stable message id lets the client navigate to the
+            # exact result and offset makes large histories pageable.
+            matches = db.search_messages(query=prefix_query, source_filter=source_filter, limit=limit, offset=offset)
+            return {
+                "results": [
+                    {
+                        "message_id": m.get("id"),
+                        "message_index": m.get("message_index"),
+                        "session_id": m["session_id"],
                         "snippet": m.get("snippet", ""),
                         "role": m.get("role"),
                         "source": m.get("source"),
@@ -3511,7 +3513,12 @@ async def search_sessions(q: str = "", limit: int = 20, source: str | None = Non
                         "title": m.get("title"),
                         "session_started": m.get("session_started"),
                     }
-            return {"results": list(seen.values())}
+                    for m in matches
+                ],
+                "total": len(matches),
+                "limit": limit,
+                "offset": offset,
+            }
         finally:
             db.close()
     except Exception as err:

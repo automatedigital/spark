@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Copy, FileText, Loader2, Zap } from "lucide-react";
+import { Bookmark, Copy, FileText, Loader2, Zap } from "lucide-react";
 import type { TimelineAssistantMessage } from "@/lib/threadTimelineModel";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/Markdown";
@@ -10,6 +10,7 @@ export interface AssistantMessageRowProps {
   defaultWrap?: boolean;
   onPromoteToBrief?: (message: TimelineAssistantMessage) => void;
   onCopyExact?: (message: TimelineAssistantMessage) => void;
+  onSaveOutput?: (message: TimelineAssistantMessage) => void;
 }
 
 function formatTokens(totalTokens: number): string {
@@ -22,9 +23,10 @@ export const AssistantMessageRow = memo(function AssistantMessageRow({
   defaultWrap = false,
   onPromoteToBrief,
   onCopyExact,
+  onSaveOutput,
 }: AssistantMessageRowProps) {
   const usage = message.usage;
-  const showActions = !message.streaming && Boolean(message.content) && Boolean(onPromoteToBrief || onCopyExact);
+  const showActions = !message.streaming && Boolean(message.content) && Boolean(onPromoteToBrief || onCopyExact || onSaveOutput);
 
   return (
     <article className="group/assistant flex gap-2" data-message-role="assistant" data-message-id={message.id}>
@@ -66,6 +68,11 @@ export const AssistantMessageRow = memo(function AssistantMessageRow({
             {onPromoteToBrief && (
               <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Promote to brief" aria-label="Promote to brief" onClick={() => onPromoteToBrief(message)}>
                 <FileText className="h-3 w-3" />
+              </Button>
+            )}
+            {onSaveOutput && (
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Save output" aria-label="Save output" onClick={() => onSaveOutput(message)}>
+                <Bookmark className="h-3 w-3" />
               </Button>
             )}
           </div>

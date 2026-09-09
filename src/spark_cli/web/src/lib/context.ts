@@ -18,6 +18,9 @@ export interface ContextItem {
   excerpt_range?: [number, number] | null;
   search_query?: string | null;
   label?: string | null;
+  /** Client-side staging metadata; never implies that a browser File survives reload. */
+  attachment_status?: "uploading" | "ready" | "missing" | "failed";
+  attachment_error?: string;
 }
 
 export interface ContextBucket {

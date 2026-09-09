@@ -377,6 +377,7 @@ export function InboxSidebarSessions({
   const [dragError, setDragError] = useState<string | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
+  const [filter, setFilter] = useState<"needs" | "running" | "finished">("needs");
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.slug, project.name])), [projects]);
   const visible = useMemo(
@@ -419,6 +420,9 @@ export function InboxSidebarSessions({
   const settledSessions = sortSessionsNewestFirst(
     visible.filter((session) => Boolean(settled[session.id])),
   );
+  const runningSessions = active.filter((session) => session.is_active && session.ended_at === null);
+  const needsSessions = active.filter((session) => unreadSessionIds.has(session.id) || !session.is_active);
+  const inboxSessions = filter === "running" ? runningSessions : filter === "finished" ? settledSessions : needsSessions;
 
   const toggleSettled = (session: SessionInfo) => {
     setSettled((current) => {
@@ -521,6 +525,14 @@ export function InboxSidebarSessions({
         </button>
       </div>
 
+      <div className="flex shrink-0 gap-1 px-2 py-1.5" role="tablist" aria-label="Inbox filters">
+        {([['needs', 'Needs you', needsSessions.length], ['running', 'Running', runningSessions.length], ['finished', 'Finished', settledSessions.length]] as const).map(([value, label, count]) => (
+          <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={cn("rounded px-2 py-1 text-[10px] transition", filter === value ? "bg-foreground/10 text-foreground" : "text-muted-foreground/55 hover:text-foreground")}>
+            {label} <span className="tabular-nums opacity-60">{count}</span>
+          </button>
+        ))}
+      </div>
+
       {dragError && (
         <p role="alert" className="shrink-0 px-3 pb-1 text-[11px] text-destructive">
           {dragError}
@@ -528,13 +540,13 @@ export function InboxSidebarSessions({
       )}
 
       <div className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1.5 pb-3" data-testid="session-sidebar-scroll">
-        {active.length > 0 && (
+        {inboxSessions.length > 0 && (
           <section>
             <div className="flex items-center justify-between px-1.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/45">
-              <span>Inbox</span><span>{active.length}</span>
+              <span>{filter === "running" ? "Running" : filter === "finished" ? "Finished" : "Needs you"}</span><span>{inboxSessions.length}</span>
             </div>
             <ul>
-              {active.map((session) => (
+              {inboxSessions.map((session) => (
                 <InboxCard
                   key={session.id}
                   session={session}
@@ -576,7 +588,7 @@ export function InboxSidebarSessions({
           </section>
         )}
 
-        {!active.length && !settledSessions.length && (
+        {!inboxSessions.length && (
           <div className="px-4 py-10 text-center">
             <CircleCheck className="mx-auto mb-3 h-5 w-5 text-muted-foreground/35" />
             <p className="text-[13px] font-medium text-foreground/75">Inbox clear</p>

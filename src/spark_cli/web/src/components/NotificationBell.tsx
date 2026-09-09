@@ -4,6 +4,7 @@ import { getDashboardToken } from "@/lib/api";
 import { nativeNotify } from "@/lib/desktop";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
+import { notificationIdentity, shouldNotify } from "@/lib/notificationPolicy";
 import {
   dismissSessionNotification,
   clearAllSessionNotifications,
@@ -31,6 +32,7 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
+  const seenEvents = useRef(new Set<string>());
 
   // Subscribe to unread session store
   useEffect(() => subscribeToUnreadSessions(() => {
@@ -49,6 +51,9 @@ export function NotificationBell() {
       try {
         const env = JSON.parse(e.data);
         if (!env.topic?.startsWith("notifications.")) return;
+        const eventKey = notificationIdentity(env);
+        if (seenEvents.current.has(eventKey)) return;
+        seenEvents.current.add(eventKey);
         const d = env.data;
         const note: JobNotification = {
           id: `${env.ts}-${d.job_id}`,
@@ -62,7 +67,7 @@ export function NotificationBell() {
         setUnread((n) => n + 1);
         // Desktop (§3.2): surface a native OS notification so the user is
         // alerted even when the window is hidden / in the tray. No-ops on web.
-        if (document.hidden || (isTauri() && !document.hasFocus())) {
+        if ((document.hidden || (isTauri() && !document.hasFocus())) && shouldNotify(note.success === false ? "failure" : "completion", d.project_slug)) {
           const title = note.success === false ? `⚠ ${note.job_name}` : note.job_name || "Spark";
           void nativeNotify(title, note.summary || "Background task completed.");
         }

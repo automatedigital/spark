@@ -5,7 +5,26 @@ import {
   initialRecoverySignalBudget,
   RECOVERY_SIGNAL_COOLDOWN_MS,
   RECOVERY_SIGNAL_WINDOW_MS,
+  recoveryCardState,
 } from "./chatRecovery";
+
+describe("recoveryCardState", () => {
+  it("keeps pending decisions visible and ignores previous failures during a new run", () => {
+    expect(recoveryCardState({ turnActive: true, state: "running", outcome: { status: "failed" } })).toBe("running");
+    expect(recoveryCardState({ turnActive: false, state: "not_found", outcome: { status: "running" } })).toBe("interrupted");
+    expect(recoveryCardState({ turnActive: false, pendingKind: "requested_input", connection: "reconnecting" })).toBe("waiting-input");
+    expect(recoveryCardState({ turnActive: true, state: "stalled", phase: "approval" })).toBe("waiting-approval");
+  });
+  it("maps confirmed backend outcomes to actionable states", () => {
+    expect(recoveryCardState({ state: "failed", turnActive: false })).toBe("failed");
+    expect(recoveryCardState({ state: "interrupted", turnActive: false })).toBe("interrupted");
+    expect(recoveryCardState({ state: "awaiting-approval", turnActive: true })).toBe("waiting-approval");
+    expect(recoveryCardState({ connection: "reconnecting", turnActive: true })).toBe("reconnecting");
+    expect(recoveryCardState({ state: "stalled", turnActive: true })).toBe("reconnecting");
+    expect(recoveryCardState({ state: "awaiting_approval", turnActive: true })).toBe("waiting-approval");
+    expect(recoveryCardState({ state: "not_found", turnActive: false })).toBe("complete");
+  });
+});
 
 describe("decideRecoveryPoll", () => {
   it("does not poll idle recovery while the document is hidden", () => {
