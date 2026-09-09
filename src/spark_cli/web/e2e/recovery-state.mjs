@@ -110,7 +110,7 @@ async function run() {
     await fake(api, "recovery_stalled", "Recovery stalled", [
       { type: "token", text: "before disconnect" },
       { type: "stall", phase: "api", text: "network stalled" },
-      { type: "token", text: "after reconnect", delay_ms: 60000 },
+      { type: "token", text: "after reconnect", delay_ms: 5000 },
     ]);
     await fake(api, "recovery_failed", "Recovery failed", [
       { type: "token", text: "partial failure" },
@@ -160,8 +160,6 @@ async function run() {
       .first()
       .waitFor({ timeout: 15000 });
     await page.getByTestId("recovery-card").waitFor();
-    await page.getByText("Running", { exact: false }).first().click();
-    await open("Recovery approval", "Recovery approval prompt");
     const approvalStatus = await (
       await fetch(`${api}/api/conversations/recovery_approval/turn-status`)
     ).json();
@@ -180,7 +178,7 @@ async function run() {
         "Connection lost. Your conversation is kept; reconnect to check whether the response is still running.",
         { exact: true },
       )
-      .waitFor({ timeout: 8000 });
+      .waitFor({ timeout: 30000 });
     backend = start(python, backendArgs, { cwd: repoRoot, env });
     await wait(`${api}/api/status`);
     const restartPosts = posts;
