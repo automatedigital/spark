@@ -95,7 +95,10 @@ jobs:
       - name: Install draft acceptance browser
         run: |
           python -m pip install playwright==1.62.0
-          python -m playwright install --with-deps chromium
+          # Chromium and its OS dependencies were installed above by the
+          # Node Playwright step. Re-running the apt-backed installer here
+          # creates a second, flaky dependency-resolution path on hosted
+          # runners (for example Google repo hash mismatches).
 
       - name: Draft recovery end-to-end
         run: python ./e2e/work-recovery.py
