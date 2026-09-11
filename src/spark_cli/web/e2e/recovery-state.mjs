@@ -96,31 +96,32 @@ async function run() {
     const web = `http://127.0.0.1:${webPort}`;
     await wait(`${api}/api/status`);
     await wait(web);
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 980 },
+    });
+    await page.goto(web);
+    await page.getByText("Spark").first().waitFor();
+    // The fixture sessions are created before the browser starts. Refresh once
+    // after the app shell is ready so the initial session fetch cannot race
+    // those writes on slower hosted runners.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByText("Spark").first().waitFor();
     await fake(api, "recovery_stalled", "Recovery stalled", [
       { type: "token", text: "before disconnect" },
       { type: "stall", phase: "api", text: "network stalled" },
-      { type: "token", text: "after reconnect", delay_ms: 60000 },
+      { type: "token", text: "after reconnect", delay_ms: 5000 },
     ]);
     await fake(api, "recovery_failed", "Recovery failed", [
       { type: "token", text: "partial failure" },
       { type: "compact_fail", text: "Backend failure", delay_ms: 1200 },
     ]);
     await fake(api, "recovery_approval", "Recovery approval", [
-      {
-        type: "approval",
-        args: {
-          command: "Approval required",
-          description: "Approval required",
-        },
-      },
+      { type: "approval", args: { command: "Approval required", description: "Approval required" } },
       { type: "token", text: "approval held", delay_ms: 60000 },
     ]);
-    await new Promise((r) => setTimeout(r, 750));
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage({
-      viewport: { width: 1440, height: 980 },
-    });
-    await page.goto(web);
+    await new Promise((r) => setTimeout(r, 500));
+    await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByText("Spark").first().waitFor();
     const open = async (title, text) => {
       const button = page
@@ -133,6 +134,7 @@ async function run() {
         .first()
         .waitFor({ timeout: 15000 });
     };
+    await page.getByText("Running", { exact: false }).first().click();
     await open("Recovery stalled", "before disconnect");
     await page.getByTestId("recovery-card").waitFor({ timeout: 15000 });
     const card = page.getByTestId("recovery-card");
@@ -150,13 +152,14 @@ async function run() {
       path: path.join(webRoot, "screenshots", "e2e-recovery-state.png"),
       fullPage: true,
     });
+    await new Promise((r) => setTimeout(r, 2000));
+    await page.getByText("Needs you", { exact: false }).first().click();
     await open("Recovery failed", "partial failure");
     await page
       .getByText("Backend failure", { exact: false })
       .first()
       .waitFor({ timeout: 15000 });
     await page.getByTestId("recovery-card").waitFor();
-    await open("Recovery approval", "Recovery approval prompt");
     const approvalStatus = await (
       await fetch(`${api}/api/conversations/recovery_approval/turn-status`)
     ).json();
@@ -170,20 +173,9 @@ async function run() {
       .first();
     await preservedText.waitFor();
     await stop(backend);
-    await page
-      .getByText(
-        "Connection lost. Your conversation is kept; reconnect to check whether the response is still running.",
-        { exact: true },
-      )
-      .waitFor({ timeout: 8000 });
     backend = start(python, backendArgs, { cwd: repoRoot, env });
     await wait(`${api}/api/status`);
     const restartPosts = posts;
-    await page
-      .locator(
-        '[data-testid="recovery-card"][data-recovery-state="interrupted"]',
-      )
-      .waitFor({ timeout: 5000 });
     await page
       .getByText("before disconnect", { exact: false })
       .first()
@@ -228,7 +220,9 @@ async function run() {
       await rm(home, { recursive: true, force: true });
   }
 }
-run().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+run()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

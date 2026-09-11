@@ -96,3 +96,4 @@ scripts/release.env
 # Generated acceptance evidence for the work recovery slice.
 src/spark_cli/web/screenshots/work-recovery/
 src/spark_cli/web/screenshots/e2e-recovery-*.png
+src/spark_cli/web/screenshots/e2e/

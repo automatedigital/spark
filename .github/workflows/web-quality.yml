@@ -95,7 +95,10 @@ jobs:
       - name: Install draft acceptance browser
         run: |
           python -m pip install playwright==1.62.0
-          python -m playwright install --with-deps chromium
+          # Python Playwright 1.62 uses a different browser cache key than the
+          # Node package, so install its browser binary without apt dependencies.
+          # The OS dependencies are already present from the earlier install.
+          python -m playwright install chromium
 
       - name: Draft recovery end-to-end
         run: python ./e2e/work-recovery.py
