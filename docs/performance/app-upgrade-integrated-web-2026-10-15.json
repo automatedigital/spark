@@ -1,0 +1,53 @@
+{
+  "source_sha": "5311eab6d78347375b44133abec1851d8f0eb54d",
+  "schema_version": 15,
+  "config_version": 29,
+  "flags": {
+    "delegation.async_enabled": false,
+    "delegation.worktree_isolation": false
+  },
+  "build": {
+    "command": "npm run build",
+    "exit": 0,
+    "initial_js_gzip_kib": 239.53,
+    "budget_kib": 600,
+    "manifest_sha256": "0e9dbe9b43de105392726982947ec73e604f99dbfcbf5a1512b3fef2e9df4e19",
+    "entries": {
+      "index.html": {
+        "file": "assets/index-BGQqgJBk.js",
+        "sha256": "40da5cdef75d22e5301a9d6175d52eaacda7c68679cdbf96cea6e162f7688388"
+      }
+    }
+  },
+  "frontend": {
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "vitest_passed": 426
+  },
+  "runtime": {
+    "passed": 230,
+    "expected_failures": 0,
+    "elapsed_seconds": 36.42,
+    "mypy_source_files": 130,
+    "manifest_tools": 70
+  },
+  "served_production_recovery": {
+    "checks": [
+      "draft survives immediate chat switch and browser refresh",
+      "failed send preserves draft through refresh",
+      "late acknowledgement clears only submitted draft without switching chat",
+      "concurrent tab edit preserves local input and exposes conflict",
+      "thread drafts remain isolated across refresh and switching",
+      "uploaded file reference and context selection survive refresh",
+      "interrupted upload recovers as missing and blocks send until removed",
+      "failed attachment remains visible without losing typed text",
+      "profile identity isolates stored drafts at same browser origin"
+    ]
+  },
+  "mode": "synthetic temporary SPARK_HOME; actual canonical bundle served by source Python backend",
+  "limitations": [
+    "Inspector end-to-end integration pending",
+    "Controlled performance and gateway handler acceptance pending",
+    "No installed macOS/Windows package, staging or production rollout evidence"
+  ]
+}
