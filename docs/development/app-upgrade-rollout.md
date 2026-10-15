@@ -75,6 +75,14 @@ macOS quit/relaunch, sleep/wake, unavailable-backend, Quick Ask and child contro
 separately from frozen-backend startup, signing and notarization. Windows checks
 require a Windows host and remain pending when one is unavailable.
 
+The current native shell uses fixed loopback port 9119. Before a native trial,
+identify any existing listener and running Spark instance; preserve user-owned
+processes rather than replacing them. Launch the candidate with a disposable
+`SPARK_HOME`, confirm `/api/status` reports that exact home, and keep draft keys
+scoped to that identity. `scripts/desktop_runtime_acceptance.py` has separate
+prepare/resume phases for packaged-backend persistence; those API checks do not
+establish native window, shortcut or real sleep/wake behavior.
+
 ## Rollback
 
 1. Disable new async/worktree dispatch and gateway task dispatch, then stop the
