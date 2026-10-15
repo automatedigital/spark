@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from tests.fixtures.app_upgrade.gateway.authorization import bind_approval_policy
 from tests.fixtures.app_upgrade.gateway.transport import until
 from tools import approval
 
@@ -24,7 +25,7 @@ def isolated(monkeypatch):
     monkeypatch.setenv("SPARK_GATEWAY_SESSION", "1")
     monkeypatch.setenv("TIRITH_ENABLED", "false")
     monkeypatch.delenv("SPARK_YOLO_MODE", raising=False)
-    for platform in ("SLACK", "TELEGRAM", "DISCORD"):
+    for platform in ("SLACK", "TELEGRAM", "DISCORD", "FEISHU"):
         monkeypatch.setenv(f"{platform}_ALLOWED_USERS", "123")
     monkeypatch.setattr(approval, "_permanent_approved", set())
     monkeypatch.setattr(approval, "_get_approval_config", lambda: {"mode": "manual", "gateway_timeout": 3})
@@ -96,16 +97,18 @@ def transport(kind, monkeypatch):
         adapter._team_clients["T1"] = SimpleNamespace(chat_postMessage=post, chat_update=edit)
 
         async def send(data):
-            return await adapter.send_exec_approval("C1", data["command"], KEY, action_id=data.get("action_id"))
+            return await adapter.send_exec_approval("C1", data["command"], KEY, action_id=data.get("action_id"), source=data.get("source"), metadata=data.get("metadata"))
 
-        async def click(card):
-            body = {"message": card, "channel": {"id": "C1"}, "user": {"id": "123", "name": "fixture"}}
-            await adapter._handle_approval_action(AsyncMock(), body, card["blocks"][1]["elements"][0])
+        async def click(card, caller="123", chat_id="C1", thread_id=None, choice="once"):
+            body = {"message": {**card, "thread_ts": thread_id}, "channel": {"id": chat_id}, "user": {"id": caller, "name": "fixture"}}
+            index = ["once", "session", "always", "deny"].index(choice)
+            await adapter._handle_approval_action(AsyncMock(), body, card["blocks"][1]["elements"][index])
 
     elif kind == "telegram":
         from gateway.platforms import telegram
         from tests.gateway.test_telegram_approval_buttons import _make_adapter
         adapter = _make_adapter()
+        monkeypatch.setattr(telegram, "ParseMode", SimpleNamespace(MARKDOWN="Markdown"))
         monkeypatch.setattr(telegram, "InlineKeyboardButton", lambda text, **kwargs: SimpleNamespace(**kwargs))
         monkeypatch.setattr(telegram, "InlineKeyboardMarkup", lambda rows: rows)
 
@@ -116,11 +119,15 @@ def transport(kind, monkeypatch):
         adapter._bot.send_message = post
 
         async def send(data):
-            return await adapter.send_exec_approval("123", data["command"], KEY, action_id=data.get("action_id"))
+            return await adapter.send_exec_approval("123", data["command"], KEY, action_id=data.get("action_id"), source=data.get("source"), metadata=data.get("metadata"))
 
-        async def click(card):
-            query = SimpleNamespace(data=card["reply_markup"][0][0].callback_data,
-                from_user=SimpleNamespace(id=123, first_name="fixture"), answer=AsyncMock(), edit_message_text=AsyncMock())
+        async def click(card, caller="123", chat_id="123", thread_id=None, choice="once", topic_id=None):
+            callback = card["reply_markup"][0][0].callback_data.replace(":once:", f":{choice}:")
+            query = SimpleNamespace(data=callback,
+                from_user=SimpleNamespace(id=caller, first_name="fixture"),
+                message=SimpleNamespace(chat_id=chat_id, message_thread_id=thread_id,
+                    direct_messages_topic=SimpleNamespace(topic_id=topic_id)),
+                answer=AsyncMock(), edit_message_text=AsyncMock())
             await adapter._handle_callback_query(SimpleNamespace(callback_query=query), None)
             labels.extend(call.kwargs["text"] for call in query.answer.call_args_list)
 
@@ -141,11 +148,14 @@ def transport(kind, monkeypatch):
         monkeypatch.setattr(adapter, "_update_approval_card", edit)
 
         async def send(data):
-            return await adapter.send_exec_approval("oc_123", data["command"], KEY, action_id=data.get("action_id"))
+            return await adapter.send_exec_approval("oc_123", data["command"], KEY, action_id=data.get("action_id"), source=data.get("source"), metadata=data.get("metadata"))
 
-        async def click(card):
-            value = card["elements"][1]["actions"][0]["value"]
-            await adapter._handle_card_action_event(_make_card_action_data(value, token=""))
+        async def click(card, caller="123", chat_id="oc_123", thread_id=None, choice="once", message_id=None, token=""):
+            index = ["once", "session", "always", "deny"].index(choice)
+            value = card["elements"][1]["actions"][index]["value"]
+            data = _make_card_action_data(value, token=token, open_id=caller, chat_id=chat_id)
+            data.event.context.open_message_id = message_id if message_id is not None else str(cards.index(card) + 1)
+            await adapter._handle_card_action_event(data)
 
     else:
         from gateway.config import PlatformConfig
@@ -160,15 +170,16 @@ def transport(kind, monkeypatch):
         adapter._client = SimpleNamespace(get_channel=lambda channel: SimpleNamespace(send=post))
 
         async def send(data):
-            return await adapter.send_exec_approval("123", data["command"], KEY, action_id=data.get("action_id"))
+            return await adapter.send_exec_approval("123", data["command"], KEY, action_id=data.get("action_id"), source=data.get("source"), metadata=data.get("metadata"))
 
-        async def click(card):
-            interaction = SimpleNamespace(user=SimpleNamespace(id=123, display_name="fixture"),
+        async def click(card, caller="123", chat_id="123", thread_id=None, choice="once"):
+            interaction = SimpleNamespace(user=SimpleNamespace(id=caller, display_name="fixture"), channel_id=chat_id,
                 message=SimpleNamespace(embeds=[card["embed"]]), response=SimpleNamespace(edit_message=AsyncMock(), send_message=AsyncMock()))
-            await card["view"]._resolve(interaction, "once", module.discord.Color.green(), "Approved once")
+            await card["view"]._resolve(interaction, choice, module.discord.Color.green(), "Denied" if choice == "deny" else "Approved once")
             labels.append(card["embed"].footer)
 
-    return SimpleNamespace(send=send, click=click, cards=cards, labels=labels)
+    runner = bind_approval_policy(adapter)
+    return SimpleNamespace(send=send, click=click, cards=cards, labels=labels, adapter=adapter, runner=runner)
 
 
 @pytest.mark.parametrize("kind", ["slack", "telegram", "discord", "feishu"])

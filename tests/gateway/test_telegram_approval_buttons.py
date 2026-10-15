@@ -48,12 +48,19 @@ _ensure_telegram_mock()
 
 from gateway.platforms.telegram import TelegramAdapter
 from gateway.config import Platform, PlatformConfig
+from tests.fixtures.app_upgrade.gateway.authorization import bind_approval_policy
+
+
+@pytest.fixture(autouse=True)
+def approval_policy(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_ALLOW_ALL_USERS", "true")
 
 
 def _make_adapter():
     """Create a TelegramAdapter with mocked internals."""
     config = PlatformConfig(enabled=True, token="test-token")
     adapter = TelegramAdapter(config)
+    bind_approval_policy(adapter)
     adapter._bot = AsyncMock()
     adapter._app = MagicMock()
     return adapter
@@ -108,7 +115,9 @@ class TestTelegramExecApproval:
         assert len(adapter._approval_state) == 1
         approval_id = list(adapter._approval_state.keys())[0]
         assert approval_id == "entry-a"
-        assert adapter._approval_state[approval_id] == {"session_key": "my-session-key", "action_id": "entry-a"}
+        assert adapter._approval_state[approval_id]["session_key"] == "my-session-key"
+        assert adapter._approval_state[approval_id]["action_id"] == "entry-a"
+        assert adapter._approval_state[approval_id]["source"].chat_id == "12345"
 
     @pytest.mark.asyncio
     async def test_sends_in_thread(self):
@@ -165,6 +174,7 @@ class TestTelegramApprovalCallback:
         adapter = _make_adapter()
         # Set up approval state
         adapter._approval_state["entry-a"] = {"session_key": "agent:main:telegram:group:12345:99", "action_id": "entry-a"}
+        adapter._approval_state["entry-a"]["source"] = adapter.build_source(chat_id="12345", chat_type="group")
 
         # Mock callback query
         query = AsyncMock()
@@ -194,6 +204,7 @@ class TestTelegramApprovalCallback:
     async def test_deny_button(self):
         adapter = _make_adapter()
         adapter._approval_state["entry-deny"] = {"session_key": "some-session", "action_id": "entry-deny"}
+        adapter._approval_state["entry-deny"]["source"] = adapter.build_source(chat_id="12345", chat_type="group")
 
         query = AsyncMock()
         query.data = "ea:deny:entry-deny"

@@ -1,6 +1,7 @@
 """Real gateway notification + Slack button handlers with local SDK I/O only."""
 import asyncio
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -43,6 +44,7 @@ async def test_cancelled_slack_button_cannot_approve_replacement_gateway_command
     wire = SlackWire()
     wire.delay_first = delayed_send
     slack = _make_adapter()
+    slack.set_approval_authorizer(g.runner._is_user_authorized)
     slack._channel_team["fixture-parent"] = "T1"
     slack._team_clients["T1"] = wire
     monkeypatch.setenv("SLACK_ALLOWED_USERS", "fixture-owner")
@@ -51,6 +53,9 @@ async def test_cancelled_slack_button_cannot_approve_replacement_gateway_command
         async def send_exec_approval(self, **kwargs):
             # Preserve actual GatewayRunner notification arguments all the way
             # into the real Slack sender; only the SDK transport is synthetic.
+            # The reusable inbound fixture is Telegram; translate its platform
+            # at this explicit bridge so Slack enforces its own caller policy.
+            kwargs["source"] = replace(kwargs["source"], platform=Platform.SLACK)
             return await slack.send_exec_approval(**kwargs)
 
     def adapter():

@@ -1633,6 +1633,7 @@ class GatewayRunner:
 
             # Set up message + fatal error handlers
             adapter.set_message_handler(self._handle_message)
+            adapter.set_approval_authorizer(self._is_user_authorized)
             adapter.set_fatal_error_handler(self._handle_adapter_fatal_error)
             adapter.set_session_store(self.session_store)
             adapter.set_busy_session_handler(self._handle_active_session_busy_message)
@@ -2095,6 +2096,7 @@ class GatewayRunner:
                         continue
 
                     adapter.set_message_handler(self._handle_message)
+                    adapter.set_approval_authorizer(self._is_user_authorized)
                     adapter.set_fatal_error_handler(self._handle_adapter_fatal_error)
                     adapter.set_session_store(self.session_store)
                     adapter.set_busy_session_handler(self._handle_active_session_busy_message)
@@ -8961,6 +8963,7 @@ class GatewayRunner:
                                 command=cmd,
                                 session_key=_approval_session_key,
                                 action_id=approval_data["action_id"],
+                                source=source,
                                 description=desc,
                                 metadata=_status_thread_metadata,
                             ),

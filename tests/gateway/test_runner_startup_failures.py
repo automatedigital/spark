@@ -130,6 +130,7 @@ async def test_runner_records_connected_platform_state_on_success(monkeypatch, t
     assert state["platforms"]["discord"]["state"] == "connected"
     assert state["platforms"]["discord"]["error_code"] is None
     assert state["platforms"]["discord"]["error_message"] is None
+    assert runner.adapters[Platform.DISCORD]._approval_authorizer == runner._is_user_authorized
 
 
 @pytest.mark.asyncio

@@ -183,7 +183,7 @@ class TelegramAdapter(BasePlatformAdapter):
         # Interactive model picker state per chat
         self._model_picker_state: dict[str, dict] = {}
         # Approval button state: opaque entry ID → session and decision identity.
-        self._approval_state: dict[str, dict[str, str | None]] = {}
+        self._approval_state: dict[str, dict[str, Any]] = {}
 
     def _fallback_ips(self) -> list[str]:
         """Return validated fallback IPs from config (populated by _apply_env_overrides)."""
@@ -1238,7 +1238,7 @@ class TelegramAdapter(BasePlatformAdapter):
         self, chat_id: str, command: str, session_key: str,
         description: str = "dangerous command",
         metadata: dict[str, Any] | None = None,
-        *, action_id: str | None = None,
+        *, action_id: str | None = None, source=None,
     ) -> SendResult:
         """Send an inline-keyboard approval prompt with interactive buttons.
 
@@ -1282,7 +1282,10 @@ class TelegramAdapter(BasePlatformAdapter):
             msg = await self._bot.send_message(**kwargs)
 
             # Store session_key keyed by approval_id for the callback handler
-            self._approval_state[approval_id] = {"session_key": session_key, "action_id": action_id}
+            self._approval_state[approval_id] = {
+                "session_key": session_key, "action_id": action_id,
+                "source": self.approval_source(chat_id, metadata, source),
+            }
 
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
@@ -1610,18 +1613,21 @@ class TelegramAdapter(BasePlatformAdapter):
                     return
 
                 # Only authorized users may click approval buttons.
-                caller_id = str(getattr(query.from_user, "id", ""))
-                allowed_csv = os.getenv("TELEGRAM_ALLOWED_USERS", "").strip()
-                if allowed_csv:
-                    allowed_ids = {uid.strip() for uid in allowed_csv.split(",") if uid.strip()}
-                    if "*" not in allowed_ids and caller_id not in allowed_ids:
-                        await query.answer(text="⛔ You are not authorized to approve commands.")
-                        return
-
-                state = self._approval_state.pop(approval_id, None)
+                caller_id = str(getattr(query.from_user, "id", "") or "")
+                state = self._approval_state.get(approval_id)
                 if not state:
                     await query.answer(text="This approval has already been resolved.")
                     return
+                message = getattr(query, "message", None)
+                if not self.is_approval_authorized(
+                    state.get("source") if isinstance(state, dict) else None,
+                    caller_id, str(getattr(message, "chat_id", "") or ""),
+                    getattr(message, "message_thread_id", None),
+                    getattr(getattr(message, "direct_messages_topic", None), "topic_id", None),
+                ):
+                    await query.answer(text="⛔ You are not authorized to approve commands.")
+                    return
+                self._approval_state.pop(approval_id, None)
 
                 count = 0
                 session_key = state.get("session_key", "") if isinstance(state, dict) else ""

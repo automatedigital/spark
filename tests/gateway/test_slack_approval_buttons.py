@@ -46,12 +46,19 @@ _ensure_slack_mock()
 
 from gateway.platforms.slack import SlackAdapter
 from gateway.config import Platform, PlatformConfig
+from tests.fixtures.app_upgrade.gateway.authorization import bind_approval_policy
+
+
+@pytest.fixture(autouse=True)
+def approval_policy(monkeypatch):
+    monkeypatch.setenv("SLACK_ALLOW_ALL_USERS", "true")
 
 
 def _make_adapter():
     """Create a SlackAdapter instance with mocked internals."""
     config = PlatformConfig(enabled=True, token="xoxb-test-token")
     adapter = SlackAdapter(config)
+    bind_approval_policy(adapter)
     adapter._app = MagicMock()
     adapter._bot_user_id = "U_BOT"
     adapter._team_clients = {"T1": AsyncMock()}
@@ -158,6 +165,7 @@ class TestSlackApprovalAction:
     async def test_resolves_approval(self):
         adapter = _make_adapter()
         adapter._approval_resolved["1234.5678"] = False
+        adapter._approval_sources["1234.5678"] = adapter.build_source(chat_id="C1", chat_type="group")
 
         ack = AsyncMock()
         body = {
@@ -169,7 +177,7 @@ class TestSlackApprovalAction:
                 ],
             },
             "channel": {"id": "C1"},
-            "user": {"name": "norbert"},
+            "user": {"id": "123", "name": "norbert"},
         }
         action = {
             "action_id": "spark_approve_once",
@@ -217,6 +225,7 @@ class TestSlackApprovalAction:
     async def test_deny_action(self):
         adapter = _make_adapter()
         adapter._approval_resolved["1.2"] = False
+        adapter._approval_sources["1.2"] = adapter.build_source(chat_id="C1", chat_type="group")
 
         ack = AsyncMock()
         body = {
@@ -224,7 +233,7 @@ class TestSlackApprovalAction:
                 {"type": "section", "text": {"type": "mrkdwn", "text": "cmd"}},
             ]},
             "channel": {"id": "C1"},
-            "user": {"name": "alice"},
+            "user": {"id": "123", "name": "alice"},
         }
         action = {"action_id": "spark_deny", "value": json.dumps({"session_key": "session-key", "action_id": "entry-deny"})}
 

@@ -7,7 +7,7 @@
   ],
   "base_commit": "3097f32b",
   "root_window_clear_utc": "18:57",
-  "validation_status": "transport_identity_focused_and_approval_web_neighbors_passed_root_acceptance_pending",
+  "validation_status": "caller_authorization_focused_and_bounded_neighbors_completed_root_acceptance_pending",
   "sequential_parent_followup": {
     "base_commit": "873573b0",
     "parent_finding": "Ordinary next parent registration cancels earlier legitimate background child authorization",
@@ -282,5 +282,111 @@
       "No dependency installs, repository config/lockfile/bundle changes, browser, build, push, PR or release",
       "Root owns canonical frontend lint/type/build/browser and final integration"
     ]
+  },
+  "caller_authorization_followup": {
+    "base_commit": "9741a7d1",
+    "parent_integration": "Root reports prior three commits integrated as e8c50260; root cleanup/fixture follow-ups remain root-owned and were not overwritten in this worktree.",
+    "scope": [
+      "shared BasePlatformAdapter approval authorizer and trusted prompt routing",
+      "GatewayRunner initial/reconnect policy binding and notification source forwarding",
+      "Slack/Telegram/Discord/Feishu approval caller checks",
+      "focused gateway fixtures/tests and evidence; no Web/tool/owner-lifetime changes"
+    ],
+    "findings": [
+      "Feishu card callbacks bypassed gateway and group authorization",
+      "Slack/Telegram/Discord permitted any button caller when platform allowlist empty, even when global gateway allowlist rejected them"
+    ],
+    "python_environment": "source /Users/joe/Developer/github/spark/.venv/bin/activate; fresh mktemp /tmp/spark-approval-auth-* SPARK_HOME before each pytest process; PYTHONPATH=$PWD/src; serial -n 0; not integration",
+    "baseline_checks": [
+      {
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "5 failed in 0.28s",
+        "details": "Four intended unauthorized-resolution assertions; Telegram local mock ParseMode was None from import order. Corrected local fixture only, before production changes."
+      },
+      {
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "5 failed in 0.23s",
+        "details": "All five intended assertions: four global-allowlist adapter bypasses and Feishu excluded group caller resolving card. Unchanged production 9741a7d1."
+      }
+    ],
+    "repair": "Initial/reconnect adapters receive the existing bound GatewayRunner._is_user_authorized callback. Button responses supply the actual clicker in a copy of the trusted prompt SessionSource; require platform/chat/thread or concrete card-message routing, caller and installed policy before consuming state. Feishu additionally reuses _allow_group_message before consuming approval/dedup state or fetching display names. Legacy text commands, backend APIs, decision IDs and execution owner lifetimes unchanged.",
+    "coverage": [
+      "all four choices and unauthorized-then-authorized retry",
+      "platform/global membership, exclusions, wildcard, per-platform allow-all, global allow-all, global allow-all with existing restrictive lists, default deny and pairing",
+      "missing caller/chat/source/policy, wrong chat/platform and retry",
+      "thread destinations and Telegram direct-message topic",
+      "Feishu open/disabled/allowlist/admin_only/blacklist, per-group blacklist override, admin retry, DM vs group, unauthorized dedup untouched",
+      "actual startup and reconnect attach the inbound policy",
+      "real runner/AIAgent/guard plus real Slack sender/click stale and delayed notification regressions; reusable Telegram-source fixture explicitly translates only platform at its local Slack bridge"
+    ],
+    "checks": [
+      {
+        "id": "initial_policy_focused",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "17 passed in 0.90s; before matrix expansion"
+      },
+      {
+        "id": "expanded_matrix",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py -q -n 0 -m 'not integration' --tb=short --durations=5",
+        "result": "156 passed in 1.39s; before four per-group-choice cases"
+      },
+      {
+        "id": "gateway_focused",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/gateway/test_approval_button_ownership.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py -q -n 0 -m 'not integration' --tb=short --durations=5",
+        "result": "162 passed in 12.15s; before final dedup ordering/installation assertions"
+      },
+      {
+        "id": "test_lint_initial",
+        "command": "ruff check tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/fixtures/app_upgrade/gateway/authorization.py tests/gateway/test_approval_button_ownership.py --fix",
+        "result": "One import order issue fixed; three E731 lambda-assignment violations remained. Replaced lambda assignments with local functions; final lint passes."
+      },
+      {
+        "id": "test_lint",
+        "command": "ruff check tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/fixtures/app_upgrade/gateway/authorization.py tests/gateway/test_approval_button_ownership.py",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "source_lint",
+        "command": "ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "initial_bounded_neighbors",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/gateway/test_approval_button_ownership.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_unauthorized_dm_behavior.py tests/gateway/test_internal_event_bypass_pairing.py tests/gateway/test_pairing.py tests/gateway/test_feishu.py tests/gateway/test_slack.py tests/gateway/test_discord_send.py tests/gateway/test_platform_reconnect.py tests/gateway/test_runner_startup_failures.py tests/gateway/test_approve_deny_commands.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+        "result": "3 failed, 488 passed, 17 warnings in 25.93s",
+        "failed": [
+          "tests/gateway/test_feishu.py::TestAdapterBehavior::test_add_ack_reaction_uses_ok_emoji",
+          "tests/gateway/test_feishu.py::TestSenderNameResolution::test_expired_cache_triggers_new_api_call",
+          "tests/gateway/test_feishu.py::TestSenderNameResolution::test_fetches_and_caches_name_from_api"
+        ],
+        "details": "Existing Feishu optional-SDK MagicMock in collection makes _HAS_LARK_OAPI True without installed SDK; reaction request fields are mocks and contact.v3 import is absent. No approval/authentication assertion failed."
+      },
+      {
+        "id": "unchanged_feishu_baseline",
+        "setup": "baseline_auth_dir=$(mktemp -d /tmp/spark-approval-auth-baseline-sdk.XXXXXX)\ngit show 9741a7d1:src/gateway/platforms/feishu.py > \"$baseline_auth_dir/feishu.py\"\ncat > \"$baseline_auth_dir/baseline_approval_sdk.py\" <<'EOF'\nfrom pathlib import Path\n\ndef pytest_collection_modifyitems():\n    import gateway.platforms.feishu as module\n    baseline = Path(__file__).with_name('feishu.py')\n    exec(compile(baseline.read_text(), str(baseline), 'exec'), module.__dict__)\nEOF",
+        "command": "SPARK_HOME=\"$validation_home\" PYTHONPATH=\"$baseline_auth_dir:$PWD/src\" python -m pytest -p baseline_approval_sdk tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_feishu.py -k 'test_add_ack_reaction_uses_ok_emoji or test_expired_cache_triggers_new_api_call or test_fetches_and_caches_name_from_api' -q -n 0 -m 'not integration' --tb=short",
+        "result": "3 failed, 119 deselected in 0.28s",
+        "details": "Same three assertions reproduced on original Feishu source from 9741a7d1, injected only into temporary test process after collection; repository production files untouched by proof."
+      },
+      {
+        "id": "final_bounded_neighbors",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/gateway/test_approval_button_ownership.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_unauthorized_dm_behavior.py tests/gateway/test_internal_event_bypass_pairing.py tests/gateway/test_pairing.py tests/gateway/test_feishu.py tests/gateway/test_slack.py tests/gateway/test_discord_send.py tests/gateway/test_platform_reconnect.py tests/gateway/test_runner_startup_failures.py tests/gateway/test_approve_deny_commands.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py --deselect tests/gateway/test_feishu.py::TestAdapterBehavior::test_add_ack_reaction_uses_ok_emoji --deselect tests/gateway/test_feishu.py::TestSenderNameResolution::test_expired_cache_triggers_new_api_call --deselect tests/gateway/test_feishu.py::TestSenderNameResolution::test_fetches_and_caches_name_from_api -q -n 0 -m 'not integration' --tb=short --durations=8",
+        "result": "488 passed, 3 deselected, 17 warnings in 26.11s",
+        "details": "Final source includes authorization-before-Feishu-dedup ordering and startup/reconnect hook assertions. Existing AsyncMock/deprecation warnings retained."
+      },
+      {
+        "id": "whitespace",
+        "command": "git diff --check",
+        "result": "exit 0"
+      }
+    ],
+    "limits": [
+      "Synthetic SDK I/O and local HTTP boundaries only; no external sends, provider calls or command execution",
+      "Discord application view uses local optional-SDK UI shim; no live messaging/SDK compatibility claim",
+      "No installs, browser/build, Web/ChatPanel edits, tool/owner-lifetime changes, push or history rewrite",
+      "Root owns canonical full-suite/integration/final acceptance; unrelated baseline SDK fixture failures retained"
+    ],
+    "all_heavy_commands_exited": true,
+    "planned_more_heavy_commands": false
   }
 }

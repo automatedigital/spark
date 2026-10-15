@@ -295,3 +295,83 @@ integration. All validation commands exited; no further broad batch is planned.
 Not established here: live messaging network/authentication, live remote sandbox,
 browser recovery, installed packages, full root suite, canonical CI or P03/P09
 acceptance. Stop remains cooperative for a hook or callback already in progress.
+
+## Caller authorization follow-up from `9741a7d1`
+
+Independent v3 review found no introduced identity/lifetime defect, but identified
+two pre-existing P1 caller-policy holes. Feishu approval cards bypassed both the
+gateway's user authorization and the adapter's group policy. Slack, Telegram and
+Discord checked only populated platform allowlists, so an empty platform list
+allowed a button caller that the global gateway allowlist rejected.
+
+Before production edits, actual sender/click handlers and the real approval queue
+reproduced all five intended failures: **5 failed in 0.23s**. Each adapter resolved
+a stranger's click despite the existing gateway policy rejecting that caller;
+Feishu also resolved a caller excluded by its group helper. The first attempt
+reported **5 failed in 0.28s**: four intended failures plus a Telegram local
+ParseMode mock setup failure. Correcting only that mock produced the complete
+intended proof. Both attempts and exact commands remain in JSON.
+
+The repair installs the bound `GatewayRunner._is_user_authorized` callback on
+adapters during initial connection and reconnect. No second allowlist/pairing
+policy is introduced. Gateway notifications forward their actual SessionSource;
+each transport retains a copy of that trusted prompt route. Before consuming
+button/view state, the adapter checks the actual caller, platform, destination
+and thread/topic, then supplies that caller in the trusted source to the existing
+runner policy. Missing caller, source, route or installed policy fails closed.
+Old direct sender signatures remain callable; their fallback routing is treated
+as a group, conservatively, and still requires an installed authorizer.
+
+Feishu additionally reuses `_allow_group_message` for non-DMs, including per-group
+rules and admin overrides. Its concrete callback message ID binds a card to its
+original message/thread; callbacks do not expose a separate thread identity.
+Unauthorized clicks leave approval state and dedup tokens available and do not
+fetch display names. Discord validates the actual interaction destination against
+the channel/thread where its view was sent. Telegram checks forum and direct-message
+topics, and Slack checks channel/thread. Rejected clicks do not prevent a later
+authorized user resolving the original request.
+
+The policy matrix compares real button outcomes with the real inbound policy for
+platform/global membership and exclusions, wildcards, per-platform allow-all,
+global allow-all, pairing and default deny. It explicitly preserves the existing
+rule that global allow-all does not override populated restrictive allowlists,
+while per-platform allow-all does. All four choices (once/session/always/deny),
+unauthorized-then-authorized retry, missing/wrong caller/routing/source/policy,
+Feishu group/DM policies and per-group blacklist overrides are covered. Startup
+and reconnect tests assert that the runner installs the callback.
+
+The existing real runner/AIAgent/guard plus Slack sender/click regressions still
+pass for stale buttons and delayed sends. Their reusable Telegram-source inbound
+fixture now explicitly translates only the source platform at its local Slack
+bridge so the actual Slack caller check receives a Slack source. This remains
+application-boundary proof, not live Slack inbound/network authentication.
+
+Validation, always with the root .venv active, temporary SPARK_HOME before
+collection, PYTHONPATH pointing to this worktree's src, serial execution and
+`not integration` (exact commands in JSON):
+
+- Initial policy/identity checks: **17 passed in 0.90s**.
+- Expanded matrix and button neighbors: **156 passed in 1.39s**.
+- Matrix plus real gateway regressions: **162 passed in 12.15s**.
+- First bounded neighbor batch: **488 passed, 3 failed in 25.93s**. All failures
+  were existing Feishu SDK-only reaction/contact fixtures. Their collection-time
+  MagicMock makes an absent optional SDK appear installed.
+- Loading unchanged `9741a7d1` Feishu source into a temporary test-only overlay
+  reproduced those same assertions: **3 failed, 119 deselected in 0.28s**. No
+  repository production file was overwritten for that proof.
+- Final bounded batch explicitly deselected only those three demonstrated SDK
+  failures: **488 passed, 3 deselected in 26.11s**. Includes inbound authorization,
+  pairing, Feishu/Slack/Discord neighbors, startup/reconnect, text approvals and
+  cache-golden/lazy-manifest/minimal-startup guards. Existing AsyncMock and
+  deprecation warnings remain (17 warnings).
+- Focused test lint, selected source CI lint and `git diff --check`: **passed**.
+  Initial test lint fixed one import-order issue and reported three lambda
+  assignment violations; local functions replaced those assignments before rerun.
+
+All heavy commands exited and this was reported before committing. No further
+heavy batch is planned. Execution-owner lifetimes, decision identities, legacy
+text/backend APIs and Web/ChatPanel code are unchanged in this follow-up. No real
+SDK sends, external provider calls, shell effects, browser, installation or build
+was used. Root's separate cleanup/fixture changes and canonical acceptance remain
+root-owned; this worktree did not overwrite them. SDK compatibility, live network
+authentication and full root-suite success are not established here.
