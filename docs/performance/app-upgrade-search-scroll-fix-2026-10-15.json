@@ -1,0 +1,3353 @@
+{
+  "schema": "spark.performance.search-scroll-fix.v1",
+  "state": "specific-candidate-proof-passed-root-accepted-for-integration",
+  "sourceCandidate": "3a085fe53eb5f11b6f6deb3662f21ae6e893d4c4",
+  "historicalEvidenceCommit": "4a4df1ca33ec9f29755cc60374dfe30452551b08",
+  "rootAcceptance": "Root explicitly accepted narrow repair and reported cherry-picking3a085fe after this candidate proof; root owns remaining integration/bundle/app gates.",
+  "sourceChange": "Increment prependRestoreGenerationRef; clear pendingThreadScroll; set restoringThreadScroll false before existing search scroll",
+  "checks": {
+    "focusedTests": {
+      "exit": 0,
+      "passed": 21
+    },
+    "originalRegression": {
+      "exit": 1,
+      "failed": 3,
+      "passed": 1,
+      "expectedFailure": true
+    },
+    "type": {
+      "exit": 0
+    },
+    "lintInitial": {
+      "exit": 1,
+      "reason": "Two unused test parameters; corrected"
+    },
+    "lintFinal": {
+      "exit": 0
+    }
+  },
+  "unitCheckArtifacts": [
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-checks/lint-final.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-checks/lint.log",
+      "bytes": 324,
+      "sha256": "56a4181dbcd2cfdbd8abc42fef8b6386230cb9024c76a28bc0fdfe8eb15df4a0"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-checks/original-regression.log",
+      "bytes": 2351,
+      "sha256": "c5f9c29f67cf1ca8ccb0266bdea9a8182176d572cae970906530a27d62a5cc89"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-checks/type.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-checks/unit-final.log",
+      "bytes": 568,
+      "sha256": "f9f2d5684fd5b31ffe70e69d2cdf52d6ad4469d3cafb372989efb57104cf7c40"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-checks/unit.log",
+      "bytes": 567,
+      "sha256": "c2da4364dae1986e83d0dae595a040194b37fa3261574099c14c40f1e65007da"
+    }
+  ],
+  "sourcePreparation": {
+    "schema": "spark.search-scroll.preparation.v1",
+    "preparedAt": "2026-10-15T20:29:39.370Z",
+    "commit": "3a085fe53eb5f11b6f6deb3662f21ae6e893d4c4",
+    "source": "/tmp/spark-search-scroll-fix-20261015-candidate1/source",
+    "output": "/tmp/spark-search-scroll-fix-20261015-candidate1",
+    "behavior": "original",
+    "observeAfterGuard": true,
+    "sourceHashes": {
+      "src/spark_cli/web/src/components/ChatPanel.tsx": "e67f8415768ede3623f99f0cd68f3b68768bdbdf39f786b9e1028f5ea40925f9",
+      "src/spark_cli/web/src/pages/ChatPage.tsx": "ee2be51dd0d9f687fd7e5f1f3c1505e16de5796a784d5dc2c50c5a2e65da2960",
+      "src/spark_cli/web/src/hooks/useChatSessionController.ts": "a7f7aff2c1b332e7a10480be20b1d50f85d1fdd2a285ada048d98c971516572c",
+      "src/spark_cli/web/package-lock.json": "53e7f64f5aa5eb3d4abf82859eafb76a3dafef8ec018457c1e08f9e633347f9d"
+    },
+    "writers": [
+      {
+        "label": "ChatPanel:194",
+        "statement": "element.scrollTop += nextTop - previousTop;"
+      },
+      {
+        "label": "ChatPanel:1122",
+        "statement": "virtualizer.scrollToIndex(idx, { align: \"center\", behavior: safeMode ? \"instant\" : \"smooth\" });"
+      },
+      {
+        "label": "ChatPanel:1278",
+        "statement": "scrollEl.scrollTop = scrollEl.scrollHeight;"
+      },
+      {
+        "label": "ChatPanel:1288",
+        "statement": "scrollEl.scrollTop += anchorAfter - anchorBefore;"
+      },
+      {
+        "label": "ChatPanel:1360",
+        "statement": "element.scrollTop += anchor.getBoundingClientRect().top - element.getBoundingClientRect().top - saved.offset;"
+      },
+      {
+        "label": "ChatPanel:1361",
+        "statement": "virtualizer.scrollToIndex(index, { align: \"start\", behavior: \"instant\" });"
+      },
+      {
+        "label": "ChatPanel:1362",
+        "statement": "element.scrollTop = saved.top;"
+      },
+      {
+        "label": "ChatPanel:1415",
+        "statement": "virtualizer.scrollToIndex(count - 1, { align: \"end\", behavior: \"instant\" });"
+      },
+      {
+        "label": "ChatPanel:1417",
+        "statement": "el.scrollTop = el.scrollHeight;"
+      },
+      {
+        "label": "ChatPanel:1489",
+        "statement": "element.scrollTop = pendingPrepend.scrollTop\n              + Math.max(0, element.scrollHeight - pendingPrepend.scrollHeight);"
+      },
+      {
+        "label": "ChatPanel:1502",
+        "statement": "virtualizer.scrollToIndex(anchorIndex, { align: \"start\", behavior: \"instant\" });"
+      },
+      {
+        "label": "ChatPanel:1517",
+        "statement": "virtualizer.scrollToIndex(anchorIndex, { align: \"start\", behavior: \"instant\" });"
+      },
+      {
+        "label": "ChatPanel:1531",
+        "statement": "virtualizer.scrollToIndex(anchorIndex, { align: \"start\", behavior: \"instant\" });"
+      },
+      {
+        "label": "ChatPanel:1544",
+        "statement": "virtualizer.scrollToIndex(anchorIndex, { align: \"start\", behavior: \"instant\" });"
+      },
+      {
+        "label": "ChatPanel:1552",
+        "statement": "currentTarget.scrollTop += correction;"
+      },
+      {
+        "label": "ChatPanel:1602",
+        "statement": "virtualizer.scrollToIndex(count - 1, { align: \"end\", behavior: streaming || safeMode ? \"instant\" : \"smooth\" });"
+      },
+      {
+        "label": "ChatPanel:1612",
+        "statement": "el.scrollTop = el.scrollHeight;"
+      },
+      {
+        "label": "ChatPanel:1646",
+        "statement": "virtualizer.scrollToIndex(nextIndex, { align, behavior: \"instant\" });"
+      }
+    ],
+    "transform": "/tmp/spark-search-scroll-fix-20261015-candidate1/search-scroll-source.mjs",
+    "transformHash": "7ee61854ba60ca0e5e3f050aa4df92d7628c558973dde6c137774e61db3bdb44",
+    "originalDriverHash": "8897c3e1b0c93f23700da0d76361f5999431a9d4da99b467f2c34c8ef9f0f5a7",
+    "driver": "/tmp/spark-search-scroll-fix-20261015-candidate1/diagnostic-driver.mjs",
+    "driverHash": "f3b4d47d7cd650edefacabbcc0427c8006aa4ec18bc0e37fd91b65fb329227ba",
+    "transformedSourceHash": "72a92b9e42de8ad68ffb2ad09e8764b2b43984f897192341413d8c8dd50bf3dd",
+    "node": "v22.22.1",
+    "executable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+    "limits": [
+      "No build, browser, installation or capture in prepare-only",
+      "Thirteen fixed forced-GC checkpoints, no heap snapshots or parsing",
+      "Source logging perturbs timing; single diagnostic cannot establish population incidence"
+    ],
+    "historicalPreparedDriverHash": "56c0e3f2c0f823c34aef1b41a59714609934977c328e75de477b47788f497cea",
+    "candidateRegressions": {
+      "fallbackWriter": "ChatPanel:1362",
+      "phases": [
+        "actual search intent/ownership",
+        "cached saved-position switch/restore",
+        "small-chat match and next-match",
+        "history prepend anchor after explicit search"
+      ]
+    }
+  },
+  "executed": {
+    "directory": "/tmp/spark-search-scroll-fix-20261015-candidate1",
+    "start": {
+      "startedAt": "2026-10-15T20:32:05.135Z",
+      "clearance": "Root explicit ONE candidate3a085fe capture WINDOW CLEAR: fullpytest EXITED; all owned/root/agent heavy groups closed; source/helper/report bytes frozen; 2026-10-15"
+    },
+    "attempt": {
+      "exit": 0,
+      "signal": null,
+      "timedOut": false,
+      "endedAt": "2026-10-15T20:32:42.813Z",
+      "node": "v22.22.1",
+      "executable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node"
+    },
+    "production": {
+      "mode": "production",
+      "behavior": "original",
+      "transformed": [
+        {
+          "id": "/private/tmp/spark-search-scroll-fix-20261015-candidate1/source/src/spark_cli/web/src/components/ChatPanel.tsx",
+          "writers": [
+            {
+              "label": "ChatPanel:194",
+              "statement": "element.scrollTop += nextTop - previousTop;"
+            },
+            {
+              "label": "ChatPanel:1122",
+              "statement": "virtualizer.scrollToIndex(idx, { align: \"center\", behavior: safeMode ? \"instant\" : \"smooth\" });"
+            },
+            {
+              "label": "ChatPanel:1278",
+              "statement": "scrollEl.scrollTop = scrollEl.scrollHeight;"
+            },
+            {
+              "label": "ChatPanel:1288",
+              "statement": "scrollEl.scrollTop += anchorAfter - anchorBefore;"
+            },
+            {
+              "label": "ChatPanel:1360",
+              "statement": "element.scrollTop += anchor.getBoundingClientRect().top - element.getBoundingClientRect().top - saved.offset;"
+            },
+            {
+              "label": "ChatPanel:1361",
+              "statement": "virtualizer.scrollToIndex(index, { align: \"start\", behavior: \"instant\" });"
+            },
+            {
+              "label": "ChatPanel:1362",
+              "statement": "element.scrollTop = saved.top;"
+            },
+            {
+              "label": "ChatPanel:1415",
+              "statement": "virtualizer.scrollToIndex(count - 1, { align: \"end\", behavior: \"instant\" });"
+            },
+            {
+              "label": "ChatPanel:1417",
+              "statement": "el.scrollTop = el.scrollHeight;"
+            },
+            {
+              "label": "ChatPanel:1489",
+              "statement": "element.scrollTop = pendingPrepend.scrollTop\n              + Math.max(0, element.scrollHeight - pendingPrepend.scrollHeight);"
+            },
+            {
+              "label": "ChatPanel:1502",
+              "statement": "virtualizer.scrollToIndex(anchorIndex, { align: \"start\", behavior: \"instant\" });"
+            },
+            {
+              "label": "ChatPanel:1517",
+              "statement": "virtualizer.scrollToIndex(anchorIndex, { align: \"start\", behavior: \"instant\" });"
+            },
+            {
+              "label": "ChatPanel:1531",
+              "statement": "virtualizer.scrollToIndex(anchorIndex, { align: \"start\", behavior: \"instant\" });"
+            },
+            {
+              "label": "ChatPanel:1544",
+              "statement": "virtualizer.scrollToIndex(anchorIndex, { align: \"start\", behavior: \"instant\" });"
+            },
+            {
+              "label": "ChatPanel:1552",
+              "statement": "currentTarget.scrollTop += correction;"
+            },
+            {
+              "label": "ChatPanel:1602",
+              "statement": "virtualizer.scrollToIndex(count - 1, { align: \"end\", behavior: streaming || safeMode ? \"instant\" : \"smooth\" });"
+            },
+            {
+              "label": "ChatPanel:1612",
+              "statement": "el.scrollTop = el.scrollHeight;"
+            },
+            {
+              "label": "ChatPanel:1646",
+              "statement": "virtualizer.scrollToIndex(nextIndex, { align, behavior: \"instant\" });"
+            }
+          ]
+        }
+      ],
+      "urls": {
+        "local": [
+          "http://127.0.0.1:51600/"
+        ],
+        "network": []
+      }
+    },
+    "browser": "147.0.7727.15",
+    "originalGuard": {
+      "outcome": "passed",
+      "failure": null,
+      "state": {
+        "sid": "baseline_thread_2000",
+        "scrollTop": 16421,
+        "viewportHeight": 575,
+        "scrollHeight": 20045,
+        "viewport": {
+          "top": 147,
+          "bottom": 721.5
+        },
+        "rows": [
+          {
+            "id": "turn:user:db:2475",
+            "index": 112,
+            "top": -1223.5,
+            "bottom": -1103.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2477",
+            "index": 113,
+            "top": -1121.5,
+            "bottom": -1001.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2479",
+            "index": 114,
+            "top": -1019.5,
+            "bottom": -876.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2481",
+            "index": 115,
+            "top": -899.5,
+            "bottom": -677.25,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2483",
+            "index": 116,
+            "top": -659.5,
+            "bottom": -516.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2485",
+            "index": 117,
+            "top": -557.5,
+            "bottom": -437.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2487",
+            "index": 118,
+            "top": -455.5,
+            "bottom": -335.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2489",
+            "index": 119,
+            "top": -353.5,
+            "bottom": -210.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2491",
+            "index": 120,
+            "top": -233.5,
+            "bottom": -11.25,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2493",
+            "index": 121,
+            "top": 6.5,
+            "bottom": 149.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2495",
+            "index": 122,
+            "top": 108.5,
+            "bottom": 228.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2497",
+            "index": 123,
+            "top": 210.5,
+            "bottom": 330.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2499",
+            "index": 124,
+            "top": 312.5,
+            "bottom": 455.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2501",
+            "index": 125,
+            "top": 432.5,
+            "bottom": 654.75,
+            "height": 222.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2503",
+            "index": 126,
+            "top": 672.5,
+            "bottom": 815.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2505",
+            "index": 127,
+            "top": 774.5,
+            "bottom": 894.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2507",
+            "index": 128,
+            "top": 876.5,
+            "bottom": 996.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2509",
+            "index": 129,
+            "top": 978.5,
+            "bottom": 1121.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2511",
+            "index": 130,
+            "top": 1098.5,
+            "bottom": 1320.75,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2513",
+            "index": 131,
+            "top": 1338.5,
+            "bottom": 1481.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2515",
+            "index": 132,
+            "top": 1440.5,
+            "bottom": 1560.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2517",
+            "index": 133,
+            "top": 1542.5,
+            "bottom": 1662.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2519",
+            "index": 134,
+            "top": 1644.5,
+            "bottom": 1787.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2521",
+            "index": 135,
+            "top": 1764.5,
+            "bottom": 1986.75,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2523",
+            "index": 136,
+            "top": 2004.5,
+            "bottom": 2147.5,
+            "height": 143,
+            "visible": false
+          }
+        ]
+      },
+      "at": 17260.899999976158
+    },
+    "postIntentObservation": {
+      "requested": true,
+      "outcome": "passed",
+      "failure": null,
+      "intent": {
+        "sequence": 266,
+        "at": 15744.199999988079,
+        "phase": "search:intent",
+        "owner": null,
+        "raf": null,
+        "sid": "baseline_thread_2000",
+        "activeSid": "baseline_thread_2000",
+        "loadingHistory": false,
+        "mode": "pending-new-message",
+        "anchorId": "turn:user:db:551",
+        "follow": false,
+        "restoreGeneration": 64,
+        "sessionGeneration": 25,
+        "restoringBookmark": true,
+        "pendingBookmark": {
+          "top": 0,
+          "anchorId": "turn:user:db:551",
+          "offset": 20,
+          "sessionId": "baseline_thread_2000"
+        },
+        "scrollTop": 0,
+        "viewportHeight": 538,
+        "scrollHeight": 20045,
+        "totalHeight": 19968,
+        "viewport": {
+          "top": 184,
+          "bottom": 721.5
+        },
+        "messageCount": 300,
+        "firstMessageId": "db:2251",
+        "lastMessageId": "db:2550",
+        "turnCount": 150,
+        "searchQuery": "Response 1952:",
+        "searchMatches": [
+          251
+        ],
+        "searchMatchIdx": 0,
+        "safeMode": false,
+        "target": {
+          "id": "turn:user:db:2501",
+          "targetIndex": 125,
+          "targetMessageIndex": 251,
+          "lookupIndex": 125,
+          "estimatedSize": 228,
+          "measurement": {
+            "index": 125,
+            "key": "turn:user:db:2501",
+            "start": 16650,
+            "end": 16878,
+            "size": 228
+          },
+          "centerOffset": [
+            16495,
+            "center"
+          ],
+          "measuredSize": null
+        },
+        "virtualScroll": {
+          "offset": 0,
+          "rect": {
+            "width": 1116,
+            "height": 538
+          },
+          "adjustments": 0,
+          "intent": null
+        },
+        "range": [
+          {
+            "index": 0,
+            "key": "turn:user:db:2251",
+            "start": 0,
+            "end": 228,
+            "size": 228
+          },
+          {
+            "index": 1,
+            "key": "turn:user:db:2253",
+            "start": 240,
+            "end": 330,
+            "size": 90
+          },
+          {
+            "index": 2,
+            "key": "turn:user:db:2255",
+            "start": 342,
+            "end": 432,
+            "size": 90
+          },
+          {
+            "index": 3,
+            "key": "turn:user:db:2257",
+            "start": 444,
+            "end": 534,
+            "size": 90
+          },
+          {
+            "index": 4,
+            "key": "turn:user:db:2259",
+            "start": 546,
+            "end": 654,
+            "size": 108
+          },
+          {
+            "index": 5,
+            "key": "turn:user:db:2261",
+            "start": 666,
+            "end": 894,
+            "size": 228
+          },
+          {
+            "index": 6,
+            "key": "turn:user:db:2263",
+            "start": 906,
+            "end": 996,
+            "size": 90
+          },
+          {
+            "index": 7,
+            "key": "turn:user:db:2265",
+            "start": 1008,
+            "end": 1098,
+            "size": 90
+          },
+          {
+            "index": 8,
+            "key": "turn:user:db:2267",
+            "start": 1110,
+            "end": 1200,
+            "size": 90
+          },
+          {
+            "index": 9,
+            "key": "turn:user:db:2269",
+            "start": 1212,
+            "end": 1320,
+            "size": 108
+          },
+          {
+            "index": 10,
+            "key": "turn:user:db:2271",
+            "start": 1332,
+            "end": 1560,
+            "size": 228
+          },
+          {
+            "index": 11,
+            "key": "turn:user:db:2273",
+            "start": 1572,
+            "end": 1662,
+            "size": 90
+          },
+          {
+            "index": 12,
+            "key": "turn:user:db:2275",
+            "start": 1674,
+            "end": 1764,
+            "size": 90
+          },
+          {
+            "index": 13,
+            "key": "turn:user:db:2277",
+            "start": 1776,
+            "end": 1866,
+            "size": 90
+          },
+          {
+            "index": 14,
+            "key": "turn:user:db:2279",
+            "start": 1878,
+            "end": 1986,
+            "size": 108
+          }
+        ],
+        "rows": [
+          {
+            "id": "turn:user:db:2251",
+            "index": 0,
+            "top": 240.5,
+            "bottom": 462.75,
+            "height": 222.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2253",
+            "index": 1,
+            "top": 480.5,
+            "bottom": 623.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2255",
+            "index": 2,
+            "top": 582.5,
+            "bottom": 702.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2257",
+            "index": 3,
+            "top": 684.5,
+            "bottom": 804.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2259",
+            "index": 4,
+            "top": 786.5,
+            "bottom": 929.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2261",
+            "index": 5,
+            "top": 906.5,
+            "bottom": 1128.75,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2263",
+            "index": 6,
+            "top": 1146.5,
+            "bottom": 1289.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2265",
+            "index": 7,
+            "top": 1248.5,
+            "bottom": 1368.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2267",
+            "index": 8,
+            "top": 1350.5,
+            "bottom": 1470.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2269",
+            "index": 9,
+            "top": 1452.5,
+            "bottom": 1595.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2271",
+            "index": 10,
+            "top": 1572.5,
+            "bottom": 1794.75,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2273",
+            "index": 11,
+            "top": 1812.5,
+            "bottom": 1955.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2275",
+            "index": 12,
+            "top": 1914.5,
+            "bottom": 2034.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2277",
+            "index": 13,
+            "top": 2016.5,
+            "bottom": 2136.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2279",
+            "index": 14,
+            "top": 2118.5,
+            "bottom": 2261.5,
+            "height": 143,
+            "visible": false
+          }
+        ],
+        "messageIndex": 251,
+        "mappedIndex": 125,
+        "actualTurnId": "turn:user:db:2501",
+        "requestedBehavior": "smooth"
+      },
+      "firstIntersection": {
+        "at": 17267.30000001192,
+        "sid": "baseline_thread_2000",
+        "scrollTop": 16421,
+        "viewportHeight": 575,
+        "scrollHeight": 20045,
+        "viewport": {
+          "top": 147,
+          "bottom": 721.5
+        },
+        "rows": [
+          {
+            "id": "turn:user:db:2475",
+            "index": 112,
+            "top": -1223.5,
+            "bottom": -1103.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2477",
+            "index": 113,
+            "top": -1121.5,
+            "bottom": -1001.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2479",
+            "index": 114,
+            "top": -1019.5,
+            "bottom": -876.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2481",
+            "index": 115,
+            "top": -899.5,
+            "bottom": -677.25,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2483",
+            "index": 116,
+            "top": -659.5,
+            "bottom": -516.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2485",
+            "index": 117,
+            "top": -557.5,
+            "bottom": -437.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2487",
+            "index": 118,
+            "top": -455.5,
+            "bottom": -335.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2489",
+            "index": 119,
+            "top": -353.5,
+            "bottom": -210.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2491",
+            "index": 120,
+            "top": -233.5,
+            "bottom": -11.25,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2493",
+            "index": 121,
+            "top": 6.5,
+            "bottom": 149.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2495",
+            "index": 122,
+            "top": 108.5,
+            "bottom": 228.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2497",
+            "index": 123,
+            "top": 210.5,
+            "bottom": 330.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2499",
+            "index": 124,
+            "top": 312.5,
+            "bottom": 455.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2501",
+            "index": 125,
+            "top": 432.5,
+            "bottom": 654.75,
+            "height": 222.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2503",
+            "index": 126,
+            "top": 672.5,
+            "bottom": 815.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2505",
+            "index": 127,
+            "top": 774.5,
+            "bottom": 894.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2507",
+            "index": 128,
+            "top": 876.5,
+            "bottom": 996.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2509",
+            "index": 129,
+            "top": 978.5,
+            "bottom": 1121.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2511",
+            "index": 130,
+            "top": 1098.5,
+            "bottom": 1320.75,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2513",
+            "index": 131,
+            "top": 1338.5,
+            "bottom": 1481.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2515",
+            "index": 132,
+            "top": 1440.5,
+            "bottom": 1560.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2517",
+            "index": 133,
+            "top": 1542.5,
+            "bottom": 1662.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2519",
+            "index": 134,
+            "top": 1644.5,
+            "bottom": 1787.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2521",
+            "index": 135,
+            "top": 1764.5,
+            "bottom": 1986.75,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2523",
+            "index": 136,
+            "top": 2004.5,
+            "bottom": 2147.5,
+            "height": 143,
+            "visible": false
+          }
+        ]
+      },
+      "settled": {
+        "at": 18773.899999976158,
+        "sid": "baseline_thread_2000",
+        "scrollTop": 16477,
+        "viewportHeight": 575,
+        "scrollHeight": 20045,
+        "viewport": {
+          "top": 147,
+          "bottom": 721.5
+        },
+        "rows": [
+          {
+            "id": "turn:user:db:2477",
+            "index": 113,
+            "top": -1177.5,
+            "bottom": -1057.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2479",
+            "index": 114,
+            "top": -1075.5,
+            "bottom": -932.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2481",
+            "index": 115,
+            "top": -955.5,
+            "bottom": -733.25,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2483",
+            "index": 116,
+            "top": -715.5,
+            "bottom": -572.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2485",
+            "index": 117,
+            "top": -613.5,
+            "bottom": -493.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2487",
+            "index": 118,
+            "top": -511.5,
+            "bottom": -391.25,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2489",
+            "index": 119,
+            "top": -409.5,
+            "bottom": -266.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2491",
+            "index": 120,
+            "top": -289.5,
+            "bottom": -67.25,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2493",
+            "index": 121,
+            "top": -49.5,
+            "bottom": 93.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2495",
+            "index": 122,
+            "top": 52.5,
+            "bottom": 172.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2497",
+            "index": 123,
+            "top": 154.5,
+            "bottom": 274.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2499",
+            "index": 124,
+            "top": 256.5,
+            "bottom": 399.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2501",
+            "index": 125,
+            "top": 376.5,
+            "bottom": 598.75,
+            "height": 222.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2503",
+            "index": 126,
+            "top": 616.5,
+            "bottom": 759.5,
+            "height": 143,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2505",
+            "index": 127,
+            "top": 718.5,
+            "bottom": 838.75,
+            "height": 120.25,
+            "visible": true
+          },
+          {
+            "id": "turn:user:db:2507",
+            "index": 128,
+            "top": 820.5,
+            "bottom": 940.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2509",
+            "index": 129,
+            "top": 922.5,
+            "bottom": 1065.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2511",
+            "index": 130,
+            "top": 1042.5,
+            "bottom": 1264.75,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2513",
+            "index": 131,
+            "top": 1282.5,
+            "bottom": 1425.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2515",
+            "index": 132,
+            "top": 1384.5,
+            "bottom": 1504.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2517",
+            "index": 133,
+            "top": 1486.5,
+            "bottom": 1606.75,
+            "height": 120.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2519",
+            "index": 134,
+            "top": 1588.5,
+            "bottom": 1731.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2521",
+            "index": 135,
+            "top": 1708.5,
+            "bottom": 1930.75,
+            "height": 222.25,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2523",
+            "index": 136,
+            "top": 1948.5,
+            "bottom": 2091.5,
+            "height": 143,
+            "visible": false
+          },
+          {
+            "id": "turn:user:db:2525",
+            "index": 137,
+            "top": 2050.5,
+            "bottom": 2170.75,
+            "height": 120.25,
+            "visible": false
+          }
+        ]
+      }
+    },
+    "uiRegressions": {
+      "outcome": "passed",
+      "stages": [
+        {
+          "name": "actual-search-ownership-fence",
+          "at": 18779.600000023842,
+          "outcome": "passed",
+          "result": {
+            "intent": {
+              "sequence": 266,
+              "at": 15744.199999988079,
+              "phase": "search:intent",
+              "owner": null,
+              "raf": null,
+              "sid": "baseline_thread_2000",
+              "activeSid": "baseline_thread_2000",
+              "loadingHistory": false,
+              "mode": "pending-new-message",
+              "anchorId": "turn:user:db:551",
+              "follow": false,
+              "restoreGeneration": 64,
+              "sessionGeneration": 25,
+              "restoringBookmark": true,
+              "pendingBookmark": {
+                "top": 0,
+                "anchorId": "turn:user:db:551",
+                "offset": 20,
+                "sessionId": "baseline_thread_2000"
+              },
+              "scrollTop": 0,
+              "viewportHeight": 538,
+              "scrollHeight": 20045,
+              "totalHeight": 19968,
+              "viewport": {
+                "top": 184,
+                "bottom": 721.5
+              },
+              "messageCount": 300,
+              "firstMessageId": "db:2251",
+              "lastMessageId": "db:2550",
+              "turnCount": 150,
+              "searchQuery": "Response 1952:",
+              "searchMatches": [
+                251
+              ],
+              "searchMatchIdx": 0,
+              "safeMode": false,
+              "target": {
+                "id": "turn:user:db:2501",
+                "targetIndex": 125,
+                "targetMessageIndex": 251,
+                "lookupIndex": 125,
+                "estimatedSize": 228,
+                "measurement": {
+                  "index": 125,
+                  "key": "turn:user:db:2501",
+                  "start": 16650,
+                  "end": 16878,
+                  "size": 228
+                },
+                "centerOffset": [
+                  16495,
+                  "center"
+                ],
+                "measuredSize": null
+              },
+              "virtualScroll": {
+                "offset": 0,
+                "rect": {
+                  "width": 1116,
+                  "height": 538
+                },
+                "adjustments": 0,
+                "intent": null
+              },
+              "range": [
+                {
+                  "index": 0,
+                  "key": "turn:user:db:2251",
+                  "start": 0,
+                  "end": 228,
+                  "size": 228
+                },
+                {
+                  "index": 1,
+                  "key": "turn:user:db:2253",
+                  "start": 240,
+                  "end": 330,
+                  "size": 90
+                },
+                {
+                  "index": 2,
+                  "key": "turn:user:db:2255",
+                  "start": 342,
+                  "end": 432,
+                  "size": 90
+                },
+                {
+                  "index": 3,
+                  "key": "turn:user:db:2257",
+                  "start": 444,
+                  "end": 534,
+                  "size": 90
+                },
+                {
+                  "index": 4,
+                  "key": "turn:user:db:2259",
+                  "start": 546,
+                  "end": 654,
+                  "size": 108
+                },
+                {
+                  "index": 5,
+                  "key": "turn:user:db:2261",
+                  "start": 666,
+                  "end": 894,
+                  "size": 228
+                },
+                {
+                  "index": 6,
+                  "key": "turn:user:db:2263",
+                  "start": 906,
+                  "end": 996,
+                  "size": 90
+                },
+                {
+                  "index": 7,
+                  "key": "turn:user:db:2265",
+                  "start": 1008,
+                  "end": 1098,
+                  "size": 90
+                },
+                {
+                  "index": 8,
+                  "key": "turn:user:db:2267",
+                  "start": 1110,
+                  "end": 1200,
+                  "size": 90
+                },
+                {
+                  "index": 9,
+                  "key": "turn:user:db:2269",
+                  "start": 1212,
+                  "end": 1320,
+                  "size": 108
+                },
+                {
+                  "index": 10,
+                  "key": "turn:user:db:2271",
+                  "start": 1332,
+                  "end": 1560,
+                  "size": 228
+                },
+                {
+                  "index": 11,
+                  "key": "turn:user:db:2273",
+                  "start": 1572,
+                  "end": 1662,
+                  "size": 90
+                },
+                {
+                  "index": 12,
+                  "key": "turn:user:db:2275",
+                  "start": 1674,
+                  "end": 1764,
+                  "size": 90
+                },
+                {
+                  "index": 13,
+                  "key": "turn:user:db:2277",
+                  "start": 1776,
+                  "end": 1866,
+                  "size": 90
+                },
+                {
+                  "index": 14,
+                  "key": "turn:user:db:2279",
+                  "start": 1878,
+                  "end": 1986,
+                  "size": 108
+                }
+              ],
+              "rows": [
+                {
+                  "id": "turn:user:db:2251",
+                  "index": 0,
+                  "top": 240.5,
+                  "bottom": 462.75,
+                  "height": 222.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2253",
+                  "index": 1,
+                  "top": 480.5,
+                  "bottom": 623.5,
+                  "height": 143,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2255",
+                  "index": 2,
+                  "top": 582.5,
+                  "bottom": 702.75,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2257",
+                  "index": 3,
+                  "top": 684.5,
+                  "bottom": 804.75,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2259",
+                  "index": 4,
+                  "top": 786.5,
+                  "bottom": 929.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2261",
+                  "index": 5,
+                  "top": 906.5,
+                  "bottom": 1128.75,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2263",
+                  "index": 6,
+                  "top": 1146.5,
+                  "bottom": 1289.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2265",
+                  "index": 7,
+                  "top": 1248.5,
+                  "bottom": 1368.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2267",
+                  "index": 8,
+                  "top": 1350.5,
+                  "bottom": 1470.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2269",
+                  "index": 9,
+                  "top": 1452.5,
+                  "bottom": 1595.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2271",
+                  "index": 10,
+                  "top": 1572.5,
+                  "bottom": 1794.75,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2273",
+                  "index": 11,
+                  "top": 1812.5,
+                  "bottom": 1955.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2275",
+                  "index": 12,
+                  "top": 1914.5,
+                  "bottom": 2034.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2277",
+                  "index": 13,
+                  "top": 2016.5,
+                  "bottom": 2136.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2279",
+                  "index": 14,
+                  "top": 2118.5,
+                  "bottom": 2261.5,
+                  "height": 143,
+                  "visible": false
+                }
+              ],
+              "messageIndex": 251,
+              "mappedIndex": 125,
+              "actualTurnId": "turn:user:db:2501",
+              "requestedBehavior": "smooth"
+            },
+            "searchWriter": {
+              "sequence": 267,
+              "at": 15744.300000011921,
+              "phase": "writer:before",
+              "owner": null,
+              "raf": null,
+              "sid": "baseline_thread_2000",
+              "activeSid": "baseline_thread_2000",
+              "loadingHistory": false,
+              "mode": "pending-new-message",
+              "anchorId": "turn:user:db:551",
+              "follow": false,
+              "restoreGeneration": 65,
+              "sessionGeneration": 25,
+              "restoringBookmark": false,
+              "pendingBookmark": null,
+              "scrollTop": 0,
+              "viewportHeight": 538,
+              "scrollHeight": 20045,
+              "totalHeight": 19968,
+              "viewport": {
+                "top": 184,
+                "bottom": 721.5
+              },
+              "messageCount": 300,
+              "firstMessageId": "db:2251",
+              "lastMessageId": "db:2550",
+              "turnCount": 150,
+              "searchQuery": "Response 1952:",
+              "searchMatches": [
+                251
+              ],
+              "searchMatchIdx": 0,
+              "safeMode": false,
+              "target": {
+                "id": "turn:user:db:2501",
+                "targetIndex": 125,
+                "targetMessageIndex": 251,
+                "lookupIndex": 125,
+                "estimatedSize": 228,
+                "measurement": {
+                  "index": 125,
+                  "key": "turn:user:db:2501",
+                  "start": 16650,
+                  "end": 16878,
+                  "size": 228
+                },
+                "centerOffset": [
+                  16495,
+                  "center"
+                ],
+                "measuredSize": null
+              },
+              "virtualScroll": {
+                "offset": 0,
+                "rect": {
+                  "width": 1116,
+                  "height": 538
+                },
+                "adjustments": 0,
+                "intent": null
+              },
+              "range": [
+                {
+                  "index": 0,
+                  "key": "turn:user:db:2251",
+                  "start": 0,
+                  "end": 228,
+                  "size": 228
+                },
+                {
+                  "index": 1,
+                  "key": "turn:user:db:2253",
+                  "start": 240,
+                  "end": 330,
+                  "size": 90
+                },
+                {
+                  "index": 2,
+                  "key": "turn:user:db:2255",
+                  "start": 342,
+                  "end": 432,
+                  "size": 90
+                },
+                {
+                  "index": 3,
+                  "key": "turn:user:db:2257",
+                  "start": 444,
+                  "end": 534,
+                  "size": 90
+                },
+                {
+                  "index": 4,
+                  "key": "turn:user:db:2259",
+                  "start": 546,
+                  "end": 654,
+                  "size": 108
+                },
+                {
+                  "index": 5,
+                  "key": "turn:user:db:2261",
+                  "start": 666,
+                  "end": 894,
+                  "size": 228
+                },
+                {
+                  "index": 6,
+                  "key": "turn:user:db:2263",
+                  "start": 906,
+                  "end": 996,
+                  "size": 90
+                },
+                {
+                  "index": 7,
+                  "key": "turn:user:db:2265",
+                  "start": 1008,
+                  "end": 1098,
+                  "size": 90
+                },
+                {
+                  "index": 8,
+                  "key": "turn:user:db:2267",
+                  "start": 1110,
+                  "end": 1200,
+                  "size": 90
+                },
+                {
+                  "index": 9,
+                  "key": "turn:user:db:2269",
+                  "start": 1212,
+                  "end": 1320,
+                  "size": 108
+                },
+                {
+                  "index": 10,
+                  "key": "turn:user:db:2271",
+                  "start": 1332,
+                  "end": 1560,
+                  "size": 228
+                },
+                {
+                  "index": 11,
+                  "key": "turn:user:db:2273",
+                  "start": 1572,
+                  "end": 1662,
+                  "size": 90
+                },
+                {
+                  "index": 12,
+                  "key": "turn:user:db:2275",
+                  "start": 1674,
+                  "end": 1764,
+                  "size": 90
+                },
+                {
+                  "index": 13,
+                  "key": "turn:user:db:2277",
+                  "start": 1776,
+                  "end": 1866,
+                  "size": 90
+                },
+                {
+                  "index": 14,
+                  "key": "turn:user:db:2279",
+                  "start": 1878,
+                  "end": 1986,
+                  "size": 108
+                }
+              ],
+              "rows": [
+                {
+                  "id": "turn:user:db:2251",
+                  "index": 0,
+                  "top": 240.5,
+                  "bottom": 462.75,
+                  "height": 222.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2253",
+                  "index": 1,
+                  "top": 480.5,
+                  "bottom": 623.5,
+                  "height": 143,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2255",
+                  "index": 2,
+                  "top": 582.5,
+                  "bottom": 702.75,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2257",
+                  "index": 3,
+                  "top": 684.5,
+                  "bottom": 804.75,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2259",
+                  "index": 4,
+                  "top": 786.5,
+                  "bottom": 929.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2261",
+                  "index": 5,
+                  "top": 906.5,
+                  "bottom": 1128.75,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2263",
+                  "index": 6,
+                  "top": 1146.5,
+                  "bottom": 1289.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2265",
+                  "index": 7,
+                  "top": 1248.5,
+                  "bottom": 1368.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2267",
+                  "index": 8,
+                  "top": 1350.5,
+                  "bottom": 1470.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2269",
+                  "index": 9,
+                  "top": 1452.5,
+                  "bottom": 1595.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2271",
+                  "index": 10,
+                  "top": 1572.5,
+                  "bottom": 1794.75,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2273",
+                  "index": 11,
+                  "top": 1812.5,
+                  "bottom": 1955.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2275",
+                  "index": 12,
+                  "top": 1914.5,
+                  "bottom": 2034.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2277",
+                  "index": 13,
+                  "top": 2016.5,
+                  "bottom": 2136.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2279",
+                  "index": 14,
+                  "top": 2118.5,
+                  "bottom": 2261.5,
+                  "height": 143,
+                  "visible": false
+                }
+              ],
+              "writer": "ChatPanel:1122"
+            },
+            "oldFallbackWrites": [],
+            "dom": {
+              "sid": "baseline_thread_2000",
+              "scrollTop": 16477,
+              "viewportHeight": 575,
+              "scrollHeight": 20045,
+              "viewport": {
+                "top": 147,
+                "bottom": 721.5
+              },
+              "rows": [
+                {
+                  "id": "turn:user:db:2477",
+                  "index": 113,
+                  "top": -1177.5,
+                  "bottom": -1057.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2479",
+                  "index": 114,
+                  "top": -1075.5,
+                  "bottom": -932.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2481",
+                  "index": 115,
+                  "top": -955.5,
+                  "bottom": -733.25,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2483",
+                  "index": 116,
+                  "top": -715.5,
+                  "bottom": -572.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2485",
+                  "index": 117,
+                  "top": -613.5,
+                  "bottom": -493.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2487",
+                  "index": 118,
+                  "top": -511.5,
+                  "bottom": -391.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2489",
+                  "index": 119,
+                  "top": -409.5,
+                  "bottom": -266.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2491",
+                  "index": 120,
+                  "top": -289.5,
+                  "bottom": -67.25,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2493",
+                  "index": 121,
+                  "top": -49.5,
+                  "bottom": 93.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2495",
+                  "index": 122,
+                  "top": 52.5,
+                  "bottom": 172.75,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2497",
+                  "index": 123,
+                  "top": 154.5,
+                  "bottom": 274.75,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2499",
+                  "index": 124,
+                  "top": 256.5,
+                  "bottom": 399.5,
+                  "height": 143,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2501",
+                  "index": 125,
+                  "top": 376.5,
+                  "bottom": 598.75,
+                  "height": 222.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2503",
+                  "index": 126,
+                  "top": 616.5,
+                  "bottom": 759.5,
+                  "height": 143,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2505",
+                  "index": 127,
+                  "top": 718.5,
+                  "bottom": 838.75,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:2507",
+                  "index": 128,
+                  "top": 820.5,
+                  "bottom": 940.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2509",
+                  "index": 129,
+                  "top": 922.5,
+                  "bottom": 1065.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2511",
+                  "index": 130,
+                  "top": 1042.5,
+                  "bottom": 1264.75,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2513",
+                  "index": 131,
+                  "top": 1282.5,
+                  "bottom": 1425.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2515",
+                  "index": 132,
+                  "top": 1384.5,
+                  "bottom": 1504.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2517",
+                  "index": 133,
+                  "top": 1486.5,
+                  "bottom": 1606.75,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2519",
+                  "index": 134,
+                  "top": 1588.5,
+                  "bottom": 1731.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2521",
+                  "index": 135,
+                  "top": 1708.5,
+                  "bottom": 1930.75,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2523",
+                  "index": 136,
+                  "top": 1948.5,
+                  "bottom": 2091.5,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:2525",
+                  "index": 137,
+                  "top": 2050.5,
+                  "bottom": 2170.75,
+                  "height": 120.25,
+                  "visible": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "cached-saved-position-switch-and-restore",
+          "at": 18786.600000023842,
+          "outcome": "passed",
+          "result": {
+            "before": {
+              "id": "turn:user:db:2491",
+              "top": -49.5,
+              "scrollTop": 16237
+            },
+            "after": {
+              "id": "turn:user:db:2491",
+              "top": -49.5
+            }
+          }
+        },
+        {
+          "name": "small-chat-search-and-next-match",
+          "at": 22132.399999976158,
+          "outcome": "passed",
+          "result": {
+            "first": {
+              "sid": "baseline_thread_50",
+              "scrollTop": 0,
+              "viewportHeight": 538,
+              "scrollHeight": 3358,
+              "viewport": {
+                "top": 184,
+                "bottom": 721.5
+              },
+              "rows": [
+                {
+                  "id": "turn:user:db:1",
+                  "index": 0,
+                  "top": 204,
+                  "bottom": 426.25,
+                  "height": 222.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:3",
+                  "index": 1,
+                  "top": 444,
+                  "bottom": 587,
+                  "height": 143,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:5",
+                  "index": 2,
+                  "top": 546,
+                  "bottom": 666.25,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:7",
+                  "index": 3,
+                  "top": 648,
+                  "bottom": 768.25,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:9",
+                  "index": 4,
+                  "top": 750,
+                  "bottom": 893,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:11",
+                  "index": 5,
+                  "top": 870,
+                  "bottom": 1092.25,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:13",
+                  "index": 6,
+                  "top": 1110,
+                  "bottom": 1253,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:15",
+                  "index": 7,
+                  "top": 1212,
+                  "bottom": 1332.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:17",
+                  "index": 8,
+                  "top": 1314,
+                  "bottom": 1434.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:19",
+                  "index": 9,
+                  "top": 1416,
+                  "bottom": 1559,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:21",
+                  "index": 10,
+                  "top": 1536,
+                  "bottom": 1758.25,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:23",
+                  "index": 11,
+                  "top": 1776,
+                  "bottom": 1919,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:25",
+                  "index": 12,
+                  "top": 1878,
+                  "bottom": 1998.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:27",
+                  "index": 13,
+                  "top": 1980,
+                  "bottom": 2100.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:29",
+                  "index": 14,
+                  "top": 2082,
+                  "bottom": 2225,
+                  "height": 143,
+                  "visible": false
+                }
+              ]
+            },
+            "next": {
+              "sid": "baseline_thread_50",
+              "scrollTop": 16,
+              "viewportHeight": 538,
+              "scrollHeight": 3358,
+              "viewport": {
+                "top": 184,
+                "bottom": 721.5
+              },
+              "rows": [
+                {
+                  "id": "turn:user:db:1",
+                  "index": 0,
+                  "top": 188,
+                  "bottom": 410.25,
+                  "height": 222.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:3",
+                  "index": 1,
+                  "top": 428,
+                  "bottom": 571,
+                  "height": 143,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:5",
+                  "index": 2,
+                  "top": 530,
+                  "bottom": 650.25,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:7",
+                  "index": 3,
+                  "top": 632,
+                  "bottom": 752.25,
+                  "height": 120.25,
+                  "visible": true
+                },
+                {
+                  "id": "turn:user:db:9",
+                  "index": 4,
+                  "top": 734,
+                  "bottom": 877,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:11",
+                  "index": 5,
+                  "top": 854,
+                  "bottom": 1076.25,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:13",
+                  "index": 6,
+                  "top": 1094,
+                  "bottom": 1237,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:15",
+                  "index": 7,
+                  "top": 1196,
+                  "bottom": 1316.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:17",
+                  "index": 8,
+                  "top": 1298,
+                  "bottom": 1418.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:19",
+                  "index": 9,
+                  "top": 1400,
+                  "bottom": 1543,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:21",
+                  "index": 10,
+                  "top": 1520,
+                  "bottom": 1742.25,
+                  "height": 222.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:23",
+                  "index": 11,
+                  "top": 1760,
+                  "bottom": 1903,
+                  "height": 143,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:25",
+                  "index": 12,
+                  "top": 1862,
+                  "bottom": 1982.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:27",
+                  "index": 13,
+                  "top": 1964,
+                  "bottom": 2084.25,
+                  "height": 120.25,
+                  "visible": false
+                },
+                {
+                  "id": "turn:user:db:29",
+                  "index": 14,
+                  "top": 2066,
+                  "bottom": 2209,
+                  "height": 143,
+                  "visible": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "history-prepend-anchor-after-search",
+          "at": 25095.899999976158,
+          "outcome": "passed",
+          "result": {
+            "before": {
+              "id": "turn:user:db:2251",
+              "top": 203.5,
+              "scrollTop": 0
+            },
+            "after": {
+              "id": "turn:user:db:2251",
+              "top": 203.25
+            },
+            "driftPx": -0.25
+          }
+        }
+      ],
+      "failure": null
+    },
+    "firstProof": {
+      "attempt": {
+        "exit": 0,
+        "signal": null,
+        "timedOut": false,
+        "endedAt": "2026-10-15T20:32:42.813Z",
+        "node": "v22.22.1",
+        "executable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node"
+      },
+      "originalGuard": "passed",
+      "postGuard": "passed",
+      "uiRegressions": "passed",
+      "stages": [
+        {
+          "name": "actual-search-ownership-fence",
+          "outcome": "passed"
+        },
+        {
+          "name": "cached-saved-position-switch-and-restore",
+          "outcome": "passed"
+        },
+        {
+          "name": "small-chat-search-and-next-match",
+          "outcome": "passed"
+        },
+        {
+          "name": "history-prepend-anchor-after-search",
+          "outcome": "passed",
+          "result": {
+            "before": {
+              "id": "turn:user:db:2251",
+              "top": 203.5,
+              "scrollTop": 0
+            },
+            "after": {
+              "id": "turn:user:db:2251",
+              "top": 203.25
+            },
+            "driftPx": -0.25
+          }
+        }
+      ],
+      "mapping": {
+        "messageIndex": 251,
+        "mappedIndex": 125,
+        "turnId": "turn:user:db:2501"
+      },
+      "intentGeneration": 64,
+      "writerGeneration": 65,
+      "pendingBookmark": null,
+      "restoringBookmark": false,
+      "oldFallbackWrites": 0,
+      "postIntentSettled": {
+        "scrollTop": 16477,
+        "viewport": {
+          "top": 147,
+          "bottom": 721.5
+        },
+        "target": {
+          "id": "turn:user:db:2501",
+          "index": 125,
+          "top": 376.5,
+          "bottom": 598.75,
+          "height": 222.25,
+          "visible": true
+        }
+      },
+      "events": 2388,
+      "dropped": 0,
+      "errors": [],
+      "survivors": []
+    },
+    "eventCount": 2388,
+    "dropped": 0,
+    "errors": [],
+    "navigation": [
+      {
+        "at": 4948.951875,
+        "url": "http://127.0.0.1:51600/?spark_efficiency_test=1"
+      }
+    ]
+  },
+  "ownershipEvidence": {
+    "intent": {
+      "sequence": 266,
+      "at": 15744.199999988079,
+      "phase": "search:intent",
+      "owner": null,
+      "raf": null,
+      "scrollTop": 0,
+      "viewportHeight": 538,
+      "scrollHeight": 20045,
+      "totalHeight": 19968,
+      "viewport": {
+        "top": 184,
+        "bottom": 721.5
+      },
+      "mode": "pending-new-message",
+      "anchorId": "turn:user:db:551",
+      "restoreGeneration": 64,
+      "sessionGeneration": 25,
+      "pendingBookmark": {
+        "top": 0,
+        "anchorId": "turn:user:db:551",
+        "offset": 20,
+        "sessionId": "baseline_thread_2000"
+      },
+      "restoringBookmark": true,
+      "searchQuery": "Response 1952:",
+      "searchMatches": [
+        251
+      ],
+      "messageIndex": 251,
+      "mappedIndex": 125,
+      "actualTurnId": "turn:user:db:2501",
+      "target": {
+        "id": "turn:user:db:2501",
+        "targetIndex": 125,
+        "targetMessageIndex": 251,
+        "lookupIndex": 125,
+        "estimatedSize": 228,
+        "measurement": {
+          "index": 125,
+          "key": "turn:user:db:2501",
+          "start": 16650,
+          "end": 16878,
+          "size": 228
+        },
+        "centerOffset": [
+          16495,
+          "center"
+        ],
+        "measuredSize": null
+      },
+      "range": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "virtualScroll": {
+        "offset": 0,
+        "rect": {
+          "width": 1116,
+          "height": 538
+        },
+        "adjustments": 0,
+        "intent": null
+      }
+    },
+    "searchWriter": {
+      "sequence": 267,
+      "at": 15744.300000011921,
+      "phase": "writer:before",
+      "owner": null,
+      "raf": null,
+      "writer": "ChatPanel:1122",
+      "scrollTop": 0,
+      "viewportHeight": 538,
+      "scrollHeight": 20045,
+      "totalHeight": 19968,
+      "viewport": {
+        "top": 184,
+        "bottom": 721.5
+      },
+      "mode": "pending-new-message",
+      "anchorId": "turn:user:db:551",
+      "restoreGeneration": 65,
+      "sessionGeneration": 25,
+      "pendingBookmark": null,
+      "restoringBookmark": false,
+      "searchQuery": "Response 1952:",
+      "searchMatches": [
+        251
+      ],
+      "target": {
+        "id": "turn:user:db:2501",
+        "targetIndex": 125,
+        "targetMessageIndex": 251,
+        "lookupIndex": 125,
+        "estimatedSize": 228,
+        "measurement": {
+          "index": 125,
+          "key": "turn:user:db:2501",
+          "start": 16650,
+          "end": 16878,
+          "size": 228
+        },
+        "centerOffset": [
+          16495,
+          "center"
+        ],
+        "measuredSize": null
+      },
+      "range": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "virtualScroll": {
+        "offset": 0,
+        "rect": {
+          "width": 1116,
+          "height": 538
+        },
+        "adjustments": 0,
+        "intent": null
+      }
+    },
+    "oldFallbackWrites": [],
+    "oldCapturedGenerationCallbacks": [
+      {
+        "sequence": 273,
+        "at": 15847.100000023842,
+        "phase": "bookmark:frame",
+        "owner": null,
+        "raf": 540,
+        "scrollTop": 0,
+        "viewportHeight": 538,
+        "scrollHeight": 20045,
+        "totalHeight": 19968,
+        "viewport": {
+          "top": 184,
+          "bottom": 721.5
+        },
+        "mode": "pending-new-message",
+        "anchorId": "turn:user:db:551",
+        "restoreGeneration": 64,
+        "sessionGeneration": 25,
+        "pendingBookmark": null,
+        "restoringBookmark": false,
+        "searchQuery": "",
+        "searchMatches": [],
+        "target": {
+          "id": "turn:user:db:2501",
+          "targetIndex": 125,
+          "targetMessageIndex": 251,
+          "lookupIndex": 125,
+          "estimatedSize": 228,
+          "measurement": {
+            "index": 125,
+            "key": "turn:user:db:2501",
+            "start": 16650,
+            "end": 16878,
+            "size": 228
+          },
+          "centerOffset": [
+            16495,
+            "center"
+          ],
+          "measuredSize": null
+        },
+        "range": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ],
+        "virtualScroll": {
+          "offset": 0,
+          "rect": {
+            "width": 1116,
+            "height": 538
+          },
+          "adjustments": 0,
+          "intent": {
+            "index": 125,
+            "align": "center",
+            "behavior": "smooth",
+            "startedAt": 15744.300000011921,
+            "lastTargetOffset": 16495,
+            "stableFrames": 0
+          }
+        },
+        "remaining": 18
+      }
+    ],
+    "sourceWritersThroughSettle": [
+      {
+        "sequence": 267,
+        "at": 15744.300000011921,
+        "phase": "writer:before",
+        "owner": null,
+        "raf": null,
+        "writer": "ChatPanel:1122",
+        "scrollTop": 0,
+        "viewportHeight": 538,
+        "scrollHeight": 20045,
+        "totalHeight": 19968,
+        "viewport": {
+          "top": 184,
+          "bottom": 721.5
+        },
+        "mode": "pending-new-message",
+        "anchorId": "turn:user:db:551",
+        "restoreGeneration": 65,
+        "sessionGeneration": 25,
+        "pendingBookmark": null,
+        "restoringBookmark": false,
+        "searchQuery": "Response 1952:",
+        "searchMatches": [
+          251
+        ],
+        "target": {
+          "id": "turn:user:db:2501",
+          "targetIndex": 125,
+          "targetMessageIndex": 251,
+          "lookupIndex": 125,
+          "estimatedSize": 228,
+          "measurement": {
+            "index": 125,
+            "key": "turn:user:db:2501",
+            "start": 16650,
+            "end": 16878,
+            "size": 228
+          },
+          "centerOffset": [
+            16495,
+            "center"
+          ],
+          "measuredSize": null
+        },
+        "range": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ],
+        "virtualScroll": {
+          "offset": 0,
+          "rect": {
+            "width": 1116,
+            "height": 538
+          },
+          "adjustments": 0,
+          "intent": null
+        }
+      }
+    ],
+    "nativeSearchRequests": [
+      {
+        "sequence": 268,
+        "at": 15744.5,
+        "phase": "native:scrollTo",
+        "owner": "ChatPanel:1122",
+        "raf": null,
+        "args": [
+          {
+            "top": 16495,
+            "behavior": "smooth"
+          }
+        ],
+        "scrollTop": 0,
+        "viewportHeight": 538,
+        "scrollHeight": 20045,
+        "viewport": {
+          "top": 184,
+          "bottom": 721.5
+        },
+        "stack": "    at Element.<computed> [as scrollTo] (<anonymous>:47:114)\n    at Object.hx [as scrollToFn] (http://127.0.0.1:51600/assets/index-CQzYb7xY.js:2:94197)\n    at xx._scrollToOffset (http://127.0.0.1:51600/assets/index-CQzYb7xY.js:2:110594)\n    at xx.scrollToIndex (http://127.0.0.1:51600/assets/index-CQzYb7xY.js:2:109149)\n    at http://127.0.0.1:51600/assets/index-CQzYb7xY.js:20:2043\n    at zt (http://127.0.0.1:51600/assets/index-CQzYb7xY.js:20:5300)\n    at http://127.0.0.1:51600/assets/index-CQzYb7xY.js:20:2015"
+      },
+      {
+        "sequence": 415,
+        "at": 17393.600000023842,
+        "phase": "native:scrollTo",
+        "owner": null,
+        "raf": 562,
+        "args": [
+          {
+            "top": 16476.5,
+            "behavior": "auto"
+          }
+        ],
+        "scrollTop": 16495,
+        "viewportHeight": 575,
+        "scrollHeight": 20045,
+        "viewport": {
+          "top": 147,
+          "bottom": 721.5
+        },
+        "stack": "    at Element.<computed> [as scrollTo] (<anonymous>:47:114)\n    at Object.hx [as scrollToFn] (http://127.0.0.1:51600/assets/index-CQzYb7xY.js:2:94197)\n    at xx._scrollToOffset (http://127.0.0.1:51600/assets/index-CQzYb7xY.js:2:110594)\n    at xx.reconcileScroll (http://127.0.0.1:51600/assets/index-CQzYb7xY.js:2:112026)\n    at http://127.0.0.1:51600/assets/index-CQzYb7xY.js:2:111206\n    at <anonymous>:31:13"
+      }
+    ],
+    "generationAdvancedBeforeNativeScroll": true,
+    "retiredBookmarkRafRanButPerformedNoWriter": true,
+    "targetStableViewportIntersection": true
+  },
+  "historicalComparisons": [
+    {
+      "id": "spark-search-scroll-20261015-original-prep2",
+      "rawDirectory": "/tmp/spark-search-scroll-20261015-original-prep2",
+      "source": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
+      "attempt": {
+        "exit": 0,
+        "signal": null,
+        "timedOut": false,
+        "endedAt": "2026-10-15T20:16:58.411Z",
+        "node": "v22.22.1",
+        "executable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node"
+      },
+      "originalGuard": {
+        "outcome": "passed",
+        "failure": null,
+        "timeoutMs": 30000
+      },
+      "guardDurationMs": 154.30000001192093,
+      "searchIntent": null,
+      "postIntentOrGuardWriterCounts": {
+        "ChatPanel:1358": 3
+      },
+      "viewport": {
+        "top": 147,
+        "bottom": 721.5
+      },
+      "target": {
+        "id": "turn:user:db:2501",
+        "index": 125,
+        "top": -163.5,
+        "bottom": 58.75,
+        "height": 222.25,
+        "visible": false
+      },
+      "meaning": "Premature original guard pass with already-mounted offscreen target; no actual search observed"
+    },
+    {
+      "id": "spark-search-scroll-20261015-original-followup1",
+      "rawDirectory": "/tmp/spark-search-scroll-20261015-original-followup1",
+      "source": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
+      "attempt": {
+        "exit": 1,
+        "signal": null,
+        "timedOut": false,
+        "endedAt": "2026-10-15T20:20:16.340Z",
+        "node": "v22.22.1",
+        "executable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node"
+      },
+      "originalGuard": {
+        "outcome": "failed",
+        "failure": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-testid=\"chat-panel\"] [data-row-id]').filter({ hasText: 'Response 1952:' }).first() to be visible\u001b[22m\n\n    at diagnoseSearch (/private/tmp/spark-search-scroll-20261015-original-followup1/diagnostic-driver.mjs:1038:100)\n    at async captureCase (/private/tmp/spark-search-scroll-20261015-original-followup1/diagnostic-driver.mjs:736:30)\n    at async run (/private/tmp/spark-search-scroll-20261015-original-followup1/diagnostic-driver.mjs:921:26)\n    at async file:///private/tmp/spark-search-scroll-20261015-original-followup1/diagnostic-driver.mjs:1004:9",
+        "timeoutMs": 30000
+      },
+      "guardDurationMs": 30072.399999976158,
+      "searchIntent": {
+        "restoreGeneration": 64
+      },
+      "postIntentOrGuardWriterCounts": {
+        "ChatPanel:1118": 1,
+        "ChatPanel:1358": 19
+      },
+      "viewport": {
+        "top": 184,
+        "bottom": 721.5
+      },
+      "target": null,
+      "meaning": "Original30s missing-row failure;19valid bookmark fallback writes after correct smooth search"
+    }
+  ],
+  "claims": {
+    "specificReproducedFailureRepairedInBoundedCapture": true,
+    "candidateAcceptedForRootIntegration": true,
+    "completeP09": false,
+    "memoryRetentionFixed": false,
+    "fullPythonSuitePassed": false,
+    "canonicalBundleVerified": false,
+    "installedPackageVerified": false,
+    "pushed": false,
+    "released": false
+  },
+  "closure": {
+    "allOwnedGroupsClosedBeforeMeasurementDone": true,
+    "postExitProcesses": "",
+    "method": "Context/browser and backend/Vite closed in finally; wrapper terminated detached group; scoped post-exit ps found no survivors"
+  },
+  "controls": {
+    "sourceFrozen": true,
+    "node": "v22.22.1",
+    "nodeExecutable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+    "ownNpmCi": true,
+    "lockChanged": false,
+    "temporaryProductionAssets": true,
+    "canonicalBundleChanged": false,
+    "profile": "Synthetic isolated temporary SPARK_HOME",
+    "python": "/Users/joe/Developer/github/spark/.venv/bin/python",
+    "pythonPath": "Pinned snapshot own src",
+    "externalProviderCallsOrSends": false,
+    "modeChangedToInstant": false,
+    "originalGuardTimeoutMs": 30000,
+    "assertionsRelaxed": false,
+    "originalProtocolCheckpoints": 13,
+    "heapSnapshots": false,
+    "retries": 0
+  },
+  "helpers": [
+    {
+      "path": "src/spark_cli/web/e2e/search-scroll-diagnostic.mjs",
+      "archive": "/tmp/spark-search-scroll-fix-20261015-final/search-scroll-diagnostic.mjs",
+      "bytes": 17562,
+      "sha256": "a99a94ae711e6a6cda5389abf40fdafeeec8e8cb0d0d4e38f6c117e94459b453"
+    },
+    {
+      "path": "src/spark_cli/web/e2e/search-scroll-source.mjs",
+      "archive": "/tmp/spark-search-scroll-fix-20261015-final/search-scroll-source.mjs",
+      "bytes": 9671,
+      "sha256": "7ee61854ba60ca0e5e3f050aa4df92d7628c558973dde6c137774e61db3bdb44"
+    },
+    {
+      "path": "src/spark_cli/web/e2e/search-scroll-fix-diagnostic.mjs",
+      "archive": "/tmp/spark-search-scroll-fix-20261015-final/search-scroll-fix-diagnostic.mjs",
+      "bytes": 10999,
+      "sha256": "d93a8a6b4cd542b2c45a97f418db7c24bb03cbc308b0560d0b830f8d36a12436"
+    },
+    {
+      "path": "src/spark_cli/web/src/components/ChatPanel.searchScroll.test.ts",
+      "archive": "/tmp/spark-search-scroll-fix-20261015-final/ChatPanel.searchScroll.test.ts",
+      "bytes": 6198,
+      "sha256": "a8ae97d4ecb792b5e4cf50d4c98219cf7e1f2e455a0ba1be99869acfc42cd3cf"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/preparation.json",
+      "bytes": 4626,
+      "sha256": "22f49e9917ebc2e427550c9a20ab7923c578c6f0471c96f0185214ae60d9df18"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/execution-start.json",
+      "bytes": 227,
+      "sha256": "1f9a7950d37391cd6f3b7bb82fe4bfe015c589d022a0ff9ae381feb50b05d5e0"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/attempt.json",
+      "bytes": 184,
+      "sha256": "59b67983a155e5e8086ee8a6cbaacb8fa2800e7c522a5b01f4160b7ae0f0730f"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/cycles.json",
+      "bytes": 40046,
+      "sha256": "8bab6c120a9ca9848967548c13f24f517ad0e982416bfcfdc121937712d56636"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/search-trace.json",
+      "bytes": 4657529,
+      "sha256": "fa96f97d33b7a5480636243b6c2d227b2f9ff2fff665d15b3db5a40263354794"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/first-proof.json",
+      "bytes": 1531,
+      "sha256": "44ed8623324d208106452c03163678c1ed86cbdb452ca388b54d3aed8309d24f"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/original-guard.json",
+      "bytes": 4601,
+      "sha256": "f47ff131f25e67bd5cca4575436b9217298df77ca2dba3d586b4aab88a9f150a"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/ui-regressions.json",
+      "bytes": 29888,
+      "sha256": "542541fb1c01efe903f69e27c2ecbccb2c61b82b228fff9baa8019ae5fed1f56"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/served.json",
+      "bytes": 3123,
+      "sha256": "aea23d578a86abdad522eea014b1ec07d4d120ef3fca277653c2aed65c4421b2"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/search-outcome.png",
+      "bytes": 187634,
+      "sha256": "05dc8895b287245f69db28c461994995eabf498437d592ae910bb7aeef9453f1"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/diagnostic-driver.mjs",
+      "bytes": 56159,
+      "sha256": "f3b4d47d7cd650edefacabbcc0427c8006aa4ec18bc0e37fd91b65fb329227ba"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/historical-driver-before-additive-checks.mjs",
+      "bytes": 48637,
+      "sha256": "56c0e3f2c0f823c34aef1b41a59714609934977c328e75de477b47788f497cea"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/search-scroll-source.mjs",
+      "bytes": 9671,
+      "sha256": "7ee61854ba60ca0e5e3f050aa4df92d7628c558973dde6c137774e61db3bdb44"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/search-scroll-fix-diagnostic.mjs",
+      "bytes": 10999,
+      "sha256": "d93a8a6b4cd542b2c45a97f418db7c24bb03cbc308b0560d0b830f8d36a12436"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/ChatPanel.instrumented.tsx",
+      "bytes": 93801,
+      "sha256": "72a92b9e42de8ad68ffb2ad09e8764b2b43984f897192341413d8c8dd50bf3dd"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/npm-ci.log",
+      "bytes": 353,
+      "sha256": "da7cf320b3fdc4a91c14b185a25b97d73f929349f71b9521672764cb01e89ead"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/stdout.log",
+      "bytes": 264,
+      "sha256": "ebc2c653ded848b52c40a180b6f147a859e0fbc4682b269df184e75a63f77b15"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/processes-after.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/.vite/manifest.json",
+      "bytes": 15246,
+      "sha256": "61ba97ace9e2ce2c7f50f3768dd72dcb2def3f5697e38ad32d9a11bdf3034365"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/CodeEditor-Bfq8Ketp.js",
+      "bytes": 6021,
+      "sha256": "0eef937a27d79c6850ee84b11c81e41a42faef0aafe046c88ea317a3a6e864c3"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/CommandPalette-BvO6GM_n.js",
+      "bytes": 6440,
+      "sha256": "7df8dd122159a2db5f0ab236e56309f6cdb324d96f45a3bff17b1b4339cf52ef"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/ConnectorsPage-Dlyc4N6a.js",
+      "bytes": 31855,
+      "sha256": "51c43f0f48b816ab2760d687541a1ee535ab84c9958c6ac3de9ea48ef507f7af"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/CronPage-D8eTNmXy.js",
+      "bytes": 16351,
+      "sha256": "080f8b61d64f1e8fd1baaa4b8b493d191b192a06c79e28a6c56625868266a818"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/FilesPage-D1DpVfM1.js",
+      "bytes": 19303,
+      "sha256": "b8c8295531eb42f2b416c32b462254fc486e8510f7309472ab20cf4714a45749"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/KanbanPage-5H7DW-F8.js",
+      "bytes": 22983,
+      "sha256": "673fb53f72c269de2aee165f6a649db6ef1942990742ec0f17d8f0e0f0980083"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/KeyboardShortcutsModal-CsAih4SA.js",
+      "bytes": 3264,
+      "sha256": "7308e4856ed7539adbd2a291fbf0399e26fd9e4de80f365e42682ea753f1d604"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/MessagingPage-DPCZm5GG.js",
+      "bytes": 9380,
+      "sha256": "993a7f20e2061acc55aac99843172906dc8242bc4048354e5a7a5b459ab0502c"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/OnboardingWizard-Cvd6nUFG.js",
+      "bytes": 25249,
+      "sha256": "1c31213a84d60d43e96814206661520d22740c3e3dc1c64aad827ba087951db0"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/SettingsPanel-CXn95UC3.js",
+      "bytes": 100400,
+      "sha256": "1cf25879a61fd60c72735f458ba2fecca62319ba4a5f2fe283781d271649e4b5"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/SkillQualitySignals-DRXPUO--.js",
+      "bytes": 2205,
+      "sha256": "3d3f1e94947f63b9b5756d32375cc7422f349de9675df1cc7892dbad2b80cf01"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/SkillsPage-NkhBLDc1.js",
+      "bytes": 10925,
+      "sha256": "c8b022ea32de0e25e0b8eb3fd06cd3c8d3717b0febdb94f683c127eb8e650ea5"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/SkillsToolsPage-C6_JpU8E.js",
+      "bytes": 43224,
+      "sha256": "e3b8a1dc6c1499578c56219977ef7764d51070bc4e3c5e1fc6427e13e0c43d84"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/WorkspaceTerminalPanel-D5YEnunT.js",
+      "bytes": 6397,
+      "sha256": "8af563d8856dc9cf6bbb44914c817108d04f027291516a147e8e47b071bb1453"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/card-D3jMxlvK.js",
+      "bytes": 699,
+      "sha256": "3cc57bf8c7ee815ef59442a08001ad8f89022f6fb11369076189a27c23f7e906"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/common-CceJxely.js",
+      "bytes": 141453,
+      "sha256": "ec83493993df09587f3b612af2d01d2ed38409f8fd6f2950e6b6fa101dffb939"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/event-txnF-Fua.js",
+      "bytes": 1424,
+      "sha256": "e1bf33c7c131490a7ad7e2f3152af695a944a44e306fc33ee998f4f196b9d2cd"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/feature-editor-core-DHV48i40.js",
+      "bytes": 418867,
+      "sha256": "bd89f110236675a71fda76f3a32364bdb189a90cc6cfa3c147de382ad0ed5f52"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/feature-terminal-CKOUgNd1.js",
+      "bytes": 364126,
+      "sha256": "97b228a9aad83f9e95939284a4c8df17e01b6025dba82b0b1646e390b628e462"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/feature-terminal-DDGTF8rc.css",
+      "bytes": 3621,
+      "sha256": "98e9ef834903856257639ba3cc8cfe64401a8f6af89f9a6335280654fdfa22cb"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-B8JIJF7v.css",
+      "bytes": 144031,
+      "sha256": "d8c756b21c9761d519e5e7e6b294074d781fcbe12c25425b4e998fcd0cbade00"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-BCqVsHpW.js",
+      "bytes": 84670,
+      "sha256": "8f18c6a23c1723f3533e13a3e3e6a2d9b524347f97e129eb26fbe03b66da71e8"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-BYB3sg_S.js",
+      "bytes": 40781,
+      "sha256": "6c4bd33356f9ab5b41e9dcf7cda9e8e77d86b6c198f157be6d7246e66a6feb50"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-C21zs7IS.js",
+      "bytes": 100602,
+      "sha256": "ff49793a2cc24dd770bbd0d909ae69c2d40d22736581c1da515921fd85f574ee"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-CAmFLQEr.js",
+      "bytes": 14719,
+      "sha256": "48d39ea6645061cc379c8c8fbac019beb95c5e6112e793766bfe31227570d7b0"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-CQzYb7xY.js",
+      "bytes": 653905,
+      "sha256": "b864e06f52cc0ce6b21f7136000ee92b9ad37e71ccc4d56678cccfcdf870f616"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-CmRJ0PkS.js",
+      "bytes": 45150,
+      "sha256": "2920ee6650fcbda47247452cfd56665b582561b8475d71007a8a90ebf1d3e877"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-CnOsduOS.js",
+      "bytes": 14017,
+      "sha256": "9818db4f98ca020ea19ad23954f38e12f6c198ca63f8bd4e6275a2f57212d1ee"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-D-T27LXR.js",
+      "bytes": 44201,
+      "sha256": "2f8cffc8d28c971a184fd1c130e026d82d94a104d225333972d074dddf761987"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-D8xKoTj8.js",
+      "bytes": 70858,
+      "sha256": "e17c03d642a53d9249ffca4cca2c253167b44df7e601a3d621268cb69a105aea"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-DboFWREA.js",
+      "bytes": 2063,
+      "sha256": "aaa8ec5c41f6583ca95aa6adafd2c9ea7f629df6fc63188e8047ec7651f5b64d"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-DkcKCf_s.js",
+      "bytes": 27231,
+      "sha256": "17bfb928353541d9cbb7363513e984ee66da8d7de3973099b2e4ee45b608e1a7"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-DsfnTY5x.js",
+      "bytes": 26533,
+      "sha256": "d63c3c4af010de354177faf9d608f74274a1841fc6d5ae4446687b7d9b124f01"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-_bQcArY9.js",
+      "bytes": 28707,
+      "sha256": "719952c7ff09b061248e6b122e526e29ad534b3e4922e4fd829a9fcda4e029f8"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/index-fb4oTK9h.js",
+      "bytes": 30842,
+      "sha256": "bca2b1e772a89866c2ed7934360f0bb8beea1039dbb7b0f7ee199cb56c3a570b"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/label-DbiCvpp1.js",
+      "bytes": 299,
+      "sha256": "19b29b6cac23fa3f6fdc800523d548a4287c60323025cddc8b821e26537eddbf"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/localDevice-CVAAHkGi.js",
+      "bytes": 1241,
+      "sha256": "2ed549e341c73cb4fc89a290ff272578c5c2f78d7229747fb65f077fcb664a15"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/message-circle-BZCHcQTV.js",
+      "bytes": 242,
+      "sha256": "79cd88184abee84ed98cf80e1d43017d27059976c1d1e476831de9fd02a519d3"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/plug-hD_XAyXH.js",
+      "bytes": 287,
+      "sha256": "62b7d49964a3d5ca21e48dbffdd40419236400360a6b46f8ceade4b6594027f9"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/save-3nS8IP5b.js",
+      "bytes": 328,
+      "sha256": "5ea249077b3295a24bf0b4ffc997c1cb52a101701452cd5926b6f9ac0c368d4e"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/select-DNap4Elk.js",
+      "bytes": 3267,
+      "sha256": "d0d7199f2c190546d52df52a5fba8f859b496141557bcb4e4e82cbb155d9bcec"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/server-Cw_u0E_L.js",
+      "bytes": 646,
+      "sha256": "8ea3793a00bbdadb3cd7a88c49f06cf97fb141ecbd3668cee47ba017f6b2e291"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/shell-CjFT_Tl9.js",
+      "bytes": 2571,
+      "sha256": "b4da8a11db1127e003f10a94ff707474af1392051c41f1e0ef78152e9bd0ea95"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/switch-CYPyE29q.js",
+      "bytes": 784,
+      "sha256": "ef32ec942ae1cbcd4a708b69ae8b8fd9ab9499b7a8b7b39d82a31e3749e021ff"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/toml-Bm5Em-hy.js",
+      "bytes": 1138,
+      "sha256": "b7f8416bfb193fea056e2ea29ac97d5569055b02829786fae1f23d619a3b08d6"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/vendor-react-Dc-lrgX9.js",
+      "bytes": 192472,
+      "sha256": "7c480806ff83eaf2da70a262072c78f68a8926fad563fa7bcb3a94bd15232c1c"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/assets/yaml-DsCXHVTH.js",
+      "bytes": 1522,
+      "sha256": "c8dfd05d7ae0e3107aebef566f4eb64f4a6771cbd2ed5f1c867c9766c9922c07"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/favicon.ico",
+      "bytes": 8482,
+      "sha256": "aefe65e6574e6f46d3382588f46c508e1b3f3b3c9ce3dec6d335403a5374add9"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/favicon.png",
+      "bytes": 12409,
+      "sha256": "457c544936e488d09a4bcc4b319994d8cd4f7374504b695a641d4fe0e8a8298f"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/Collapse-Bold.woff2",
+      "bytes": 59144,
+      "sha256": "cb1bc6803168cffb3ef7b8113f95f82480a6d0f46d6e37edc854259377c6c00b"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/Collapse-Regular.woff2",
+      "bytes": 62816,
+      "sha256": "ce8c481f56da3a46074ab696c16481bea49ea83e75e7eb7cb42fd2114593f33a"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/CourierPrime-Bold.woff2",
+      "bytes": 11588,
+      "sha256": "06622415713b4150c18f4489db7c8850300d9f3e55051fc78ed33dca88c5ff08"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/CourierPrime-Regular.woff2",
+      "bytes": 11192,
+      "sha256": "21bf7ff8d9e067443a3fe0832ee8e4364faee9ace1fb0ec3e625cd09d231802f"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/Mondwest-Regular.woff2",
+      "bytes": 23828,
+      "sha256": "9cf6e6e1cba70f7e991a92ce4225785725b6cc9a48cc77cbfaabeba26c18f072"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/RulesCompressed-Medium.woff2",
+      "bytes": 38848,
+      "sha256": "d865cf7154121265d3d65c0931ec27dc289aa438cd62ffad2f38e05ae79956a3"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/RulesCompressed-Regular.woff2",
+      "bytes": 37764,
+      "sha256": "3bcbc330183f49cd49c72d4cdb3d1fbc675cf4e3000b06fd1c606ffc31b73e5f"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/RulesExpanded-Bold.woff2",
+      "bytes": 35012,
+      "sha256": "f2295406de2272086d5395af32b50ac51b15d75294c25a04094c8b1f85757931"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/fonts/RulesExpanded-Regular.woff2",
+      "bytes": 33820,
+      "sha256": "e8062ac4889b0f05de94035571e86991b6efd03539775cfe0790e37da75434db"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/icon_small-dark.png",
+      "bytes": 12693,
+      "sha256": "e3599a6e3baf72cdb82b230ed8569ee87422ebbc91dc6ec837593d2085ea2870"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/icon_small-light.png",
+      "bytes": 13961,
+      "sha256": "eee2d6063c57a4e90affa2e8530d8cba46f0f0cb8f1adc1d5ec9ddc1aef728c3"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/production-assets/index.html",
+      "bytes": 1531,
+      "sha256": "80003088fe942f3345b65ed08bc5e069616992134f1c89e6b0bb1468b6016bb1"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/run-01/backend.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/run-01/baseline-working-tree.json",
+      "bytes": 12047,
+      "sha256": "ce67305aeefb3a8efec26a629d453d5940e8cae10bb351a9a8afb9912c809849"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/run-01/screenshots/dark/2000-w1440.png",
+      "bytes": 185860,
+      "sha256": "34f9016328b3d19d0c90bef115157bb86e5f23aad70efc440bf6ba3d0e877e0b"
+    },
+    {
+      "path": "/tmp/spark-search-scroll-fix-20261015-candidate1/run-01/vite.log",
+      "bytes": 9237,
+      "sha256": "e1a91fbc3861891be3e6a5d73bf22be79f72af094c79eed3d82a9ca74df599c5"
+    }
+  ],
+  "limits": [
+    "One candidate capture under explicit root window clear, not a population performance estimate",
+    "Source instrumentation adds reads/logging and can perturb timing",
+    "Callback tests execute actual source callbacks with controlled scopes/RAF; they do not mount React. Production browser flow supplies actual DOM/virtualizer evidence.",
+    "Only focused tests/type/scoped lint were run here; root owns final frontend and app gates",
+    "Initial test-only lint failed on2unusedparameters; corrected and final scoped lint passed; all logs retained",
+    "Original callback baseline3fail/1pass is an expected regression demonstration, distinct from candidate21pass",
+    "First original premature pass and original30sfailure retain original outcomes; no historical file or assertion changed",
+    "Existing npm audit/build warnings remain unchanged; no lock/budget/package claim",
+    "Final search-outcome.png is after all UI stages (history prepend), not the initial target screenshot; target proof is recorded post-intent row/viewport geometry",
+    "No captures, builds or heavy commands after measurement-done"
+  ]
+}
