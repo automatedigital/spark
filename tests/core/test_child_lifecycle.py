@@ -101,9 +101,11 @@ def test_schema12_upgrade_is_additive_and_idempotent(tmp_path):
     db.create_subagent_run({"id": "old-child", "parent_session_id": "legacy", "status": "completed"})
     db.append_subagent_event("old-child", "completed", {"summary": "preserved"})
     # Reconstruct the actual v12 tables: the only removed columns are v13 additions.
+    db._conn.execute("DROP TABLE runtime_child_jobs")
+    db._conn.execute("DROP TABLE runtime_command_receipts")
     db._conn.execute("DROP INDEX idx_subagent_event_identity")
     db._conn.execute("ALTER TABLE subagent_events DROP COLUMN event_id")
-    for name in ("root_run_id", "attempt_id", "parent_node_id", "node_id", "projection_version"):
+    for name in ("root_run_id", "attempt_id", "parent_node_id", "node_id", "projection_version", "execution_mode", "retry_of"):
         db._conn.execute(f"ALTER TABLE subagent_runs DROP COLUMN {name}")
     db._conn.execute("UPDATE schema_version SET version=12")
     db.close()
@@ -151,6 +153,8 @@ def test_cancelled_is_terminal_and_large_events_remain_bounded(tmp_path):
     )
     assert result["run"]["status"] == "cancelled"
     assert result["event"]["event_id"] == "huge-late-tool"
+    assert result["event"]["schema"] == "spark.subagent.lifecycle.v1"
+    assert result["event"]["subagent_id"] == "cancelled"
     assert result["event"]["subagent_run"]["status"] == "cancelled"
     assert len(json.dumps(result["event"])) <= 24_000
     assert db.get_subagent_events("cancelled")[0]["data"] == result["event"]

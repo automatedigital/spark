@@ -4,7 +4,8 @@ Delegate Tool -- Subagent Architecture
 
 Spawns child AIAgent instances with isolated context, restricted toolsets,
 and their own terminal sessions. Supports single-task and batch (parallel)
-modes. The parent blocks until all children complete.
+modes. Synchronous mode waits; opt-in async mode returns durable handles and
+uses process-local workers. Results wait for the next explicit parent turn.
 
 Each child gets:
   - A fresh conversation (no parent history)
@@ -136,8 +137,9 @@ def _resolve_workspace_hint(parent_agent) -> str | None:
     guessing `/workspace/...` for local repo tasks.
     """
     candidates = [
-        os.getenv("TERMINAL_CWD"),
+        getattr(parent_agent, "working_dir", None),
         getattr(getattr(parent_agent, "_subdirectory_hints", None), "working_dir", None),
+        os.getenv("TERMINAL_CWD"),
         getattr(parent_agent, "terminal_cwd", None),
         getattr(parent_agent, "cwd", None),
     ]
@@ -156,7 +158,7 @@ def _resolve_workspace_hint(parent_agent) -> str | None:
 def _strip_blocked_tools(toolsets: list[str]) -> list[str]:
     """Remove toolsets that contain only blocked tools."""
     blocked_toolset_names = {
-        "delegation", "clarify", "memory", "code_execution",
+        "delegation", "clarify", "memory", "code_execution", "messaging",
     }
     return [t for t in toolsets if t not in blocked_toolset_names]
 
@@ -325,6 +327,7 @@ def _build_child_agent(
     override_acp_args: list[str] | None = None,
     lifecycle_run: dict[str, Any] | None = None,
     task_count: int = 1,
+    working_dir: str | None = None,
 ):
     """
     Build a child AIAgent on the main thread (thread-safe construction).
@@ -364,7 +367,7 @@ def _build_child_agent(
     else:
         child_toolsets = _strip_blocked_tools(DEFAULT_TOOLSETS)
 
-    workspace_hint = _resolve_workspace_hint(parent_agent)
+    workspace_hint = working_dir or _resolve_workspace_hint(parent_agent)
     child_prompt = _build_child_system_prompt(goal, context, workspace_path=workspace_hint)
     # Extract parent's API key so subagents inherit auth when appropriate.
     parent_api_key = getattr(parent_agent, "api_key", None)
@@ -448,11 +451,13 @@ def _build_child_agent(
         reasoning_config=child_reasoning,
         prefill_messages=getattr(parent_agent, "prefill_messages", None),
         enabled_toolsets=child_toolsets,
+        blocked_tool_names=DELEGATE_BLOCKED_TOOLS | getattr(parent_agent, "_blocked_tool_names", frozenset()),
         quiet_mode=True,
         ephemeral_system_prompt=child_prompt,
         log_prefix=f"[subagent-{task_index}]",
         platform=parent_agent.platform,
         skip_context_files=True,
+        working_dir=workspace_hint,
         skip_memory=True,
         clarify_callback=None,
         thinking_callback=child_thinking_cb,
@@ -475,6 +480,10 @@ def _build_child_agent(
     child_pool = _resolve_child_credential_pool(effective_provider, parent_agent)
     if child_pool is not None:
         child._credential_pool = child_pool
+
+    if lifecycle_run and lifecycle_run.get("execution_mode") == "async":
+        child._spark_async_child = True
+        child._spark_async_cancel_event = threading.Event()
 
     # Register child for interrupt propagation
     if hasattr(parent_agent, '_active_children'):
@@ -534,6 +543,11 @@ def _run_single_child(
         while not _heartbeat_stop.wait(_HEARTBEAT_INTERVAL):
             if parent_agent is None:
                 continue
+            if lifecycle_run and lifecycle_run.get("execution_mode") == "async":
+                try:
+                    parent_agent._session_db.touch_async_child(lifecycle_run["id"], lifecycle_run["worker_token"])
+                except Exception:
+                    logger.debug("Child heartbeat persistence failed", exc_info=True)
             touch = getattr(parent_agent, '_touch_activity', None)
             if not touch:
                 continue
@@ -577,10 +591,13 @@ def _run_single_child(
         summary = result.get("final_response") or ""
         completed = result.get("completed", False)
         interrupted = result.get("interrupted", False)
+        failed = bool(result.get("failed") or result.get("error"))
         api_calls = result.get("api_calls", 0)
 
         if interrupted:
             status = "interrupted"
+        elif failed:
+            status = "failed"
         elif summary:
             # A summary means the subagent produced usable output.
             # exit_reason ("completed" vs "max_iterations") already
@@ -630,6 +647,8 @@ def _run_single_child(
         # Determine exit reason
         if interrupted:
             exit_reason = "interrupted"
+        elif failed:
+            exit_reason = "error"
         elif completed:
             exit_reason = "completed"
         else:
@@ -710,7 +729,7 @@ def _run_single_child(
         import core.model_tools as model_tools
 
         saved_tool_names = getattr(child, "_delegate_saved_tool_names", None)
-        if isinstance(saved_tool_names, list):
+        if isinstance(saved_tool_names, list) and getattr(child, "_spark_async_child", False) is not True:
             model_tools._last_resolved_tool_names = list(saved_tool_names)
 
         # Remove child from active tracking
@@ -745,6 +764,9 @@ def delegate_task(
     acp_command: str | None = None,
     acp_args: list[str] | None = None,
     parent_agent=None,
+    mode: str = "sync",
+    request_id: str | None = None,
+    handle: str | None = None,
 ) -> str:
     """
     Spawn one or more child agents to handle delegated tasks.
@@ -768,8 +790,38 @@ def delegate_task(
             )
         })
 
+    if mode not in {"sync", "async", "status", "cancel", "retry"}:
+        return tool_error("Unsupported delegation mode")
+    if mode == "retry":
+        from core.orchestration.delegation import retry_async_child
+        try:
+            return json.dumps(retry_async_child(parent_agent, handle or "", request_id or ""))
+        except ValueError as exc:
+            return tool_error(str(exc))
+    if mode in {"status", "cancel"}:
+        from core.orchestration.delegation import child_control
+        try:
+            return json.dumps(child_control(parent_agent, mode, handle or "", request_id))
+        except ValueError as exc:
+            return tool_error(str(exc))
+    command_payload = {"goal": goal, "context": context, "toolsets": toolsets, "tasks": tasks,
+                       "max_iterations": max_iterations, "acp_command": acp_command, "acp_args": acp_args}
+    if mode == "async":
+        from core.spark_state import SessionDB
+        db = getattr(parent_agent, "_session_db", None)
+        if not request_id or not isinstance(db, SessionDB) or not db.get_session(parent_agent.session_id):
+            return tool_error("Async delegation requires request_id and a durable owning session")
+        try:
+            receipt = db.get_runtime_command(parent_agent.session_id, "subagent.dispatch", request_id, command_payload)
+        except ValueError as exc:
+            return tool_error(str(exc))
+        if receipt:
+            return json.dumps(receipt["acceptance"])
+
     # Load config
     cfg = _load_config()
+    if mode == "async" and cfg.get("async_enabled") is not True:
+        return tool_error("Async execution is disabled")
     default_max_iter = cfg.get("max_iterations", DEFAULT_MAX_ITERATIONS)
     effective_max_iter = max_iterations or default_max_iter
 
@@ -807,6 +859,19 @@ def delegate_task(
     for i, task in enumerate(task_list):
         if not task.get("goal", "").strip():
             return tool_error(f"Task {i} is missing a 'goal'.")
+
+    if mode == "async":
+        from core.orchestration.delegation import dispatch_async_children
+        normalized = [{**task, "toolsets": task.get("toolsets") or toolsets,
+                       "acp_command": task.get("acp_command") or acp_command,
+                       "acp_args": task.get("acp_args") or acp_args} for task in task_list]
+        try:
+            return json.dumps(dispatch_async_children(
+                parent_agent, normalized, request_id=request_id, payload=command_payload,
+                creds=creds, max_iterations=effective_max_iter, max_children=max_children,
+            ))
+        except ValueError as exc:
+            return tool_error(str(exc))
 
     overall_start = time.monotonic()
     results = []
@@ -1170,11 +1235,10 @@ def _load_config() -> dict:
 DELEGATE_TASK_SCHEMA = {
     "name": "delegate_task",
     "description": (
-        "Delegate reasoning-heavy or context-heavy work to isolated subagents. "
+        "Delegate independent reasoning or context-heavy work. "
         "Use goal for one task or tasks for a parallel batch (default limit 3). "
         "Each child has a separate conversation, terminal session, and toolset; "
-        "only final summaries return, one result per task. Use for debugging, "
-        "review, research synthesis, or independent workstreams. Use execute_code "
+        "Only final summaries return. Sync waits; opt-in async returns handles. Use execute_code "
         "for mechanical workflows and call a tool directly for one operation. "
         "Children cannot interact with the user and have no conversation memory, "
         "so include paths, errors, constraints, and required details in context. "
@@ -1184,13 +1248,16 @@ DELEGATE_TASK_SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {
+            "mode": {"type": "string", "enum": ["sync", "async", "status", "cancel", "retry"]},
+            "request_id": {"type": "string", "description": "Retry key for async/cancel/retry."},
+            "handle": {"type": "string", "description": "Child id for status/cancel/retry."},
             "goal": {
                 "type": "string",
-                "description": "Specific self-contained task for one subagent.",
+                "description": "Self-contained task.",
             },
             "context": {
                 "type": "string",
-                "description": "Required background such as paths, errors, structure, and constraints.",
+                "description": "Paths, errors and constraints.",
             },
             "toolsets": {
                 "type": "array",
@@ -1235,7 +1302,7 @@ DELEGATE_TASK_SCHEMA = {
             "max_iterations": {
                 "type": "integer",
                 "description": (
-                    "Tool-calling turn limit per child (default 50); lower only for simple tasks."
+                    "Per-child turn budget (default 50)."
                 ),
             },
             "acp_command": {
@@ -1273,7 +1340,8 @@ registry.register(
         max_iterations=args.get("max_iterations"),
         acp_command=args.get("acp_command"),
         acp_args=args.get("acp_args"),
-        parent_agent=kw.get("parent_agent")),
+        parent_agent=kw.get("parent_agent"),
+        mode=args.get("mode", "sync"), request_id=args.get("request_id"), handle=args.get("handle")),
     check_fn=check_delegate_requirements,
     emoji="🔀",
 )

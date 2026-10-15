@@ -91,6 +91,8 @@ class _ToolExecutionMixin:
             function_name, function_args = normalize_facade_call(function_name, function_args)
         except ValueError as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        if function_name in getattr(self, "_blocked_tool_names", frozenset()):
+            return json.dumps({"error": "Tool is blocked for this delegated child"})
         function_args = self._inject_working_dir(function_name, function_args)
         # Check plugin hooks for a block directive before executing anything.
         block_message: str | None = None
@@ -161,6 +163,9 @@ class _ToolExecutionMixin:
                     toolsets=function_args.get("toolsets"),
                     tasks=function_args.get("tasks"),
                     max_iterations=function_args.get("max_iterations"),
+                    acp_command=function_args.get("acp_command"), acp_args=function_args.get("acp_args"),
+                    mode=function_args.get("mode", "sync"), request_id=function_args.get("request_id"),
+                    handle=function_args.get("handle"),
                     parent_agent=self,
                 )
             else:
@@ -476,6 +481,10 @@ class _ToolExecutionMixin:
                     "tool_call_id": tool_call.id,
                 })
                 continue
+            if function_name in getattr(self, "_blocked_tool_names", frozenset()):
+                messages.append({"role": "tool", "tool_call_id": tool_call.id,
+                                 "content": json.dumps({"error": "Tool is blocked for this delegated child"})})
+                continue
             function_args = self._inject_working_dir(function_name, function_args)
 
             # Check plugin hooks for a block directive before executing.
@@ -655,6 +664,9 @@ class _ToolExecutionMixin:
                         toolsets=function_args.get("toolsets"),
                         tasks=tasks_arg,
                         max_iterations=function_args.get("max_iterations"),
+                        acp_command=function_args.get("acp_command"), acp_args=function_args.get("acp_args"),
+                        mode=function_args.get("mode", "sync"), request_id=function_args.get("request_id"),
+                        handle=function_args.get("handle"),
                         parent_agent=self,
                     )
                     _delegate_result = function_result

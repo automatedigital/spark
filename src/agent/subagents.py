@@ -32,6 +32,7 @@ SUBAGENT_LIFECYCLE_EVENTS = frozenset(
         "completed",
         "failed",
         "interrupted",
+        "uncertain",
     }
 )
 
@@ -288,10 +289,10 @@ def make_run_record(
     }
     record = {
         "id": f"subagent_{run_token}",
-        "root_run_id": root_run_id,
-        "attempt_id": attempt_id,
-        "parent_node_id": parent_node_id,
-        "node_id": node_id,
+        "root_run_id": root_run_id if isinstance(root_run_id, str) else None,
+        "attempt_id": attempt_id if isinstance(attempt_id, str) else None,
+        "parent_node_id": parent_node_id if isinstance(parent_node_id, str) else None,
+        "node_id": node_id if isinstance(node_id, str) else None,
         **identity,
         "parent_session_id": parent_session_id,
         "child_session_id": child_session_id,
@@ -379,6 +380,7 @@ def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dic
         "completed": "completed",
         "failed": "failed",
         "interrupted": "interrupted",
+        "uncertain": "uncertain",
     }.get(event, "working")
     now = time.time()
     run_snapshot = {
@@ -391,7 +393,7 @@ def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dic
         "started_at": run_record.get("started_at") or now,
         "last_event_at": now,
     }
-    if event in {"completed", "failed", "interrupted"}:
+    if event in {"completed", "failed", "interrupted", "uncertain"}:
         run_snapshot["ended_at"] = now
     if result:
         run_snapshot.update(

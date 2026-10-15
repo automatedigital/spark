@@ -511,6 +511,10 @@ class _AgentSupportMixin:
             if session_has_running_agent:
                 running_agent.interrupt(new_message.text)
         """
+        cancel_event = getattr(self, "_spark_async_cancel_event", None)
+        if cancel_event is not None:
+            self._spark_async_cancel_message = message
+            cancel_event.set()
         self._interrupt_requested = True
         self._interrupt_message = message
         # Signal all tools to abort any in-flight operations immediately.
@@ -1601,6 +1605,9 @@ class _AgentSupportMixin:
             )
         except Exception:
             return
+        blocked = getattr(self, "_blocked_tool_names", frozenset())
+        refreshed = [tool for tool in refreshed
+                     if tool.get("function", {}).get("name") not in blocked]
         self.tools = refreshed
         self.valid_tool_names = {
             tool["function"]["name"] for tool in refreshed

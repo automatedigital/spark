@@ -42,7 +42,7 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 _SUBAGENT_JSON_LIMIT = 24_000
 _SUBAGENT_TEXT_LIMIT = 16_000
@@ -783,6 +783,33 @@ class SessionDB:
                     """
                 )
                 cursor.execute("UPDATE schema_version SET version = 14")
+            if current_version < 15:
+                columns = {row[1] for row in cursor.execute("PRAGMA table_info(subagent_runs)")}
+                for name in ("execution_mode", "retry_of"):
+                    if name not in columns:
+                        cursor.execute(f"ALTER TABLE subagent_runs ADD COLUMN {name} TEXT")
+                cursor.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS runtime_child_jobs (
+                        id TEXT PRIMARY KEY REFERENCES subagent_runs(id) ON DELETE CASCADE,
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        request_id TEXT NOT NULL,
+                        command_kind TEXT NOT NULL DEFAULT 'subagent.dispatch',
+                        worker_token TEXT NOT NULL,
+                        owner_pid INTEGER NOT NULL,
+                        owner_start TEXT,
+                        task_json TEXT NOT NULL,
+                        state TEXT NOT NULL DEFAULT 'accepted',
+                        heartbeat_at REAL NOT NULL,
+                        result_json TEXT,
+                        delivery_id TEXT NOT NULL UNIQUE,
+                        delivered_message_id INTEGER
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_runtime_child_jobs_owner
+                        ON runtime_child_jobs(session_id, state);
+                    """
+                )
+                cursor.execute("UPDATE schema_version SET version = 15")
 
         # Unique title index — always ensure it exists (safe to run after migrations
         # since the title column is guaranteed to exist at this point)
@@ -1628,8 +1655,10 @@ class SessionDB:
         conn.execute(
             """UPDATE subagent_runs SET root_run_id=COALESCE(?, root_run_id),
                attempt_id=COALESCE(?, attempt_id), parent_node_id=COALESCE(?, parent_node_id),
-               node_id=COALESCE(?, node_id) WHERE id=?""",
-            tuple(payload.get(key) for key in ("root_run_id", "attempt_id", "parent_node_id", "node_id"))
+               node_id=COALESCE(?, node_id), execution_mode=COALESCE(?, execution_mode),
+               retry_of=COALESCE(?, retry_of) WHERE id=?""",
+            tuple(payload.get(key) for key in ("root_run_id", "attempt_id", "parent_node_id", "node_id",
+                                               "execution_mode", "retry_of"))
             + (subagent_id,),
         )
 
@@ -1637,67 +1666,92 @@ class SessionDB:
         """Legacy unkeyed snapshot API; canonical writers use commit_subagent_lifecycle."""
         self._execute_write(lambda conn: self._write_subagent_run(conn, run))
 
+    def _commit_subagent_lifecycle_row(
+        self, conn: sqlite3.Connection, run: dict[str, Any], event: dict[str, Any]
+    ) -> dict[str, Any]:
+        subagent_id = str(run.get("id") or "")
+        event_id = str(event.get("event_id") or "")
+        if not subagent_id or not event_id or len(subagent_id) > 200 or len(event_id) > 200:
+            raise ValueError("Child lifecycle requires bounded id and event_id")
+        event_type = str(event.get("event") or "status")
+        if len(event_type) > 80:
+            raise ValueError("Child lifecycle event name is too long")
+        now = time.time()
+
+        existing = conn.execute(
+            "SELECT data_json FROM subagent_events WHERE subagent_id=? AND event_id=?",
+            (subagent_id, event_id),
+        ).fetchone()
+        row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
+        current = self._subagent_row_to_dict(row) if row else {}
+        if existing:
+            return {"created": False, "run": current,
+                    "event": self._decode_json_field(existing[0], {}), "session_event": None}
+        parent = current.get("parent_session_id") or run.get("parent_session_id")
+        if current and run.get("parent_session_id") not in (None, parent):
+            raise ValueError("Child lifecycle ownership cannot change")
+        job = conn.execute("SELECT * FROM runtime_child_jobs WHERE id=?", (subagent_id,)).fetchone()
+        if job and run.get("worker_token") != job["worker_token"]:
+            raise ValueError("Child worker no longer owns this attempt")
+        terminal = current.get("status") in {"completed", "failed", "interrupted", "cancelled", "uncertain"}
+        snapshot = current if terminal else {**current, **run, "parent_session_id": parent}
+        if current.get("status") == "stopping" and snapshot.get("status") not in {"completed", "failed", "interrupted", "cancelled", "uncertain"}:
+            snapshot["status"] = "stopping"
+        self._write_subagent_run(conn, snapshot)
+        row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
+        snapshot = self._subagent_row_to_dict(row)
+        committed = {**event, "projection_version": 1, "subagent_run": snapshot}
+        bounded = self._decode_json_field(_bounded_json(committed), {})
+        if bounded.get("_truncated"):
+            # Preserve identity/control fields when reducing oversized legacy
+            # payloads. A preview wrapper alone would destroy dedup identity.
+            keys = ("id", "parent_session_id", "child_session_id", "root_run_id",
+                    "attempt_id", "node_id", "parent_node_id", "status", "projection_version")
+            bounded = {"schema": "spark.subagent.lifecycle.v1",
+                       "event_id": event_id, "event": event_type,
+                       "type": f"subagent.{event_type}", "id": subagent_id,
+                       "run_id": subagent_id,
+                       "subagent_id": _bounded_text(event.get("subagent_id") or subagent_id, 200),
+                       "display_name": _bounded_text(snapshot.get("name"), 200),
+                       "task_index": snapshot.get("task_index", 0),
+                       "projection_version": 1,
+                       "subagent_run": {key: _bounded_text(snapshot.get(key), 200)
+                                            if isinstance(snapshot.get(key), str) else snapshot.get(key)
+                                            for key in keys},
+                       "payload": {"_truncated": True, "preview": bounded["preview"][:2000]}}
+        committed = bounded
+        conn.execute(
+            """INSERT INTO subagent_events (subagent_id, event_id, event_type, data_json, timestamp)
+               VALUES (?, ?, ?, ?, ?)""",
+            (subagent_id, event_id, event_type, _event_json(committed), now),
+        )
+        session_event = None
+        if parent:
+            session_event, _ = self._append_session_event_row(
+                conn, parent, f"subagent.{event_type}", committed,
+                f"subagent:{subagent_id}:{event_id}", now,
+            )
+        if job:
+            result = {key: snapshot.get(key) for key in ("id", "status", "summary", "error", "exit_reason", "model", "tokens")}
+            state = snapshot["status"]
+            conn.execute(
+                """UPDATE runtime_child_jobs SET state=?, heartbeat_at=?, result_json=?
+                   WHERE id=? AND worker_token=?""",
+                (state, now, _bounded_json(result) if state in
+                 {"completed", "failed", "interrupted", "cancelled", "uncertain"} else None,
+                 subagent_id, job["worker_token"]),
+            )
+        return {"created": True, "run": snapshot, "event": committed, "session_event": session_event}
+
     def commit_subagent_lifecycle(
         self, run: dict[str, Any], event: dict[str, Any]
     ) -> dict[str, Any]:
-        """Atomically commit snapshot, child event and owning session event.
+        """Commit snapshot, bounded child event and session event before publication.
 
-        A keyed duplicate returns the original committed event. Terminal state is
-        immutable; late progress stays in history without replacing its snapshot.
-        This method never changes the root turn projection or session completion.
+        Keyed duplicates return the original event. Terminal state cannot regress.
+        Child lifecycle never changes root run/session completion.
         """
-        subagent_id = str(run.get("id") or "")
-        event_id = str(event.get("event_id") or "")
-        if not subagent_id or not event_id:
-            raise ValueError("Child lifecycle requires id and event_id")
-        event_type = str(event.get("event") or "status")
-        now = time.time()
-
-        def _do(conn):
-            existing = conn.execute(
-                "SELECT data_json FROM subagent_events WHERE subagent_id=? AND event_id=?",
-                (subagent_id, event_id),
-            ).fetchone()
-            row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
-            current = self._subagent_row_to_dict(row) if row else {}
-            if existing:
-                return {"created": False, "run": current,
-                        "event": self._decode_json_field(existing[0], {}), "session_event": None}
-            parent = current.get("parent_session_id") or run.get("parent_session_id")
-            if current and run.get("parent_session_id") not in (None, parent):
-                raise ValueError("Child lifecycle ownership cannot change")
-            terminal = current.get("status") in {"completed", "failed", "interrupted", "cancelled", "uncertain"}
-            snapshot = current if terminal else {**current, **run, "parent_session_id": parent}
-            self._write_subagent_run(conn, snapshot)
-            row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
-            snapshot = self._subagent_row_to_dict(row)
-            committed = {**event, "projection_version": 1, "subagent_run": snapshot}
-            bounded = self._decode_json_field(_bounded_json(committed), {})
-            if bounded.get("_truncated"):
-                # Preserve identity/control fields when reducing oversized legacy
-                # payloads. A preview wrapper alone would destroy dedup identity.
-                keys = ("id", "parent_session_id", "child_session_id", "root_run_id",
-                        "attempt_id", "node_id", "parent_node_id", "status", "projection_version")
-                bounded = {"event_id": event_id, "event": event_type,
-                           "type": f"subagent.{event_type}", "id": subagent_id,
-                           "projection_version": 1,
-                           "subagent_run": {key: snapshot.get(key) for key in keys},
-                           "payload": {"_truncated": True, "preview": bounded["preview"][:2000]}}
-            committed = bounded
-            conn.execute(
-                """INSERT INTO subagent_events (subagent_id, event_id, event_type, data_json, timestamp)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (subagent_id, event_id, event_type, _event_json(committed), now),
-            )
-            session_event = None
-            if parent:
-                session_event, _ = self._append_session_event_row(
-                    conn, parent, f"subagent.{event_type}", committed,
-                    f"subagent:{subagent_id}:{event_id}", now,
-                )
-            return {"created": True, "run": snapshot, "event": committed, "session_event": session_event}
-
-        result = self._execute_write(_do)
+        result = self._execute_write(lambda conn: self._commit_subagent_lifecycle_row(conn, run, event))
         if result["created"] and result["session_event"]:
             self._publish_committed_events([result["session_event"]])
         return result
@@ -1756,6 +1810,7 @@ class SessionDB:
     def accept_runtime_command(
         self, session_id: str, command_kind: str, request_id: str,
         payload: dict[str, Any], acceptance: dict[str, Any], intent: dict[str, Any],
+        *, children: list[dict[str, Any]] | None = None, max_children: int = 3,
     ) -> dict[str, Any]:
         """Commit acceptance and dispatch intent before an external side effect.
 
@@ -1777,7 +1832,30 @@ class SessionDB:
             if row:
                 if row["payload_hash"] != payload_hash:
                     raise ValueError("request_id was already accepted with a different payload")
-                return {"created": False, **self._command_receipt_dict(row)}, None
+                return {"created": False, **self._command_receipt_dict(row)}, []
+            child_events = []
+            if children:
+                active = conn.execute(
+                    """SELECT COUNT(*) FROM runtime_child_jobs WHERE state NOT IN
+                       ('completed', 'failed', 'interrupted', 'cancelled', 'uncertain')"""
+                ).fetchone()[0]
+                if active + len(children) > max_children:
+                    raise ValueError("Profile concurrent child limit reached")
+                for child in children:
+                    run = child["run"]
+                    if run.get("parent_session_id") != session_id:
+                        raise ValueError("Child reservation ownership mismatch")
+                    committed = self._commit_subagent_lifecycle_row(
+                        conn, run, {"event": "created", "event_id": f"{run['id']}:created"},
+                    )
+                    child_events.append(committed["session_event"])
+                    conn.execute(
+                        """INSERT INTO runtime_child_jobs
+                           (id, session_id, request_id, command_kind, worker_token, owner_pid, owner_start,
+                            task_json, heartbeat_at, delivery_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (run["id"], session_id, request_id, command_kind, run["worker_token"], child["owner_pid"],
+                         child.get("owner_start"), _event_json(child["task"]), now, f"child-result:{run['id']}"),
+                    )
             event, _ = self._append_session_event_row(
                 conn, session_id, "runtime.command.accepted",
                 {"command_kind": command_kind, "request_id": request_id,
@@ -1798,11 +1876,11 @@ class SessionDB:
                    WHERE session_id=? AND command_kind=? AND request_id=?""",
                 (session_id, command_kind, request_id),
             ).fetchone()
-            return {"created": True, **self._command_receipt_dict(row)}, event
+            return {"created": True, **self._command_receipt_dict(row)}, [*child_events, event]
 
-        result, event = self._execute_write(_do)
-        if event:
-            self._publish_committed_events([event])
+        result, events = self._execute_write(_do)
+        if events:
+            self._publish_committed_events(events)
         return result
 
     def mark_runtime_command(
@@ -1816,6 +1894,73 @@ class SessionDB:
                WHERE session_id=? AND command_kind=? AND request_id=?""",
             (state, time.time(), session_id, command_kind, request_id),
         ))
+
+    def list_async_child_jobs(
+        self, session_id: str | None = None, *, active_only: bool = False
+    ) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM runtime_child_jobs WHERE 1=1"
+                + (" AND session_id=?" if session_id else "")
+                + (" AND result_json IS NULL" if active_only else ""),
+                (session_id,) if session_id else (),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["task"] = self._decode_json_field(item.pop("task_json"), {})
+            item["result"] = self._decode_json_field(item.pop("result_json"), None)
+            result.append(item)
+        return result
+
+    def touch_async_child(self, subagent_id: str, worker_token: str) -> None:
+        self._execute_write(lambda conn: conn.execute(
+            """UPDATE runtime_child_jobs SET heartbeat_at=? WHERE id=? AND worker_token=?
+               AND result_json IS NULL""", (time.time(), subagent_id, worker_token),
+        ))
+
+    def deliver_async_child_results(self, session_id: str) -> list[dict[str, Any]]:
+        """Append completion messages once at a safe explicit parent turn boundary.
+
+        Message, session event and delivery acknowledgement commit together. This
+        never starts a parent turn; after loss the stored message is in history.
+        """
+        owners = self.resolve_compression_chain(session_id)
+        placeholders = ",".join("?" for _ in owners)
+        now = time.time()
+
+        def _do(conn):
+            rows = conn.execute(
+                f"""SELECT * FROM runtime_child_jobs WHERE session_id IN ({placeholders})
+                    AND result_json IS NOT NULL AND delivered_message_id IS NULL
+                    ORDER BY heartbeat_at, id LIMIT 50""", tuple(owners),
+            ).fetchall()
+            messages, events = [], []
+            for row in rows:
+                result = self._decode_json_field(row["result_json"], {})
+                content = (f"[SYSTEM: Delegated child {row['id']} finished ({row['state']}). "
+                           f"Delivery {row['delivery_id']}. Stored result:\n{_bounded_json(result, 18000)}]")
+                cursor = conn.execute(
+                    "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, 'user', ?, ?)",
+                    (session_id, content, now),
+                )
+                message = {"role": "user", "content": content, "message_id": cursor.lastrowid,
+                           "delivery_id": row["delivery_id"]}
+                event, _ = self._append_session_event_row(
+                    conn, session_id, "message.appended", message, row["delivery_id"], now,
+                )
+                conn.execute("UPDATE runtime_child_jobs SET delivered_message_id=? WHERE id=?",
+                             (cursor.lastrowid, row["id"]))
+                messages.append(message)
+                events.append(event)
+            if messages:
+                conn.execute("UPDATE sessions SET message_count=message_count+? WHERE id=?",
+                             (len(messages), session_id))
+            return messages, events
+
+        messages, events = self._execute_write(_do)
+        self._publish_committed_events(events)
+        return messages
 
     def get_subagent_run(self, subagent_id: str) -> dict[str, Any] | None:
         with self._lock:

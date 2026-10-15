@@ -1968,6 +1968,8 @@ async def _lifespan(_app: FastAPI):
     global _web_event_loop
     _web_event_loop = asyncio.get_running_loop()
     ensure_dashboard_token_file()
+    from core.orchestration.delegation import reconcile_profile_children
+    await _run_blocking(reconcile_profile_children)
     loop_lag_task = asyncio.create_task(_monitor_web_loop_lag())
     # Warm the update cache in the background so /api/status has it immediately
     warmup_functions: tuple[Callable[[], Any], ...] = (
@@ -2515,6 +2517,8 @@ def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[s
         "exit_reason": event_payload.get("exit_reason") or legacy_run.get("exit_reason"),
         "tokens": event_payload.get("tokens") or legacy_run.get("tokens"),
     }
+    for key in ("root_run_id", "attempt_id", "parent_node_id", "node_id"):
+        run[key] = legacy_run.get(key) or payload.get(key) or event_payload.get(key)
     if event_payload.get("status"):
         run["status"] = event_payload.get("status")
     if event_name in {"completed", "failed", "interrupted"}:
@@ -2535,6 +2539,8 @@ def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]
         event_payload = payload["data"]
     run_snapshot = None
     run = _subagent_run_from_event(session_id, payload)
+    if run is None:
+        raise ValueError("Subagent lifecycle lacks a child identity")
     if run:
         try:
             from core.spark_state import SessionDB
@@ -5932,6 +5938,7 @@ def _run_web_agent_turn(
         _maybe_capture_codex_usage_limit(agent, result)
         return result
     finally:
+        agent._root_run_id = None
         reset_current_session_key(tok)
 
 
@@ -7328,6 +7335,8 @@ async def list_conversation_subagents(session_id: str, limit: int = 50):
     limit = max(1, min(int(limit or 50), 200))
     db = SessionDB()
     try:
+        from core.orchestration.delegation import reconcile_lost_children
+        reconcile_lost_children(db)
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -7352,6 +7361,8 @@ async def get_conversation_subagent_capabilities(session_id: str):
 
     db = SessionDB()
     try:
+        from core.orchestration.delegation import reconcile_lost_children
+        reconcile_lost_children(db)
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -7373,6 +7384,8 @@ async def get_conversation_subagent(
     event_limit = max(1, min(int(event_limit or 200), 1000))
     db = SessionDB()
     try:
+        from core.orchestration.delegation import reconcile_lost_children
+        reconcile_lost_children(db)
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -7459,6 +7472,38 @@ async def get_conversation_subagent_messages(
             "offset": offset,
             "include_tool_results": include_tool_results,
         }
+    finally:
+        db.close()
+
+
+class SubagentRetryRequest(BaseModel):
+    request_id: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/conversations/{session_id}/subagents/{subagent_id}/retry")
+async def retry_conversation_subagent(session_id: str, subagent_id: str, body: SubagentRetryRequest):
+    from core.orchestration.delegation import retry_async_child
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        run = db.get_subagent_run(subagent_id)
+        if not run or run.get("parent_session_id") not in db.resolve_compression_chain(sid):
+            raise HTTPException(status_code=404, detail="Subagent not found")
+        try:
+            receipt = db.get_runtime_command(run["parent_session_id"], "subagent.retry", body.request_id,
+                                             {"retry_of": subagent_id})
+            if receipt:
+                return receipt["acceptance"]
+            _, parent = _get_web_agent_for_turn(sid)
+            if parent is None:
+                raise HTTPException(status_code=409, detail="No owned parent runtime is available")
+            return await _run_blocking(retry_async_child, parent, subagent_id, body.request_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     finally:
         db.close()
 
