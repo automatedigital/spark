@@ -1306,9 +1306,26 @@ class _TurnLoopMixin:
                             _use_streaming = False
 
                     if _use_streaming:
-                        response = self._interruptible_streaming_api_call(
-                            api_kwargs, on_first_delta=_stop_spinner
-                        )
+                        try:
+                            response = self._interruptible_streaming_api_call(
+                                api_kwargs, on_first_delta=_stop_spinner
+                            )
+                        except InterruptedError:
+                            raise
+                        except Exception:
+                            # Only the transport's pre-output capability rejection
+                            # sets this flag during a streaming attempt. Negotiate
+                            # once with the exact built payload, before HTTP 400
+                            # reaches the generic non-retryable error policy. A
+                            # failure here follows normal recovery; it cannot
+                            # re-enter this fallback or execute tools twice.
+                            if not getattr(self, "_disable_streaming", False):
+                                raise
+                            if self._interrupt_requested:
+                                raise InterruptedError(
+                                    "Agent interrupted before non-streaming fallback"
+                                ) from None
+                            response = self._interruptible_api_call(api_kwargs)
                     else:
                         response = self._interruptible_api_call(api_kwargs)
 

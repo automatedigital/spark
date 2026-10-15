@@ -393,8 +393,8 @@ class _ProviderTransportMixin:
         stream to the consumer.  Returns a SimpleNamespace that mimics the
         non-streaming response shape so the rest of the agent loop is unchanged.
 
-        Falls back to _interruptible_api_call on provider errors indicating
-        streaming is not supported.
+        Signals unsupported streaming before output via _disable_streaming.
+        The caller may then retry the same request once without streaming.
         """
         if self.api_mode == "codex_responses":
             # Codex streams internally via _run_codex_stream. The main dispatch
@@ -411,6 +411,7 @@ class _ProviderTransportMixin:
         request_client_holder = {"client": None}
         first_delta_fired = {"done": False}
         deltas_were_sent = {"yes": False}  # Track if any deltas were fired (for fallback)
+        output_started = {"yes": False}  # Includes reasoning and tool-call output
         # Wall-clock timestamp of the last real streaming chunk.  The outer
         # poll loop uses this to detect stale connections that keep receiving
         # SSE keep-alive pings but no actual data.
@@ -500,12 +501,14 @@ class _ProviderTransportMixin:
                 # Accumulate reasoning content
                 reasoning_text = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
                 if reasoning_text:
+                    output_started["yes"] = True
                     reasoning_parts.append(reasoning_text)
                     _fire_first_delta()
                     self._fire_reasoning_delta(reasoning_text)
 
                 # Accumulate text content — fire callback only when no tool calls
                 if delta and delta.content:
+                    output_started["yes"] = True
                     content_parts.append(delta.content)
                     if not tool_calls_acc:
                         _fire_first_delta()
@@ -532,6 +535,7 @@ class _ProviderTransportMixin:
 
                 # Accumulate tool call deltas — notify display on first name
                 if delta and delta.tool_calls:
+                    output_started["yes"] = True
                     for tc_delta in delta.tool_calls:
                         raw_idx = tc_delta.index if tc_delta.index is not None else 0
                         delta_id = tc_delta.id or ""
@@ -666,6 +670,7 @@ class _ProviderTransportMixin:
                     if event_type == "content_block_start":
                         block = getattr(event, "content_block", None)
                         if block and getattr(block, "type", None) == "tool_use":
+                            output_started["yes"] = True
                             has_tool_use = True
                             tool_name = getattr(block, "name", None)
                             if tool_name:
@@ -679,12 +684,14 @@ class _ProviderTransportMixin:
                             if delta_type == "text_delta":
                                 text = getattr(delta, "text", "")
                                 if text and not has_tool_use:
+                                    output_started["yes"] = True
                                     _fire_first_delta()
                                     self._fire_stream_delta(text)
                                     deltas_were_sent["yes"] = True
                             elif delta_type == "thinking_delta":
                                 thinking_text = getattr(delta, "thinking", "")
                                 if thinking_text:
+                                    output_started["yes"] = True
                                     _fire_first_delta()
                                     self._fire_reasoning_delta(thinking_text)
 
@@ -806,6 +813,7 @@ class _ProviderTransportMixin:
                             _is_stream_unsupported = (
                                 "stream" in _err_lower
                                 and "not supported" in _err_lower
+                                and not output_started["yes"]
                             )
                             if _is_stream_unsupported:
                                 self._disable_streaming = True
@@ -823,8 +831,8 @@ class _ProviderTransportMixin:
                         # Propagate the error to the main retry loop instead of
                         # falling back to non-streaming inline.  The main loop has
                         # richer recovery: credential rotation, provider fallback,
-                        # backoff, and — for "stream not supported" — will switch
-                        # to non-streaming on the next attempt via _disable_streaming.
+                        # backoff. The caller handles a pre-output capability
+                        # rejection once, before the generic client-error policy.
                         result["error"] = e
                         return
             finally:
