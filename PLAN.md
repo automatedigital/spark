@@ -423,7 +423,7 @@ promotion waits for the existing task review/done policy.
 **Touch:** existing Python tests, frontend tests, `web/e2e/`, efficiency fixtures
 and `.github/workflows/web-quality.yml` where coverage needs wiring.
 
-- [ ] Add a deterministic provider-transport replay harness using real agent callbacks, command receipts, SQLite, lifecycle policies and frontend projections; do not mock the contract being tested.
+- [x] Add a deterministic provider-transport replay harness using real agent callbacks, command receipts, SQLite, lifecycle policies and frontend projections; do not mock the contract being tested.
 - [ ] Cover normal/child-before-parent completion, duplicate dispatch, cancel acknowledgement before terminal, provider failure, lost acknowledgement, gateway restart and weak/unsupported provider behavior.
 - [ ] Extend existing multi-chat, recovery, work-recovery, chat-contract and sidebar-scale browser flows; test served production assets as well as dev mode.
 - [ ] Cover schema-12 upgrade, old metadata import, profile isolation, two clients, stalled work, pending decisions, empty/deleted source and long-history pagination.
@@ -585,3 +585,10 @@ keep checkboxes above open until acceptance is demonstrated.
 - Integrated `f48d7974`: real SDK HTTP/SSE replay, real child tools/callbacks/SQLite, actual process death, cancellation acknowledgement, decisions, compression and profile isolation. Original report preserves **15 passed / 2 strict expected failures** and pinned-worktree manifest drift rather than calling them accepted gates.
 - Fixed lost-ack dispatch retry after compression: resolve authorized family receipts in preflight and again inside the acceptance transaction; new dispatches use the stable compression root. Original handles and owner survive; changed payloads conflict; forks and child transcripts remain outside scope. Added concurrent old-ID/new-ID and legacy leaf-receipt regressions; removed this defect's xfail marker.
 - Integrated focused regression: **133 passed, 1 strict xfailed**, exit 0, 18.16s. Unsupported-stream fallback is the remaining reproduced runtime defect, assigned to a new isolated agent. Browser agents also reproduced a virtualizer render loop and sidebar insertion/latency regressions; those remain release objections, not accepted performance.
+
+### Inspector contract and browser gates — 2026-10-15
+
+- `b39c9b5` adds exact per-child capability records while retaining aggregate schema-1 fields. Mixed live/orphaned/failed/uncertain/synchronous children cannot inherit one another's Stop/Retry permissions. HTTP checks observe the same actual profile opt-in setting as dispatch; **6** capability/receipt checks passed.
+- Added bounded cursor pages for child events and transcripts. Backend acceptance traverses **2,101 events and 2,101 messages** without full-transcript reads, gaps or duplicates and rejects foreign child access. **114** web-event/history/capability tests passed; CI Ruff and mypy (**130 source files**) pass. Inspector UI integration is still with its agent.
+- Integrated browser/CI contribution `336797df`: semantic sidebar gates, bounded repeat runners, temporary production-built recovery and lifecycle path coverage in web-quality. Original evidence records **4/5 long-history** and **2/3 sidebar** attempts passing, not green aggregates. Production-built recovery passed nine checks; hosted CI has not run.
+- Same-host comparison records >10% regressions in startup, rendering and selection. Original timing caveats and failed-trial artifacts remain in `docs/performance/app-upgrade-browser-gates-2026-10-15.{md,json}`. A fresh isolated agent owns virtualizer render-loop, sidebar anchor and title-latency fixes; no budgets/assertions are relaxed.

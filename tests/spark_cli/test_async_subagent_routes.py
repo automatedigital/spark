@@ -2,6 +2,7 @@
 
 import json
 
+from core.spark_state import SessionDB
 from tests.run_agent.test_async_delegation import replay_runtime as replay_runtime
 from tests.run_agent.test_async_delegation import wait_terminal
 from tests.spark_cli.test_web_server_events import web_client as web_client
@@ -57,3 +58,57 @@ def test_async_inspect_interrupt_and_retry_keep_existing_routes(web_client, repl
     finally:
         web_server._clear_web_turn(parent.session_id)
         web_server._web_agents.pop(parent.session_id, None)
+
+
+def test_child_history_pages_beyond_one_thousand_without_full_transcript_reads(web_client, monkeypatch):
+    db = SessionDB()
+    try:
+        db.create_session("history-parent", "web")
+        db.create_session("history-child", "delegate", parent_session_id="history-parent")
+        db.create_session("other-parent", "web")
+        db.create_subagent_run({"id": "history-run", "parent_session_id": "history-parent",
+                                "child_session_id": "history-child", "status": "completed"})
+        count = 2101
+        db.append_iteration("history-child", [{"role": "user", "content": f"message-{i}"} for i in range(count)])
+        for i in range(count):
+            db.append_subagent_event("history-run", "status", {"index": i})
+    finally:
+        db.close()
+
+    def unbounded_read(*args, **kwargs):
+        raise AssertionError("Child transcript endpoint must not load the full transcript")
+
+    monkeypatch.setattr(SessionDB, "get_messages", unbounded_read)
+    base = "/api/conversations/history-parent/subagents/history-run"
+    event_ids, message_ids, contents = [], [], []
+    cursor = None
+    while True:
+        response = web_client.get(base, params={"event_limit": 137, **({"event_after_id": cursor} if cursor else {})})
+        assert response.status_code == 200
+        page = response.json()
+        assert 0 < len(page["events"]) <= 137
+        event_ids.extend(event["id"] for event in page["events"])
+        if not page["has_more_events"]:
+            break
+        cursor = page["next_event_after_id"]
+        assert cursor == event_ids[-1]
+    cursor = None
+    while True:
+        response = web_client.get(base + "/messages", params={"limit": 137, **({"before_id": cursor} if cursor else {})})
+        assert response.status_code == 200
+        page = response.json()
+        assert page["total"] == count
+        assert 0 < len(page["messages"]) <= 137
+        message_ids = [message["id"] for message in page["messages"]] + message_ids
+        contents = [message["content"] for message in page["messages"]] + contents
+        if not page["has_earlier"]:
+            break
+        cursor = page["next_before_id"]
+        assert cursor == message_ids[0]
+    assert len(event_ids) == len(set(event_ids)) == count
+    assert len(message_ids) == len(set(message_ids)) == count
+    assert contents == [f"message-{i}" for i in range(count)]
+    assert web_client.get(base, params={"event_after_id": -1}).status_code == 400
+    foreign = "/api/conversations/other-parent/subagents/history-run"
+    assert web_client.get(foreign).status_code == 404
+    assert web_client.get(foreign + "/messages").status_code == 404

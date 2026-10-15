@@ -2011,6 +2011,37 @@ class SessionDB:
             events.append(item)
         return events
 
+    def get_subagent_event_page(
+        self, subagent_id: str, *, limit: int = 200, after_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Bound event payload reads and retain chronological cursor identity."""
+        limit = max(1, min(int(limit), 1000))
+        with self._lock:
+            params: list[Any] = [subagent_id]
+            cutoff = ""
+            if after_id is not None:
+                cursor = self._conn.execute(
+                    "SELECT timestamp, id FROM subagent_events WHERE subagent_id=? AND id=?",
+                    (subagent_id, after_id),
+                ).fetchone()
+                if cursor is None:
+                    raise ValueError("Child event cursor not found")
+                cutoff = "AND (timestamp > ? OR (timestamp = ? AND id > ?))"
+                params.extend((cursor["timestamp"], cursor["timestamp"], cursor["id"]))
+            rows = self._conn.execute(
+                f"""SELECT id, subagent_id, event_id, event_type, data_json, timestamp
+                    FROM subagent_events WHERE subagent_id=? {cutoff}
+                    ORDER BY timestamp, id LIMIT ?""", (*params, limit + 1),
+            ).fetchall()
+        more = len(rows) > limit
+        events = []
+        for row in rows[:limit]:
+            item = dict(row)
+            item["data"] = self._decode_json_field(item.pop("data_json", None), {})
+            events.append(item)
+        return {"events": events, "has_more_events": more,
+                "next_event_after_id": events[-1]["id"] if more and events else None}
+
     # =========================================================================
     # Message storage
     # =========================================================================

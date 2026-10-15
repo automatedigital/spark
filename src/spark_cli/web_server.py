@@ -7378,6 +7378,7 @@ async def get_conversation_subagent(
     session_id: str,
     subagent_id: str,
     event_limit: int = 200,
+    event_after_id: int | None = None,
 ):
     """Return one subagent run plus a bounded ordered event history."""
     from core.spark_state import SessionDB
@@ -7395,7 +7396,11 @@ async def get_conversation_subagent(
         run = db.get_subagent_run(subagent_id)
         if not run or run.get("parent_session_id") not in allowed_session_ids:
             raise HTTPException(status_code=404, detail="Subagent not found")
-        events = db.get_subagent_events(subagent_id, limit=event_limit)
+        try:
+            page = db.get_subagent_event_page(subagent_id, limit=event_limit, after_id=event_after_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        events = page["events"]
         run = {**run, "events": events, "transcript": events}
         return _sanitize_web_chat_value({
             "session_id": latest_sid or sid,
@@ -7403,6 +7408,8 @@ async def get_conversation_subagent(
             "subagent": run,
             "events": events,
             "event_limit": event_limit,
+            "has_more_events": page["has_more_events"],
+            "next_event_after_id": page["next_event_after_id"],
         })
     finally:
         db.close()
@@ -7414,6 +7421,7 @@ async def get_conversation_subagent_messages(
     subagent_id: str,
     limit: int = 200,
     include_tool_results: bool = False,
+    before_id: int | None = None,
 ):
     """Return bounded child-session messages for a subagent transcript view."""
     from core.spark_state import SessionDB
@@ -7440,6 +7448,8 @@ async def get_conversation_subagent_messages(
                 "messages": [],
                 "total": 0,
                 "limit": limit,
+                "has_earlier": False,
+                "next_before_id": None,
             }
         if not db.get_session(str(child_session_id)):
             return {
@@ -7450,17 +7460,17 @@ async def get_conversation_subagent_messages(
                 "messages": [],
                 "total": 0,
                 "limit": limit,
+                "has_earlier": False,
+                "next_before_id": None,
             }
 
-        all_messages = db.get_messages(str(child_session_id))
-        total = len(all_messages)
-        offset = max(0, total - limit)
+        page = db.get_web_message_page(str(child_session_id), limit=limit, before_id=before_id,
+                                       include_tool_results=include_tool_results)
+        total = page["total"]
+        offset = page["page_start_index"] or 0
         messages = [
-            {
-                **_message_for_history_response(msg, include_tool_results=include_tool_results),
-                "message_index": offset + idx,
-            }
-            for idx, msg in enumerate(all_messages[offset:])
+            _message_for_history_response(msg, include_tool_results=include_tool_results)
+            for msg in page["messages"]
         ]
         return {
             "session_id": latest_sid or sid,
@@ -7472,6 +7482,8 @@ async def get_conversation_subagent_messages(
             "limit": limit,
             "offset": offset,
             "include_tool_results": include_tool_results,
+            "has_earlier": page["has_earlier"],
+            "next_before_id": page["next_before_id"],
         }
     finally:
         db.close()
