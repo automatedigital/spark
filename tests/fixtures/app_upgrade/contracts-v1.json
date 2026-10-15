@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "execution": {
+    "parent_session_id": "upgrade-parent",
+    "root_run_id": "upgrade-root-turn",
+    "attempt_id": "upgrade-child-attempt-1",
+    "node_id": "upgrade-child-node-1",
+    "parent_node_id": "upgrade-root-node",
+    "id": "subagent_upgrade_child",
+    "child_session_id": "upgrade-child",
+    "events": [
+      {"event_id": "upgrade-created-1", "event": "created"},
+      {"event_id": "upgrade-started-1", "event": "started"},
+      {"event_id": "upgrade-completed-1", "event": "completed"},
+      {"event_id": "upgrade-completed-1", "event": "completed"},
+      {"event_id": "upgrade-delayed-tool-1", "event": "tool_started"}
+    ],
+    "expected_child_status": "completed",
+    "expected_root_status": "running"
+  },
+  "sidebar": {
+    "schema_version": 1,
+    "entries": {
+      "upgrade-parent": {"pinned": true, "settled": false, "position": 1024, "revision": 1},
+      "upgrade-other": {"pinned": false, "settled": true, "position": null, "revision": 2}
+    },
+    "patch": {"expected_revision": 1, "pinned": false},
+    "conflict_status": 409
+  },
+  "capabilities": {
+    "schema_version": 1,
+    "controls": {
+      "inspect": {"supported": true, "reason": null},
+      "interrupt": {"supported": false, "reason": "No live owned child is available"},
+      "retry": {"supported": false, "reason": "Async execution is disabled"}
+    }
+  }
+}
