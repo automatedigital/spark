@@ -477,5 +477,29 @@
       "reason": "incorrect nonexistent test path",
       "log": "/tmp/spark-upgrade-20261015/telegram-topic-integrated.txt"
     }
+  },
+  "owned_cleanup_broad_run": {
+    "source_commit": "423a3eb7e12a92cf54742df193fa3a8c74be2322",
+    "fixture_agent_commit": "ccb0c414e652d9ff9f82fcd325b36935a971f6af",
+    "command": "python -m pytest tests/ -m 'not integration and not network' -q -n 4",
+    "exit": 1,
+    "failed": 37,
+    "passed": 12599,
+    "skipped": 151,
+    "warnings": 135,
+    "seconds": 564.22,
+    "log": "/tmp/spark-upgrade-20261015/full-local-pytest-owned-cleanup.txt",
+    "remaining_families": {
+      "async_bridge_interrupted": 5,
+      "code_execution_interrupted": 32
+    },
+    "prior_live_file_and_async_config_failure_groups_present": false,
+    "failure_cause": "Not yet attributed; cancellation/interrupt symptoms are confirmed, further fixture diagnosis delegated.",
+    "serial_validation": {
+      "status": "running",
+      "command": "python -m pytest tests/ -m 'serial and not integration and not network' -q -n 0",
+      "log": "/tmp/spark-upgrade-20261015/serial-runtime-owned-cleanup.txt"
+    },
+    "limit": "Parallel run also scheduled serial-marked cases; serial-only acceptance is separate. No failure is excluded or relabeled."
   }
 }
