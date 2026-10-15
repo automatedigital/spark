@@ -1,0 +1,43 @@
+"""Capability snapshots describe exercised local controls, never provider promises."""
+
+from __future__ import annotations
+
+from typing import Any
+
+TERMINAL_CHILD_STATES = frozenset({"completed", "failed", "interrupted", "uncertain"})
+
+
+def owned_live_child(parent: Any, run: dict[str, Any]) -> Any:
+    if parent is None or run.get("status") in TERMINAL_CHILD_STATES:
+        return None
+    child_sid = run.get("child_session_id")
+    lock = getattr(parent, "_active_children_lock", None)
+    if lock:
+        with lock:
+            children = list(getattr(parent, "_active_children", []) or [])
+    else:
+        children = list(getattr(parent, "_active_children", []) or [])
+    return next((child for child in children
+                 if child_sid and getattr(child, "session_id", None) == child_sid), None)
+
+
+def child_capabilities(
+    parent: Any, runs: list[dict[str, Any]], delegation: dict[str, Any]
+) -> dict[str, Any]:
+    live = any(owned_live_child(parent, run) is not None for run in runs)
+    async_enabled = delegation.get("async_enabled") is True
+    def selection(key):
+        value = delegation.get(key) or (getattr(parent, key, None) if parent is not None else None)
+        return value if isinstance(value, str) else None
+    return {
+        "schema_version": 1,
+        "controls": {
+            "inspect": {"supported": True, "reason": None},
+            "interrupt": {"supported": live,
+                          "reason": None if live else "No live owned child is available"},
+            "retry": {"supported": False, "reason": "Async execution is disabled" if not async_enabled
+                      else "Async retry is not available in this runtime"},
+        },
+        "runtime": {"available": parent is not None, "model": selection("model"),
+                    "provider": selection("provider"), "async_enabled": async_enabled},
+    }

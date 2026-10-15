@@ -4752,6 +4752,7 @@ class ConversationMessage(BaseModel):
 
 class ConversationInterrupt(BaseModel):
     message: str | None = None
+    request_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class ConversationModelBody(BaseModel):
@@ -7342,6 +7343,23 @@ async def list_conversation_subagents(session_id: str, limit: int = 50):
         db.close()
 
 
+@app.get("/api/conversations/{session_id}/subagents/capabilities")
+async def get_conversation_subagent_capabilities(session_id: str):
+    from core.orchestration.capabilities import child_capabilities
+    from core.spark_state import SessionDB
+    from spark_cli.config import load_config
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        _, parent = _get_web_agent_for_turn(sid)
+        return child_capabilities(parent, db.list_subagent_runs(sid), load_config().get("delegation", {}))
+    finally:
+        db.close()
+
+
 @app.get("/api/conversations/{session_id}/subagents/{subagent_id}")
 async def get_conversation_subagent(
     session_id: str,
@@ -7450,7 +7468,8 @@ async def interrupt_conversation_subagent(
     subagent_id: str,
     body: ConversationInterrupt,
 ):
-    """Interrupt one live child agent when it is still tracked by the parent turn."""
+    """Accept a scoped cancellation once; child acknowledgement remains authoritative."""
+    from core.orchestration.capabilities import owned_live_child
     from core.spark_state import SessionDB
 
     db = SessionDB()
@@ -7463,64 +7482,54 @@ async def interrupt_conversation_subagent(
         run = db.get_subagent_run(subagent_id)
         if not run or run.get("parent_session_id") not in allowed_session_ids:
             raise HTTPException(status_code=404, detail="Subagent not found")
+        # Scope follows the child's original owning session across compression.
+        owner = run["parent_session_id"]
+        command_payload = {"subagent_id": subagent_id, "message": body.message}
+        request_id = body.request_id or uuid.uuid4().hex
+        try:
+            receipt = db.get_runtime_command(owner, "subagent.interrupt", request_id, command_payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if receipt:
+            return receipt["acceptance"]
+
+        agent_session_id, parent_agent = _get_web_agent_for_turn(session_id)
+        target_child = owned_live_child(parent_agent, run)
+        if target_child is None:
+            raise HTTPException(status_code=409, detail="No live owned child is available")
+        acceptance = {
+            "ok": True, "session_id": agent_session_id or latest_sid or sid,
+            "subagent_id": subagent_id, "child_session_id": run.get("child_session_id"),
+            "status": "stopping",
+        }
+        try:
+            receipt = db.accept_runtime_command(
+                owner, "subagent.interrupt", request_id, command_payload, acceptance,
+                {"subagent_id": subagent_id, "action": "interrupt", "message": body.message},
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if not receipt["created"]:
+            return receipt["acceptance"]
+        try:
+            target_child.interrupt(body.message)
+            db.mark_runtime_command(owner, "subagent.interrupt", request_id, "dispatched")
+        except Exception as exc:
+            db.mark_runtime_command(owner, "subagent.interrupt", request_id, "uncertain")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        payload = {
+            "schema": "spark.subagent.lifecycle.v1", "event_id": f"interrupt:{request_id}",
+            "type": "subagent.status", "event": "status", "id": subagent_id,
+            "run_id": subagent_id, "subagent_id": subagent_id,
+            "child_session_id": run.get("child_session_id"),
+            "task_index": run.get("task_index") or 0,
+            "payload": {"parent_session_id": owner, "status": "stopping", "preview": "Interrupt requested"},
+            "subagent_run": {**run, "status": "stopping"},
+        }
+        _persist_and_publish_subagent_event(latest_sid or sid, payload)
+        return receipt["acceptance"]
     finally:
         db.close()
-
-    agent_session_id, parent_agent = _get_web_agent_for_turn(session_id)
-    if not parent_agent:
-        raise HTTPException(
-            status_code=409,
-            detail="Subagent interrupt is only available while the parent turn is active.",
-        )
-
-    child_session_id = run.get("child_session_id")
-    active_children = list(getattr(parent_agent, "_active_children", []) or [])
-    target_child = None
-    for child in active_children:
-        if child_session_id and getattr(child, "session_id", None) == child_session_id:
-            target_child = child
-            break
-    if target_child is None:
-        raise HTTPException(
-            status_code=409,
-            detail="Subagent is not running in the active parent turn; interrupt the parent conversation instead.",
-        )
-
-    try:
-        target_child.interrupt(body.message)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    status = "stopping"
-    payload = {
-        "schema": "spark.subagent.lifecycle.v1",
-        "type": "subagent.status",
-        "event": "status",
-        "id": subagent_id,
-        "run_id": subagent_id,
-        "subagent_id": subagent_id,
-        "child_session_id": child_session_id,
-        "task_index": run.get("task_index") or 0,
-        "task_number": int(run.get("task_index") or 0) + 1,
-        "task_count": run.get("task_count") or 1,
-        "display_name": run.get("name"),
-        "goal_preview": run.get("task"),
-        "payload": {
-            "parent_session_id": run.get("parent_session_id"),
-            "child_session_id": child_session_id,
-            "status": status,
-            "preview": "Interrupt requested",
-        },
-        "subagent_run": {**run, "status": status},
-    }
-    _persist_and_publish_subagent_event(latest_sid or sid, payload)
-    return {
-        "ok": True,
-        "session_id": agent_session_id or latest_sid or sid,
-        "subagent_id": subagent_id,
-        "child_session_id": child_session_id,
-        "status": status,
-    }
 
 
 @app.post("/api/conversations/{session_id}/messages")

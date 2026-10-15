@@ -728,6 +728,7 @@ DEFAULT_CONFIG = {
     # Uses the same runtime provider resolution as CLI/gateway startup, so all
     # configured providers (OpenRouter, Anthropic, Z.ai, Kimi, etc.) are supported.
     "delegation": {
+        "async_enabled": False,  # Explicit opt-in; synchronous delegation remains default.
         "model": "",  # e.g. "google/gemini-3-flash-preview" (empty = inherit parent model)
         "provider": "",  # e.g. "openrouter" (empty = inherit parent provider + credentials)
         "base_url": "",  # direct OpenAI-compatible endpoint for subagents

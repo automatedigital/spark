@@ -14,6 +14,7 @@ Key design decisions:
 - Session source tagging ('cli', 'telegram', 'discord', etc.) for filtering
 """
 
+import hashlib
 import json
 import logging
 import random
@@ -41,7 +42,7 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 _SUBAGENT_JSON_LIMIT = 24_000
 _SUBAGENT_TEXT_LIMIT = 16_000
@@ -763,6 +764,25 @@ class SessionDB:
                         "ALTER TABLE subagent_runs ADD COLUMN projection_version INTEGER NOT NULL DEFAULT 1"
                     )
                 cursor.execute("UPDATE schema_version SET version = 13")
+            if current_version < 14:
+                cursor.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS runtime_command_receipts (
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        command_kind TEXT NOT NULL,
+                        request_id TEXT NOT NULL,
+                        payload_hash TEXT NOT NULL,
+                        acceptance_json TEXT NOT NULL,
+                        intent_json TEXT NOT NULL,
+                        sequence INTEGER NOT NULL,
+                        state TEXT NOT NULL DEFAULT 'accepted',
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY(session_id, command_kind, request_id)
+                    );
+                    """
+                )
+                cursor.execute("UPDATE schema_version SET version = 14")
 
         # Unique title index — always ensure it exists (safe to run after migrations
         # since the title column is guaranteed to exist at this point)
@@ -1689,6 +1709,101 @@ class SessionDB:
             return cursor.lastrowid
 
         return self._execute_write(_do)
+
+    @staticmethod
+    def _command_payload_hash(payload: dict[str, Any]) -> str:
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _command_receipt_dict(cls, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "session_id": row["session_id"], "command_kind": row["command_kind"],
+            "request_id": row["request_id"], "payload_hash": row["payload_hash"],
+            "acceptance": cls._decode_json_field(row["acceptance_json"], {}),
+            "intent": cls._decode_json_field(row["intent_json"], {}),
+            "sequence": row["sequence"], "state": row["state"],
+        }
+
+    def get_runtime_command(
+        self, session_id: str, command_kind: str, request_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Look up a scoped receipt after the caller validates resource ownership."""
+        payload_hash = self._command_payload_hash(payload)
+        with self._lock:
+            row = self._conn.execute(
+                """SELECT * FROM runtime_command_receipts
+                   WHERE session_id=? AND command_kind=? AND request_id=?""",
+                (session_id, command_kind, request_id),
+            ).fetchone()
+        if row and row["payload_hash"] != payload_hash:
+            raise ValueError("request_id was already accepted with a different payload")
+        return self._command_receipt_dict(row) if row else None
+
+    def accept_runtime_command(
+        self, session_id: str, command_kind: str, request_id: str,
+        payload: dict[str, Any], acceptance: dict[str, Any], intent: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Commit acceptance and dispatch intent before an external side effect.
+
+        Only the caller receiving created=True may dispatch. A retry returns the
+        original acceptance, including its committed cursor, even after restart.
+        Accepted work is never implicitly redispatched by this database API.
+        """
+        if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 200:
+            raise ValueError("request_id must be a non-empty string of at most 200 characters")
+        payload_hash = self._command_payload_hash(payload)
+        now = time.time()
+
+        def _do(conn):
+            row = conn.execute(
+                """SELECT * FROM runtime_command_receipts
+                   WHERE session_id=? AND command_kind=? AND request_id=?""",
+                (session_id, command_kind, request_id),
+            ).fetchone()
+            if row:
+                if row["payload_hash"] != payload_hash:
+                    raise ValueError("request_id was already accepted with a different payload")
+                return {"created": False, **self._command_receipt_dict(row)}, None
+            event, _ = self._append_session_event_row(
+                conn, session_id, "runtime.command.accepted",
+                {"command_kind": command_kind, "request_id": request_id,
+                 "payload_hash": payload_hash, "accepted_ids": acceptance},
+                f"runtime.command:{command_kind}:{request_id}", now,
+            )
+            accepted = {**acceptance, "request_id": request_id, "committed_sequence": event["sequence"]}
+            conn.execute(
+                """INSERT INTO runtime_command_receipts
+                   (session_id, command_kind, request_id, payload_hash, acceptance_json,
+                    intent_json, sequence, state, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?)""",
+                (session_id, command_kind, request_id, payload_hash, _event_json(accepted),
+                 _event_json(intent), event["sequence"], now, now),
+            )
+            row = conn.execute(
+                """SELECT * FROM runtime_command_receipts
+                   WHERE session_id=? AND command_kind=? AND request_id=?""",
+                (session_id, command_kind, request_id),
+            ).fetchone()
+            return {"created": True, **self._command_receipt_dict(row)}, event
+
+        result, event = self._execute_write(_do)
+        if event:
+            self._publish_committed_events([event])
+        return result
+
+    def mark_runtime_command(
+        self, session_id: str, command_kind: str, request_id: str, state: str
+    ) -> None:
+        """Record dispatch observation separately; never rewrite original acceptance."""
+        if state not in {"dispatched", "uncertain"}:
+            raise ValueError("Invalid runtime command state")
+        self._execute_write(lambda conn: conn.execute(
+            """UPDATE runtime_command_receipts SET state=?, updated_at=?
+               WHERE session_id=? AND command_kind=? AND request_id=?""",
+            (state, time.time(), session_id, command_kind, request_id),
+        ))
 
     def get_subagent_run(self, subagent_id: str) -> dict[str, Any] | None:
         with self._lock:
