@@ -9,9 +9,13 @@ from tools.delegate_tool import delegate_task
 
 
 def test_async_inspect_interrupt_and_retry_keep_existing_routes(web_client, replay_runtime):
+    from core.spark_constants import get_spark_home
     from spark_cli import web_server
 
     r = replay_runtime
+    # The tool fixture opts in separately; the HTTP capability endpoint must
+    # observe the same actual profile setting rather than defaulting to false.
+    (get_spark_home() / "config.yaml").write_text("delegation:\n  async_enabled: true\n")
     parent = r.parent("http-parent", "web")
     parent.subagent_event_callback = lambda event: web_server._persist_and_publish_subagent_event(parent.session_id, event)
     web_server._web_agents[parent.session_id] = parent
@@ -24,10 +28,16 @@ def test_async_inspect_interrupt_and_retry_keep_existing_routes(web_client, repl
         assert web_client.get(base).json()["subagents"][0]["id"] == handle
         assert web_client.get(base + "/" + handle).json()["subagent"]["attempt_id"] == accepted["handles"][0]["attempt_id"]
         assert web_client.get(base + "/capabilities").json()["controls"]["interrupt"]["supported"] is True
+        child_controls = web_client.get(base + "/capabilities").json()["children"][handle]["controls"]
+        assert child_controls["interrupt"]["supported"] is True
+        assert child_controls["retry"]["supported"] is False
         cancelled = web_client.post(base + "/" + handle + "/interrupt", json={"request_id": "cancel"})
         assert cancelled.status_code == 200
         assert cancelled.json()["status"] == "stopping"
         assert wait_terminal(r.db, handle)["status"] == "interrupted"
+        stopped_controls = web_client.get(base + "/capabilities").json()["children"][handle]["controls"]
+        assert stopped_controls["interrupt"]["supported"] is False
+        assert stopped_controls["retry"]["supported"] is True
         assert web_client.post(base + "/" + handle + "/interrupt", json={"request_id": "cancel"}).json() == cancelled.json()
         retried = web_client.post(base + "/" + handle + "/retry", json={"request_id": "retry"})
         assert retried.status_code == 200
@@ -35,6 +45,9 @@ def test_async_inspect_interrupt_and_retry_keep_existing_routes(web_client, repl
         assert replacement != handle
         r.controls["http-child"]["release"].set()
         assert wait_terminal(r.db, replacement)["status"] == "completed"
+        final_controls = web_client.get(base + "/capabilities").json()["children"]
+        assert final_controls[handle]["controls"]["retry"]["supported"] is True
+        assert final_controls[replacement]["controls"]["retry"]["supported"] is False
         assert web_client.get(base + "/" + handle + "/messages").status_code == 200
         web_server._web_agents.pop(parent.session_id)
         web_server._clear_web_turn(parent.session_id)

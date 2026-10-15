@@ -26,17 +26,32 @@ def owned_live_child(parent: Any, run: dict[str, Any]) -> Any:
 def child_capabilities(
     parent: Any, runs: list[dict[str, Any]], delegation: dict[str, Any]
 ) -> dict[str, Any]:
-    live = any(owned_live_child(parent, run) is not None for run in runs)
     async_enabled = delegation.get("async_enabled") is True
-    retryable = async_enabled and parent is not None and any(
-        run.get("execution_mode") == "async" and run.get("status") in {"failed", "interrupted", "cancelled"}
-        for run in runs
-    )
+    children = {}
+    for run in runs:
+        live = owned_live_child(parent, run) is not None
+        retry_reason = (
+            "Async execution is disabled" if not async_enabled else
+            "Owning runtime is unavailable" if parent is None else
+            "Uncertain effects need review before retry" if run.get("status") == "uncertain" else
+            "Only failed or stopped async children can be retried"
+            if run.get("execution_mode") != "async" or run.get("status") not in
+            {"failed", "interrupted", "cancelled"} else None
+        )
+        children[run["id"]] = {"controls": {
+            "inspect": {"supported": True, "reason": None},
+            "interrupt": {"supported": live,
+                          "reason": None if live else "No live owned child is available"},
+            "retry": {"supported": retry_reason is None, "reason": retry_reason},
+        }}
+    live = any(child["controls"]["interrupt"]["supported"] for child in children.values())
+    retryable = any(child["controls"]["retry"]["supported"] for child in children.values())
     def selection(key):
         value = delegation.get(key) or (getattr(parent, key, None) if parent is not None else None)
         return value if isinstance(value, str) else None
     return {
         "schema_version": 1,
+        "children": children,
         "controls": {
             "inspect": {"supported": True, "reason": None},
             "interrupt": {"supported": live,
