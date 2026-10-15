@@ -1,0 +1,176 @@
+{
+  "schema": "spark.app-upgrade.gateway-acceptance.v1",
+  "date": "2026-10-15",
+  "base_commit": "fb52fe7c8d47730ed0d1932b32b558e8348c544f",
+  "packet": "P03",
+  "acceptance": "open",
+  "delivery_contract": "next_explicit_authorized_parent_turn_once; no autonomous idle wake",
+  "boundaries": [
+    "BasePlatformAdapter.handle_message",
+    "GatewayRunner._handle_message",
+    "GatewayRunner._handle_message_with_agent",
+    "GatewayRunner._run_agent",
+    "SessionStore",
+    "AIAgent",
+    "OpenAI SDK",
+    "delegate_task",
+    "read_file",
+    "real child workers",
+    "SessionDB SQLite",
+    "BasePlatformAdapter response pipeline"
+  ],
+  "substitutions": [
+    "local platform connect/disconnect/send/get_chat_info",
+    "httpx.HTTPTransport.handle_request with authored synthetic JSON/SSE",
+    "optional tirith binary installer disabled",
+    "legacy module profile path constants rebound to temporary SPARK_HOME",
+    "internet socket connects blocked"
+  ],
+  "external_messages": 0,
+  "external_inference": 0,
+  "user_state_access_required": false,
+  "domain_methods_mocked": false,
+  "child_state_manually_reconstructed": false,
+  "gateway_flows": {
+    "busy_either_completion_order_and_other_chat": {
+      "cases": 2,
+      "explicit_inbounds": 4,
+      "platform_replies": 4,
+      "parent_sdk_requests": 5,
+      "child_sdk_requests": 4,
+      "child_file_reads": 2,
+      "unique_durable_deliveries": 2
+    },
+    "idle_disconnected_two_runner_reconstructions": {
+      "explicit_parent_inbounds": 3,
+      "parent_sdk_requests": 4,
+      "child_sdk_requests": 4,
+      "unique_durable_deliveries": 2,
+      "automatic_restart_requests": 0
+    },
+    "partial_child_cancel": {
+      "explicit_inbounds": 2,
+      "platform_replies": 2,
+      "parent_sdk_requests": 3,
+      "child_sdk_requests": 4,
+      "control_entrypoint": "production delegate_task against actual gateway-owned parent"
+    },
+    "authorization_and_foreign_session_ownership": {
+      "unauthorized_provider_requests": 0,
+      "unauthorized_replies": 0,
+      "foreign_result_deliveries": 0,
+      "parent_sdk_requests": 3
+    },
+    "actual_process_loss": {
+      "exit_code": 73,
+      "crashed_process_inbounds": 1,
+      "crashed_process_sends": 0,
+      "crashed_process_child_sdk_requests": 4,
+      "recovery_explicit_inbounds": 2,
+      "recovery_platform_replies": 2,
+      "recovery_parent_sdk_requests": 2,
+      "recovery_child_sdk_requests": 0,
+      "uncertain_children": 2,
+      "unique_durable_deliveries": 2,
+      "duplicate_dispatch_reuses_original_acceptance": true,
+      "unsafe_uncertain_retry_rejected": true
+    }
+  },
+  "blocking_regressions": [
+    {
+      "test": "test_actual_gateway_stop_cascades_then_explicit_resume_delivers_once",
+      "result": "strict_xfail",
+      "observed": "Busy /stop persists an extra user message Stop requested and starts implicit parent inference",
+      "sources": [
+        "src/gateway/run.py:2730",
+        "src/gateway/run.py:4401",
+        "src/gateway/run.py:9359"
+      ],
+      "fix_needed": "Distinguish command stop reason from genuine queued inbound follow-up; cover both stop paths"
+    },
+    {
+      "test": "test_gateway_stop_of_idle_parent_cancels_its_background_children",
+      "result": "strict_xfail",
+      "observed": "Idle parent with two active async children receives No active task to stop",
+      "sources": [
+        "src/gateway/run.py:4378"
+      ],
+      "fix_needed": "Stop live owned children of the same cached parent after root leaves _running_agents"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m pytest tests/gateway/test_async_delegation_delivery.py -q -n 0 -m 'not integration' --tb=short -rx --durations=8",
+      "result": "6 passed, 2 strict xfailed",
+      "seconds": 105.5,
+      "exit_code": 0,
+      "call_durations_seconds": [
+        20.39,
+        20.32,
+        15.73,
+        11.35,
+        10.85,
+        10.61,
+        10.16,
+        5.47
+      ]
+    },
+    {
+      "command": "python -m pytest tests/gateway/test_session_race_guard.py tests/gateway/test_restart_drain.py tests/gateway/test_session_reset_notify.py tests/gateway/test_transcript_offset.py tests/gateway/test_gateway_inactivity_timeout.py tests/gateway/test_flush_memory_stale_guard.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short",
+      "result": "65 passed",
+      "seconds": 44.84,
+      "exit_code": 0
+    },
+    {
+      "command": "python -m pytest tests/run_agent/test_async_delegation.py tests/run_agent/test_orchestration_replay.py -q -n 0 -m 'not integration' --runxfail --tb=short",
+      "result": "38 passed",
+      "seconds": 14.41,
+      "exit_code": 0,
+      "note": "Runs stale stream-unsupported xfail as normal assertion at committed base, without editing existing tests"
+    },
+    {
+      "command": "python scripts/generate_tool_manifest.py --check",
+      "result": "70 tools, 28 isolated modules, 4 optional guards",
+      "exit_code": 0
+    },
+    {
+      "command": "ruff check tests/gateway/test_async_delegation_delivery.py tests/fixtures/app_upgrade/gateway/",
+      "result": "passed",
+      "exit_code": 0
+    },
+    {
+      "command": "ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+      "result": "passed",
+      "exit_code": 0
+    },
+    {
+      "command": "ruff check src/",
+      "result": "299 pre-existing diagnostics in untouched source",
+      "exit_code": 1
+    }
+  ],
+  "environment": {
+    "venv": "/Users/joe/Developer/github/spark/.venv",
+    "PYTHONPATH": "$PWD/src",
+    "serial": true,
+    "integration_tests_excluded": true
+  },
+  "not_established": [
+    "autonomous idle wake",
+    "fixed gateway stop semantics",
+    "live messaging SDK/authentication/network reconnect",
+    "daemon startup/scheduler",
+    "browser UI",
+    "interactive CLI entry",
+    "installed packages",
+    "full root suite",
+    "P03 closure",
+    "P09 closure"
+  ],
+  "scope": [
+    "tests/gateway/test_async_delegation_delivery.py",
+    "tests/fixtures/app_upgrade/gateway/",
+    "docs/performance/app-upgrade-gateway-2026-10-15.md",
+    "docs/performance/app-upgrade-gateway-2026-10-15.json"
+  ]
+}

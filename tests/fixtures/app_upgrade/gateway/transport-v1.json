@@ -1,0 +1,14 @@
+{
+  "schema": "spark.test.gateway-transport.v1",
+  "provenance": "Hand-authored synthetic OpenAI HTTP responses and local platform adapter; no recorded messages, credentials or inference.",
+  "origin": "https://gateway-replay.invalid/v1",
+  "model": "gateway-replay-model",
+  "root_prompt": "GATEWAY: launch two children",
+  "dispatch": {
+    "mode": "async", "request_id": "gateway-dispatch-1",
+    "tasks": [{"goal": "GATEWAY: alpha"}, {"goal": "GATEWAY: beta"}]
+  },
+  "children": {"GATEWAY: alpha": "Alpha read the local fixture.", "GATEWAY: beta": "Beta read the local fixture."},
+  "root_result": "Explicit gateway turn completed.",
+  "file_content": "Synthetic gateway fixture. No user data.\n"
+}
