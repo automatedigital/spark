@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "source_commit": "5b2c4789",
+  "base_commit": "bed0d01007b47e78e6a90c8f8f5db0a754bf2ac0",
+  "fixture": "subagent-controls.py; temporary SPARK_HOME; synthetic models; no inference or messaging",
+  "contract_boundary": "Real SQLite/backend/SSE/restart and unsupported capabilities. Exact child capabilities and history cursors use explicit schema-v1 HTTP fixtures matching parent b39c9b5/54bc85e; integrated parent backend remains a separate gate.",
+  "checks": [
+    {
+      "command": "npx tsc -b --pretty false",
+      "exit": 0
+    },
+    {
+      "command": "npm run lint",
+      "exit": 0
+    },
+    {
+      "command": "npm test",
+      "exit": 0,
+      "passed": 415,
+      "log": "/tmp/spark-p06-p07-vitest.log"
+    },
+    {
+      "command": "npx vite build --outDir /tmp/spark-p06-p07-production/web_dist --emptyOutDir",
+      "exit": 0,
+      "log": "/tmp/spark-p06-p07-production-build.log"
+    },
+    {
+      "command": "check-bundle-budget.mjs against isolated production build",
+      "exit": 0,
+      "initial_gzip_kib": 239.17,
+      "budget_kib": 600
+    },
+    {
+      "command": "python e2e/subagent-controls.py",
+      "exit": 0,
+      "passed": 11,
+      "report": "/tmp/spark-p06-p07-browser-final/report.json"
+    },
+    {
+      "command": "SPARK_E2E_BUILT_WEB=1 SPARK_E2E_ASSET_DIR=/tmp/spark-p06-p07-production/web_dist python e2e/subagent-controls.py",
+      "exit": 0,
+      "passed": 11,
+      "report": "/tmp/spark-p06-p07-browser-built/report.json"
+    },
+    {
+      "command": "node e2e/chat-history-anchor.mjs",
+      "exit": 0,
+      "trials": 2,
+      "drift_px": [
+        0,
+        0
+      ],
+      "log": "/tmp/spark-p06-p07-history-anchor.log"
+    }
+  ],
+  "browser_flows": [
+    "real runtime capability disables unsupported Stop with reason",
+    "three live chat switches retain selection/draft/attachment and detached scroll (1000.0 -> 1000.0px)",
+    "exact per-child capabilities permit the owned child beside an unsupported live sibling; transport receipts reuse Stop/Retry IDs after uncertain responses; Stop waits for real terminal SSE; retry retains earlier attempt",
+    "late Stop and Retry acknowledgements stay with their initiating child across chat switches",
+    "committed child result arriving during an older HTTP snapshot survives reconciliation; child failure leaves parent streaming",
+    "cursor event pages append and older message pages prepend without losing existing history; actual worktree refs render",
+    "real completed snapshot renders result, child transcript and app-owned parent/root/attempt references; result copies",
+    "offline/reconnect keeps loaded event/message pages, child selection and parent draft without resubmission",
+    "390px daylight overlay fits, traps keyboard focus, Escape returns focus, reduced motion enabled",
+    "real backend restart changes epoch; selected child and draft survive, parent stops streaming within 5s, no prompt/control is replayed",
+    "project compose opens folder; failed creation preserves draft and attachment across chat switch and refresh"
+  ],
+  "screenshots": [
+    "/tmp/spark-p06-p07-browser-built/desktop-dark.png",
+    "/tmp/spark-p06-p07-browser-built/desktop-light.png",
+    "/tmp/spark-p06-p07-browser-built/mobile-light.png",
+    "/tmp/spark-p06-p07-browser-built/failed-project-create.png"
+  ],
+  "preserved_failure": {
+    "command": "python e2e/work-recovery.py",
+    "exit": 1,
+    "passed_before_failure": 3,
+    "failure": "Second-tab composer was still disabled beyond five-second wait; /tmp/spark-p06-p07-work-recovery.log",
+    "diagnostic_rerun": "Same source/test assertions plus network and failure diagnostics; exit 0, all 9 checks passed; /tmp/spark-p06-p07-work-recovery-debug.log",
+    "interpretation": "Intermittent readiness timing is not diagnosed or claimed fixed by this patch."
+  },
+  "remaining_acceptance": [
+    "Parent must run the integrated source with actual b39c9b5/54bc85e runtime APIs and its final regenerated served bundle.",
+    "No task artifact navigation without an authoritative task reference. Supplied worktree branch/path/base references are displayed.",
+    "Actual live-worker Stop while disconnected and external provider behavior are not exercised by these provider-free browser fixtures.",
+    "Separate parent virtualizer/sidebar/replay fixes and installed macOS/Windows packaging remain separate gates.",
+    "Process-local async only; completion delivery at next explicit parent turn; no autonomous wakeup claim."
+  ]
+}
