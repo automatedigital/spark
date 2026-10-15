@@ -2726,8 +2726,12 @@ class GatewayRunner:
             # is unlocked and subsequent messages are processed normally.
             if _cmd_def_inner and _cmd_def_inner.name == "stop":
                 running_agent = self._running_agents.get(_quick_key)
+                if running_agent is None or running_agent is _AGENT_PENDING_SENTINEL:
+                    running_agent = self._owned_background_parent(_quick_key)
                 if running_agent and running_agent is not _AGENT_PENDING_SENTINEL:
-                    running_agent.interrupt("Stop requested")
+                    # interrupt(message) means replacement user input. A slash
+                    # command must not invent a later inference from its reason.
+                    running_agent.interrupt()
                 # Force-clean: remove the session lock regardless of agent state
                 adapter = self.adapters.get(source.platform)
                 if adapter and hasattr(adapter, 'get_pending_message'):
@@ -2735,6 +2739,7 @@ class GatewayRunner:
                 self._pending_messages.pop(_quick_key, None)
                 if _quick_key in self._running_agents:
                     del self._running_agents[_quick_key]
+                self._running_agents_ts.pop(_quick_key, None)
                 logger.info("STOP for session %s — agent interrupted, session lock released", _quick_key[:20])
                 return "⚡ Stopped. You can continue this session."
 
@@ -4375,6 +4380,23 @@ class GatewayRunner:
 
         return "\n".join(lines)
 
+    def _owned_background_parent(self, session_key: str):
+        """Find only this gateway session's cached parent with owned children."""
+        cache_lock = getattr(self, "_agent_cache_lock", None)
+        if cache_lock is None:
+            return None
+        with cache_lock:
+            cached = self._agent_cache.get(session_key)
+            parent = cached[0] if isinstance(cached, tuple) else cached
+        if parent is None:
+            return None
+        children_lock = getattr(parent, "_active_children_lock", None)
+        if children_lock is None:
+            return None
+        with children_lock:
+            children = list(getattr(parent, "_active_children", ()) or ())
+        return parent if any(callable(getattr(child, "interrupt", None)) for child in children) else None
+
     async def _handle_stop_command(self, event: MessageEvent) -> str:
         """Handle /stop command - interrupt a running agent.
 
@@ -4392,17 +4414,24 @@ class GatewayRunner:
 
         agent = self._running_agents.get(session_key)
         if agent is _AGENT_PENDING_SENTINEL:
+            background_parent = self._owned_background_parent(session_key)
+            if background_parent is not None:
+                background_parent.interrupt()
             # Force-clean the sentinel so the session is unlocked.
             if session_key in self._running_agents:
                 del self._running_agents[session_key]
+            self._running_agents_ts.pop(session_key, None)
             logger.info("STOP (pending) for session %s — sentinel cleared", session_key[:20])
             return "⚡ Stopped. The agent hadn't started yet — you can continue this session."
+        agent = agent or self._owned_background_parent(session_key)
         if agent:
-            agent.interrupt("Stop requested")
+            # No replacement message: stopped work waits for explicit input.
+            agent.interrupt()
             # Force-clean the session lock so a truly hung agent doesn't
             # keep it locked forever.
             if session_key in self._running_agents:
                 del self._running_agents[session_key]
+            self._running_agents_ts.pop(session_key, None)
             return "⚡ Stopped. You can continue this session."
         else:
             return "No active task to stop."

@@ -260,7 +260,6 @@ async def test_cancel_one_real_gateway_child_leaves_sibling_and_root_running(gat
     assert len(g.wire.parent_calls()) == 3
 
 
-@pytest.mark.xfail(strict=True, reason="Gateway stop reason is replayed as implicit user turn via interrupt_message fallback; P03 blocked")
 async def test_actual_gateway_stop_cascades_then_explicit_resume_delivers_once(gateway):
     g = gateway
     key, parent, runs = await launched(g)
@@ -356,7 +355,6 @@ async def test_real_gateway_process_loss_reconciles_only_on_explicit_turn_withou
     assert len(g.wire.calls) == 2  # One SDK request per explicit recovery event.
 
 
-@pytest.mark.xfail(strict=True, reason="Gateway /stop cannot find idle cached parent's live async children in _running_agents; P03 blocked")
 async def test_gateway_stop_of_idle_parent_cancels_its_background_children(gateway):
     g = gateway
     _, parent, runs = await launched(g)
@@ -364,6 +362,11 @@ async def test_gateway_stop_of_idle_parent_cancels_its_background_children(gatew
     await idle(g.adapter)
     assert parent._active_children
     assert g.runner._running_agents == {}
+    # A different authorized chat's idle /stop cannot select this cached parent.
+    await g.adapter.inbound_text("/stop", chat_id="fixture-other")
+    await idle(g.adapter)
+    assert "No active task to stop" in g.adapter.sends[-1]["content"]
+    assert all(g.db.get_subagent_run(run["id"])["status"] == "working" for run in runs.values())
     await g.adapter.inbound_text("/stop")
     await idle(g.adapter)
     assert "No active task to stop" not in g.adapter.sends[-1]["content"]
