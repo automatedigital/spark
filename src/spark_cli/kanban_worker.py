@@ -160,7 +160,7 @@ def main() -> int:
                 **_agent_runtime_kwargs(runtime),
             )
             refs = {
-                key: value
+                key: reference
                 for key in (
                     "session_id",
                     "root_run_id",
@@ -171,7 +171,7 @@ def main() -> int:
                     "parent_node_id",
                     "subagent_id",
                 )
-                if (value := getattr(agent, key, None)) is not None
+                if (reference := getattr(agent, key, None)) is not None
             }
             kb.record_worker_execution(task_id, **fence, execution=refs)
         except kb.WorkerClaimError:
