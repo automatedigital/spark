@@ -92,11 +92,12 @@ from spark_cli.onboarding_validation import (
 )
 from spark_cli.plugins_routes import register_plugins_routes
 from spark_cli.profiles_routes import register_profiles_routes
-from spark_cli.sidebar_routes import get_sidebar_settle_guard, router as sidebar_router
 from spark_cli.providers_routes import (
     _truncate_str,
     register_providers_routes,
 )
+from spark_cli.sidebar_routes import get_sidebar_settle_guard
+from spark_cli.sidebar_routes import router as sidebar_router
 from spark_cli.web_runtime import (
     _SESSION_TOKEN,
     _desktop_app_version,
