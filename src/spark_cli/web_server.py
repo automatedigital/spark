@@ -2459,7 +2459,8 @@ def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[s
         payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
     )
     legacy_run = cast(
-        dict[str, Any], payload.get("run") if isinstance(payload.get("run"), dict) else {}
+        dict[str, Any], payload.get("subagent_run") if isinstance(payload.get("subagent_run"), dict)
+        else payload.get("run") if isinstance(payload.get("run"), dict) else {}
     )
     subagent_id = (
         payload.get("id")
@@ -2539,13 +2540,17 @@ def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]
 
             db = SessionDB()
             try:
-                db.create_subagent_run(run)
-                db.append_subagent_event(run["id"], event_name, payload)
-                run_snapshot = db.get_subagent_run(run["id"])
+                # Legacy/fake transports receive an identity once at this boundary.
+                payload.setdefault("event_id", uuid.uuid4().hex)
+                committed = db.commit_subagent_lifecycle(run, payload)
+                if not committed["created"]:
+                    return
+                run_snapshot = committed["run"]
             finally:
                 db.close()
         except Exception:
-            _log.debug("subagent lifecycle persistence failed", exc_info=True)
+            _log.exception("subagent lifecycle persistence failed")
+            raise
 
     run_data = run_snapshot or run or {}
     subagent_id = run_data.get("id") if run_data else payload.get("subagent_id")
@@ -2559,6 +2564,7 @@ def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]
     )
     event = {
         "type": event_name,
+        "event_id": payload.get("event_id"),
         "run_id": subagent_id,
         "subagent_id": subagent_id,
         "status": run_data.get("status") if run_data else None,
@@ -5906,6 +5912,9 @@ def _run_web_agent_turn(
 
     if context_items:
         user_message = _build_context_augmented_message(agent.session_id, user_message, context_items)
+
+    _, active_turn = _get_web_turn(agent.session_id)
+    agent._root_run_id = active_turn.turn_id if active_turn else None
 
     _refresh_web_agent_for_computer_use(agent, user_message)
 

@@ -41,7 +41,7 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 _SUBAGENT_JSON_LIMIT = 24_000
 _SUBAGENT_TEXT_LIMIT = 16_000
@@ -745,6 +745,24 @@ class SessionDB:
                     """
                 )
                 cursor.execute("UPDATE schema_version SET version = 12")
+            if current_version < 13:
+                # Additive upgrade: old unkeyed history remains readable. No replay.
+                columns = {row[1] for row in cursor.execute("PRAGMA table_info(subagent_events)")}
+                if "event_id" not in columns:
+                    cursor.execute("ALTER TABLE subagent_events ADD COLUMN event_id TEXT")
+                cursor.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_subagent_event_identity "
+                    "ON subagent_events(subagent_id, event_id) WHERE event_id IS NOT NULL"
+                )
+                columns = {row[1] for row in cursor.execute("PRAGMA table_info(subagent_runs)")}
+                for name in ("root_run_id", "attempt_id", "parent_node_id", "node_id"):
+                    if name not in columns:
+                        cursor.execute(f"ALTER TABLE subagent_runs ADD COLUMN {name} TEXT")
+                if "projection_version" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE subagent_runs ADD COLUMN projection_version INTEGER NOT NULL DEFAULT 1"
+                    )
+                cursor.execute("UPDATE schema_version SET version = 13")
 
         # Unique title index — always ensure it exists (safe to run after migrations
         # since the title column is guaranteed to exist at this point)
@@ -1520,8 +1538,8 @@ class SessionDB:
                 data.setdefault(key, value)
         return data
 
-    def create_subagent_run(self, run: dict[str, Any]) -> None:
-        """Insert or update a bounded subagent run snapshot."""
+    def _write_subagent_run(self, conn: sqlite3.Connection, run: dict[str, Any]) -> None:
+        """Write a snapshot inside the owning lifecycle transaction."""
         now = time.time()
         payload = dict(run)
         payload.setdefault("started_at", now)
@@ -1531,65 +1549,126 @@ class SessionDB:
             return
         task_index = payload.get("task_index") or 0
 
-        def _do(conn):
-            conn.execute(
-                """INSERT INTO subagent_runs (
-                    id, parent_session_id, child_session_id, task_index, name, glyph,
-                    color, status, task, context_preview, model, provider,
-                    toolsets_json, started_at, last_event_at, ended_at,
-                    duration_seconds, exit_reason, summary, error, tokens_json,
-                    tool_trace_json, data_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    parent_session_id=COALESCE(excluded.parent_session_id, subagent_runs.parent_session_id),
-                    child_session_id=COALESCE(excluded.child_session_id, subagent_runs.child_session_id),
-                    task_index=excluded.task_index,
-                    name=COALESCE(excluded.name, subagent_runs.name),
-                    glyph=COALESCE(excluded.glyph, subagent_runs.glyph),
-                    color=COALESCE(excluded.color, subagent_runs.color),
-                    status=COALESCE(excluded.status, subagent_runs.status),
-                    task=COALESCE(excluded.task, subagent_runs.task),
-                    context_preview=COALESCE(excluded.context_preview, subagent_runs.context_preview),
-                    model=COALESCE(excluded.model, subagent_runs.model),
-                    provider=COALESCE(excluded.provider, subagent_runs.provider),
-                    toolsets_json=COALESCE(excluded.toolsets_json, subagent_runs.toolsets_json),
-                    last_event_at=excluded.last_event_at,
-                    ended_at=COALESCE(excluded.ended_at, subagent_runs.ended_at),
-                    duration_seconds=COALESCE(excluded.duration_seconds, subagent_runs.duration_seconds),
-                    exit_reason=COALESCE(excluded.exit_reason, subagent_runs.exit_reason),
-                    summary=COALESCE(excluded.summary, subagent_runs.summary),
-                    error=COALESCE(excluded.error, subagent_runs.error),
-                    tokens_json=COALESCE(excluded.tokens_json, subagent_runs.tokens_json),
-                    tool_trace_json=COALESCE(excluded.tool_trace_json, subagent_runs.tool_trace_json),
-                    data_json=COALESCE(excluded.data_json, subagent_runs.data_json)""",
-                (
-                    subagent_id,
-                    payload.get("parent_session_id"),
-                    payload.get("child_session_id"),
-                    task_index,
-                    payload.get("name") or payload.get("display_name") or f"Subagent {task_index + 1}",
-                    payload.get("glyph"),
-                    payload.get("color"),
-                    payload.get("status") or "created",
-                    _bounded_text(payload.get("task")),
-                    _bounded_text(payload.get("context_preview"), 2_000),
-                    payload.get("model"),
-                    payload.get("provider"),
-                    _bounded_json(payload.get("toolsets") or []),
-                    payload.get("started_at") or now,
-                    payload.get("last_event_at") or now,
-                    payload.get("ended_at"),
-                    payload.get("duration_seconds"),
-                    payload.get("exit_reason"),
-                    _bounded_text(payload.get("summary")),
-                    _bounded_text(payload.get("error")),
-                    _bounded_json(payload.get("tokens") or {"input": 0, "output": 0}),
-                    _bounded_json(payload.get("tool_trace") or []),
-                    _bounded_json(payload),
-                ),
-            )
+        conn.execute(
+            """INSERT INTO subagent_runs (
+                id, parent_session_id, child_session_id, task_index, name, glyph,
+                color, status, task, context_preview, model, provider,
+                toolsets_json, started_at, last_event_at, ended_at,
+                duration_seconds, exit_reason, summary, error, tokens_json,
+                tool_trace_json, data_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                parent_session_id=COALESCE(excluded.parent_session_id, subagent_runs.parent_session_id),
+                child_session_id=COALESCE(excluded.child_session_id, subagent_runs.child_session_id),
+                task_index=excluded.task_index,
+                name=COALESCE(excluded.name, subagent_runs.name),
+                glyph=COALESCE(excluded.glyph, subagent_runs.glyph),
+                color=COALESCE(excluded.color, subagent_runs.color),
+                status=COALESCE(excluded.status, subagent_runs.status),
+                task=COALESCE(excluded.task, subagent_runs.task),
+                context_preview=COALESCE(excluded.context_preview, subagent_runs.context_preview),
+                model=COALESCE(excluded.model, subagent_runs.model),
+                provider=COALESCE(excluded.provider, subagent_runs.provider),
+                toolsets_json=COALESCE(excluded.toolsets_json, subagent_runs.toolsets_json),
+                last_event_at=excluded.last_event_at,
+                ended_at=COALESCE(excluded.ended_at, subagent_runs.ended_at),
+                duration_seconds=COALESCE(excluded.duration_seconds, subagent_runs.duration_seconds),
+                exit_reason=COALESCE(excluded.exit_reason, subagent_runs.exit_reason),
+                summary=COALESCE(excluded.summary, subagent_runs.summary),
+                error=COALESCE(excluded.error, subagent_runs.error),
+                tokens_json=COALESCE(excluded.tokens_json, subagent_runs.tokens_json),
+                tool_trace_json=COALESCE(excluded.tool_trace_json, subagent_runs.tool_trace_json),
+                data_json=COALESCE(excluded.data_json, subagent_runs.data_json)""",
+            (
+                subagent_id,
+                payload.get("parent_session_id"),
+                payload.get("child_session_id"),
+                task_index,
+                payload.get("name") or payload.get("display_name") or f"Subagent {task_index + 1}",
+                payload.get("glyph"),
+                payload.get("color"),
+                payload.get("status") or "created",
+                _bounded_text(payload.get("task")),
+                _bounded_text(payload.get("context_preview"), 2_000),
+                payload.get("model"),
+                payload.get("provider"),
+                _bounded_json(payload.get("toolsets") or []),
+                payload.get("started_at") or now,
+                payload.get("last_event_at") or now,
+                payload.get("ended_at"),
+                payload.get("duration_seconds"),
+                payload.get("exit_reason"),
+                _bounded_text(payload.get("summary")),
+                _bounded_text(payload.get("error")),
+                _bounded_json(payload.get("tokens") or {"input": 0, "output": 0}),
+                _bounded_json(payload.get("tool_trace") or []),
+                _bounded_json(payload),
+            ),
+        )
+        conn.execute(
+            """UPDATE subagent_runs SET root_run_id=COALESCE(?, root_run_id),
+               attempt_id=COALESCE(?, attempt_id), parent_node_id=COALESCE(?, parent_node_id),
+               node_id=COALESCE(?, node_id) WHERE id=?""",
+            tuple(payload.get(key) for key in ("root_run_id", "attempt_id", "parent_node_id", "node_id"))
+            + (subagent_id,),
+        )
 
-        self._execute_write(_do)
+    def create_subagent_run(self, run: dict[str, Any]) -> None:
+        """Legacy unkeyed snapshot API; canonical writers use commit_subagent_lifecycle."""
+        self._execute_write(lambda conn: self._write_subagent_run(conn, run))
+
+    def commit_subagent_lifecycle(
+        self, run: dict[str, Any], event: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Atomically commit snapshot, child event and owning session event.
+
+        A keyed duplicate returns the original committed event. Terminal state is
+        immutable; late progress stays in history without replacing its snapshot.
+        This method never changes the root turn projection or session completion.
+        """
+        subagent_id = str(run.get("id") or "")
+        event_id = str(event.get("event_id") or "")
+        if not subagent_id or not event_id:
+            raise ValueError("Child lifecycle requires id and event_id")
+        event_type = str(event.get("event") or "status")
+        now = time.time()
+
+        def _do(conn):
+            existing = conn.execute(
+                "SELECT data_json FROM subagent_events WHERE subagent_id=? AND event_id=?",
+                (subagent_id, event_id),
+            ).fetchone()
+            row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
+            current = self._subagent_row_to_dict(row) if row else {}
+            if existing:
+                return {"created": False, "run": current,
+                        "event": self._decode_json_field(existing[0], {}), "session_event": None}
+            parent = current.get("parent_session_id") or run.get("parent_session_id")
+            if current and run.get("parent_session_id") not in (None, parent):
+                raise ValueError("Child lifecycle ownership cannot change")
+            terminal = current.get("status") in {"completed", "failed", "interrupted", "uncertain"}
+            snapshot = current if terminal else {**current, **run, "parent_session_id": parent}
+            self._write_subagent_run(conn, snapshot)
+            row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
+            snapshot = self._subagent_row_to_dict(row)
+            committed = {**event, "projection_version": 1, "subagent_run": snapshot}
+            conn.execute(
+                """INSERT INTO subagent_events (subagent_id, event_id, event_type, data_json, timestamp)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (subagent_id, event_id, event_type, _event_json(committed), now),
+            )
+            session_event = None
+            if parent:
+                session_event, _ = self._append_session_event_row(
+                    conn, parent, f"subagent.{event_type}", committed,
+                    f"subagent:{subagent_id}:{event_id}", now,
+                )
+            return {"created": True, "run": snapshot, "event": committed, "session_event": session_event}
+
+        result = self._execute_write(_do)
+        if result["created"] and result["session_event"]:
+            self._publish_committed_events([result["session_event"]])
+        return result
 
     def update_subagent_run(self, subagent_id: str, updates: dict[str, Any]) -> None:
         """Update a subagent run snapshot."""
@@ -1639,7 +1718,7 @@ class SessionDB:
         limit = max(1, min(int(limit or 500), 2000))
         with self._lock:
             rows = self._conn.execute(
-                """SELECT id, subagent_id, event_type, data_json, timestamp
+                """SELECT id, subagent_id, event_id, event_type, data_json, timestamp
                    FROM subagent_events
                    WHERE subagent_id = ?
                    ORDER BY timestamp, id

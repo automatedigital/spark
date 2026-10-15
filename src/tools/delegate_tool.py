@@ -18,17 +18,18 @@ never the child's intermediate tool calls or reasoning.
 
 import json
 import logging
-
-logger = logging.getLogger(__name__)
 import os
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from agent import subagents as subagent_lifecycle
 from core.toolsets import TOOLSETS
+
+logger = logging.getLogger(__name__)
 
 # Tools that children must never have access to
 DELEGATE_BLOCKED_TOOLS = frozenset([
@@ -829,6 +830,10 @@ def delegate_task(
             lifecycle_run = subagent_lifecycle.make_run_record(
                 parent_session_id=getattr(parent_agent, "session_id", None),
                 child_session_id=None,
+                root_run_id=getattr(parent_agent, "_root_run_id", None),
+                attempt_id=uuid.uuid4().hex,
+                node_id=uuid.uuid4().hex,
+                parent_node_id=getattr(parent_agent, "_execution_node_id", None),
                 task_index=i,
                 task_count=n_tasks,
                 task=t["goal"],
