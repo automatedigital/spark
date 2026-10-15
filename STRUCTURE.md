@@ -73,6 +73,8 @@ Paths in this table are relative to `src/spark_cli/`.
 | `web/src/lib/draftStore.ts`, `web/src/hooks/useChatDraft.ts` | Versioned unsent input and persistence/recovery |
 | `web/src/components/chat/` | Composer, timeline, approvals, plans, changed files, recovery and child-agent detail |
 | `web/src/hooks/useSubagents.ts`, `web/src/lib/subagents.ts` | Child snapshots, detail loading and live lifecycle reconciliation |
+| `web/src/lib/subagentControls.ts` | Exact child capability checks and persistent request IDs for uncertain Stop/Retry acknowledgements |
+| `web/src/lib/previewRequests.ts` | Visible-preview read ownership, cancellation, stale-response fencing and serialized polling |
 | `web/src/components/workspace/` | Existing file tree, terminal, preview and project panels; Workspace is a legacy path name, not a second product surface |
 | `web/src/lib/api.ts`, `apiTypes.ts`, `api_*.ts` | Shared API facade/types and domain clients |
 | `web/e2e/` | Multi-chat, recovery, history anchor, sidebar-scale, baseline and Python draft browser flows |

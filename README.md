@@ -344,7 +344,10 @@ receipts, durable sidebar pin/order/settlement and fenced task workers with
 profile-local transcripts. Async delegation and local Git worktree isolation are
 opt-in (`delegation.async_enabled` and `delegation.worktree_isolation`, both false
 by default). Async workers are process-local; lost work becomes uncertain and
-stored results are delivered on the next explicit parent turn. Inspector,
-recovery, performance and package acceptance remain in progress in the plan.
+stored results are delivered on the next explicit parent turn. The child
+inspector adds capability-gated controls, paged history, result copy and worktree
+references while preserving parent drafts and scroll position through switching
+and reconnects. Task/worktree navigation, final performance and package acceptance
+remain in progress in the plan.
 See the [rollout runbook](docs/development/app-upgrade-rollout.md) for backup,
 isolated enablement and rollback boundaries.
