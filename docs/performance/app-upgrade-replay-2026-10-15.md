@@ -157,3 +157,11 @@ matching the real tool's recorded payload rather than weakening hash checks.
 Integrated runtime/delegation/worktree/receipt checks: **133 passed, 1 xfailed**,
 exit 0, 18.16 seconds. The remaining strict xfail is the unsupported-stream defect;
 a separate isolated implementation task owns that fix. This is not P09 acceptance.
+
+Streaming follow-up `fb52fe7c` now performs the bounded pre-output capability
+retry with the already-built payload. The final xfail marker was removed.
+Combined parent runtime gates (including nine new fallback regressions): **230
+passed**, exit 0, 36.42s. Cached-prefix stability, partial output, cancellation,
+tool cardinality, receipt/compression and manifest checks pass. Both original
+runtime objections are resolved; actual gateway-boundary and app/performance/
+platform acceptance remain separate work.

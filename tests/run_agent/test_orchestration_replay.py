@@ -470,7 +470,6 @@ def test_real_clarify_decision_remains_pending_after_both_children_complete(repl
     assert not SidebarMetadata(r.db).attention()[parent.session_id]["pending_decision"]
 
 
-@pytest.mark.xfail(strict=True, reason="Reproduced: HTTP 400 stream-unsupported sets fallback flag but turn_loop aborts instead of retrying non-streaming")
 def test_stream_unsupported_http_response_falls_back_in_same_explicit_turn(replay):
     r = replay
     r.wire.reject_stream = True

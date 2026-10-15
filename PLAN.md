@@ -599,3 +599,9 @@ keep checkboxes above open until acceptance is demonstrated.
 - Agent repeated long-history gate: **5/5 passed**, each loading 39 earlier pages, **0 px** sampled drift, no React errors or recovery reloads. Sidebar anchors held **3/3**, fixing the reproduced insertion jump.
 - Overall sidebar gate is still **2/3**, exit 1: a title PATCH queued **5,515 ms** before browser transmission, then received headers in 9.4 ms. Its late write overtook the fixture restore. Original failed attempt, request phases and >10% timing regressions remain in `docs/performance/app-upgrade-browser-fixes-2026-10-15.{md,json}`.
 - A fresh isolated agent is investigating stale preview requests/connection scheduling. Inspector cursor/worktree integration and stream capability fallback remain with their existing agents. Core release, performance and package gates stay open.
+
+### Runtime replay defects closed — 2026-10-15
+
+- Integrated streaming fix `fb52fe7c` (agent `521feb93`): one non-streaming retry for a pre-output capability rejection using the existing built request. Text/reasoning/tool output blocks this fallback; Stop and unrelated client errors retain normal behavior. No tool redispatch or cached history/schema rewrite.
+- Removed the final replay xfail. Combined real SDK replay, fallback, async lifecycle, receipt, worktree, interruption, compression/cache and lazy-startup gates: **230 passed**, exit 0, 36.42s. CI Ruff, manifest (**70 tools / 28 modules / 4 optional guards**) and mypy (**130 source files**) pass. Both reproduced runtime defects are now ordinary passing regressions.
+- A separate isolated agent now verifies the actual gateway handler/delivery boundary with external sends disabled. Existing `AIAgent(platform='telegram')` coverage alone is not treated as gateway acceptance. P03/P09 gateway and final app/package gates remain open.
