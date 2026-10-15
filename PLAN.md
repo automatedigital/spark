@@ -293,7 +293,7 @@ Day 5. Ship a verified web slice independently and label desktop status separate
 - [x] Record branch, SHA, dirty paths, configured test commands and baseline lint/type failures without fixing unrelated files.
 - [ ] Use temporary `SPARK_HOME`, synthetic sessions and no external sends. Capture current long-thread, three-chat, project-create, child-run, pending-decision and reconnect behavior.
 - [ ] Record repeated first-token latency (separate provider time), backend/gateway readiness, sidebar update/select latency, stream gaps, browser memory and bundle size.
-- [ ] Write ADRs for execution identity/write ownership, async completion, cursor semantics, compatibility/migration and worktree lifecycle. Resolve the identified Kanban/profile risks.
+- [x] Write ADRs for execution identity/write ownership, async completion, cursor semantics, compatibility/migration and worktree lifecycle. Resolve the identified Kanban/profile risks.
 - [x] Publish contract fixtures/types and assign files before implementation agents start.
 
 **Done when:** documented current/target behavior, evidence locations and bounded
@@ -516,10 +516,10 @@ keep checkboxes above open until acceptance is demonstrated.
 
 | Packet | Owner | State | Commit / PR | Automated evidence | Browser / package evidence | Limitations |
 | --- | --- | --- | --- | --- | --- | --- |
-| P00 | Lead + baseline agent | In progress | `73c5032` contracts | mypy passes; 305 baseline Ruff findings | Isolated browser baseline running | Baseline and risk reproduction still open |
-| P01–P04 | Runtime agent + lead | In progress | — | Atomic lifecycle/receipts and worktree tests underway | Pending integration | Async controls and acceptance still open |
-| P05–P07 | App agent | In progress (P05) | — | Durable sidebar implementation underway | Pending | P06/P07 follow runtime integration |
-| P08–P09 | Reliability / lead | Pending | — | — | — | Worker risks need reproduction |
+| P00 | Lead + baseline agent | Baseline recorded; final gates open | `73c5032`, `89616f95` | Baseline tests and risk reproductions recorded | Repeated browser samples recorded | External gateway timing and remaining create flow pending |
+| P01–P04 | Runtime agent + lead | P01/P02/P04 verified; P03 acceptance open | See checkpoints | 45 core/cache tests; 105 delegation/isolation tests | Inspector integration in progress | Completion waits for explicit parent turn; browser acceptance pending |
+| P05–P07 | App agent | P05 integrated; P06/P07 in progress | `dff9d0df`, `6409bba` | 405 frontend; 288 web; 33 sidebar tests pass | 1,000-session flow passes | Failed create, responsive themes and inspector acceptance pending |
+| P08–P09 | Reliability / lead | P08 verified; P09 in progress | `0357b35a`, `1805f6b`, `a7281b8` | 52 worker/task tests pass | Replay and browser/CI agents running | Broad suite, final performance and failure matrix pending |
 | P10 | Lead | Pending | — | — | — | No package/release produced |
 | E01–E05 | Unassigned | Backlog | — | — | — | Outside five-day core |
 
@@ -565,3 +565,5 @@ keep checkboxes above open until acceptance is demonstrated.
 - Clean-cache parent mypy passes **129 source files**. The baseline worktree recorded 2,706 imported-module errors under its distinct PYTHONPATH context; that observation is retained in its report, but is not the parent checkout's current type-check status. Full Ruff baseline debt remains separate from clean CI/touched-file gates.
 - Baseline report/evidence committed in `89616f95`: `docs/performance/app-upgrade-baseline-2026-10-15.{md,json}`. It records a preexisting long-history failure in 1 of 4 trials and obsolete canonical sidebar locators; P09 must retain/fix these gates.
 - Parallel follow-ups now own P06/P07 inspector/recovery and P09 transport replay; P00/P03/P05 full acceptance, final browser/performance comparisons, rollout and installed packages remain open. No release or deployment performed.
+
+- Worker follow-up `a7281b8` persists actual task transcripts in the assigned execution profile while keeping task-board writes in the board owner. Isolated worker subprocess tests verify both destinations. Mypy passes all **129 source files** after typed claim fencing; CI lint and generated manifest checks pass. Broad local pytest is running with `not integration and not network` (external services deliberately excluded), not yet a passing gate.
