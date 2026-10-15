@@ -7,7 +7,68 @@
   ],
   "base_commit": "3097f32b",
   "root_window_clear_utc": "18:57",
-  "validation_status": "focused_and_neighbor_validation_complete_root_acceptance_pending",
+  "validation_status": "sequential_parent_followup_focused_passed_broad_neighbors_held",
+  "sequential_parent_followup": {
+    "base_commit": "873573b0",
+    "parent_finding": "Ordinary next parent registration cancels earlier legitimate background child authorization",
+    "production_source_modified": true,
+    "status": "31_focused_passed_all_commands_exited_before_any_broad_neighbor_batch",
+    "repair": "Keep all live generations in weak session owner sets; revoke active overlapped owner only on registration; whole-session Stop revokes all generations; bound callback identity gates enqueue and pending submission",
+    "weak_owner_index_gc": {
+      "sessions": 16,
+      "generations_per_session": 3,
+      "contexts_released": 48,
+      "expected_remaining_session_entries": 0,
+      "observed_remaining_session_entries": 0,
+      "result": "passed; all 48 weak owner references released after contexts dropped and GC"
+    },
+    "checks": [
+      {
+        "id": "sequential_before_test_assumption",
+        "command": "PYTHONPATH=$PWD/src python -m pytest 'tests/gateway/test_approval_ownership.py::test_async_child_guards_survive_sequential_parent_turns_and_deliver_once[continue]' -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "1 failed in 11.69s",
+        "reason": "Overstrict fixture assumption that sequential roots must reuse the same AIAgent; corrected to track both actual agents sharing the durable session",
+        "production_source": "unchanged 873573b0"
+      },
+      {
+        "id": "sequential_before_intended_proof",
+        "command": "PYTHONPATH=$PWD/src python -m pytest 'tests/gateway/test_approval_ownership.py::test_async_child_guards_survive_sequential_parent_turns_and_deliver_once[continue]' -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "1 failed in 11.35s",
+        "reason": "Earlier child safe guard cancelled after next ordinary parent turn; latest child safe guard approved",
+        "production_source": "unchanged 873573b0"
+      },
+      {
+        "id": "sequential_focused",
+        "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+        "result": "31 passed in 105.11s",
+        "durations_seconds": {
+          "sequential_continue": 20.82,
+          "sequential_stop": 20.74,
+          "earlier_child_with_active_next_turn_responder": 10.62
+        }
+      },
+      {
+        "id": "followup_lint_initial",
+        "command": "ruff check src/tools/approval.py tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py",
+        "result": "exit 1; one I001 import-order violation in tests/gateway/test_approval_ownership.py"
+      },
+      {
+        "id": "followup_import_fix",
+        "command": "ruff check tests/gateway/test_approval_ownership.py --fix",
+        "result": "Found 1 error (1 fixed, 0 remaining)."
+      },
+      {
+        "id": "followup_lint_final",
+        "command": "ruff check src/tools/approval.py tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "followup_whitespace",
+        "command": "git diff --check",
+        "result": "exit 0"
+      }
+    ]
+  },
   "environment": {
     "venv": "/Users/joe/Developer/github/spark/.venv",
     "pythonpath": "$PWD/src",

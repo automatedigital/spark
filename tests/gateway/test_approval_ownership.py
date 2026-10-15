@@ -6,14 +6,15 @@ then require the replacement to survive and accept an actual inbound approval.
 Only synthetic HTTP/platform transport is used; commands are never executed.
 """
 import json
+import threading
 from dataclasses import replace
 
 import pytest
 
 from gateway.session import build_session_key
 from tests.fixtures.app_upgrade.gateway.transport import Gate, until
+from tests.gateway.test_async_delegation_delivery import deliveries, idle
 from tests.gateway.test_async_delegation_delivery import gateway as gateway
-from tests.gateway.test_async_delegation_delivery import idle
 from tests.gateway.test_stop_ownership import replace_adapter
 
 pytestmark = [pytest.mark.serial, pytest.mark.asyncio]
@@ -87,6 +88,85 @@ async def test_old_exit_preserves_replacement_approval_until_actual_user_choice(
         after_approval_gate.release.set()
         if replacement:
             await idle(replacement)
+
+
+@pytest.mark.parametrize("after_second_turn", ["continue", "stop"])
+async def test_async_child_guards_survive_sequential_parent_turns_and_deliver_once(gateway, approval_hooks, after_second_turn):
+    """Two ordinary roots finish while both generations of real children wait."""
+    from tools import approval
+
+    g = gateway
+    g.wire.script["dispatch"]["tasks"] = [{"goal": "GATEWAY: alpha"}]
+    release = threading.Event()
+    entered, decisions = [], []
+    records_lock = threading.Lock()
+
+    def before_llm(**kwargs):
+        if kwargs["user_message"] not in g.wire.children:
+            return
+        owner = approval._approval_session_key.get()[1]
+        with records_lock:
+            entered.append(owner)
+        # Two normal parent turns can each spend five seconds draining gateway
+        # streaming. Keep this authored hook bounded beyond those two drains.
+        assert release.wait(25), "Sequential-turn child hook not released"
+        result = {
+            "safe": approval.check_all_command_guards("pwd", "local"),
+            "dangerous": approval.check_all_command_guards(COMMAND, "local"),
+        }
+        with records_lock:
+            decisions.append(result)
+
+    approval_hooks.register_hook("pre_llm_call", before_llm)
+    try:
+        event = await g.adapter.inbound_text(g.wire.script["root_prompt"])
+        key = build_session_key(event.source)
+        await until(lambda: len(entered) == 1, "first generation paused before safe guard")
+        parent = g.runner._agent_cache[key][0]
+        g.wire.root.release.set()
+        await idle(g.adapter)
+        assert parent._active_children and key not in approval._gateway_notify_cbs
+        # A second explicit request dispatches another owned generation. Neither
+        # parent is stopped or overlapped; both return before the child guards.
+        g.wire.script["dispatch"]["request_id"] = "gateway-dispatch-sequential-2"
+        await g.adapter.inbound_text(g.wire.script["root_prompt"])
+        await until(lambda: len(entered) == 2, "both generations remain live")
+        await idle(g.adapter)
+        assert len(set(entered)) == 2
+        latest_parent = g.runner._agent_cache[key][0]
+        parents = {id(agent): agent for agent in (parent, latest_parent)}
+        assert latest_parent.session_id == parent.session_id
+        assert sum(len(agent._active_children) for agent in parents.values()) == 2
+        assert key not in approval._gateway_notify_cbs
+        assert not deliveries(g.db, parent.session_id)
+        if after_second_turn == "stop":
+            await g.adapter.inbound_text("/stop")
+        release.set()
+        g.wire.release_all()
+        await until(lambda: len(decisions) == 2, "all earlier child contexts check their guards")
+        assert all(result["safe"]["approved"] is (after_second_turn == "continue") for result in decisions), decisions
+        assert all(result["dangerous"]["approved"] is False for result in decisions)
+        assert not approval.has_blocking_approval(key) and key not in approval._pending
+        await until(lambda: all(not agent._active_children for agent in parents.values()), "both generations reach terminal acknowledgement")
+        runs = g.db.list_subagent_runs(parent.session_id)
+        assert len(runs) == 2
+        if after_second_turn == "continue":
+            assert all(run["status"] == "completed" for run in runs)
+        else:
+            assert all("cancelled" in result["safe"]["message"] for result in decisions)
+        assert not deliveries(g.db, parent.session_id)
+        await g.adapter.inbound_text("GATEWAY: collect sequential child outcomes")
+        await idle(g.adapter)
+        delivered = deliveries(g.db, parent.session_id)
+        assert len(delivered) == 2
+        await g.adapter.inbound_text("GATEWAY: collect again without duplicate delivery")
+        await idle(g.adapter)
+        assert deliveries(g.db, parent.session_id) == delivered
+        assert len({job["delivered_message_id"] for job in g.db.list_async_child_jobs()}) == 2
+    finally:
+        release.set()
+        g.wire.release_all()
+        await idle(g.adapter)
 
 
 @pytest.mark.parametrize("stop_path", ["inbound", "normal_dispatch"])
@@ -179,7 +259,7 @@ async def test_parallel_child_approvals_retain_old_owner_across_stop_and_replace
             await idle(replacement)
 
 
-@pytest.mark.parametrize("after_parent", ["normal", "stop", "replace"])
+@pytest.mark.parametrize("after_parent", ["normal", "stop", "next_turn"])
 async def test_async_child_guard_after_normal_parent_completion(gateway, approval_hooks, after_parent):
     """An ended notification registration is distinct from a cancelled child."""
     from tools import approval
@@ -213,7 +293,7 @@ async def test_async_child_guard_after_normal_parent_completion(gateway, approva
         assert parent._active_children and key not in approval._gateway_notify_cbs
         if after_parent == "stop":
             await g.adapter.inbound_text("/stop")
-        elif after_parent == "replace":
+        elif after_parent == "next_turn":
             replacement = replace_adapter(g)
             await replacement.inbound_text(new)
             await until(replacement_gate.entered.is_set, "replacement owns callback")
@@ -221,13 +301,13 @@ async def test_async_child_guard_after_normal_parent_completion(gateway, approva
             gate.release.set()
         g.wire.release_all()
         await until(lambda: len(decisions) == 2, "safe and dangerous child guards after parent exit")
-        assert all(result["safe"]["approved"] is (after_parent == "normal") for result in decisions.values()), decisions
+        assert all(result["safe"]["approved"] is (after_parent != "stop") for result in decisions.values()), decisions
         assert all(result["dangerous"]["approved"] is False for result in decisions.values())
-        if after_parent != "normal":
+        if after_parent == "stop":
             assert all("cancelled" in result["safe"]["message"] for result in decisions.values())
         assert not approval.has_blocking_approval(key) and key not in approval._pending
         await until(lambda: not parent._active_children, "background children finished")
-        if after_parent == "normal":
+        if after_parent != "stop":
             assert all(run["status"] == "completed" for run in g.db.list_subagent_runs(parent.session_id))
     finally:
         for gate in gates.values():

@@ -138,7 +138,7 @@ def test_unregister_and_reregister_during_guard_collection_cannot_borrow_callbac
         future = pool.submit(bound_context(owner).run, guard)
         try:
             assert entered.wait(2)
-            approval.unregister_gateway_notify(KEY, owner)
+            approval.unregister_gateway_notify(KEY)
             replacement = approval.register_gateway_notify(KEY, lambda data: notified.append("new"))
             if preapproved:
                 approval.approve_session(KEY, "delete in root path")
@@ -202,8 +202,8 @@ def test_legacy_pending_guard_belongs_to_registration():
     assert approval._gateway_owners[KEY] is new
 
 
-@pytest.mark.parametrize("retire", ["stop", "replace"])
-def test_normal_callback_cleanup_preserves_execution_until_stop_or_supersession(retire):
+@pytest.mark.parametrize("retire", ["stop", "next_turn", "next_turn_then_stop"])
+def test_normal_callback_cleanup_preserves_execution_across_ordinary_turns(retire):
     owner = approval.register_gateway_notify(KEY, lambda data: None)
     context = bound_context(owner)
     approval.unregister_gateway_notify(KEY, owner)
@@ -211,13 +211,15 @@ def test_normal_callback_cleanup_preserves_execution_until_stop_or_supersession(
     result = context.run(guard)
     assert result["approved"] is False and "No active approval callback" in result["message"]
     assert KEY not in approval._pending and not approval.has_blocking_approval(KEY)
-    if retire == "stop":
-        approval.unregister_gateway_notify(KEY)
-    else:
+    if retire != "stop":
         approval.register_gateway_notify(KEY, lambda data: pytest.fail("borrowed replacement callback"))
-    for command in ("pwd", COMMAND):
-        result = context.run(approval.check_all_command_guards, command, "local")
-        assert result["approved"] is False and "cancelled" in result["message"]
+        assert context.run(approval.check_all_command_guards, "pwd", "local")["approved"] is True
+        assert "No active approval callback" in context.run(guard)["message"]
+    if retire != "next_turn":
+        approval.unregister_gateway_notify(KEY)
+        for command in ("pwd", COMMAND):
+            result = context.run(approval.check_all_command_guards, command, "local")
+            assert result["approved"] is False and "cancelled" in result["message"]
 
 
 def test_normal_callback_cleanup_does_not_retain_finished_execution_contexts():
@@ -225,10 +227,76 @@ def test_normal_callback_cleanup_does_not_retain_finished_execution_contexts():
     context = bound_context(owner)
     reference = weakref.ref(owner)
     approval.unregister_gateway_notify(KEY, owner)
-    assert approval._gateway_lifetimes[KEY] is owner
+    assert owner in approval._gateway_lifetimes[KEY]
     del context, owner
     gc.collect()
     assert reference() is None and KEY not in approval._gateway_lifetimes
+
+
+def test_weak_owner_sets_release_every_finished_session_and_generation():
+    keys = [f"{KEY}-gc-{index}" for index in range(16)]
+
+    def live_contexts(key):
+        contexts, references = [], []
+        for _ in range(3):
+            owner = approval.register_gateway_notify(key, lambda data: None)
+            context = contextvars.copy_context()
+            context.run(approval.set_current_session_key, key, owner=owner)
+            contexts.append(context)
+            references.append(weakref.ref(owner))
+            approval.unregister_gateway_notify(key, owner)
+        return contexts, references
+
+    batches = [live_contexts(key) for key in keys]
+    try:
+        assert all(len(approval._gateway_lifetimes[key]) == 3 for key in keys)
+        references = [reference for _, refs in batches for reference in refs]
+        batches.clear()
+        gc.collect()
+        assert all(reference() is None for reference in references)
+        assert all(key not in approval._gateway_lifetimes for key in keys)
+        assert all(key not in approval._gateway_owners and key not in approval._gateway_queues for key in keys)
+    finally:
+        for key in keys:
+            approval.unregister_gateway_notify(key)
+
+
+def test_stop_revokes_every_live_generation_after_several_normal_parent_turns():
+    contexts = []
+    for _ in range(3):
+        owner = approval.register_gateway_notify(KEY, lambda data: None)
+        contexts.append(bound_context(owner))
+        approval.unregister_gateway_notify(KEY, owner)
+    assert all(context.run(approval.check_all_command_guards, "pwd", "local")["approved"] for context in contexts)
+    approval.unregister_gateway_notify(KEY)
+    for context in contexts:
+        for command in ("pwd", COMMAND):
+            result = context.run(approval.check_all_command_guards, command, "local")
+            assert result["approved"] is False and "cancelled" in result["message"]
+
+
+def test_earlier_child_cannot_borrow_latest_callback_or_remove_its_waiter():
+    old = approval.register_gateway_notify(KEY, lambda data: None)
+    old_context = bound_context(old)
+    approval.unregister_gateway_notify(KEY, old)
+    notified = threading.Event()
+    latest = approval.register_gateway_notify(KEY, lambda data: notified.set())
+    assert old_context.run(approval.check_all_command_guards, "pwd", "local")["approved"] is True
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(bound_context(latest).run, guard)
+        try:
+            assert notified.wait(2)
+            result = old_context.run(guard)
+            assert result["approved"] is False and "No active approval callback" in result["message"]
+            old_context.run(approval.check_dangerous_command, COMMAND, "local")
+            assert KEY not in approval._pending
+            approval.unregister_gateway_notify(KEY, old)
+            assert len(approval._gateway_queues[KEY]) == 1
+            assert approval._gateway_queues[KEY][0].owner is latest
+            assert approval.resolve_gateway_approval(KEY, "once") == 1
+            assert future.result(2)["user_approved"] is True
+        finally:
+            approval.unregister_gateway_notify(KEY)
 
 
 @pytest.mark.parametrize("backend", ["local", "ssh"])

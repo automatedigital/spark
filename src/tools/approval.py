@@ -231,19 +231,22 @@ class _ApprovalEntry:
 
 class _GatewayApprovalOwner:
     """Execution authorization can outlive its parent's notification callback."""
-    __slots__ = ("cancelled", "__weakref__")
+    __slots__ = ("cancelled", "siblings", "__weakref__")
 
     def __init__(self):
         self.cancelled = False
+        self.siblings: weakref.WeakSet | None = None
 
 
 _gateway_queues: dict[str, list] = {}        # session_key → [_ApprovalEntry, …]
 _gateway_notify_cbs: dict[str, object] = {}  # session_key → callable(approval_data)
-_gateway_owners: dict[str, object] = {}      # session_key → registration token
+_gateway_owners: dict[str, _GatewayApprovalOwner] = {}  # session_key → active callback owner
 # Background child contexts keep their owner alive after normal parent return.
-# This index does not retain completed sessions; Stop/replacement can still find
-# and revoke an owner while any of its copied execution contexts remain live.
-_gateway_lifetimes: weakref.WeakValueDictionary[str, _GatewayApprovalOwner] = weakref.WeakValueDictionary()
+# This index does not retain completed sessions; Stop can still find
+# and revoke every generation held by copied execution contexts. Each live owner
+# keeps its sibling WeakSet alive; neither the set nor this index retains owners.
+# The session entry disappears when its last execution context releases its owner.
+_gateway_lifetimes: weakref.WeakValueDictionary[str, weakref.WeakSet] = weakref.WeakValueDictionary()
 
 
 def register_gateway_notify(session_key: str, cb, *, cancelled=None) -> object:
@@ -263,11 +266,18 @@ def register_gateway_notify(session_key: str, cb, *, cancelled=None) -> object:
         if cancelled is not None and cancelled.is_set():
             owner.cancelled = True
             return owner
-        previous = _gateway_lifetimes.get(session_key)
+        # Only replacement of a still-registered callback supersedes execution.
+        # A normal next root preserves children of earlier, completed roots.
+        previous = _gateway_owners.get(session_key)
         if previous is not None:
             previous.cancelled = True
         _cancel_gateway_waiters_locked(session_key)
-        _gateway_lifetimes[session_key] = owner
+        siblings = _gateway_lifetimes.get(session_key)
+        if siblings is None:
+            siblings = weakref.WeakSet()
+            _gateway_lifetimes[session_key] = siblings
+        siblings.add(owner)
+        owner.siblings = siblings
         _gateway_owners[session_key] = owner
         _gateway_notify_cbs[session_key] = cb
         return owner
@@ -281,13 +291,16 @@ def unregister_gateway_notify(session_key: str, owner=None) -> None:
     """
     with _lock:
         if owner is None:
-            previous = _gateway_lifetimes.pop(session_key, None)
-            if previous is not None:
-                previous.cancelled = True
+            _cancel_gateway_owners_locked(session_key)
         if owner is None or _gateway_owners.get(session_key) is owner:
             _gateway_notify_cbs.pop(session_key, None)
             _gateway_owners.pop(session_key, None)
         _cancel_gateway_waiters_locked(session_key, owner)
+
+
+def _cancel_gateway_owners_locked(session_key: str) -> None:
+    for owner in list(_gateway_lifetimes.pop(session_key, ())):
+        owner.cancelled = True
 
 
 def _cancel_gateway_waiters_locked(session_key: str, owner=None) -> None:
@@ -373,7 +386,7 @@ def submit_pending(session_key: str, approval: dict):
         if _stale_gateway_owner_locked(session_key):
             return
         _key, owner = _approval_session_key.get()
-        if _key == session_key and owner is not None and session_key not in _gateway_notify_cbs:
+        if _key == session_key and owner is not None and _gateway_owners.get(session_key) is not owner:
             return
         _pending[session_key] = approval
         if _key == session_key and owner is not None:
@@ -412,9 +425,7 @@ def clear_session(session_key: str) -> None:
         _session_approved.pop(session_key, None)
         _session_yolo.discard(session_key)
         _pending.pop(session_key, None)
-        previous = _gateway_lifetimes.pop(session_key, None)
-        if previous is not None:
-            previous.cancelled = True
+        _cancel_gateway_owners_locked(session_key)
         _gateway_notify_cbs.pop(session_key, None)
         _gateway_owners.pop(session_key, None)
         _cancel_gateway_waiters_locked(session_key)
@@ -912,7 +923,9 @@ def check_all_command_guards(command: str, env_type: str,
                 return _cancelled_approval()
             notify_cb = _gateway_notify_cbs.get(session_key)
             bound_key, bound_owner = _approval_session_key.get()
-            if notify_cb is None and bound_key == session_key and bound_owner is not None:
+            if bound_key == session_key and bound_owner is not None and (
+                notify_cb is None or _gateway_owners.get(session_key) is not bound_owner
+            ):
                 return {
                     "approved": False,
                     "message": "BLOCKED: No active approval callback for this execution. Ask the user to start a new turn. Do NOT retry.",
