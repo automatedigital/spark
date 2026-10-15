@@ -416,6 +416,11 @@
     "specific_cycle2_generation_collection_observed": true,
     "full_memory_acceptance": false,
     "native_package_built": false,
-    "release_or_rollout": false
+    "release_or_rollout": false,
+    "python_nonserial_exit": 0,
+    "python_nonserial_passed": 12456,
+    "python_nonserial_skipped": 151,
+    "python_nonserial_seconds": 419.4,
+    "integration_commit": "83208ce"
   }
 }

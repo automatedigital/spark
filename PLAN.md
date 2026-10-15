@@ -2,10 +2,29 @@
 
 Date: 2026-10-15
 
-Status: Approved; implementation in progress on `feat/app-orchestration-upgrade`.
+Status: Core implementation consolidated on `feat/app-orchestration-upgrade`; remaining release gates are listed below.
 
 Spark baseline: `0ed3654b` (`main` must be rechecked before execution).
 Delivery shape: five working days for the core slice, then independently scheduled extensions.
+
+### Current handover status
+
+The core runtime, persistence, sidebar, inspector, navigation and worktree changes
+are implemented. Consolidation is now limited to integrating reviewed fixes and
+one final practical validation pass. Diagnostic agents and further heap captures
+have been stopped at the user's request to avoid an open-ended investigation.
+
+- Integrated chat ownership separates actual navigation from acknowledged ID
+  continuation, preserving drafts and buffered output while fencing stale scope
+  responses.
+- Credential write protection covers the default home and the current profile.
+- Final consolidated functional checks pass: 12,456 local nonserial Python tests,
+  448 frontend tests, clean static checks, canonical build and nine production
+  recovery flows. Earlier serial runtime acceptance passes 182 tests.
+- Memory/performance release acceptance remains incomplete. The failed tree-fetch
+  browser attempt and unrun continuing-owner controls remain explicit limitations.
+- Native packages, installed-platform QA and rollout are unfinished; no release
+  or production deployment has occurred.
 
 ## 1. Outcome and scope
 
@@ -696,3 +715,10 @@ keep checkboxes above open until acceptance is demonstrated.
 - Independent response review accepts the minimal refresh scope fence **for measurement** with no confirmed remaining P1/P2 in that delta. The first quiet production batch then **stops on candidate navigation exit 1**: original navigation passes, but candidate emits `Tree load failed: Failed to fetch` from the workspace-tree read and fails the unchanged browser-error assertion. Both navigation samples/snapshots are retained; neither continuing-owner control starts. All groups close and all frozen hashes match. No retention acceptance or retry; separate read-only fetch diagnosis and offline strong-object census are assigned. One plain nonserial Python acceptance run is authorized in parallel, without the invalidated tracer; serial acceptance remains 182 passed.
 - Plain nonserial acceptance completes **1 failed / 12,453 passed / 151 skipped / 408.36s**, with all 37 historical cancellation nodes passing on four workers; the paired serial run is **182 passed / 15 skipped**. The remaining credential-path deny test fails under the isolated outer `SPARK_HOME`; focused default/active-profile protection proof is assigned before choosing a repair. The broad run remains failed, with no test excluded. Runtime replay coverage is checked off separately from the remaining full-suite/browser/performance gates.
 - Offline navigation packet pins four snapshots and exact source/driver provenance (manifest `5ac8fc09…50ca7`). Candidate cycle-2 turns, actual JS arrays and valid session owners all collect by cycle 12, while the original retains its earlier generations. Later candidate owner/array counts still grow through native-held error stacks associated with model-status calls; no model failures occur before snapshots, and 2/9 status requests remain pending at those checkpoints. The shared classifier entry is a hidden Hole sentinel, not an empty array. Overall retention remains unaccepted; an additive same-document request-settling snapshot is preparation-only.
+
+### Consolidated handover — 2026-10-15
+
+- Integrated reviewed chat ownership/handoff/scope fixes in `83208ce` and the demonstrated default/current-profile credential guard in `050452d8`. Experimental heap helpers were not integrated. Diagnostic branches are stopped; no further capture or review round is scheduled.
+- Final root local nonserial run: **12,456 passed / 151 skipped / 135 warnings / 419.40s**, exit 0. The earlier serial runtime run passes **182 / 15 skipped**; the subsequent credential guard has its own 192-test focused evidence. Historical failed broad/diagnostic runs remain unchanged.
+- Final frontend: **448 tests / 78 files**, clean lint/TypeScript, canonical build **242.40 KiB gzip / 600 KiB**. CI-selected Ruff, manifest and mypy **133 files** pass. The actual rebuilt bundle passes all **nine production recovery flows**; final mobile screenshot inspected.
+- Remaining: complete memory/performance release acceptance and continuing-owner controls; resolve the historical tree-fetch browser gate and inspector 304 aggregate limitations; build native packages, perform installed-platform QA and rollout/rollback acceptance. These are unfinished follow-up work, not silently passed gates. No push, PR, release or production deployment was performed.

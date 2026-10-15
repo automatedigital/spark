@@ -324,6 +324,9 @@ When changing chat/session/gateway behavior:
   folder, and the folder should open when the chat is created.
 - For performance work, measure first-token latency, gateway startup time,
   stream continuity, and sidebar/session refresh behavior.
+- Give diagnostics a concrete question and stopping condition. Consolidate
+  demonstrated fixes and record unresolved measurements as follow-up work;
+  avoid repeatedly expanding instrumentation or review scope.
 
 When testing manually, leave a short note in the ticket or final response with
 the exact flow tested and whether preview/browser behavior matched expectations.

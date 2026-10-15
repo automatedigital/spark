@@ -639,5 +639,56 @@
         "next_diagnostic": "Preparation only: same-document pending-request drainage capped at5 seconds, then additional ordinary GC snapshot without reference clearing."
       }
     }
+  },
+  "consolidated_handover": {
+    "status": "functional_validation_passed",
+    "source_commit": "83208ce",
+    "credential_guard_commit": "050452d8",
+    "node": "v22.22.1",
+    "frontend_tests": 448,
+    "frontend_test_files": 78,
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "build_exit": 0,
+    "initial_js_gzip_kib": 242.4,
+    "bundle_budget_kib": 600,
+    "canonical_entry": "assets/index-D4cG3MKs.js",
+    "canonical_entry_sha256": "2996541b4ae0a364d4c0d18db46f2136667b5eddfd6bfca715bf9494048f1edf",
+    "canonical_manifest_sha256": "3b8cf52b450c30b5ee91280ada030a184ea1d940be42dc8629cc9c231233b7fd",
+    "production_recovery_exit": 0,
+    "production_recovery_checks": 9,
+    "production_recovery_report": "src/spark_cli/web/screenshots/work-recovery/report.json",
+    "production_screenshot_reviewed": "src/spark_cli/web/screenshots/work-recovery/verified.png",
+    "ci_ruff_exit": 0,
+    "manifest_check_exit": 0,
+    "mypy_exit": 0,
+    "mypy_source_files": 133,
+    "logs": {
+      "frontend": "/tmp/spark-upgrade-20261015/final-consolidated-frontend.txt",
+      "python": "/tmp/spark-upgrade-20261015/final-consolidated-python.txt",
+      "static": "/tmp/spark-upgrade-20261015/final-consolidated-static.txt",
+      "recovery": "/tmp/spark-upgrade-20261015/final-consolidated-recovery.txt"
+    },
+    "diagnostics_stopped": true,
+    "further_heap_helpers_integrated": false,
+    "remaining": [
+      "Complete memory/performance acceptance and continuing-owner controls",
+      "Resolve historical tree-fetch browser gate and inspector304 aggregate limits",
+      "Native packaging, installed-platform QA and rollout"
+    ],
+    "release_or_deployment": false,
+    "python_exit": 0,
+    "python_passed": 12456,
+    "python_skipped": 151,
+    "python_warnings": 135,
+    "python_seconds": 419.4,
+    "python_selection": "not serial and not integration and not network",
+    "serial_companion": {
+      "passed": 182,
+      "skipped": 15,
+      "seconds": 289.03,
+      "source_commit": "423a3eb7",
+      "note": "Earlier serial runtime acceptance; subsequent Python production change is the separately tested credential write guard."
+    }
   }
 }

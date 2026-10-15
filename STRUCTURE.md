@@ -65,10 +65,12 @@ Paths in this table are relative to `src/spark_cli/`.
 | `web/package.json`, `web/package-lock.json` | React 19 / Vite / TypeScript / Tauri tooling; use this lockfile with `npm ci` |
 | `web/src/App.tsx` | App shell, shared providers, global navigation and page composition |
 | `web/src/pages/ChatPage.tsx` | Primary Chat workbench and project/right-panel coordination |
+| `web/src/lib/chatPanelOwnership.ts` | Navigation-owned panel identity, acknowledged ID adoption and bounded primitive scroll bookmarks |
 | `web/src/components/sidebar/` | Project/session rows, Inbox, project creation and virtualized row model |
 | `web/src/lib/sessionStore.tsx`, `sidebarPrefs.ts` | Shared session/project selection/list state and navigation preferences |
 | `web/src/lib/api_sidebar.ts`, `sidebarOrganization.ts` | Durable sidebar API and organization; device preferences remain backend/profile scoped |
 | `web/src/hooks/useChatSessionController.ts`, `useChatStreamController.ts` | History/session loading and live stream lifecycle |
+| `web/src/hooks/useChatComposerActions.ts` | Originating draft acknowledgement and owner-fenced send/fork handoffs |
 | `web/src/hooks/useEventBus.ts` | Shared event transport/subscription and reconnect consumption |
 | `web/src/lib/webState.ts`, `chatStreamReducer.ts`, `chatRecovery.ts` | Envelope normalization, stream merge and recovery interpretation |
 | `web/src/lib/draftStore.ts`, `web/src/hooks/useChatDraft.ts` | Versioned unsent input and persistence/recovery |

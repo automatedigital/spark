@@ -98,6 +98,13 @@ Durable board tasks are owned by Kanban (`kanban.db`), including dependencies,
 claims, review and task-run history. A task can span multiple execution attempts;
 it is not the same as one conversation turn or an agent's temporary todo item.
 
+### Panel owner
+The lifetime of one mounted chat view. Navigating to another thread retires that
+owner; an acknowledged session-ID continuation may preserve it and its buffered
+stream. A fork creates a new owner. Request generations and backend/profile/
+credential epochs prevent late responses from adopting or updating another view.
+This UI lifetime is distinct from a durable agent run or child execution.
+
 ### Run
 A single user-visible execution turn within a Thread. The upgrade plan maps this
 to the existing web `turn_id`; a unified cross-surface contract is **planned**.

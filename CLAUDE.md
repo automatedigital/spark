@@ -69,6 +69,9 @@ serial cases are selected, or run the separate parallel/serial selections in
   stale UI and worker silence do not establish it. Preserve child permissions.
 - Keep Kanban Task identity separate from conversation Run/Attempt and Subagent.
   Fence worker writes by claim ownership when changing execution behavior.
+- Retire chat panels on navigation, while preserving the owner for acknowledged
+  session-ID continuation. Fence late effects by owner, request and live scope;
+  preserve the originating draft's revision when acknowledging a successful send.
 - Gate provider-specific controls by supported capabilities and existing runtime
   resolution; do not invent provider parity or silently downgrade isolation.
 - Make source edits in `web/src/` and Tauri edits in `web/src-tauri/`.
