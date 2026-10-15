@@ -1115,6 +1115,10 @@ export function ChatPanel({
   useEffect(() => {
     if (!searchMatches.length) return;
     const idx = turnIndexForMessageIndex(searchMatches[searchMatchIdx % searchMatches.length]);
+    // Explicit search navigation supersedes an in-flight saved-position restore.
+    prependRestoreGenerationRef.current += 1;
+    pendingThreadScroll.current = null;
+    restoringThreadScroll.current = false;
     virtualizer.scrollToIndex(idx, { align: "center", behavior: safeMode ? "instant" : "smooth" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchMatchIdx, searchMatches, safeMode, turnIndexForMessageIndex]);
