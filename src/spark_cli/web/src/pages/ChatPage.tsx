@@ -19,11 +19,13 @@ import {
   X,
 } from "lucide-react";
 import { api, workspaceRawFileUrl } from "@/lib/api";
+import { apiConnectionGeneration } from "@/lib/apiHelpers";
 import type { WorkspaceFileNode, WorkspaceProject } from "@/lib/api";
 import { isMiddleClickCloseIntent } from "@/lib/panelTabs";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatPanel } from "@/components/ChatPanel";
+import { ChatPanelOwnership, type OwnedSessionAdoption } from "@/lib/chatPanelOwnership";
 import { BrandLogo } from "@/components/BrandLogo";
 import { PromptBar } from "@/components/chat/PromptBar";
 import { DraftStatus, DraftContextTray } from "@/components/chat/DraftStatus";
@@ -47,7 +49,7 @@ import {
 import type { ThreadCreatedMeta } from "@/lib/sessionStore";
 import { useSubagents } from "@/hooks/useSubagents";
 import { SubagentsPanel } from "@/components/chat/SubagentsPanel";
-import { readSidebarPreference, writeSidebarPreference, sidebarPreferenceKey, SIDEBAR_SCOPE_EVENT } from "@/lib/sidebarPrefs";
+import { readSidebarPreference, writeSidebarPreference, sidebarPreferenceKey, sidebarPreferenceScopeGeneration, SIDEBAR_SCOPE_EVENT } from "@/lib/sidebarPrefs";
 
 const WorkspaceTerminalPanel = lazy(() =>
   import("@/components/workspace/WorkspaceTerminalPanel").then((module) => ({
@@ -893,6 +895,20 @@ export default function ChatPage() {
   const [subagentsSidebarEnabled, setSubagentsSidebarEnabled] = useState(true);
   const [subagentSelections, setSubagentSelections] = useState<Record<string, string | null>>({});
   const [preferenceScope, setPreferenceScope] = useState(() => sidebarPreferenceKey("chat"));
+  const [panelOwnership] = useState(() => new ChatPanelOwnership());
+  useEffect(() => {
+    panelOwnership.activate();
+    return () => panelOwnership.retire();
+  }, [panelOwnership]);
+  // A render after real navigation retires the previous view before any late
+  // response can adopt into it. Same-owner acknowledged ID catchup is explicit.
+  const panelScope = sidebarPreferenceKey("chat");
+  const panelOwner = panelOwnership.navigate(panelScope, composingFor === null ? selectedId : null, sidebarPreferenceScopeGeneration(), apiConnectionGeneration());
+  const adoptPanelSession = useCallback((request: OwnedSessionAdoption) => {
+    if (!panelOwnership.adopt(request, sidebarPreferenceKey("chat"), sidebarPreferenceScopeGeneration(), apiConnectionGeneration())) return false;
+    if (request.nextID !== request.previousID) selectSession(request.nextID);
+    return true;
+  }, [panelOwnership, selectSession]);
   const selectionStorageKey = `spark-child-selection:${selectedId ?? ""}`;
   const selectionKey = `${preferenceScope}:${selectionStorageKey}`;
   const selectedSubagentId = subagentSelections[selectionKey] !== undefined
@@ -1158,17 +1174,17 @@ export default function ChatPage() {
                 </div>
               </div>
               <ChatPanel
+                key={panelOwner.ownerToken}
+                owner={panelOwner}
+                scrollBookmarks={panelOwnership}
+                onSessionAdopt={adoptPanelSession}
                 sessionId={selectedId}
                 sessionTitle={selectedSession ? threadTitle(selectedSession) : null}
                 workspaceSlug={activeProjectSlug ?? undefined}
                 subagents={subagents}
-                onSubagentSelect={handleSelectSubagent}
+                onSubagentSelect={(id) => { if (panelOwner.isCurrent()) handleSelectSubagent(id); }}
                 initialMessage={activeInitialMessage}
                 onBack={() => selectSession(null)}
-                onSessionCreated={(id, initialMessage, meta) => {
-                  if (initialMessage) threadCreated(id, initialMessage, meta);
-                  else selectSession(id);
-                }}
                 onSessionUpdated={clearPendingInitialMessage}
                 className="min-h-0 flex-1"
               />

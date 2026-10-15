@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api, type SubagentRun, type WebPendingAction, type WebPlan, type WebTurnOutcome } from "@/lib/api";
-import { sidebarPreferenceKey } from "@/lib/sidebarPrefs";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/BrandLogo";
 import { saveOutput } from "@/lib/savedOutputs";
@@ -95,6 +94,7 @@ import { useChatComposerActions } from "@/hooks/useChatComposerActions";
 import { useChatStreamController } from "@/hooks/useChatStreamController";
 import type { ChatStreamSnapshot } from "@/lib/chatStreamReducer";
 import { useChatDraft } from "@/hooks/useChatDraft";
+import { isChatPanelScopeCurrent, type ChatPanelOwner, type ChatPanelOwnership, type OwnedSessionAdoption } from "@/lib/chatPanelOwnership";
 import { DraftStatus } from "@/components/chat/DraftStatus";
 
 let _msgId = 0;
@@ -111,14 +111,12 @@ const chatWordWrapFromConfig = (config: Record<string, unknown>): boolean => {
 };
 
 interface ChatPanelProps {
+  owner: ChatPanelOwner;
+  scrollBookmarks: ChatPanelOwnership;
+  onSessionAdopt: (request: OwnedSessionAdoption) => boolean;
   sessionId: string | null;
   onClose?: () => void;
   onBack?: () => void;
-  onSessionCreated?: (
-    id: string,
-    initialMessage?: string,
-    meta?: { source?: string | null; projectSlug?: string | null },
-  ) => void;
   onSessionUpdated?: (id: string) => void;
   sessionTitle?: string | null;
   initialMessage?: string;
@@ -136,10 +134,12 @@ type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
 export function ChatPanel({
+  owner,
+  scrollBookmarks,
+  onSessionAdopt,
   sessionId,
   onClose,
   onBack,
-  onSessionCreated,
   onSessionUpdated,
   initialMessage,
   workspaceSlug,
@@ -181,7 +181,6 @@ export function ChatPanel({
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollViewportTopRef = useRef<number | null>(null);
-  const threadScrollPositions = useRef(new Map<string, { top: number; anchorId: string | null; offset: number }>());
   const pendingThreadScroll = useRef<{ sessionId: string; top: number; anchorId: string | null; offset: number } | null>(null);
   const restoringThreadScroll = useRef(false);
 
@@ -216,7 +215,8 @@ export function ChatPanel({
     finalizeAssistantRef,
     syncLiveAssistantSnapshotRef,
     appendRecoveredStaleTurnNoteRef,
-    onSessionCreated: (id) => onSessionCreated?.(id),
+    owner,
+    onSessionAdopt,
     onSessionUpdated,
   });
   const {
@@ -265,6 +265,28 @@ export function ChatPanel({
   const followStreamRef = useRef(true);
   const scrollStateRef = useRef(initialChatScrollState());
   const prependRestoreGenerationRef = useRef(0);
+  const prependFramesRef = useRef(new Set<number>());
+  const schedulePrependFrame = useCallback((callback: () => void) => {
+    const frame = requestAnimationFrame(() => {
+      prependFramesRef.current.delete(frame);
+      if (owner.isCurrent()) callback();
+    });
+    prependFramesRef.current.add(frame);
+  }, [owner]);
+  useEffect(() => {
+    const frames = prependFramesRef.current;
+    return () => {
+      prependRestoreGenerationRef.current += 1;
+      frames.forEach(cancelAnimationFrame);
+      frames.clear();
+      onSessionResetRef.current = null;
+      flushPendingStreamRef.current = null;
+      finalizeAssistantRef.current = null;
+      syncLiveAssistantSnapshotRef.current = null;
+      appendRecoveredStaleTurnNoteRef.current = null;
+      resyncTurnStateRef.current = null;
+    };
+  }, []);
   const [detachedFromBottom, setDetachedFromBottom] = useState(false);
 
   const handleStreamResync = useCallback((request: { reason: string; allowIdle: boolean }) => {
@@ -317,6 +339,8 @@ export function ChatPanel({
   });
   const syncStreamMessages = streamController.syncMessages;
   const applyStreamSnapshot = streamController.applySnapshot;
+  const adoptStreamSession = streamController.adoptSession;
+  const isCurrentStreamState = streamController.isCurrentState;
 
   const bridgeStreamSnapshot = useCallback((snapshot: ChatStreamSnapshot) => {
     streamController.applySnapshot(snapshot);
@@ -339,6 +363,15 @@ export function ChatPanel({
     });
   };
 
+  const adoptOwnedSession = useCallback((request: OwnedSessionAdoption) => {
+    if (!onSessionAdopt(request)) return false;
+    if (request.reason === "send-continuation") {
+      rememberActiveSessionAliases(request.previousID, request.nextID);
+      adoptStreamSession(request.nextID, [...activeSessionAliasesRef.current]);
+    }
+    return true;
+  }, [activeSessionAliasesRef, adoptStreamSession, onSessionAdopt, rememberActiveSessionAliases]);
+
   const composerActions = useChatComposerActions({
     input,
     contextItems,
@@ -359,7 +392,8 @@ export function ChatPanel({
     setStatusLabel,
     setError,
     createMessageId: nid,
-    onSessionCreated,
+    owner,
+    onSessionAdopt: adoptOwnedSession,
     onPrepareSend: (optimisticMessageCount) => {
       followStreamRef.current = true;
       streamTextCharsRef.current = 0;
@@ -528,7 +562,7 @@ export function ChatPanel({
     recoverySignalBudgetRef.current = initialRecoverySignalBudget();
     prevCountRef.current = 0;
     lastAutoScrollAtRef.current = 0;
-    const savedScroll = resetSessionId ? threadScrollPositions.current.get(sidebarPreferenceKey(`chat-scroll:${resetSessionId}`)) : null;
+    const savedScroll = resetSessionId ? scrollBookmarks.readBookmark(owner.scope, resetSessionId) : null;
     pendingThreadScroll.current = savedScroll && resetSessionId ? { ...savedScroll, sessionId: resetSessionId } : null;
     restoringThreadScroll.current = Boolean(savedScroll);
     scrollStateRef.current = savedScroll
@@ -569,6 +603,9 @@ export function ChatPanel({
 
   useEffect(() => {
     const streamState = streamController.state;
+    // Earlier effects can synchronously commit a newer reducer snapshot.
+    // Never publish this render's superseded identity/status back to the panel.
+    if (!isCurrentStreamState(streamState)) return;
     streamTextCharsRef.current = Math.max(streamTextCharsRef.current, streamState.streamTextChars);
     activeTurnSessionIdRef.current = streamState.activeTurnSessionId;
 
@@ -635,6 +672,7 @@ export function ChatPanel({
     setStreaming,
     setTurnState,
     streamController.state,
+    isCurrentStreamState,
     streamTextCharsRef,
     activeSessionRef,
     activeTurnSessionIdRef,
@@ -658,6 +696,7 @@ export function ChatPanel({
   });
 
   const refreshTurnSurfaces = useCallback(async () => {
+    if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner)) return;
     const generation = ++turnSurfaceRefreshGenerationRef.current;
     const sid = activeSessionRef.current;
     if (!sid) {
@@ -671,11 +710,11 @@ export function ChatPanel({
       api.getConversationPlan(sid),
       api.getConversationPendingActions(sid),
     ]);
-    if (activeSessionRef.current !== sid || generation !== turnSurfaceRefreshGenerationRef.current) return;
+    if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner) || activeSessionRef.current !== sid || generation !== turnSurfaceRefreshGenerationRef.current) return;
     if (outcomeResult.status === "fulfilled") setTurnOutcomes(outcomeResult.value.outcomes);
     if (planResult.status === "fulfilled") setConversationPlan(planResult.value.plan);
     if (actionsResult.status === "fulfilled") setPendingActions(actionsResult.value.actions);
-  }, [activeSessionRef]);
+  }, [activeSessionRef, owner]);
 
   useEffect(() => {
     void refreshTurnSurfaces();
@@ -918,6 +957,7 @@ export function ChatPanel({
   }, []);
 
   const copyAssistant = useCallback((msg: AssistantMsg) => {
+    if (!isChatPanelScopeCurrent(owner)) return;
     if (!msg.liveOmittedChars) {
       void navigator.clipboard.writeText(msg.content);
       return;
@@ -926,10 +966,10 @@ export function ChatPanel({
       renderedId: msg.id,
       visibleFallback: msg.content,
       loadMessages: loadExactMessages,
-      writeText: (content) => navigator.clipboard.writeText(content),
+      writeText: (content) => isChatPanelScopeCurrent(owner) ? navigator.clipboard.writeText(content) : Promise.resolve(),
     })
-      .catch(() => navigator.clipboard.writeText(msg.content));
-  }, [loadExactMessages]);
+      .catch(() => { if (isChatPanelScopeCurrent(owner)) void navigator.clipboard.writeText(msg.content); });
+  }, [loadExactMessages, owner]);
 
   const uploadFiles = useCallback((files: File[]) => uploadDraftFiles(files, setContextItems,
     (file) => workspaceSlug ? api.uploadWorkspaceFiles(workspaceSlug, [file], "files") : api.uploadChatFiles([file])),
@@ -947,6 +987,7 @@ export function ChatPanel({
     if (!sid || !toolId) return null;
     const resp = await api.getSessionToolResult(sid, toolId);
     const content = resp.content ?? "";
+    if (!owner.isCurrent()) return content;
     setChatMessages((prev) =>
       prev.map((m) =>
         m.role === "tool" && m.toolId === toolId
@@ -955,7 +996,7 @@ export function ChatPanel({
       ),
     );
     return content;
-  }, [activeSessionRef, setChatMessages]);
+  }, [activeSessionRef, owner, setChatMessages]);
 
   const removeContextItem = useCallback((id: string) => {
     setContextItems((prev) => prev.filter((i) => i.id !== id));
@@ -999,13 +1040,16 @@ export function ChatPanel({
   }, [contextItems, setContextItems, workspaceSlug, updateContextMode]);
 
   const handlePromoteToBrief = useCallback((msg: AssistantMsg) => {
-    if (!activeSessionId) return;
-    void fetchExactAssistant(msg).then((text) => briefApi.get(activeSessionId).then((r) => {
+    if (!activeSessionId || !isChatPanelScopeCurrent(owner)) return;
+    void fetchExactAssistant(msg).then(async (text) => {
+      if (!isChatPanelScopeCurrent(owner)) return;
+      const r = await briefApi.get(activeSessionId);
+      if (!isChatPanelScopeCurrent(owner)) return;
       const current = r.text.trim();
       const appended = current ? `${current}\n\n${text}` : text;
       return briefApi.set(activeSessionId, appended);
-    })).catch(() => {});
-  }, [activeSessionId, fetchExactAssistant]);
+    }).catch(() => {});
+  }, [activeSessionId, fetchExactAssistant, owner]);
 
   // In-session search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1314,7 +1358,7 @@ export function ChatPanel({
     const el = scrollContainerRef.current;
     if (!el) return;
     const updateFollowState = () => {
-      if (loadingHistory || restoringThreadScroll.current || activeSessionRef.current !== activeSessionId || scrollStateRef.current.mode === "jumping-to-bottom") return;
+      if (!owner.isCurrent() || loadingHistory || restoringThreadScroll.current || activeSessionRef.current !== activeSessionId || scrollStateRef.current.mode === "jumping-to-bottom") return;
       const firstVisibleIndex = virtualizer.getVirtualItems()[0]?.index;
       scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
         type: "user-scroll",
@@ -1327,12 +1371,11 @@ export function ChatPanel({
       });
       followStreamRef.current = scrollStateRef.current.mode === "following";
       if (activeSessionId) {
-        const key = sidebarPreferenceKey(`chat-scroll:${activeSessionId}`);
-        if (followStreamRef.current) threadScrollPositions.current.delete(key);
+        if (followStreamRef.current) scrollBookmarks.saveBookmark(owner.scope, activeSessionId, null);
         else {
           const viewport = el.getBoundingClientRect();
           const anchor = Array.from(el.querySelectorAll<HTMLElement>("[data-row-id]")).find((row) => row.getBoundingClientRect().bottom > viewport.top);
-          threadScrollPositions.current.set(key, { top: el.scrollTop, anchorId: anchor?.dataset.rowId ?? null, offset: anchor ? anchor.getBoundingClientRect().top - viewport.top : 0 });
+          scrollBookmarks.saveBookmark(owner.scope, activeSessionId, { top: el.scrollTop, anchorId: anchor?.dataset.rowId ?? null, offset: anchor ? anchor.getBoundingClientRect().top - viewport.top : 0 });
         }
       }
       setDetachedFromBottom(
@@ -1343,7 +1386,7 @@ export function ChatPanel({
     updateFollowState();
     el.addEventListener("scroll", updateFollowState, { passive: true });
     return () => el.removeEventListener("scroll", updateFollowState);
-  }, [activeSessionId, activeSessionRef, loadingHistory, timelineTurns, virtualizer]);
+  }, [activeSessionId, activeSessionRef, loadingHistory, owner, scrollBookmarks, timelineTurns, virtualizer]);
 
   useEffect(() => {
     const saved = pendingThreadScroll.current;
@@ -1478,8 +1521,10 @@ export function ChatPanel({
       followStreamRef.current = false;
       setDetachedFromBottom(true);
       const restoreGeneration = ++prependRestoreGenerationRef.current;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      schedulePrependFrame(() => {
+        if (restoreGeneration !== prependRestoreGenerationRef.current) return;
+        schedulePrependFrame(() => {
+          if (restoreGeneration !== prependRestoreGenerationRef.current) return;
           const target = scrollContainerRef.current;
           if (!target) return;
           // Preserve the viewport immediately from the list's total-height
@@ -1503,7 +1548,7 @@ export function ChatPanel({
           }
           let remainingFrames = 240;
           let stableFrames = 0;
-          const restoreAnchor = () => requestAnimationFrame(() => {
+          const restoreAnchor = () => schedulePrependFrame(() => {
             if (restoreGeneration !== prependRestoreGenerationRef.current) return;
             const currentTarget = scrollContainerRef.current;
             const anchorId = pendingPrepend.anchorId;
@@ -1626,7 +1671,7 @@ export function ChatPanel({
         autoScrollRafRef.current = null;
       }
     };
-  }, [activeSessionId, chatMessages, prependScrollAnchorRef, runBottomClamp, safeMode, streaming, streamingAssistantVisibleChars, timelineTurns, virtualizer]);
+  }, [activeSessionId, chatMessages, prependScrollAnchorRef, runBottomClamp, safeMode, schedulePrependFrame, streaming, streamingAssistantVisibleChars, timelineTurns, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const visibleStartIndex = virtualItems[0]?.index ?? 0;
@@ -1687,6 +1732,7 @@ export function ChatPanel({
   return (
     <div
       data-testid="chat-panel"
+      data-panel-owner={owner.ownerToken}
       data-session-id={activeSessionId ?? ""}
       data-turn-state={turnState}
       data-streaming={streaming ? "true" : "false"}

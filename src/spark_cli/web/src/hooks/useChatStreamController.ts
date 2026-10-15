@@ -10,6 +10,7 @@ import {
 import type { ChatMessage } from "@/lib/chatTranscriptMerge";
 import { liveStreamFlushInterval } from "@/lib/liveStreamWindow";
 import {
+  adoptChatStreamSession,
   executeChatStreamEffect,
   eventAction,
   flushAction,
@@ -41,12 +42,14 @@ export interface UseChatStreamControllerOptions {
 
 export interface UseChatStreamControllerResult {
   state: ChatStreamState;
+  isCurrentState: (snapshot: ChatStreamState) => boolean;
   handleEvent: (event: ChatStreamEvent) => ChatStreamControllerTransition;
   applySnapshot: (snapshot: ChatStreamSnapshot) => ChatStreamControllerTransition;
   flush: (reason?: FlushReason) => ChatStreamControllerTransition;
   finalize: () => ChatStreamControllerTransition;
   syncMessages: (messages: readonly ChatMessage[]) => ChatStreamControllerTransition;
   setSession: (input: ChatStreamSessionInput) => ChatStreamControllerTransition;
+  adoptSession: (sessionId: string, aliases?: readonly string[]) => ChatStreamControllerTransition;
   resetSession: (input?: Partial<ChatStreamSessionInput>) => ChatStreamControllerTransition;
   reset: (input?: Partial<ChatStreamSessionInput>) => ChatStreamControllerTransition;
 }
@@ -82,6 +85,7 @@ export function useChatStreamController(
     sessionId: options.activeSessionId,
     recoverySequence: options.recoverySequence ?? 0,
   });
+  const renderedConfig = configRef.current;
   const callbacksRef = useRef(options.callbacks);
   const effectQueueRef = useRef<QueuedEffectBatch>({ effects: [], revision: 0 });
   const [effectRevision, setEffectRevision] = useState(0);
@@ -156,7 +160,7 @@ export function useChatStreamController(
   }, [dispatch, scheduleBufferedFlush]);
 
   const setSession = useCallback((input: ChatStreamSessionInput): ChatStreamControllerTransition => {
-    const transition = dispatch({
+    const transition = reduceChatStreamController(stateRef.current, {
       type: "set-session",
       sessionId: input.sessionId,
       aliases: input.aliases,
@@ -167,8 +171,14 @@ export function useChatStreamController(
       sessionId: input.sessionId,
       recoverySequence: transition.state.recoverySequence,
     };
-    return transition;
-  }, [dispatch]);
+    return commit(transition);
+  }, [commit]);
+
+  const adoptSession = useCallback((sessionId: string, aliases?: readonly string[]) => {
+    const transition = adoptChatStreamSession(stateRef.current, sessionId, aliases);
+    configRef.current = { sessionId, recoverySequence: transition.state.recoverySequence };
+    return commit(transition);
+  }, [commit]);
 
   const resetSession = useCallback((input: Partial<ChatStreamSessionInput> = {}): ChatStreamControllerTransition => {
     const current = stateRef.current;
@@ -185,10 +195,15 @@ export function useChatStreamController(
     return () => {
       mountedRef.current = false;
       clearScheduledFlush();
+      callbacksRef.current = undefined;
+      effectQueueRef.current = { effects: [], revision: 0 };
     };
   }, [clearScheduledFlush]);
 
   useEffect(() => {
+    // An imperative adoption/recovery after this render owns the identity.
+    // Its pending prop catch-up must not be rolled back by this older effect.
+    if (configRef.current !== renderedConfig) return;
     const nextConfig = {
       sessionId: options.activeSessionId,
       recoverySequence: options.recoverySequence ?? 0,
@@ -207,7 +222,9 @@ export function useChatStreamController(
         ? stateRef.current.messages
         : options.initialMessages,
     }));
-  }, [commit, options.activeSessionId, options.initialMessages, options.recoverySequence, options.sessionAliases]);
+  }, [commit, options.activeSessionId, options.initialMessages, options.recoverySequence, options.sessionAliases, renderedConfig]);
+
+  const isCurrentState = useCallback((snapshot: ChatStreamState) => stateRef.current === snapshot, []);
 
   useEffect(() => {
     const queued = effectQueueRef.current;
@@ -228,12 +245,14 @@ export function useChatStreamController(
 
   return {
     state,
+    isCurrentState,
     handleEvent,
     applySnapshot,
     flush,
     finalize,
     syncMessages,
     setSession,
+    adoptSession,
     resetSession,
     reset: resetSession,
   };

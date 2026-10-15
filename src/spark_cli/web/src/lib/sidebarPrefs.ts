@@ -3,6 +3,8 @@ import { getApiBase } from "./apiHelpers";
 export const SIDEBAR_EXPANDED_KEY = "spark-nav-expanded";
 export const SIDEBAR_SCOPE_EVENT = "spark:sidebar-preference-scope";
 let profileScope = "unresolved";
+let profileScopeGeneration = 0;
+export function sidebarPreferenceScopeGeneration() { return profileScopeGeneration; }
 export function sidebarPreferenceScopeReady() { return profileScope !== "unresolved"; }
 export function sidebarPreferenceKey(key: string, scope = profileScope, backend = getApiBase() || (typeof location === "undefined" ? "local" : location.origin)) {
   return `${key}:v1:${encodeURIComponent(backend)}:${scope}`;
@@ -10,6 +12,7 @@ export function sidebarPreferenceKey(key: string, scope = profileScope, backend 
 export function setSidebarPreferenceScope(scope: string) {
   if (scope === profileScope) return;
   profileScope = scope;
+  profileScopeGeneration += 1;
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SIDEBAR_SCOPE_EVENT));
 }
 export function readSidebarPreference(key: string): string | null {
