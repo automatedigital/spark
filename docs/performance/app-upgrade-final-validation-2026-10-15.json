@@ -383,8 +383,14 @@
     "production_recovery_checks": 9,
     "production_recovery_exit": 0,
     "full_local_pytest": {
-      "status": "running_with_failures_observed",
-      "log": "/tmp/spark-upgrade-20261015/full-local-pytest-integrated-approval.txt"
+      "status": "failed",
+      "log": "/tmp/spark-upgrade-20261015/full-local-pytest-integrated-approval.txt",
+      "exit": 1,
+      "failed": 79,
+      "passed": 12438,
+      "skipped": 151,
+      "warnings": 136,
+      "seconds": 454.54
     },
     "independent_approval_review": "pending",
     "retention_acceptance": "open",
@@ -395,5 +401,31 @@
       "/tmp/spark-upgrade-20261015/inspector-built-integrated-approval/report.json",
       "/tmp/spark-upgrade-20261015/recovery-built-integrated-approval/production.json"
     ]
+  },
+  "integration_regression_followup": {
+    "commit": "2e0f159",
+    "report": "docs/performance/app-upgrade-integration-regressions-2026-10-15.md",
+    "families": [
+      {
+        "cause": "optional agent-cache cleanup",
+        "broad_failures": 32,
+        "focused_passed": 37,
+        "seconds": 127.51
+      },
+      {
+        "cause": "replay interrupt fixture state leak",
+        "broad_failures": 46,
+        "focused_passed": 73,
+        "seconds": 41.57
+      },
+      {
+        "cause": "CLI module parent reference restoration",
+        "broad_failures": 1,
+        "serial_before_failed": 13,
+        "serial_after_passed": 461,
+        "seconds": 15.4
+      }
+    ],
+    "fresh_broad_run": "pending_remaining_integrations"
   }
 }
