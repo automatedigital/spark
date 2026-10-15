@@ -537,12 +537,27 @@
       "automatic_retry": false
     },
     "plain_nonserial_acceptance": {
-      "status": "authorized",
+      "status": "failed",
       "command": "python -m pytest tests/ -m 'not serial and not integration and not network' -q -n 4",
       "tracer": false,
       "process_group_wall_limit_seconds": 900,
       "serial_companion": "182 passed / 15 skipped / 289.03s",
-      "result": "pending"
+      "result": "pending",
+      "exit": 1,
+      "passed": 12453,
+      "failed": 1,
+      "skipped": 151,
+      "warnings": 135,
+      "seconds": 408.36,
+      "timed_out": false,
+      "workers": 4,
+      "unique_runtime_nodes": 12590,
+      "historical_37_nodes_passed": 37,
+      "log": "/tmp/spark-upgrade-plain-nonserial-20261015T214537Z/full-plain-nonserial.txt",
+      "coverage": "/tmp/spark-upgrade-plain-nonserial-20261015T214537Z/coverage-and-source-verification.json",
+      "remaining_failure": "tests/tools/test_write_deny.py::TestWriteDenyExactPaths::test_spark_env",
+      "failure_scope": "Import-time credential deny list captures outer SPARK_HOME; default-home and later profile-path behavior is under focused investigation.",
+      "all_groups_closed": true
     }
   },
   "panel_ownership_source_review": {
@@ -588,7 +603,41 @@
       "all_owned_groups_closed": true,
       "frozen_hashes_after_match": true,
       "automatic_retry": false,
-      "retention_acceptance": false
+      "retention_acceptance": false,
+      "offline_packet": {
+        "manifest_sha256": "5ac8fc09f22b5cdbe2827f46c7ec4c6f6afd0cfbbe38999344f50dcb25350ca7",
+        "path": "/tmp/spark-panel-ownership-422f1487/capture-v3-quiet-20261015-1/offline-analysis-v1/",
+        "original_turns": [
+          1350,
+          3100
+        ],
+        "original_cycle2_turn_ids_survive": 1350,
+        "candidate_turns": [
+          175,
+          850
+        ],
+        "candidate_cycle2_turn_ids_survive": 0,
+        "candidate_actual_js_arrays": [
+          2,
+          9
+        ],
+        "candidate_cycle2_array_ids_survive": 0,
+        "candidate_valid_session_owners": [
+          2,
+          9
+        ],
+        "candidate_cycle2_owner_ids_survive": 0,
+        "raw_shared_classifier_entry": "141 is hidden system/Hole, not an empty JSArray",
+        "candidate_pending_model_status_requests": [
+          2,
+          9
+        ],
+        "model_failures_recorded_before_snapshots": 0,
+        "native_error_holder_identity": "unproved; stack callsites do not prove request rejection",
+        "retention_acceptance": false,
+        "continuing_controls": "not run",
+        "next_diagnostic": "Preparation only: same-document pending-request drainage capped at5 seconds, then additional ordinary GC snapshot without reference clearing."
+      }
     }
   }
 }
