@@ -535,10 +535,18 @@
       "process_groups_closed": true,
       "evidence": "/tmp/spark-upgrade-cancel-transition-20261015T213250Z/",
       "automatic_retry": false
+    },
+    "plain_nonserial_acceptance": {
+      "status": "authorized",
+      "command": "python -m pytest tests/ -m 'not serial and not integration and not network' -q -n 4",
+      "tracer": false,
+      "process_group_wall_limit_seconds": 900,
+      "serial_companion": "182 passed / 15 skipped / 289.03s",
+      "result": "pending"
     }
   },
   "panel_ownership_source_review": {
-    "status": "response_review_pending",
+    "status": "accepted_for_measurement",
     "candidate_base": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
     "frozen_source_files": 13,
     "hashes_verified": true,
@@ -548,18 +556,39 @@
     "lint_errors": 0,
     "lint_warnings": 0,
     "confirmed_source_findings": 1,
-    "finding": "Delayed approval/action completion refreshes turn surfaces without checking live owner and backend/profile/credential scope before API reads. Existing continuation, incomplete fence; runtime reproduction pending.",
-    "retention_captures_started": false,
+    "finding": "Delayed approval/action surface refresh crossed scope; candidate before proofs demonstrate both launch and publication, and two-line entry/post-await owner+scope checks pass targeted browser proofs and independent response review.",
+    "retention_captures_started": true,
     "protocol_version": 3,
     "protocol_manifest_sha256": "794d209d067031769fa3aa8993fb5684e01e4f5bca880fd954b9cab5a1528ae3",
     "protocol_input_hashes_verified": 29,
-    "source_acceptance": "open",
+    "source_acceptance": "Accepted for measurement only; integration/retention/package gates remain open.",
     "inspector_aggregate": "Historical exit 1 on unproved HTTP 304 cache revalidation; not a passing aggregate.",
     "finding_runtime_proved": true,
     "app_response_changed_lines": 2,
     "response_cases_passed": 3,
     "response_checks_each": 11,
     "source_manifest_sha256": "88fef8effbc184aa36de578136ad49826fb185444018ccd3cfb449665cc3ec85",
-    "candidate_source_sha256": "3a191ae41f3eab4cc67a461fe054bbd8892eeed7f3688c932daa87d9fbea840e"
+    "candidate_source_sha256": "3a191ae41f3eab4cc67a461fe054bbd8892eeed7f3688c932daa87d9fbea840e",
+    "response_review": "spark-panel-refresh-p2-response-source-review-v3",
+    "response_review_confirmed_remaining_findings": 0,
+    "capture_batch": {
+      "path": "/tmp/spark-panel-ownership-422f1487/capture-v3-quiet-20261015-1",
+      "original_navigation_exit": 0,
+      "candidate_navigation_exit": 1,
+      "candidate_timed_out": false,
+      "candidate_failure": "Unchanged browser-error assertion: getWorkspaceFileTree Tree load failed TypeError: Failed to fetch; page errors empty, one console error. Cause unassigned.",
+      "navigation_samples_each": 13,
+      "navigation_snapshots_each": [
+        2,
+        12
+      ],
+      "original_control": "not started",
+      "candidate_control": "not started",
+      "stopped_on_failure": true,
+      "all_owned_groups_closed": true,
+      "frozen_hashes_after_match": true,
+      "automatic_retry": false,
+      "retention_acceptance": false
+    }
   }
 }
