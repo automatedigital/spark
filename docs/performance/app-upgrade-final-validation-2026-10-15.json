@@ -306,5 +306,58 @@
         "console": []
       }
     }
+  },
+  "browser_observation_followup": {
+    "integration_commit": "405057e9",
+    "agent_commit": "caeb89b9d733f31aafc630e028385c7667b865cf",
+    "measured_source_commit": "b432e028a55868fa043d6620ebddc8c791d0f571",
+    "application_source_matches_root_before_integration": true,
+    "report": "docs/performance/app-upgrade-browser-observation-2026-10-15.md",
+    "results": "/tmp/spark-upgrade-20261015/browser-observation/final/results.json",
+    "node_version": "v22.22.1",
+    "suites": [
+      {
+        "suite": "sidebar",
+        "runs": 3,
+        "exit": 0,
+        "seconds": 36.83
+      },
+      {
+        "suite": "targeted_2000",
+        "runs": 3,
+        "exit": 0,
+        "seconds": 46.95
+      },
+      {
+        "suite": "matrix",
+        "cases": 18,
+        "exit": 0,
+        "seconds": 120.27
+      }
+    ],
+    "selection_browser_commit_ms": [
+      57.3,
+      47.3,
+      49.5
+    ],
+    "selection_legacy_observation_ms": [
+      91.6,
+      70.3,
+      75.7
+    ],
+    "selection_budget_ms": 100,
+    "selection_definition": "inline-click-to-session-dom-commit; not paint or history-fetch completion",
+    "primary_stream_semantics_changed": false,
+    "matrix_original_rendered_updates": 140,
+    "matrix_final_visible_tokens_each": 16,
+    "matrix_sampled_scroll_drift_px_each": 0,
+    "prior_failures_retained": true,
+    "prior_missing_trace_cause": "unproved",
+    "limits": [
+      "Development-mode matrix; canonical production UI flows are recorded separately.",
+      "No forced-reload negative test of new observation error branches.",
+      "No performance improvement inferred from changed selection endpoint.",
+      "Retention, later source integrations, final regression and package acceptance remain open."
+    ]
   }
 }
