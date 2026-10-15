@@ -1,4 +1,22 @@
+import { getApiBase } from "./apiHelpers";
+
 export const SIDEBAR_EXPANDED_KEY = "spark-nav-expanded";
+export const SIDEBAR_SCOPE_EVENT = "spark:sidebar-preference-scope";
+let profileScope = "unresolved";
+export function sidebarPreferenceKey(key: string, scope = profileScope, backend = getApiBase() || (typeof location === "undefined" ? "local" : location.origin)) {
+  return `${key}:v1:${encodeURIComponent(backend)}:${scope}`;
+}
+export function setSidebarPreferenceScope(scope: string) {
+  if (scope === profileScope) return;
+  profileScope = scope;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SIDEBAR_SCOPE_EVENT));
+}
+export function readSidebarPreference(key: string): string | null {
+  try { return browserStorage()?.getItem(sidebarPreferenceKey(key)) ?? null; } catch { return null; }
+}
+export function writeSidebarPreference(key: string, value: string) {
+  try { browserStorage()?.setItem(sidebarPreferenceKey(key), value); } catch { /* Memory state still works. */ }
+}
 
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
@@ -22,12 +40,13 @@ function browserStorage(): StorageLike | null {
 }
 
 export function readSidebarExpanded(storage: StorageLike | null = browserStorage()) {
-  const saved = storage?.getItem(SIDEBAR_EXPANDED_KEY);
+  let saved: string | null | undefined;
+  try { saved = storage?.getItem(sidebarPreferenceKey(SIDEBAR_EXPANDED_KEY)); } catch { return true; }
   return saved === null || saved === undefined ? true : saved === "true";
 }
 
 export function writeSidebarExpanded(expanded: boolean, storage: StorageLike | null = browserStorage()) {
-  storage?.setItem(SIDEBAR_EXPANDED_KEY, String(expanded));
+  try { storage?.setItem(sidebarPreferenceKey(SIDEBAR_EXPANDED_KEY), String(expanded)); } catch { /* Optional device preference. */ }
 }
 
 export function isEditableShortcutTarget(target: EventTarget | ShortcutTargetLike | null) {

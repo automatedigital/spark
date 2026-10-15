@@ -8,6 +8,7 @@ import {
   mergeSessionRow,
   pendingInitialMessageForSession,
   sessionInfoFromDetail,
+  snapshotHasMoreSessions,
 } from "./sessionStore";
 import type { SessionInfo } from "./api";
 
@@ -181,5 +182,14 @@ describe("pendingInitialMessageForSession", () => {
     ];
 
     expect(mergeSearchRows(local, server).map((row) => row.id)).toEqual(["local", "history"]);
+  });
+});
+
+describe("snapshot pagination", () => {
+  it("permits paging beyond the initial bounded snapshot without requiring a separate reload", () => {
+    const limits = { sessions: 50, messages: 200, detail_idle_ttl_ms: 120000 };
+    expect(snapshotHasMoreSessions({ shells: Array.from({ length: 50 }, (_, i) => session({ id: String(i) })), limits })).toBe(true);
+    expect(snapshotHasMoreSessions({ shells: [session({})], limits })).toBe(false);
+    expect(snapshotHasMoreSessions({ shells: [], limits })).toBe(false);
   });
 });

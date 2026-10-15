@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   ChevronDown,
-  Check,
   CircleCheck,
   CircleDashed,
   Folder,
@@ -10,37 +9,18 @@ import {
   MessageSquare,
   Pencil,
   Search,
-  Undo2,
   X,
 } from "lucide-react";
 import type { SessionInfo } from "@/lib/api";
 import { threadTitle } from "@/components/chat/ThreadRow";
-import { sortSessionsNewestFirst } from "@/components/sidebar/sidebarRows";
+import { isEffectivelySettled, orderSidebarSessions, sidebarStatus } from "@/lib/sidebarOrganization";
+import { SidebarMetadataFeedback, SidebarThreadActions } from "./SidebarThreadActions";
 import { useSessionStore, slugFromSource } from "@/lib/sessionStore";
 import { cn, timeAgo } from "@/lib/utils";
 import { ProjectSourceDialog } from "@/components/sidebar/ProjectSourceDialog";
 import { ProjectWizard } from "@/components/sidebar/SidebarSessions";
 
-const SETTLED_KEY = "spark.sidebar-beta.settled";
 const SESSION_DRAG_MIME = "application/x-spark-session-id";
-
-type SettledRecord = Record<string, number>;
-
-function readSettled(): SettledRecord {
-  try {
-    return JSON.parse(localStorage.getItem(SETTLED_KEY) ?? "{}") as SettledRecord;
-  } catch {
-    return {};
-  }
-}
-
-function writeSettled(value: SettledRecord) {
-  try {
-    localStorage.setItem(SETTLED_KEY, JSON.stringify(value));
-  } catch {
-    // Local preference only; a storage failure should never block navigation.
-  }
-}
 
 function compactTime(timestamp: number) {
   return timeAgo(timestamp).replace(/ ago$/, "").replace(/^just now$/, "now");
@@ -58,7 +38,6 @@ function InboxCard({
   unread,
   project,
   onOpen,
-  onSettle,
   dragging,
   onDragStart,
   onDragEnd,
@@ -68,19 +47,22 @@ function InboxCard({
   unread: boolean;
   project: string;
   onOpen: () => void;
-  onSettle: () => void;
   dragging: boolean;
   onDragStart: (event: DragEvent<HTMLDivElement>) => void;
   onDragEnd: () => void;
 }) {
-  const working = session.is_active && session.ended_at === null;
+  const { sidebarAttention } = useSessionStore();
+  const status = sidebarStatus(session, sidebarAttention[session.id], unread);
+  const working = status === "Running";
   return (
-    <li className="list-none py-0.5">
+    <li className="flex list-none items-center py-0.5">
       <div
         role="button"
         tabIndex={0}
         draggable
         aria-grabbed={dragging}
+        aria-current={active ? "page" : undefined}
+        aria-label={`${threadTitle(session)}, ${status}`}
         title="Drag to move thread"
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
@@ -92,7 +74,7 @@ function InboxCard({
           }
         }}
         className={cn(
-          "group/inbox relative w-full cursor-pointer select-none overflow-hidden rounded-lg text-left transition-colors",
+          "group/inbox relative w-full cursor-pointer focus-visible:outline-2 focus-visible:outline-primary select-none overflow-hidden rounded-lg text-left transition-colors",
           active
             ? "bg-foreground/[0.11] text-foreground"
             : "bg-foreground/[0.035] hover:bg-foreground/[0.07]",
@@ -110,7 +92,7 @@ function InboxCard({
             <span className="relative ml-auto flex h-5 min-w-12 items-center justify-end">
               <span
                 className={cn(
-                  "inline-flex items-center gap-1 text-[11px] transition-opacity group-hover/inbox:opacity-0",
+                  "inline-flex items-center gap-1 text-[11px] transition-opacity",
                   working
                     ? "font-semibold text-blue-400"
                     : unread
@@ -119,20 +101,9 @@ function InboxCard({
                 )}
               >
                 {working ? <CircleDashed className="h-3 w-3 animate-spin" /> : unread ? <CircleCheck className="h-3 w-3" /> : null}
-                {working ? "Working" : unread ? "Done" : compactTime(session.last_active)}
+                {status === "Ready" ? compactTime(session.last_active) : status}
               </span>
-              <button
-                type="button"
-                aria-label="Mark thread as done"
-                title="Done"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSettle();
-                }}
-                className="absolute right-0 inline-flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/inbox:opacity-100"
-              >
-                <Check className="h-3 w-3" /> Done
-              </button>
+
             </span>
           </div>
           <div className={cn("mt-1 line-clamp-2 text-[13px] leading-5", unread || working ? "font-semibold" : "font-medium text-foreground/90")}>
@@ -144,6 +115,7 @@ function InboxCard({
           </div>
         </div>
       </div>
+      <SidebarThreadActions session={session} />
     </li>
   );
 }
@@ -153,7 +125,6 @@ function SlimRow({
   active,
   settled,
   onOpen,
-  onToggleSettled,
   dragging,
   onDragStart,
   onDragEnd,
@@ -162,13 +133,12 @@ function SlimRow({
   active: boolean;
   settled: boolean;
   onOpen: () => void;
-  onToggleSettled: () => void;
   dragging: boolean;
   onDragStart: (event: DragEvent<HTMLDivElement>) => void;
   onDragEnd: () => void;
 }) {
   return (
-    <li className="list-none">
+    <li className="flex list-none items-center">
       <div
         role="button"
         tabIndex={0}
@@ -185,7 +155,7 @@ function SlimRow({
           }
         }}
         className={cn(
-          "group/slim flex h-[34px] cursor-pointer items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-foreground/[0.06]",
+          "group/slim flex min-w-0 flex-1 h-[34px] cursor-pointer focus-visible:outline-2 focus-visible:outline-primary items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-foreground/[0.06]",
           active && "bg-foreground/[0.1] text-foreground",
           dragging && "opacity-45 ring-1 ring-foreground/20",
         )}
@@ -195,23 +165,12 @@ function SlimRow({
           {threadTitle(session)}
         </span>
         <span className="relative flex h-6 min-w-8 shrink-0 items-center justify-end">
-          <span className="text-[12px] tabular-nums text-muted-foreground/35 transition-opacity group-hover/slim:opacity-0">
+          <span className="text-[12px] tabular-nums text-muted-foreground/35 transition-opacity">
             {compactTime(session.last_active)}
           </span>
-          <button
-            type="button"
-            aria-label={settled ? "Restore thread" : "Mark thread as done"}
-            title={settled ? "Restore thread" : "Done"}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleSettled();
-            }}
-            className="absolute right-0 grid h-6 min-w-7 place-items-center rounded-md border border-border bg-background px-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/slim:opacity-100"
-          >
-            {settled ? <Undo2 className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-          </button>
         </span>
       </div>
+      <SidebarThreadActions session={session} />
     </li>
   );
 }
@@ -367,11 +326,12 @@ export function InboxSidebarSessions({
     sidebarProjectScope: projectScope,
     setSidebarProjectScope: setProjectScope,
     moveSessionToProject,
-    createProject,
+    createProject, pinnedIds,
+    sidebarMetadata, sidebarAttention, loadingSessions, searching: searchLoading,
+    loadMoreSessions, loadingMoreSessions, hasMoreSessions, sessionsError,
   } = useSessionStore();
   const searchRef = useRef<HTMLInputElement>(null);
-  const [settled, setSettled] = useState<SettledRecord>(readSettled);
-  const [showSettled, setShowSettled] = useState(10);
+  const [showSettled, setShowSettled] = useState(0);
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [dragError, setDragError] = useState<string | null>(null);
@@ -385,21 +345,6 @@ export function InboxSidebarSessions({
     [displayedSessions, projectScope],
   );
 
-  // Activity newer than the explicit settle action returns work to the inbox.
-  useEffect(() => {
-    setSettled((current) => {
-      let changed = false;
-      const next = { ...current };
-      for (const session of displayedSessions) {
-        if (next[session.id] && session.last_active > next[session.id]) {
-          delete next[session.id];
-          changed = true;
-        }
-      }
-      if (changed) writeSettled(next);
-      return changed ? next : current;
-    });
-  }, [displayedSessions]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -414,25 +359,16 @@ export function InboxSidebarSessions({
 
   // Inbox membership is a lifecycle choice, not a runtime status. Completed
   // and quiet threads remain full cards until the user explicitly settles them.
-  const active = sortSessionsNewestFirst(
-    visible.filter((session) => !settled[session.id]),
+  const active = orderSidebarSessions(
+    visible.filter((session) => !isEffectivelySettled(session, sidebarMetadata, sidebarAttention[session.id])), sidebarMetadata,
   );
-  const settledSessions = sortSessionsNewestFirst(
-    visible.filter((session) => Boolean(settled[session.id])),
+  const settledSessions = orderSidebarSessions(
+    visible.filter((session) => isEffectivelySettled(session, sidebarMetadata, sidebarAttention[session.id])), sidebarMetadata,
   );
-  const runningSessions = active.filter((session) => session.is_active && session.ended_at === null);
-  const needsSessions = active.filter((session) => unreadSessionIds.has(session.id) || !session.is_active);
+  const runningSessions = active.filter((session) => sidebarStatus(session, sidebarAttention[session.id]) === "Running");
+  const needsSessions = active.filter((session) => sidebarAttention[session.id]?.pending_decision || unreadSessionIds.has(session.id) || !session.is_active);
+  const pinnedSessions = active.filter((session) => pinnedIds.has(session.id));
   const inboxSessions = filter === "running" ? runningSessions : filter === "finished" ? settledSessions : needsSessions;
-
-  const toggleSettled = (session: SessionInfo) => {
-    setSettled((current) => {
-      const next = { ...current };
-      if (next[session.id]) delete next[session.id];
-      else next[session.id] = Date.now() / 1000;
-      writeSettled(next);
-      return next;
-    });
-  };
 
   const startSessionDrag = (sessionId: string, event: DragEvent<HTMLDivElement>) => {
     event.dataTransfer.effectAllowed = "move";
@@ -470,6 +406,7 @@ export function InboxSidebarSessions({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <SidebarMetadataFeedback />
       <ProjectWizard
         open={creatingProject}
         onClose={() => setCreatingProject(false)}
@@ -526,7 +463,7 @@ export function InboxSidebarSessions({
       </div>
 
       <div className="flex shrink-0 gap-1 px-2 py-1.5" role="tablist" aria-label="Inbox filters">
-        {([['needs', 'Needs you', needsSessions.length], ['running', 'Running', runningSessions.length], ['finished', 'Finished', settledSessions.length]] as const).map(([value, label, count]) => (
+        {([['needs', 'Needs you', needsSessions.length], ['running', 'Running', runningSessions.length], ['finished', 'Settled', settledSessions.length]] as const).map(([value, label, count]) => (
           <button key={value} type="button" role="tab" aria-selected={filter === value} onClick={() => setFilter(value)} className={cn("rounded px-2 py-1 text-[10px] transition", filter === value ? "bg-foreground/10 text-foreground" : "text-muted-foreground/55 hover:text-foreground")}>
             {label} <span className="tabular-nums opacity-60">{count}</span>
           </button>
@@ -539,11 +476,22 @@ export function InboxSidebarSessions({
         </p>
       )}
 
+      {loadingSessions && <p role="status" className="px-3 text-xs">Loading threads…</p>}
+      {searchLoading && <p role="status" className="px-3 text-xs">Searching…</p>}
+      {sessionsError && <p role="alert" className="px-3 text-xs text-destructive">{sessionsError}</p>}
       <div className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1.5 pb-3" data-testid="session-sidebar-scroll">
+        {displayedSessions.some((session) => sidebarAttention[session.id]?.pending_decision && !inboxSessions.includes(session)) && <section aria-label="Pending decisions">
+          <h3 className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Pending decisions</h3>
+          <ul>{displayedSessions.filter((session) => sidebarAttention[session.id]?.pending_decision && !inboxSessions.includes(session)).map((session) => <InboxCard key={session.id} session={session} active={selectedId === session.id} unread={unreadSessionIds.has(session.id)} project={projectName(session.source, projectNames)} onOpen={() => onOpenSession(session.id)} dragging={draggingSessionId === session.id} onDragStart={(event) => startSessionDrag(session.id, event)} onDragEnd={endSessionDrag} />)}</ul>
+        </section>}
+        {pinnedSessions.length > 0 && filter !== "finished" && <section aria-label="Pinned threads">
+          <h3 className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Pinned</h3>
+          <ul>{pinnedSessions.map((session) => <SlimRow key={session.id} session={session} active={selectedId === session.id} settled={false} onOpen={() => onOpenSession(session.id)} dragging={draggingSessionId === session.id} onDragStart={(event) => startSessionDrag(session.id, event)} onDragEnd={endSessionDrag} />)}</ul>
+        </section>}
         {inboxSessions.length > 0 && (
           <section>
             <div className="flex items-center justify-between px-1.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/45">
-              <span>{filter === "running" ? "Running" : filter === "finished" ? "Finished" : "Needs you"}</span><span>{inboxSessions.length}</span>
+              <span>{filter === "running" ? "Running" : filter === "finished" ? "Settled" : "Needs you"}</span><span>{inboxSessions.length}</span>
             </div>
             <ul>
               {inboxSessions.map((session) => (
@@ -554,7 +502,6 @@ export function InboxSidebarSessions({
                   unread={unreadSessionIds.has(session.id)}
                   project={projectName(session.source, projectNames)}
                   onOpen={() => onOpenSession(session.id)}
-                  onSettle={() => toggleSettled(session)}
                   dragging={draggingSessionId === session.id}
                   onDragStart={(event) => startSessionDrag(session.id, event)}
                   onDragEnd={endSessionDrag}
@@ -564,10 +511,10 @@ export function InboxSidebarSessions({
           </section>
         )}
 
-        {settledSessions.length > 0 && (
+        {filter !== "finished" && settledSessions.length > 0 && (
           <section className="mt-2 border-t border-border/50 pt-2">
             <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/30">
-              <span>Done</span><span>{settledSessions.length}</span>
+              <button type="button" aria-expanded={showSettled > 0} onClick={() => setShowSettled((count) => count ? 0 : 25)}>Settled ({settledSessions.length})</button>
             </div>
             <ul>
               {settledSessions.slice(0, showSettled).map((session) => (
@@ -577,7 +524,6 @@ export function InboxSidebarSessions({
                   active={selectedId === session.id}
                   settled
                   onOpen={() => onOpenSession(session.id)}
-                  onToggleSettled={() => toggleSettled(session)}
                   dragging={draggingSessionId === session.id}
                   onDragStart={(event) => startSessionDrag(session.id, event)}
                   onDragEnd={endSessionDrag}
@@ -588,7 +534,7 @@ export function InboxSidebarSessions({
           </section>
         )}
 
-        {!inboxSessions.length && (
+        {!inboxSessions.length && !loadingSessions && !searchLoading && !sessionsError && (
           <div className="px-4 py-10 text-center">
             <CircleCheck className="mx-auto mb-3 h-5 w-5 text-muted-foreground/35" />
             <p className="text-[13px] font-medium text-foreground/75">Inbox clear</p>
@@ -596,6 +542,7 @@ export function InboxSidebarSessions({
           </div>
         )}
       </div>
+      {hasMoreSessions && <button type="button" disabled={loadingMoreSessions} className="py-2 text-xs" onClick={() => void loadMoreSessions()}>{loadingMoreSessions ? "Loading older chats…" : "Load older chats"}</button>}
     </div>
   );
 }

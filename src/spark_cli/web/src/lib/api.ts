@@ -14,6 +14,7 @@ import {
   getApiBase,
   mediaFileUrl,
 } from "./apiHelpers";
+import { sidebarApi } from "./api_sidebar";
 import { sessionApi } from "./api_session";
 import { skillApi } from "./api_skill";
 import { cronApi } from "./api_cron";
@@ -69,6 +70,7 @@ import { browserApi } from "./api_browser";
 import { envApi } from "./api_env";
 
 export const api = {
+  ...sidebarApi,
   ...adminApi,
   ...browserApi,
   ...canvasApi,

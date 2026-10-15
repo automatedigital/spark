@@ -9,6 +9,7 @@ import {
   Settings,
 } from "lucide-react";
 import ChatPage from "@/pages/ChatPage";
+import { SidebarSessions } from "@/components/sidebar/SidebarSessions";
 import { InboxSidebarSessions } from "@/components/sidebar/InboxSidebarSessions";
 import { SessionStoreProvider, useSessionStore } from "@/lib/sessionStore";
 import { useI18n } from "@/i18n";
@@ -31,6 +32,7 @@ import { OPEN_SETTINGS_EVENT } from "@/lib/navigationEvents";
 import {
   isEditableShortcutTarget,
   isSidebarToggleShortcut,
+  SIDEBAR_SCOPE_EVENT, readSidebarPreference, writeSidebarPreference,
   readSidebarExpanded,
   writeSidebarExpanded,
 } from "@/lib/sidebarPrefs";
@@ -197,6 +199,7 @@ export default function App() {
 }
 
 function AppShell() {
+  const { newProjectThread } = useSessionStore();
   const [page, setPage] = useState<PageId>(() => {
     const saved = localStorage.getItem("spark-active-page");
     return saved && saved in PAGE_COMPONENTS ? (saved as PageId) : "chat";
@@ -204,6 +207,12 @@ function AppShell() {
   const [navExpanded, setNavExpanded] = useState(() => {
     return readSidebarExpanded();
   });
+  const [sidebarView, setSidebarView] = useState(() => readSidebarPreference("spark-sidebar-view") ?? "inbox");
+  useEffect(() => {
+    const refresh = () => { setNavExpanded(readSidebarExpanded()); setSidebarView(readSidebarPreference("spark-sidebar-view") ?? "inbox"); };
+    window.addEventListener(SIDEBAR_SCOPE_EVENT, refresh);
+    return () => window.removeEventListener(SIDEBAR_SCOPE_EVENT, refresh);
+  }, []);
   const [navHovered, setNavHovered] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState("model");
@@ -635,10 +644,12 @@ function AppShell() {
 
           {/* Search + Pinned + Sessions (hidden when collapsed; hover-expand reveals) */}
           {sidebarOpen ? (
-            <InboxSidebarSessions
-              onOpenSession={openSidebarSession}
-              onNewThread={handleNewSession}
-            />
+            <>
+              <div className="flex gap-1 px-2 py-1" role="group" aria-label="Sidebar view">
+                {(["threads", "inbox"] as const).map((view) => <button key={view} type="button" aria-pressed={sidebarView === view} className={`rounded px-2 py-1 text-xs capitalize ${sidebarView === view ? "bg-secondary text-foreground" : "text-muted-foreground"}`} onClick={() => { setSidebarView(view); writeSidebarPreference("spark-sidebar-view", view); }}>{view === "threads" ? "Threads" : "Inbox"}</button>)}
+              </div>
+              {sidebarView === "inbox" ? <InboxSidebarSessions onOpenSession={openSidebarSession} onNewThread={handleNewSession} /> : <SidebarSessions onOpenSession={openSidebarSession} onNewProjectThread={(slug) => { newProjectThread(slug); navigateTo("chat"); }} />}
+            </>
           ) : (
             <div className="flex-1" />
           )}

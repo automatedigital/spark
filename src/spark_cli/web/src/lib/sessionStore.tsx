@@ -14,6 +14,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { DEFAULT_SIDEBAR_METADATA, SidebarMutationError, type SidebarAttention, type SidebarMetadata } from "./api_sidebar";
+import { isEffectivelySettled, mergeSidebarEntries, sidebarMovePatches, type SidebarEntries } from "./sidebarOrganization";
+import { readSidebarPreference, writeSidebarPreference, setSidebarPreferenceScope } from "./sidebarPrefs";
 import { api } from "@/lib/api";
 import type {
   ProjectCreateRequest,
@@ -45,6 +48,12 @@ export type PendingInitialMessages = Record<string, string>;
 export interface ThreadCreatedMeta {
   source?: string | null;
   projectSlug?: string | null;
+}
+
+export function snapshotHasMoreSessions(snapshot: Pick<WebStateSnapshotV1, "shells" | "limits">): boolean {
+  // A bounded snapshot does not carry a total. A full page is eligible for
+  // paging; the ordinary page response proves exhaustion (including exact ties).
+  return snapshot.limits.sessions > 0 && snapshot.shells.length >= snapshot.limits.sessions;
 }
 
 export function pendingInitialMessageForSession(
@@ -145,17 +154,9 @@ export function mergeSearchRows(primary: SessionInfo[], secondary: SessionInfo[]
   ];
 }
 
-function loadPinnedIds(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(PINNED_KEY) ?? "[]") as string[]);
-  } catch {
-    return new Set<string>();
-  }
-}
-
 function loadExpanded(): Set<string> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? "[]") as string[]);
+    return new Set(JSON.parse(readSidebarPreference(EXPANDED_KEY) ?? "[]") as string[]);
   } catch {
     return new Set<string>();
   }
@@ -182,6 +183,19 @@ export interface SessionStoreValue {
   // Pinning
   pinnedIds: Set<string>;
   togglePin: (id: string) => void;
+
+  sidebarMetadata: SidebarEntries;
+  sidebarAttention: Record<string, SidebarAttention>;
+  sidebarMetadataError: string | null;
+  sidebarMetadataReady: boolean;
+  sidebarBusy: boolean;
+  sidebarUndo: { id: string; settled: boolean; revision: number } | null;
+  toggleSettled: (id: string) => void;
+  undoSidebarChange: () => void;
+  moveSidebarSession: (id: string, direction: -1 | 1) => void;
+  reloadSidebarMetadata: () => Promise<void>;
+  importLocalPins: () => void;
+  canImportLocalPins: boolean;
 
   // Selection / composing
   selectedId: string | null;
@@ -232,7 +246,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const [sessionsError, setSessionsError] = useState<string | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(() => {
-    try { return localStorage.getItem(SELECTED_SESSION_KEY); } catch { return null; }
+    try { return readSidebarPreference(SELECTED_SESSION_KEY); } catch { return null; }
   });
   const [composingFor, setComposingFor] = useState<string | null>(null);
   const [sidebarProjectScope, setSidebarProjectScope] = useState<string | null>(null);
@@ -249,7 +263,18 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const loadingMoreRef = useRef(false);
   const hydrationRequestsRef = useRef<Map<string, Promise<SessionInfo | null>>>(new Map());
 
-  const [pinnedIds, setPinnedIds] = useState<Set<string>>(loadPinnedIds);
+  const [sidebarMetadata, setSidebarMetadata] = useState<SidebarEntries>({});
+  const metadataRef = useRef(sidebarMetadata);
+  metadataRef.current = sidebarMetadata;
+  const [sidebarAttention, setSidebarAttention] = useState<Record<string, SidebarAttention>>({});
+  const [sidebarMetadataError, setSidebarMetadataError] = useState<string | null>(null);
+  const sidebarMutationErrorRef = useRef<string | null>(null);
+  const [sidebarMetadataReady, setSidebarMetadataReady] = useState(false);
+  const [sidebarBusy, setSidebarBusy] = useState(false);
+  const busyRef = useRef(false);
+  const [sidebarUndo, setSidebarUndo] = useState<{ id: string; settled: boolean; revision: number } | null>(null);
+  const [canImportLocalPins, setCanImportLocalPins] = useState(false);
+  const pinnedIds = useMemo(() => new Set(Object.keys(sidebarMetadata).filter((id) => sidebarMetadata[id].pinned)), [sidebarMetadata]);
   const pinnedIdsRef = useRef(pinnedIds);
   pinnedIdsRef.current = pinnedIds;
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(loadExpanded);
@@ -344,6 +369,57 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     return request;
   }, []);
 
+  const metadataRequestRef = useRef(0);
+  const metadataScopeRef = useRef<string | null>(null);
+  const reloadSidebarMetadata = useCallback(async () => {
+    const request = ++metadataRequestRef.current;
+    try {
+      const snapshot = await api.getSidebarThreads();
+      if (request !== metadataRequestRef.current) return;
+      if (snapshot.schema_version !== 1) throw new Error("Unsupported sidebar metadata version");
+      const scopeChanged = metadataScopeRef.current !== snapshot.preference_scope;
+      metadataScopeRef.current = snapshot.preference_scope;
+      setSidebarPreferenceScope(snapshot.preference_scope);
+      if (scopeChanged) {
+        setExpandedProjects(loadExpanded());
+        setSelectedId((current) => current ?? (readSidebarPreference(SELECTED_SESSION_KEY) || null));
+        setSidebarUndo(null);
+      }
+      setSidebarMetadata((current) => scopeChanged ? snapshot.entries : mergeSidebarEntries(current, snapshot.entries));
+      setSidebarAttention(snapshot.attention ?? {});
+      setSidebarMetadataReady(true);
+      setSidebarMetadataError(sidebarMutationErrorRef.current);
+      try {
+        const legacy = JSON.parse(localStorage.getItem(PINNED_KEY) ?? "[]");
+        setCanImportLocalPins(!readSidebarPreference("spark-sidebar-pin-import") && Array.isArray(legacy) && legacy.some((id: unknown) => typeof id === "string" && snapshot.entries[id]?.revision === 0));
+      } catch { setCanImportLocalPins(false); }
+    } catch (error) {
+      if (request === metadataRequestRef.current) {
+        setSidebarMetadataReady(false);
+        setSidebarMetadataError(error instanceof Error ? error.message : "Could not load thread organization");
+      }
+    }
+  }, []);
+  useEffect(() => {
+    void reloadSidebarMetadata();
+    const refresh = () => { if (document.visibilityState !== "hidden") void reloadSidebarMetadata(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    // One bounded subscription for all rows, also covering other backend processes.
+    const timer = window.setInterval(refresh, 15000);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [reloadSidebarMetadata]);
+
+  const metadataRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueSidebarMetadataReload = useCallback(() => {
+    if (metadataRefreshTimer.current) return;
+    metadataRefreshTimer.current = setTimeout(() => {
+      metadataRefreshTimer.current = null;
+      void reloadSidebarMetadata();
+    }, 150);
+  }, [reloadSidebarMetadata]);
+  useEffect(() => () => { if (metadataRefreshTimer.current) clearTimeout(metadataRefreshTimer.current); }, []);
+
   const flushQueuedSessionRows = useCallback(() => {
     if (queuedSessionRowsTimerRef.current) {
       clearTimeout(queuedSessionRowsTimerRef.current);
@@ -381,10 +457,12 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (loadingSessions) return;
     const loaded = new Set(sessions.map((session) => session.id));
-    pinnedIdsRef.current.forEach((id) => {
-      if (!loaded.has(id)) void hydrateSession(id);
+    const required = new Set(pinnedIdsRef.current);
+    Object.entries(sidebarAttention).forEach(([id, attention]) => {
+      if (attention.pending_decision || attention.running) required.add(id);
     });
-  }, [hydrateSession, loadingSessions, sessions]);
+    required.forEach((id) => { if (!loaded.has(id)) void hydrateSession(id); });
+  }, [hydrateSession, loadingSessions, sessions, pinnedIds, sidebarAttention]);
 
   useEffect(() => () => {
     if (queuedSessionRowsTimerRef.current) clearTimeout(queuedSessionRowsTimerRef.current);
@@ -393,6 +471,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   // ── Real-time updates (SSE) ──
   useEventBus((env: SparkEventEnvelope) => {
+    if (env.topic === "sidebar.metadata_changed") queueSidebarMetadataReload();
+    if (env.topic === STATE_SNAPSHOT_TOPIC) void reloadSidebarMetadata();
     if (env.topic === STATE_SNAPSHOT_TOPIC) {
       const snapshot = env.data.snapshot as WebStateSnapshotV1 | undefined;
       if (snapshot?.shells) {
@@ -411,6 +491,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
         }
         setSessions(normalizedWebState.selectShells() as SessionInfo[]);
         nextSessionsOffsetRef.current = snapshot.shells.length;
+        setHasMoreSessions(snapshotHasMoreSessions(snapshot));
       }
       return;
     }
@@ -418,6 +499,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     // projection can arrive a little later, which previously left the inbox
     // card saying Working until a full page refresh reconciled it.
     if (env.topic === "chat.turn_done") {
+      void reloadSidebarMetadata();
       const data = env.data as { session_id?: string };
       const sid = data.session_id ?? env.session_id ?? "";
       if (sid) {
@@ -428,11 +510,21 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       }
       return;
     }
+    if (env.topic === "chat.status" && !sidebarAttention[env.session_id ?? ""]?.running) queueSidebarMetadataReload();
+    if (env.topic === "chat.approval_requested" || env.topic === "chat.input_requested" || env.topic === "chat.approval_resolved" || env.topic === "chat.input_resolved") void reloadSidebarMetadata();
     if (env.topic !== "sessions.changed") return;
     const data = env.data as { action?: string; session_id?: string; session?: SessionInfo };
+    if (data.action === "sidebar_metadata") { queueSidebarMetadataReload(); return; }
+    if (data.action === "created") queueSidebarMetadataReload();
     const sid = data.session_id ?? "";
 
     if (data.action === "deleted" && sid) {
+      metadataRequestRef.current += 1;
+      const remaining = { ...metadataRef.current };
+      delete remaining[sid];
+      metadataRef.current = remaining;
+      setSidebarMetadata(remaining);
+      queueSidebarMetadataReload();
       normalizedWebState.removeShell(sid);
       dismissSessionNotification(sid);
       lastMessageCountRef.current.delete(sid);
@@ -539,8 +631,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     if (id && !sessionsRef.current.some((session) => session.id === id)) void hydrateSession(id);
     setSelectedId(id);
     try {
-      if (id) localStorage.setItem(SELECTED_SESSION_KEY, id);
-      else localStorage.removeItem(SELECTED_SESSION_KEY);
+      if (id) writeSidebarPreference(SELECTED_SESSION_KEY, id);
+      else writeSidebarPreference(SELECTED_SESSION_KEY, "");
     } catch { /* private or unavailable storage: memory state still works */ }
     setComposingFor(null);
   }, [hydrateSession]);
@@ -556,7 +648,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       const next = new Set(prev);
       if (next.has(slug)) next.delete(slug);
       else next.add(slug);
-      localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+      writeSidebarPreference(EXPANDED_KEY, JSON.stringify([...next]));
       return next;
     });
   }, []);
@@ -568,7 +660,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     setExpandedProjects((prev) => {
       const next = new Set(prev);
       next.add(slug);
-      localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+      writeSidebarPreference(EXPANDED_KEY, JSON.stringify([...next]));
       return next;
     });
   }, []);
@@ -608,7 +700,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       setExpandedProjects((prev) => {
         const next = new Set(prev);
         next.add(projectSlug);
-        localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+        writeSidebarPreference(EXPANDED_KEY, JSON.stringify([...next]));
         return next;
       });
     }
@@ -655,7 +747,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       setExpandedProjects((prev) => {
         const next = new Set(prev);
         next.add(target.id);
-        localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+        writeSidebarPreference(EXPANDED_KEY, JSON.stringify([...next]));
         return next;
       });
     }
@@ -675,27 +767,86 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
   }, [openGlobalTarget]);
 
-  // ── Pinning ──
-  const togglePin = useCallback((id: string) => {
-    setPinnedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      localStorage.setItem(PINNED_KEY, JSON.stringify([...next]));
-      return next;
-    });
+  // Serialize this client's metadata gestures; other clients are fenced by CAS.
+  const mutateSidebar = useCallback(async (id: string, fields: Partial<Omit<SidebarMetadata, "revision">>, expected?: number) => {
+    const meta = metadataRef.current[id] ?? DEFAULT_SIDEBAR_METADATA;
+    try {
+      const result = await api.patchSidebarThread(id, expected ?? meta.revision, fields);
+      // Fence a GET started before this acceptance, including snapshots that
+      // predate a newly created thread and therefore omit its ID entirely.
+      metadataRequestRef.current += 1;
+      metadataRef.current = { ...metadataRef.current, [id]: result.metadata };
+      setSidebarMetadata(metadataRef.current);
+      return result.metadata;
+    } catch (error) {
+      if (error instanceof SidebarMutationError && error.current) {
+        metadataRequestRef.current += 1;
+        metadataRef.current = { ...metadataRef.current, [id]: error.current };
+        setSidebarMetadata(metadataRef.current);
+      }
+      throw error;
+    }
   }, []);
+  const sidebarAction = useCallback((action: () => Promise<void>) => {
+    if (busyRef.current) return;
+    if (!sidebarMetadataReady) { setSidebarMetadataError("Refresh thread organization before making changes"); return; }
+    busyRef.current = true;
+    setSidebarBusy(true);
+    sidebarMutationErrorRef.current = null;
+    setSidebarMetadataError(null);
+    void action().catch(async (error) => {
+      await reloadSidebarMetadata();
+      sidebarMutationErrorRef.current = error instanceof Error ? error.message : "Could not update thread organization";
+      setSidebarMetadataError(sidebarMutationErrorRef.current);
+    }).finally(() => { busyRef.current = false; setSidebarBusy(false); });
+  }, [reloadSidebarMetadata, sidebarMetadataReady]);
+  const togglePin = useCallback((id: string) => sidebarAction(async () => {
+    const current = metadataRef.current[id] ?? DEFAULT_SIDEBAR_METADATA;
+    await mutateSidebar(id, { pinned: !current.pinned });
+  }), [mutateSidebar, sidebarAction]);
+  const toggleSettled = useCallback((id: string) => sidebarAction(async () => {
+    const current = metadataRef.current[id] ?? DEFAULT_SIDEBAR_METADATA;
+    const result = await mutateSidebar(id, { settled: !current.settled });
+    setSidebarUndo({ id, settled: current.settled, revision: result.revision });
+  }), [mutateSidebar, sidebarAction]);
+  const undoSidebarChange = useCallback(() => {
+    if (!sidebarUndo) return;
+    sidebarAction(async () => {
+      // Original post-action revision: a newer metadata edit must conflict.
+      try {
+        await mutateSidebar(sidebarUndo.id, { settled: sidebarUndo.settled }, sidebarUndo.revision);
+        setSidebarUndo(null);
+      } catch (error) {
+        if (error instanceof SidebarMutationError && error.current) setSidebarUndo(null);
+        throw error;
+      }
+    });
+  }, [mutateSidebar, sidebarAction, sidebarUndo]);
+  const moveSidebarSession = useCallback((id: string, direction: -1 | 1) => sidebarAction(async () => {
+    const row = sessionsRef.current.find((session) => session.id === id);
+    if (!row) return;
+    const entries = metadataRef.current;
+    const settled = isEffectivelySettled(row, entries, sidebarAttention[id]);
+    const group = sessionsRef.current.filter((session) =>
+      isEffectivelySettled(session, entries, sidebarAttention[session.id]) === settled
+      && (entries[id]?.pinned ? entries[session.id]?.pinned : session.source === row.source));
+    for (const patch of sidebarMovePatches(group, entries, id, direction)) {
+      await mutateSidebar(patch.id, { position: patch.position }, patch.revision);
+    }
+  }), [mutateSidebar, sidebarAction, sidebarAttention]);
+  const importLocalPins = useCallback(() => sidebarAction(async () => {
+    const legacy: unknown = JSON.parse(localStorage.getItem(PINNED_KEY) ?? "[]");
+    if (!Array.isArray(legacy)) return;
+    for (const id of legacy) {
+      if (typeof id === "string" && metadataRef.current[id]?.revision === 0) await mutateSidebar(id, { pinned: true }, 0);
+    }
+    writeSidebarPreference("spark-sidebar-pin-import", "v1");
+    setCanImportLocalPins(false);
+  }), [mutateSidebar, sidebarAction]);
 
   // ── Mutations ──
   const deleteSession = useCallback(async (id: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== id));
-    setPinnedIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      localStorage.setItem(PINNED_KEY, JSON.stringify([...next]));
-      return next;
-    });
     if (selectedIdRef.current === id) setSelectedId(null);
     try {
       await api.deleteSession(id);
@@ -726,7 +877,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     setExpandedProjects((prev) => {
       const next = new Set(prev);
       next.add(res.slug);
-      localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+      writeSidebarPreference(EXPANDED_KEY, JSON.stringify([...next]));
       return next;
     });
     return res.slug;
@@ -744,7 +895,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       setExpandedProjects((prev) => {
         const next = new Set(prev);
         next.add(slug);
-        localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+        writeSidebarPreference(EXPANDED_KEY, JSON.stringify([...next]));
         return next;
       });
     }
@@ -783,7 +934,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     setExpandedProjects((prev) => {
       const next = new Set(prev);
       if (next.delete(slug)) next.add(newSlug);
-      localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
+      writeSidebarPreference(EXPANDED_KEY, JSON.stringify([...next]));
       return next;
     });
     setComposingFor((prev) => (prev === slug ? newSlug : prev));
@@ -813,6 +964,9 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     displayedSessions,
     pinnedIds,
     togglePin,
+    sidebarMetadata, sidebarAttention, sidebarMetadataError, sidebarMetadataReady,
+    sidebarBusy, sidebarUndo, toggleSettled, undoSidebarChange, moveSidebarSession,
+    reloadSidebarMetadata, canImportLocalPins, importLocalPins,
     selectedId,
     selectedSession,
     composingFor,
