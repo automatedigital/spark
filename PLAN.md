@@ -481,8 +481,11 @@ python -m pytest tests/spark_cli/test_web_state.py tests/test_web_turn_persisten
 python scripts/generate_tool_manifest.py --check
 ruff check src/
 mypy src/agent/ src/spark_cli/
-python -m pytest tests/ -m "not slow and not integration" -q
-python -m pytest tests/ -q
+python -m pytest tests/ -m "not slow and not integration" -q -n 0
+# Local acceptance: run both selections sequentially.
+python -m pytest tests/ -m "not serial and not integration and not network" -q -n 4
+python -m pytest tests/ -m "serial and not integration and not network" -q -n 0
+python -m pytest tests/ -q -n 0
 
 (cd src/spark_cli/web && npm ci)
 (cd src/spark_cli/web && npm run lint && npm test && npm run build)
@@ -498,8 +501,9 @@ SPARK_E2E_BUILT_WEB=1 python src/spark_cli/web/e2e/work-recovery.py
 `npm run build` includes TypeScript and the bundle-budget check. Browser tests need
 the Node Playwright browser; `work-recovery.py` needs its Python Playwright browser
 as configured in `web-quality.yml`. Pytest excludes integration by default; retain
-that exclusion when overriding `-m`. Use `-n 0` for serial/shared-state cases as
-needed. Existing CI enforces selected Ruff rule families and incremental mypy;
+that exclusion when overriding `-m`. The `serial` marker does not override xdist:
+use `-n 0` for selections containing serial/shared-state cases. Both selections
+in the split local run are required. Existing CI enforces selected Ruff rule families and incremental mypy;
 record full-lint baseline debt separately from new failures.
 
 Every accepted packet records SHA/PR, migration/config impact, commands and exit

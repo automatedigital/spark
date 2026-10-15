@@ -117,6 +117,7 @@ complete configuration schema.
 ├── kanban.db                   # Task board and task attempts
 ├── memories/                   # Local memory
 ├── sessions/                   # Session files/exports, not the primary SQLite DB
+├── subagent-worktrees/          # Opt-in delegated Git checkouts and ownership JSON
 ├── skills/                     # User skills and usage metadata
 ├── dreams/                     # Explicit/scheduled reflection state
 ├── workspace/wiki/             # Dream review output and wiki
@@ -127,5 +128,6 @@ complete configuration schema.
 Named profiles are rooted at `~/.spark/profiles/<name>/` by design, independent
 of which profile is active. Do not put one profile's state under another profile.
 Tests use temporary homes; manual servers and browser fixtures must do the same.
-New receipts/worktree/skill-history locations in `PLAN.md` are design work, not
-additional existing state directories.
+Durable command receipts live in `state.db`; delegated worktree metadata and
+checkouts use `subagent-worktrees/` when isolation is enabled. Skill-history
+expansion remains follow-on design work in `PLAN.md`.
