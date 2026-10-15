@@ -427,5 +427,55 @@
       }
     ],
     "fresh_broad_run": "pending_remaining_integrations"
+  },
+  "caller_policy_broad_run": {
+    "source_commit": "61126d04",
+    "root_regression_repairs": "2e0f159",
+    "exit": 1,
+    "failed": 62,
+    "passed": 12559,
+    "skipped": 151,
+    "warnings": 135,
+    "seconds": 555.54,
+    "log": "/tmp/spark-upgrade-20261015/full-local-pytest-caller-policy.txt",
+    "remaining_families": {
+      "live_shell_interrupt": 46,
+      "orchestration_async_config": 16
+    },
+    "telegram_topic_followup_not_in_run": "6c452268"
+  },
+  "search_fix_integration": {
+    "source_commit": "a45a6e4b",
+    "agent_commit": "3a085fe53eb5f11b6f6deb3662f21ae6e893d4c4",
+    "report": "docs/performance/app-upgrade-search-scroll-fix-2026-10-15.md",
+    "specific_production_probe_exit": 0,
+    "ui_stages_passed": 4,
+    "retired_fallback_writes_after_search_intent": 0,
+    "target_viewport_intersection": true,
+    "browser_errors": 0,
+    "node_version": "v22.22.1",
+    "frontend_tests_passed": 440,
+    "frontend_test_files": 77,
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "build_exit": 0,
+    "initial_js_gzip_kib": 241.16,
+    "canonical_manifest_sha256": "c2bf6413440f5caa77b3d598dcea726b85a9cbdb7f4cc92b702927bb962e58a7",
+    "canonical_entry": "assets/index-DLHzGrkY.js",
+    "canonical_entry_sha256": "9cbad4962187bfd881de9aaa7dced84f0d035d23189296c4ab1f0cfa1e0a904c",
+    "parent_log": "/tmp/spark-upgrade-20261015/frontend-search-integrated.txt",
+    "retention_acceptance": "open"
+  },
+  "telegram_topic_followup": {
+    "commit": "6c452268",
+    "focused_passed": 173,
+    "seconds": 4.81,
+    "log": "/tmp/spark-upgrade-20261015/telegram-topic-integrated-attempt2.txt",
+    "first_parent_attempt": {
+      "exit": 4,
+      "tests_collected": 0,
+      "reason": "incorrect nonexistent test path",
+      "log": "/tmp/spark-upgrade-20261015/telegram-topic-integrated.txt"
+    }
   }
 }
