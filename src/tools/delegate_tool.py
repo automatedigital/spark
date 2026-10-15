@@ -163,6 +163,23 @@ def _strip_blocked_tools(toolsets: list[str]) -> list[str]:
     return [t for t in toolsets if t not in blocked_toolset_names]
 
 
+def _finish_child_workspace(run: dict[str, Any] | None) -> None:
+    if run and run.get("worktree"):
+        from tools.subagent_worktree import finish_subagent_worktree
+
+        finish_subagent_worktree(run["id"])
+
+
+def _construct_child(factory, lifecycle_run, **kwargs):
+    try:
+        return factory(**kwargs)
+    except Exception:
+        # Construction has not started a tool run. Keep the checkout for review,
+        # but it no longer has a child owner. No automatic worktree deletion.
+        _finish_child_workspace(lifecycle_run)
+        raise
+
+
 def _build_child_progress_callback(
     task_index: int,
     parent_agent,
@@ -368,6 +385,22 @@ def _build_child_agent(
         child_toolsets = _strip_blocked_tools(DEFAULT_TOOLSETS)
 
     workspace_hint = working_dir or _resolve_workspace_hint(parent_agent)
+    if lifecycle_run and lifecycle_run.get("isolation") == "worktree":
+        from tools.subagent_worktree import create_subagent_worktree
+
+        cfg = _load_config()
+        checkout = create_subagent_worktree(
+            workspace_hint or os.getcwd(), lifecycle_run["id"],
+            backend=os.getenv("TERMINAL_ENV", "local"),
+            setup_commands=cfg.get("worktree_setup_commands"),
+            setup_timeout=cfg.get("worktree_setup_timeout", 120),
+        )
+        workspace_hint = checkout.path
+        # Persist stable references, not a second copy of mutable owner state.
+        lifecycle_run["worktree"] = {
+            key: value for key, value in checkout.as_dict().items()
+            if key in {"run_id", "repository", "base_commit", "branch", "path", "setup_status"}
+        }
     child_prompt = _build_child_system_prompt(goal, context, workspace_path=workspace_hint)
     # Extract parent's API key so subagents inherit auth when appropriate.
     parent_api_key = getattr(parent_agent, "api_key", None)
@@ -438,7 +471,7 @@ def _build_child_agent(
         else None
     )
 
-    child = AIAgent(
+    child = _construct_child(AIAgent, lifecycle_run,
         base_url=effective_base_url,
         api_key=effective_api_key,
         model=effective_model,
@@ -679,6 +712,8 @@ def _run_single_child(
             entry["error"] = result.get("error", "Subagent did not produce a response.")
 
         if lifecycle_run is not None:
+            if lifecycle_run.get("worktree"):
+                entry["worktree"] = lifecycle_run["worktree"]
             lifecycle_run.update({
                 "status": status,
                 "summary": summary,
@@ -754,8 +789,9 @@ def _run_single_child(
         try:
             if hasattr(child, 'close'):
                 child.close()
+            _finish_child_workspace(lifecycle_run)
         except Exception:
-            logger.debug("Failed to close child agent after delegation")
+            logger.exception("Child cleanup uncertain; isolated worktree ownership retained")
 
 def delegate_task(
     goal: str | None = None,
@@ -769,6 +805,7 @@ def delegate_task(
     mode: str = "sync",
     request_id: str | None = None,
     handle: str | None = None,
+    isolation: str | None = None,
 ) -> str:
     """
     Spawn one or more child agents to handle delegated tasks.
@@ -807,7 +844,8 @@ def delegate_task(
         except ValueError as exc:
             return tool_error(str(exc))
     command_payload = {"goal": goal, "context": context, "toolsets": toolsets, "tasks": tasks,
-                       "max_iterations": max_iterations, "acp_command": acp_command, "acp_args": acp_args}
+                       "max_iterations": max_iterations, "acp_command": acp_command, "acp_args": acp_args,
+                       "isolation": isolation}
     if mode == "async":
         from core.spark_state import SessionDB
         db = getattr(parent_agent, "_session_db", None)
@@ -822,6 +860,9 @@ def delegate_task(
 
     # Load config
     cfg = _load_config()
+    default_isolation = isolation or ("worktree" if cfg.get("worktree_isolation") is True else "shared")
+    if default_isolation not in {"shared", "worktree"}:
+        return tool_error("Unsupported isolation; choose shared or worktree")
     if mode == "async" and cfg.get("async_enabled") is not True:
         return tool_error("Async execution is disabled")
     default_max_iter = cfg.get("max_iterations", DEFAULT_MAX_ITERATIONS)
@@ -861,6 +902,9 @@ def delegate_task(
     for i, task in enumerate(task_list):
         if not task.get("goal", "").strip():
             return tool_error(f"Task {i} is missing a 'goal'.")
+        if task.get("isolation", default_isolation) not in {"shared", "worktree"}:
+            return tool_error(f"Task {i} requests unsupported isolation")
+    task_list = [{**task, "isolation": task.get("isolation", default_isolation)} for task in task_list]
 
     if mode == "async":
         from core.orchestration.delegation import dispatch_async_children
@@ -917,6 +961,7 @@ def delegate_task(
                     "routing_fallback": creds.get("routing_fallback"),
                     "escalation_count": 0,
                     "max_escalations": 1,
+                    "isolation": t["isolation"],
                 }
             )
             child = _build_child_agent(
@@ -941,6 +986,26 @@ def delegate_task(
             # Override with correct parent tool names (before child construction mutated global)
             child._delegate_saved_tool_names = _parent_tool_names
             children.append((i, t, child, lifecycle_run))
+    except Exception as exc:
+        # No child in this synchronous batch has run yet. Release resources and
+        # retain every created checkout if a later child fails construction.
+        for _, _, built_child, built_run in children:
+            try:
+                built_child.close()
+                _finish_child_workspace(built_run)
+            except Exception:
+                logger.exception("Failed to close an unstarted child; retaining ownership")
+            lock = getattr(parent_agent, "_active_children_lock", None)
+            if lock is not None:
+                with lock:
+                    if built_child in parent_agent._active_children:
+                        parent_agent._active_children.remove(built_child)
+            elif built_child in getattr(parent_agent, "_active_children", []):
+                parent_agent._active_children.remove(built_child)
+        from tools.subagent_worktree import WorktreeIsolationError
+        if isinstance(exc, WorktreeIsolationError):
+            return tool_error(str(exc))
+        raise
     finally:
         # Authoritative restore: reset global to parent's tool names after all children built
         _model_tools._last_resolved_tool_names = _parent_tool_names
@@ -1237,13 +1302,10 @@ def _load_config() -> dict:
 DELEGATE_TASK_SCHEMA = {
     "name": "delegate_task",
     "description": (
-        "Delegate independent reasoning or context-heavy work. "
-        "Use goal for one task or tasks for a parallel batch (default limit 3). "
-        "Each child has a separate conversation, terminal session, and toolset; "
-        "Only final summaries return. Sync waits; opt-in async returns handles. Use execute_code "
-        "for mechanical workflows and call a tool directly for one operation. "
-        "Children cannot interact with the user and have no conversation memory, "
-        "so include paths, errors, constraints, and required details in context. "
+        "Delegate independent work: goal for one task or tasks for a parallel batch (default limit 3). "
+        "Sync waits; opt-in async returns handles. Each child has separate context, tools and terminal; "
+        "only summaries return. Use execute_code for mechanical workflows. "
+        "Children have no conversation memory: include paths, errors and constraints. "
         "Children cannot call delegate_task, clarify, memory, send_message, or "
         "execute_code."
     ),
@@ -1253,6 +1315,8 @@ DELEGATE_TASK_SCHEMA = {
             "mode": {"type": "string", "enum": ["sync", "async", "status", "cancel", "retry"]},
             "request_id": {"type": "string", "description": "Retry key for async/cancel/retry."},
             "handle": {"type": "string", "description": "Child id for status/cancel/retry."},
+            "isolation": {"type": "string", "enum": ["shared", "worktree"],
+                          "description": "Isolated local Git checkout; committed content only."},
             "goal": {
                 "type": "string",
                 "description": "Self-contained task.",
@@ -1276,6 +1340,7 @@ DELEGATE_TASK_SCHEMA = {
                     "properties": {
                         "goal": {"type": "string", "description": "Task goal"},
                         "context": {"type": "string", "description": "Task-specific context"},
+                        "isolation": {"type": "string", "enum": ["shared", "worktree"]},
                         "toolsets": {
                             "type": "array",
                             "items": {"type": "string"},
@@ -1343,7 +1408,8 @@ registry.register(
         acp_command=args.get("acp_command"),
         acp_args=args.get("acp_args"),
         parent_agent=kw.get("parent_agent"),
-        mode=args.get("mode", "sync"), request_id=args.get("request_id"), handle=args.get("handle")),
+        mode=args.get("mode", "sync"), request_id=args.get("request_id"), handle=args.get("handle"),
+        isolation=args.get("isolation")),
     check_fn=check_delegate_requirements,
     emoji="🔀",
 )

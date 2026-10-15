@@ -97,8 +97,12 @@ def _worker(parent: Any, child: Any, run: dict[str, Any], goal: str) -> None:
         with parent._active_children_lock:
             if child in parent._active_children:
                 parent._active_children.remove(child)
-        child.close()
-        parent._session_db.close()
+        try:
+            child.close()
+            from tools.delegate_tool import _finish_child_workspace
+            _finish_child_workspace(run)
+        finally:
+            parent._session_db.close()
 
 
 def dispatch_async_children(
@@ -135,6 +139,7 @@ def dispatch_async_children(
             toolsets=task.get("toolsets") or [],
         )
         run.update({"execution_mode": "async", "worker_token": uuid.uuid4().hex,
+                    "isolation": task.get("isolation", "shared"),
                     "status": "created", "max_iterations": max_iterations,
                     "blocked_tools": sorted(DELEGATE_BLOCKED_TOOLS),
                     "workspace_path": _resolve_workspace_hint(parent), "retry_of": retry_of})
@@ -198,6 +203,8 @@ def dispatch_async_children(
                     if child in parent._active_children:
                         parent._active_children.remove(child)
                 child.close()
+                from tools.delegate_tool import _finish_child_workspace
+                _finish_child_workspace(run)
             worker_parent._session_db.close()
     db.mark_runtime_command(owner, command_kind, request_id, "dispatched")
     return dict(receipt["acceptance"])

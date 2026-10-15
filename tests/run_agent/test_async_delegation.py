@@ -446,3 +446,80 @@ def test_explicit_child_working_dir_controls_prompt_and_relative_tools(replay_ru
     finally:
         parent._active_children.remove(child)
         child.close()
+
+
+def _worktree_fixture_repository(tmp_path):
+    import subprocess
+    repo = tmp_path / "parent-project"
+    repo.mkdir()
+    for args in (["init", "-q"], ["config", "user.name", "Fixture"],
+                 ["config", "user.email", "fixture@example.invalid"]):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    (repo / "same.txt").write_text("baseline")
+    subprocess.run(["git", "-C", str(repo), "add", "same.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "baseline"], check=True, capture_output=True)
+    (repo / "same.txt").write_text("parent unsaved changes")
+    return repo
+
+
+@pytest.mark.parametrize("mode", ["sync", "async"])
+def test_delegated_children_use_explicit_worktrees_and_preserve_parent(replay_runtime, tmp_path, monkeypatch, mode):
+    from pathlib import Path
+    from tools.subagent_worktree import get_subagent_worktree
+
+    r = replay_runtime
+    parent = r.parent("isolated-" + mode)
+    repo = _worktree_fixture_repository(tmp_path)
+    parent.working_dir = str(repo)
+    monkeypatch.setenv("TERMINAL_ENV", "local")
+    monkeypatch.setenv("TERMINAL_CWD", str(repo))
+    original_transport = AIAgent._interruptible_api_call
+    observed = []
+    def transport(agent, kwargs, *args, **kw):
+        if agent._delegate_depth:
+            path = Path(agent.working_dir)
+            assert path != repo
+            assert (path / "same.txt").read_text() == "baseline"
+            assert str(path) in agent.ephemeral_system_prompt
+            from tools.file_tools import write_file_tool
+            args = agent._inject_working_dir("write_file", {"path": "same.txt", "content": agent.session_id})
+            result = json.loads(write_file_tool(**args, task_id=agent.session_id))
+            assert "error" not in result
+            observed.append(path)
+        return original_transport(agent, kwargs, *args, **kw)
+    monkeypatch.setattr(AIAgent, "_interruptible_api_call", transport)
+    monkeypatch.setattr(AIAgent, "_interruptible_streaming_api_call", transport)
+    tasks = [r.task("isolate first"), r.task("isolate second")]
+    for control in r.controls.values():
+        control["release"].set()
+    accepted = json.loads(delegate_task(tasks=tasks, parent_agent=parent, mode=mode,
+                                      request_id="isolated-request", isolation="worktree"))
+    if mode == "async":
+        for handle in accepted["handles"]:
+            assert wait_terminal(r.db, handle["id"])["status"] == "completed"
+    else:
+        assert all(result["status"] == "completed" for result in accepted["results"])
+    deadline = time.monotonic() + 5
+    runs = r.db.list_subagent_runs(parent.session_id)
+    while any(get_subagent_worktree(run["id"]).active for run in runs) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(observed) == 2
+    assert observed[0] != observed[1]
+    assert (repo / "same.txt").read_text() == "parent unsaved changes"
+    for run in runs:
+        record = get_subagent_worktree(run["id"])
+        assert record.active is False
+        assert run["worktree"]["path"] == record.path
+        assert (Path(record.path) / "same.txt").read_text() == run["child_session_id"]
+
+
+def test_requested_remote_worktree_isolation_never_runs_in_shared_directory(replay_runtime, tmp_path, monkeypatch):
+    r = replay_runtime
+    parent = r.parent("remote-isolation")
+    parent.working_dir = str(_worktree_fixture_repository(tmp_path))
+    monkeypatch.setenv("TERMINAL_ENV", "ssh")
+    task = r.task("must not run")
+    result = json.loads(delegate_task(tasks=[task], parent_agent=parent, isolation="worktree"))
+    assert "unsupported" in result["error"].lower()
+    assert not r.controls["must not run"]["entered"].is_set()
+    assert not parent._active_children

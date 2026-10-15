@@ -166,6 +166,7 @@ class _ToolExecutionMixin:
                     acp_command=function_args.get("acp_command"), acp_args=function_args.get("acp_args"),
                     mode=function_args.get("mode", "sync"), request_id=function_args.get("request_id"),
                     handle=function_args.get("handle"),
+                    isolation=function_args.get("isolation"),
                     parent_agent=self,
                 )
             else:
@@ -667,6 +668,7 @@ class _ToolExecutionMixin:
                         acp_command=function_args.get("acp_command"), acp_args=function_args.get("acp_args"),
                         mode=function_args.get("mode", "sync"), request_id=function_args.get("request_id"),
                         handle=function_args.get("handle"),
+                        isolation=function_args.get("isolation"),
                         parent_agent=self,
                     )
                     _delegate_result = function_result
