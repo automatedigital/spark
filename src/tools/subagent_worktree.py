@@ -119,6 +119,11 @@ def _run_setup(command: list[str], directory: Path, timeout: int) -> None:
             process.wait()
             raise
         if status:
+            if os.name != "nt":
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             output.seek(0, os.SEEK_END)
             output.seek(max(0, output.tell() - 2000))
             detail = output.read().decode("utf-8", errors="replace")

@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -148,3 +149,25 @@ def test_profile_boundaries_and_non_git_fail_explicitly(repo, tmp_path, monkeypa
     plain.mkdir()
     with pytest.raises(WorktreeIsolationError):
         create_subagent_worktree(plain, "not-git-child")
+
+
+def test_concurrent_creation_and_metadata_survive_reopen(repo):
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        records = list(pool.map(lambda name: create_subagent_worktree(repo, name),
+                                ["parallel-a", "parallel-b"]))
+    for record in records:
+        assert get_subagent_worktree(record.run_id) == record
+        assert cleanup_subagent_worktree(record.run_id)["reason"] == "active"
+    assert records[0].path != records[1].path
+
+
+@pytest.mark.slow
+def test_setup_timeout_retains_metadata_and_partial_output(repo):
+    with pytest.raises(WorktreeIsolationError, match="Setup failed; worktree retained"):
+        create_subagent_worktree(repo, "timed-out", setup_timeout=1, setup_commands=[
+            [sys.executable, "-c", "from pathlib import Path; import time; Path('partial').write_text('kept'); time.sleep(10)"]
+        ])
+    record = get_subagent_worktree("timed-out")
+    assert record.setup_status == "failed"
+    assert (Path(record.path) / "partial").read_text() == "kept"
+    assert cleanup_subagent_worktree(record.run_id)["reason"] == "dirty"

@@ -306,10 +306,10 @@ estimate.
 `src/spark_cli/web_projections.py`, related persistence tests. Proposed new
 `src/core/orchestration/` contains small lifecycle/identity helpers only if needed.
 
-- [ ] Map existing session/turn/subagent IDs; persist parent/root/attempt relationships and a versioned projection with stable pending-decision IDs.
-- [ ] Select one lifecycle writer; atomically append durable events and update their projection. Publish only committed data.
+- [x] Map existing session/turn/subagent IDs; persist parent/root/attempt relationships and a versioned projection with stable pending-decision IDs.
+- [x] Select one lifecycle writer; atomically append durable events and update their projection. Publish only committed data.
 - [ ] Root terminal closes its Run; child/tool/plan terminal never does. Preserve independent child failure and waiting states.
-- [ ] Add deterministic migration from schema 12 fixtures, idempotent rerun and rollback guidance. Keep old sessions readable without replaying tools.
+- [x] Add deterministic migration from schema 12 fixtures, idempotent rerun and rollback guidance. Keep old sessions readable without replaying tools.
 
 **Acceptance:** real SQLite replay produces the same parent/child projection after
 restart and duplicate/out-of-order callbacks; compression lineage resolves the
@@ -323,7 +323,7 @@ receipt/service helpers and additive frontend API types owned through the lead.
 - [ ] Add durable request receipts for async dispatch, cancel and retry, with payload hash, accepted IDs and committed cursor.
 - [ ] Repeated accepted request returns its original result; changed payload with reused ID fails. Validate profile/thread authorization before lookup or mutation.
 - [ ] Expose versioned runtime capabilities including custom model/provider selections, unsupported reasons and stale/offline availability.
-- [ ] Preserve current conversation endpoints and synchronous `delegate_task` contract. New mode is explicit and feature-gated for the compatibility release.
+- [x] Preserve current conversation endpoints and synchronous `delegate_task` contract. New mode is explicit and feature-gated for the compatibility release.
 
 **Acceptance:** duplicate HTTP/tool dispatch creates one app attempt; lost response
 followed by retry returns the same handle; unsupported controls cause no side
@@ -546,3 +546,12 @@ keep checkboxes above open until acceptance is demonstrated.
 | P08 | https://github.com/automatedigital/spark/issues/138 |
 | P09 | https://github.com/automatedigital/spark/issues/139 |
 | P10 | https://github.com/automatedigital/spark/issues/140 |
+
+### Runtime foundation milestone — 2026-10-15
+
+- Integrated `3f138c48` (atomic child lifecycle) and `13877a8d` (durable command receipts and capability snapshots), from runtime worktree commits `b7405eff` / `362d97c9`.
+- Independent parent verification: **211 passed** in 32.41s across child lifecycle, runtime receipts, subagents, delegation, web events, caching goldens, lazy manifest and minimal-startup tests. Command: `python -m pytest tests/core/test_child_lifecycle.py tests/core/test_runtime_commands.py tests/agent/test_subagents.py tests/tools/test_delegate.py tests/spark_cli/test_web_server_events.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 2`.
+- P01/P02 remain in progress: cancellation terminal-state edge review and full async dispatch/control integration are not yet accepted. No speculative packet completion.
+- P04 helper `395f3336`: real Git isolation/retention tests pass; integration still pending.
+- Reproduced Kanban risk in a temporary home with controlled clock and a live PID: lease stayed at 110 after heartbeat at 105, and reclaim at 111 returned the live worker task to ready. Evidence `/tmp/spark-upgrade-20261015/kanban-risk.json`; P08 must fence/renew ownership.
+- Manual Playwright baseline opened and switched a synthetic project chat with no browser errors. Collaborative preview snapshot timed out twice; repository Playwright is the acceptance fallback. Local screenshots `/tmp/spark-upgrade-20261015/baseline-{preview,selected-chat}.png`. Wider P00 matrix remains with baseline agent.
