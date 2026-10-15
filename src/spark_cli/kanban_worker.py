@@ -83,10 +83,11 @@ def main() -> int:
     # SPARK_HOME/claim variables. We loaded the assigned profile explicitly;
     # prevent a second loader from replacing the dispatch identity in this worker.
     os.environ["PYTHON_DOTENV_DISABLED"] = "1"
-    fence = {"claim_token": token, "run_id": run_id}
+    fence: kb.WorkerFence = {"claim_token": token, "run_id": run_id}
     stop = threading.Event()
     lost = threading.Event()
     agent = None
+    session_db = None
 
     def renew() -> None:
         while not stop.wait(min(30.0, ttl / 3)):
@@ -131,18 +132,21 @@ def main() -> int:
     try:
         try:
             from core.run_agent import AIAgent
+            from core.spark_state import SessionDB
             from spark_cli.model_config import read_global_model_config
             from spark_cli.runtime_provider import resolve_runtime_provider
 
             cfg = load_config()
             model = read_global_model_config(cfg).model
             runtime = resolve_runtime_provider(requested=None)
+            session_db = SessionDB()
             agent = AIAgent(
                 model=model or "",
                 max_iterations=int(os.getenv("SPARK_KANBAN_MAX_ITER", "40")),
                 quiet_mode=True,
                 platform="kanban",
                 session_id=f"kanban_{task_id}_{run_id}",
+                session_db=session_db,
                 enabled_toolsets=[
                     "terminal",
                     "file",
@@ -265,6 +269,8 @@ def main() -> int:
                 close()
             except Exception:
                 logging.getLogger(__name__).exception("Worker resource cleanup failed")
+        if session_db is not None:
+            session_db.close()
 
 
 if __name__ == "__main__":

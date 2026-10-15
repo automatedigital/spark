@@ -300,12 +300,16 @@ class FakeAgent:
         assert get_spark_home() == Path(os.environ["SPARK_KANBAN_EXECUTION_HOME"])
         assert os.environ["SPARK_KANBAN_CLAIM_TOKEN"] != "must-not-use"
         self.session_id = kwargs["session_id"]
+        self.db = kwargs["session_db"]
+        assert self.db.db_path == get_spark_home() / "state.db"
         Path(get_spark_home(), "captured.json").write_text(json.dumps({"model":kwargs["model"],"session_id":self.session_id,"home":str(get_spark_home())}))
         if mode == "startup-failure":
             raise RuntimeError("synthetic startup failure")
+        self.db.create_session(self.session_id, "kanban", model=kwargs["model"])
     def interrupt(self):
         pass
     def run_conversation(self, *args, **kwargs):
+        self.db.append_message(self.session_id, "user", content="Synthetic owned task transcript")
         from tools import kanban_tool as tools
         from core import kanban_db as kb
         assert kb.kanban_db_path() == Path(os.environ["SPARK_KANBAN_BOARD_HOME"], "kanban.db")
@@ -384,6 +388,13 @@ def test_worker_uses_assigned_model_but_tools_write_original_board(
     if mode != "startup-failure":
         assert metadata["execution"]["session_id"] == captured["session_id"]
         assert detail["comments"][0]["body"] == "written to original board"
+        from core.spark_state import SessionDB
+        transcript_db = SessionDB(execution / "state.db")
+        try:
+            messages = transcript_db.get_messages(captured["session_id"])
+            assert messages[0]["content"] == "Synthetic owned task transcript"
+        finally:
+            transcript_db.close()
     if mode in {"text-only", "tool-complete"}:
         assert metadata["verified"] is False
     if mode == "text-only":

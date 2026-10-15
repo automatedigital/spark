@@ -19,7 +19,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from core.spark_constants import get_spark_home
 
@@ -168,6 +168,11 @@ _TASK_COLUMN_MIGRATIONS: tuple[tuple[str, str], ...] = (
 
 class WorkerClaimError(ValueError):
     """The worker no longer owns this task attempt (or omitted its fence)."""
+
+
+class WorkerFence(TypedDict):
+    claim_token: str
+    run_id: int
 
 
 _board_home: ContextVar[Path | None] = ContextVar("kanban_board_home", default=None)

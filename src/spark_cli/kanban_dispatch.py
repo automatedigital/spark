@@ -67,7 +67,7 @@ async def run_dispatch_tick(*, max_tasks: int = 3) -> dict[str, Any]:
         if not claim:
             continue
         token, run_id = claim
-        fence = {"claim_token": token, "run_id": run_id}
+        fence: kb.WorkerFence = {"claim_token": token, "run_id": run_id}
         try:
             owner_home, execution_home = resolve_worker_homes(assignee, owner_home)
         except (ValueError, FileNotFoundError) as error:
