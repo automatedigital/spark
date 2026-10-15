@@ -3,7 +3,7 @@
  * grouped by workspace project. Hermes-style layout; backed by the shared
  * session store.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -56,6 +56,7 @@ import type {
   WorkspaceProject,
 } from "@/lib/api";
 import { SidebarMetadataFeedback, SidebarThreadActions } from "./SidebarThreadActions";
+import { captureSidebarScrollAnchor, type SidebarScrollAnchor } from "./sidebarScrollAnchor";
 import { sidebarStatus } from "@/lib/sidebarOrganization";
 import { readSidebarPreference, writeSidebarPreference, SIDEBAR_SCOPE_EVENT } from "@/lib/sidebarPrefs";
 import { cn, timeAgo } from "@/lib/utils";
@@ -871,7 +872,7 @@ export function SidebarSessions({
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollAnchorRef = useRef<{ key: string; delta: number } | null>(null);
+  const scrollAnchorRef = useRef<SidebarScrollAnchor | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections);
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
@@ -940,11 +941,12 @@ export function SidebarSessions({
     sessionsError,
   ]);
 
+  const getRowKey = useCallback((index: number) => rows[index].key, [rows]);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => estimateSidebarRowHeight(rows[index]),
-    getItemKey: (index) => rows[index].key,
+    getItemKey: getRowKey,
     overscan: 8,
   });
   const virtualItems = virtualizer.getVirtualItems();
@@ -967,21 +969,30 @@ export function SidebarSessions({
   // pagination rebuild the flattened model.
   useLayoutEffect(() => {
     const anchor = scrollAnchorRef.current;
-    if (!anchor || !scrollRef.current) return;
+    const element = scrollRef.current;
+    if (!anchor || !element) return;
+    // The DOM offset changes immediately, but its native scroll event arrives
+    // later. A row refresh in that interval must not restore the older viewport
+    // over the user's new position. The pending event will capture its anchor.
+    if (Math.abs(element.scrollTop - anchor.scrollTop) > 1) {
+      scrollAnchorRef.current = null;
+      return;
+    }
     const index = rows.findIndex((row) => row.key === anchor.key);
-    if (index < 0) return;
-    virtualizer.scrollToIndex(index, { align: "start" });
-    scrollRef.current.scrollTop += anchor.delta;
+    if (index < 0) { scrollAnchorRef.current = null; return; }
+    const item = virtualizer.measurementsCache[index];
+    if (item) {
+      // An index scroll keeps retrying as sizes settle. Those delayed retries
+      // can overwrite a later user scroll or a subsequent SSE restoration.
+      // Restore the keyed row and its pixel offset together as one offset.
+      virtualizer.scrollToOffset(item.start + anchor.delta);
+      anchor.scrollTop = element.scrollTop;
+    }
   }, [rows, virtualizer]);
 
   const rememberScrollAnchor = () => {
     const scrollTop = scrollRef.current?.scrollTop ?? 0;
-    const first = virtualizer.getVirtualItems().find((item) => item.end > scrollTop);
-    if (!first) return;
-    scrollAnchorRef.current = {
-      key: rows[first.index]?.key ?? "",
-      delta: scrollTop - first.start,
-    };
+    scrollAnchorRef.current = captureSidebarScrollAnchor(virtualizer, scrollTop);
   };
 
   const draggedSessionFromEvent = (e: React.DragEvent): string => (
@@ -1070,6 +1081,7 @@ export function SidebarSessions({
       <div
         ref={scrollRef}
         className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1 pb-2"
+        style={{ overflowAnchor: "none" }}
         onScroll={rememberScrollAnchor}
         onKeyDown={(event) => {
           const target = event.target as HTMLElement;

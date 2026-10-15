@@ -1190,30 +1190,27 @@ export function ChatPanel({
     return Math.max(54, 54 + answerEstimate + (turn.workItems.length || turn.subagents.length ? expandedWorkEstimate : 0));
   }, [timelineTurns]);
 
+  const getTurnKey = useCallback((index: number) => timelineTurns[index]?.id ?? index, [timelineTurns]);
   const virtualizer = useVirtualizer({
     count: timelineTurns.length,
     getScrollElement: () => scrollContainerRef.current,
-    getItemKey: (index) => timelineTurns[index]?.id ?? index,
+    getItemKey: getTurnKey,
     estimateSize: estimateRowSize,
     overscan: safeMode ? 4 : 10,
     gap: 12,
   });
-  const virtualOrderRef = useRef<{ sessionId: string | null; firstId: string | null; count: number }>({ sessionId: null, firstId: null, count: 0 });
+  const measuredSessionRef = useRef<string | null>(null);
 
   useLayoutEffect(() => {
-    const firstId = timelineTurns[0]?.id ?? null;
-    const previous = virtualOrderRef.current;
-    virtualOrderRef.current = { sessionId: activeSessionId, firstId, count: timelineTurns.length };
-    if (
-      (previous.sessionId != null && previous.sessionId !== activeSessionId) ||
-      (previous.firstId && firstId !== previous.firstId && timelineTurns.length > previous.count)
-    ) {
-      // A prepend moves stable keyed DOM rows to new virtual indexes. Reset the
-      // index measurement cache before the anchor-restoration loop remeasures
-      // mounted rows, otherwise stale starts can temporarily overlap rows.
+    const previous = measuredSessionRef.current;
+    measuredSessionRef.current = activeSessionId;
+    if (previous != null && previous !== activeSessionId) {
+      // Sizes belong to stable turn keys, so prepending must retain them. The
+      // changed getTurnKey rebuilds index positions without discarding sizes.
+      // Only a different session needs an entirely fresh measurement cache.
       virtualizer.measure();
     }
-  }, [activeSessionId, timelineTurns, virtualizer]);
+  }, [activeSessionId, virtualizer]);
 
   const rowResizeObserverRef = useRef<ResizeObserver | null>(null);
   const rowResizeRafRef = useRef<number | null>(null);
@@ -1221,19 +1218,25 @@ export function ChatPanel({
   const measureRowElement = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     rowResizeObserverRef.current?.observe(el);
-    virtualizer.measureElement(el);
-  }, [virtualizer]);
+    // ResizeObserver supplies initial and subsequent sizes in the next frame.
+    // Measuring in a React ref can synchronously mount another estimated range
+    // and recurse through commitAttachRef until React's update-depth limit.
+    return () => rowResizeObserverRef.current?.unobserve(el);
+  }, []);
 
   useEffect(() => {
     const root = messageListRef.current;
     if (!root || typeof ResizeObserver === "undefined") return;
+    const pendingRows = new Set<HTMLDivElement>();
+    let anchorRaf: number | null = null;
     const measureRenderedRows = (entries?: ResizeObserverEntry[]) => {
-      if (rowResizeRafRef.current !== null) cancelAnimationFrame(rowResizeRafRef.current);
       const rows = entries?.length
         ? entries
             .map((entry) => entry.target)
             .filter((target): target is HTMLDivElement => target instanceof HTMLDivElement)
         : Array.from(root.querySelectorAll<HTMLDivElement>("[data-index]"));
+      rows.forEach((row) => pendingRows.add(row));
+      if (rowResizeRafRef.current !== null) return;
       rowResizeRafRef.current = requestAnimationFrame(() => {
         rowResizeRafRef.current = null;
         const scrollEl = scrollContainerRef.current;
@@ -1243,7 +1246,15 @@ export function ChatPanel({
               .find((row) => row.dataset.rowId === anchorId)
               ?.getBoundingClientRect().top ?? null
           : null;
-        rows.forEach((row) => measureRowElement(row));
+        // Use one observer/measurement owner. Calling measureElement here would
+        // install the virtualizer's second observer with synchronous updates.
+        for (const row of pendingRows) {
+          const index = Number(row.dataset.index);
+          if (row.isConnected && row.dataset.rowId === virtualizer.options.getItemKey(index)) {
+            virtualizer.resizeItem(index, row.getBoundingClientRect().height);
+          }
+        }
+        pendingRows.clear();
         // While a bottom jump is in flight (session open / jump pill), row
         // measurement grows scrollHeight after the initial scrollToIndex —
         // re-clamp so the view never lands short of the latest message.
@@ -1251,7 +1262,9 @@ export function ChatPanel({
           scrollEl.scrollTop = scrollEl.scrollHeight;
         }
         if (anchorBefore != null && scrollEl && anchorId) {
-          requestAnimationFrame(() => {
+          if (anchorRaf !== null) cancelAnimationFrame(anchorRaf);
+          anchorRaf = requestAnimationFrame(() => {
+            anchorRaf = null;
             const anchorAfter = Array.from(root.querySelectorAll<HTMLDivElement>("[data-row-id]"))
               .find((row) => row.dataset.rowId === anchorId)
               ?.getBoundingClientRect().top;
@@ -1270,6 +1283,7 @@ export function ChatPanel({
     measureRenderedRows();
     return () => {
       observer.disconnect();
+      if (anchorRaf !== null) cancelAnimationFrame(anchorRaf);
       if (rowResizeObserverRef.current === observer) {
         rowResizeObserverRef.current = null;
       }
@@ -1278,7 +1292,7 @@ export function ChatPanel({
         rowResizeRafRef.current = null;
       }
     };
-  }, [measureRowElement, timelineTurns]);
+  }, [timelineTurns, virtualizer]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;

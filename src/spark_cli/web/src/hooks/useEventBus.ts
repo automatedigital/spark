@@ -34,7 +34,7 @@ interface Cursor {
   serverEpoch: string;
 }
 
-class ConnectionSupervisor {
+export class ConnectionSupervisor {
   private source: EventSource | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
@@ -161,6 +161,11 @@ class ConnectionSupervisor {
       this.reconnectAttempt = 0;
       this.lastEventAt = Date.now();
       this.staleSignalled = false;
+      // The compatibility SSE endpoint treats after_sequence=0 as a fresh live
+      // subscription. Reconcile once after it opens so a first journal event
+      // committed between snapshot and subscription cannot disappear forever.
+      // Ordinary nonzero resumes already replay at the server; no healthy poll.
+      if (!this.legacyMode && this.cursor?.sequence === 0) void this.fetchDeltas();
       if (this.wasDisconnected) {
         this.wasDisconnected = false;
         recordWebEfficiency("reconnects");

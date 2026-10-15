@@ -147,6 +147,8 @@ db.close()
   const webBase = `http://127.0.0.1:${webPort}`;
   const sessionRequests = [];
   const rawRequests = [];
+  const titleProbeRequests = [];
+  const activeRequests = new Set();
   let browser;
   let page;
   const extraProcesses = [];
@@ -196,6 +198,7 @@ db.close()
       }
     });
     page.on("request", (request) => {
+      activeRequests.add(request);
       rawRequests.push(request.url());
       const url = new URL(request.url());
       if (url.pathname === "/api/sessions") {
@@ -206,6 +209,14 @@ db.close()
       }
       if (url.pathname === "/api/sessions/search") searchRequests.push(url.searchParams.get("q"));
     });
+    page.on("requestfinished", (request) => {
+      activeRequests.delete(request);
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith("/title") || pathname === "/api/web-state/snapshot") {
+        titleProbeRequests.push({ pathname, method: request.method(), ...request.timing() });
+      }
+    });
+    page.on("requestfailed", (request) => activeRequests.delete(request));
 
     page.setDefaultTimeout(15_000);
     const errors = [];
@@ -245,16 +256,19 @@ db.close()
     metrics.checks.push("Inbox semantic selection/local/full-history search", "legacy pins do not cross profile boundary");
     await select("000");
     await page.waitForTimeout(250);
+    metrics.titleProbePendingRequests = [...activeRequests].map((request) => request.url());
     try {
       metrics.sidebarUpdateMs = await page.evaluate(() => new Promise((resolve, reject) => {
         const started = performance.now();
+        window.__sparkTitleProbe = { started, startedWallTime: Date.now() };
         const timeout = setTimeout(() => { observer.disconnect(); reject(new Error("Title SSE update missing")); }, 5000);
         const observer = new MutationObserver(() => {
           if (!document.querySelector('[role="button"][aria-label^="Scale measured update,"]')) return;
+          window.__sparkTitleProbe.rendered = performance.now();
           clearTimeout(timeout); observer.disconnect(); resolve(performance.now() - started);
         });
         observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
-        fetch("/api/sessions/scale-000/title", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Scale measured update" }) }).then((response) => { if (!response.ok) reject(new Error(`Title PATCH ${response.status}`)); }, reject);
+        fetch("/api/sessions/scale-000/title", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Scale measured update" }) }).then((response) => { window.__sparkTitleProbe.response = performance.now(); if (!response.ok) reject(new Error(`Title PATCH ${response.status}`)); }, reject);
       }));
 
     } catch (error) {
@@ -263,6 +277,10 @@ db.close()
     const restoreTitle = await fetch(`${apiBase}/api/sessions/scale-000/title`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Scale chat 000" }) });
     assert.equal(restoreTitle.status, 200);
     await row("000").waitFor();
+    metrics.titleProbe = await page.evaluate(() => ({
+      ...window.__sparkTitleProbe,
+      events: window.__sparkGateEvents.filter((event) => event.topic === "sessions.changed" && event.data?.session?.title === "Scale measured update"),
+    }));
     // Inbox uses an explicit older-page control. Threads must also exercise its
     // actual scroll-triggered paging and bounded mounted-row contract.
     await page.getByRole("button", { name: "Threads", exact: true }).click();
@@ -294,7 +312,9 @@ db.close()
     });
     assert.ok(liveResponse.ok);
     await page.waitForTimeout(700);
-    assert.equal(await anchor(), before, "SSE insertion preserves scroll anchor");
+    const after = await anchor();
+    metrics.anchor = { before, after };
+    assert.equal(after, before, "SSE insertion preserves scroll anchor");
     await scroll.evaluate((el) => { el.scrollTop = 0; });
     const liveRow = page.locator('[data-sidebar-session-row="scale-live"]');
     await liveRow.waitFor();
@@ -376,6 +396,7 @@ db.close()
     await otherPage.close();
     metrics.checks.push("two real isolated profile databases with duplicate session ID; metadata and preference scopes differ");
     metrics.fullHistoryRequests = searchRequests;
+    metrics.titleProbeRequests = titleProbeRequests;
     assert.equal(sessionRequests[0]?.limit, 50);
     assert.equal(sessionRequests[0]?.offset, 50);
     assert.deepEqual(searchRequests, ["ancient needle"]);
@@ -393,6 +414,7 @@ db.close()
   } catch (error) {
     if (outputDir) {
       metrics.sessionRequests = sessionRequests;
+      metrics.titleProbeRequests = titleProbeRequests;
       metrics.requests = rawRequests;
       metrics.events = page ? await page.evaluate(() => window.__sparkGateEvents).catch(() => null) : null;
       metrics.backendTitle = await fetch(`${apiBase}/api/sessions/scale-000`).then((response) => response.json()).catch(() => null);
