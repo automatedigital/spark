@@ -39,6 +39,7 @@ plan are proposals unless they appear in the current source map below.
 | `src/core/orchestration/` | Durable async dispatch/receipts, process-local worker reconciliation, safe turn-boundary delivery and child capabilities |
 | `src/tools/subagent_worktree.py` | Explicit local Git checkout setup, ownership records and conservative cleanup |
 | `src/spark_cli/sidebar_metadata.py`, `sidebar_routes.py` | Profile-local pin/order/settlement metadata, revision conflicts and live-work guards |
+| `src/spark_cli/subagent_navigation.py` | Owned-child task references and verified, explicit local Git worktree project links |
 | `src/tools/session_search_tool.py`, `checkpoint_manager.py` | Historical recall and filesystem checkpoints |
 | `src/agent/` | Prompt/context compression, model/provider helpers, memory and skills internals |
 | `src/plugins/memory/`, `src/core/dream.py` | Local/optional memory providers and explicitly invoked/scheduled reflection |
@@ -74,10 +75,11 @@ Paths in this table are relative to `src/spark_cli/`.
 | `web/src/components/chat/` | Composer, timeline, approvals, plans, changed files, recovery and child-agent detail |
 | `web/src/hooks/useSubagents.ts`, `web/src/lib/subagents.ts` | Child snapshots, detail loading and live lifecycle reconciliation |
 | `web/src/lib/subagentControls.ts` | Exact child capability checks and persistent request IDs for uncertain Stop/Retry acknowledgements |
+| `web/src/hooks/useSubagentNavigation.ts`, `web/src/lib/subagentNavigation.ts` | Task/worktree activation with initiating thread/profile fences and refreshed project destinations |
 | `web/src/lib/previewRequests.ts` | Visible-preview read ownership, cancellation, stale-response fencing and serialized polling |
 | `web/src/components/workspace/` | Existing file tree, terminal, preview and project panels; Workspace is a legacy path name, not a second product surface |
 | `web/src/lib/api.ts`, `apiTypes.ts`, `api_*.ts` | Shared API facade/types and domain clients |
-| `web/e2e/` | Multi-chat, recovery, history anchor, sidebar-scale, baseline and Python draft browser flows |
+| `web/e2e/` | Multi-chat, recovery, history anchor, sidebar-scale, inspector/navigation and source A/B performance browser flows |
 | `web/src/**/*.test.ts` | Frontend unit/contract tests |
 | `web/src-tauri/` | Rust shell, capabilities, platform config and native lifecycle |
 | `web_dist/` | Tracked generated production bundle served/packaged by Python; regenerate from source, never patch minified files |

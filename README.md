@@ -347,7 +347,8 @@ by default). Async workers are process-local; lost work becomes uncertain and
 stored results are delivered on the next explicit parent turn. The child
 inspector adds capability-gated controls, paged history, result copy and worktree
 references while preserving parent drafts and scroll position through switching
-and reconnects. Task/worktree navigation, final performance and package acceptance
-remain in progress in the plan.
+and reconnects. Verified task links open their actual board; an explicit action
+opens an owned worktree as a project. Gateway approval ownership, final performance
+and package acceptance remain in progress in the plan.
 See the [rollout runbook](docs/development/app-upgrade-rollout.md) for backup,
 isolated enablement and rollback boundaries.

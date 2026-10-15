@@ -287,6 +287,9 @@ child's final message with verified completion.
   provider/custom-model resolution and child tool/permission restrictions.
 - Fence worker updates by their owned attempt/claim. Never infer success from
   silence, an expired lease, a spinner, or a child's summary.
+- Apply execution ownership to notification callbacks and approval waiters too.
+  A retired worker's cleanup must not remove a replacement worker's registration
+  or resolve its pending decisions.
 - Requested worktree isolation must be explicit. Preserve dirty/committed child
   work and reject unsupported isolation rather than silently sharing paths.
 

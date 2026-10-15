@@ -274,9 +274,13 @@ async def main():
                 await retained()
                 checks.append("late worktree acceptance after chat switch cannot change the active thread/project")
 
+                # Establish a verified stale display before deleting its source;
+                # returning to detail can precede the navigation GET settling.
+                await expect(nav_button("Open linked task")).to_be_enabled()
                 assert (await request.post(api + "/api/dev/navigation-fixture/delete-task")).ok
                 await nav_button("Open linked task").click()
                 await expect(page.get_by_role("alert").filter(visible=True)).to_contain_text("No linked board task")
+                await expect(nav_button("Open worktree")).to_be_enabled()
                 assert (await request.post(api + "/api/dev/navigation-fixture/remove-checkout")).ok
                 await nav_button("Open worktree").click()
                 await expect(page.get_by_role("alert").filter(visible=True)).to_contain_text("no longer available")

@@ -35,6 +35,8 @@ python scripts/generate_tool_manifest.py --check
 (cd src/spark_cli/web && npm run test:e2e)
 (cd src/spark_cli/web && npm run test:e2e:recovery)
 (cd src/spark_cli/web && npm run test:e2e:sidebar)
+(cd src/spark_cli/web && npm run test:e2e:subagents)
+(cd src/spark_cli/web && npm run test:e2e:navigation)
 ```
 
 Use Node.js 22 and the frontend's own lockfile. Browser suites need the Playwright

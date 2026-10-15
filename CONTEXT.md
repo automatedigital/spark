@@ -136,6 +136,13 @@ do not wake an idle parent automatically. End-to-end acceptance remains tracked
 in PLAN.md. A child transcript is not an independent top-level task request.
 Preserve restricted child tools and permission scope.
 
+The inspector resolves task destinations from the active profile's recorded
+execution links across the parent compression family. It opens the actual task
+board, and refuses ambiguous or unavailable associations. Opening an isolated
+worktree as a project is an explicit action that verifies the owned checkout and
+creates an idempotent local-folder link. Navigation does not transfer ownership
+of the child execution or switch profiles.
+
 ### Worktree isolation
 A separate Git checkout/branch rooted at a recorded commit for a coding child.
 It does not include the parent's uncommitted changes. It is distinct from isolated

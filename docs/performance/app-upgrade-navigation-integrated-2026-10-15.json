@@ -1,0 +1,185 @@
+{
+  "source_sha": "3097f32b70a34b27ffec102fbea26d2a5116ea8b",
+  "agent_source_sha": "8199b6cefbadde96a809b7564a53c13e87e48d11",
+  "schema_version": 15,
+  "config_version": 29,
+  "flags": {
+    "delegation.async_enabled": false,
+    "delegation.worktree_isolation": false
+  },
+  "build": {
+    "command": "npm run build",
+    "exit": 0,
+    "initial_js_gzip_kib": 240.49,
+    "budget_kib": 600,
+    "manifest_sha256": "c8a2adf0354a2446602a6ca5bbb0e77dc66f554031b489d216ffa4aa058fec7d",
+    "entries": {
+      "index.html": {
+        "file": "assets/index-WD-o1OLA.js",
+        "sha256": "26501f31c23351ed7541a0978c3a6407099ce92c91fc2fcbfb7cf589637107fd"
+      }
+    }
+  },
+  "frontend": {
+    "lint_exit": 0,
+    "typescript_build_exit": 0,
+    "vitest_passed": 435,
+    "files_passed": 76
+  },
+  "backend": {
+    "passed": 147,
+    "elapsed_seconds": 27.25,
+    "mypy_source_files": 133,
+    "ci_ruff_exit": 0,
+    "manifest_tools": 70,
+    "manifest_modules": 28
+  },
+  "browser": {
+    "navigation_attempt1": {
+      "exit": 1,
+      "artifact_dir": "/tmp/spark-upgrade-20261015/navigation-built-integrated",
+      "report_sha256": "f15e36948bc7a4006a810519f8c3cdcde2d4ebb8b1588f69ffef4700bbb694b0",
+      "checks": [
+        "real task_runs execution link opens the exact board task; returning retains parent draft, ready attachment and child selection",
+        "late task lookup after a chat switch cannot navigate the newly selected thread",
+        "collision disables navigation with a reason; explicit POST rejects collision and unowned child without altering the workspace",
+        "lost worktree acknowledgement retries the same symlink and opens actual checkout files; dirty parent, child files, branch and active ownership are retained",
+        "late worktree acceptance after chat switch cannot change the active thread/project"
+      ],
+      "page_errors": [],
+      "built_web": true,
+      "mode": "real temporary SQLite/Git; controlled late/lost HTTP acknowledgements; no providers or sends",
+      "failure": "Deletion fixture mutated task before returning detail navigation GET settled. It correctly disabled Open linked task; click timed out after five completed checks, with zero page errors."
+    },
+    "navigation_attempt2": {
+      "exit": 0,
+      "artifact_dir": "/tmp/spark-upgrade-20261015/navigation-built-integrated-attempt2",
+      "report_sha256": "097ee1884fc4689b775eff7dc160d7649b72e6301c0d722b0313a38e998e517c",
+      "checks": [
+        "real task_runs execution link opens the exact board task; returning retains parent draft, ready attachment and child selection",
+        "late task lookup after a chat switch cannot navigate the newly selected thread",
+        "collision disables navigation with a reason; explicit POST rejects collision and unowned child without altering the workspace",
+        "lost worktree acknowledgement retries the same symlink and opens actual checkout files; dirty parent, child files, branch and active ownership are retained",
+        "late worktree acceptance after chat switch cannot change the active thread/project",
+        "deleted task and removed checkout fail honestly on fresh activation, then disable after refresh; draft/attachment/child selection survive browser reload without replay"
+      ],
+      "page_errors": [],
+      "built_web": true,
+      "mode": "real temporary SQLite/Git; controlled late/lost HTTP acknowledgements; no providers or sends",
+      "fixture_change": "Require supported/enabled navigation before deleting each source. Preserves stale-display to fresh-click rejection; no product change, sleep, forced click or budget relaxation."
+    },
+    "inspector": {
+      "exit": 0,
+      "artifact_dir": "/tmp/spark-upgrade-20261015/inspector-navigation-built-integrated",
+      "report_sha256": "4e673cf19554ac3c00c0ea71ede4f35dfaae8df6e106f5e0f058d31eff7a62a6",
+      "checks": [
+        "real runtime capability disables unsupported Stop with reason",
+        "three live chat switches retain selection/draft/attachment and detached scroll (1000.0 -> 1000.0px)",
+        "exact per-child capabilities permit the owned child beside an unsupported live sibling; transport receipts reuse Stop/Retry IDs after uncertain responses; Stop waits for real terminal SSE; retry retains earlier attempt",
+        "late Stop and Retry acknowledgements stay with their initiating child across chat switches",
+        "committed child result arriving during an older HTTP snapshot survives reconciliation; child failure leaves parent streaming",
+        "cursor event pages append and older message pages prepend without losing existing history; actual worktree refs render",
+        "real completed snapshot renders result, child transcript and app-owned parent/root/attempt references; result copies",
+        "offline/reconnect keeps loaded event/message pages, child selection and parent draft without resubmission",
+        "390px daylight overlay fits, traps keyboard focus, Escape returns focus, reduced motion enabled",
+        "real backend restart changes epoch; selected child and draft survive, parent stops streaming within 5s, no prompt/control is replayed",
+        "project compose opens folder; failed creation preserves draft and attachment across chat switch and refresh"
+      ],
+      "page_errors": [],
+      "asset_responses": [
+        {
+          "url": "index-B8JIJF7v.css",
+          "status": 200
+        },
+        {
+          "url": "vendor-react-Dc-lrgX9.js",
+          "status": 200
+        },
+        {
+          "url": "index-WD-o1OLA.js",
+          "status": 200
+        },
+        {
+          "url": "index-WD-o1OLA.js",
+          "status": 200
+        },
+        {
+          "url": "vendor-react-Dc-lrgX9.js",
+          "status": 200
+        },
+        {
+          "url": "index-B8JIJF7v.css",
+          "status": 200
+        },
+        {
+          "url": "index-WD-o1OLA.js",
+          "status": 200
+        },
+        {
+          "url": "vendor-react-Dc-lrgX9.js",
+          "status": 200
+        },
+        {
+          "url": "index-B8JIJF7v.css",
+          "status": 200
+        },
+        {
+          "url": "index-B8JIJF7v.css",
+          "status": 200
+        },
+        {
+          "url": "vendor-react-Dc-lrgX9.js",
+          "status": 200
+        },
+        {
+          "url": "index-WD-o1OLA.js",
+          "status": 200
+        },
+        {
+          "url": "index-B8JIJF7v.css",
+          "status": 200
+        },
+        {
+          "url": "vendor-react-Dc-lrgX9.js",
+          "status": 200
+        },
+        {
+          "url": "index-WD-o1OLA.js",
+          "status": 200
+        },
+        {
+          "url": "index-B8JIJF7v.css",
+          "status": 200
+        },
+        {
+          "url": "vendor-react-Dc-lrgX9.js",
+          "status": 200
+        },
+        {
+          "url": "index-WD-o1OLA.js",
+          "status": 200
+        },
+        {
+          "url": "index-B8JIJF7v.css",
+          "status": 200
+        },
+        {
+          "url": "vendor-react-Dc-lrgX9.js",
+          "status": 200
+        },
+        {
+          "url": "index-WD-o1OLA.js",
+          "status": 200
+        }
+      ],
+      "built_web": true
+    }
+  },
+  "limits": [
+    "Synthetic temporary profiles, local Git/SQLite, provider and control boundary fixtures; no live inference or external sends",
+    "Controlled performance A/B uses earlier source60fae7c6, distinct from these correctness captures",
+    "Full final suite and hosted CI pending",
+    "P03 approval ownership repair pending",
+    "Installed macOS/Windows, staging and production acceptance pending"
+  ]
+}
