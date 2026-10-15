@@ -25,6 +25,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -344,6 +345,20 @@ def _expand_whatsapp_auth_aliases(identifier: str) -> set:
 _AGENT_PENDING_SENTINEL = object()
 
 
+class _GatewaySessionClaim:
+    """One inbound handler's ownership, including its preparation/worker gap."""
+
+    def __init__(self):
+        self.cancelled = threading.Event()
+        self.agent: Any | None = None
+
+
+# Task-local so queued turns retain their claim without changing handler APIs.
+_gateway_session_claim: ContextVar[tuple[Any, str, _GatewaySessionClaim] | None] = ContextVar(
+    "gateway_session_claim", default=None,
+)
+
+
 def _resolve_runtime_agent_kwargs() -> dict:
     """Resolve provider credentials for gateway-created AIAgent instances."""
     from spark_cli.runtime_provider import (
@@ -600,6 +615,7 @@ class GatewayRunner:
         # Key: session_key, Value: AIAgent instance
         self._running_agents: dict[str, Any] = {}
         self._running_agents_ts: dict[str, float] = {}  # start timestamp per session
+        self._session_claims: dict[str, _GatewaySessionClaim] = {}
         self._pending_messages: dict[str, str] = {}  # Queued messages during interrupt
 
         # Cache AIAgent instances per session to preserve prompt caching.
@@ -2552,6 +2568,26 @@ class GatewayRunner:
             return config.get_unauthorized_dm_behavior(platform)
         return "pair"
 
+    def _current_session_claim(self, session_key: str) -> _GatewaySessionClaim | None:
+        current = _gateway_session_claim.get()
+        if current is not None and current[0] is self and current[1] == session_key:
+            return current[2]
+        return None
+
+    def _owns_session_claim(self, session_key: str, claim: _GatewaySessionClaim | None) -> bool:
+        # Direct legacy _run_agent callers have no inbound preparation claim.
+        return claim is None or (
+            not claim.cancelled.is_set()
+            and getattr(self, "_session_claims", {}).get(session_key) is claim
+        )
+
+    def _cancel_session_claim(self, session_key: str):
+        claim = getattr(self, "_session_claims", {}).pop(session_key, None)
+        if claim is not None:
+            claim.cancelled.set()
+            return claim.agent
+        return None
+
     async def _handle_message(self, event: MessageEvent) -> str | None:
         """
         Handle an incoming message from any platform.
@@ -2725,9 +2761,10 @@ class GatewayRunner:
             # _interrupt_requested.  Force-clean _running_agents so the session
             # is unlocked and subsequent messages are processed normally.
             if _cmd_def_inner and _cmd_def_inner.name == "stop":
+                claimed_agent = self._cancel_session_claim(_quick_key)
                 running_agent = self._running_agents.get(_quick_key)
                 if running_agent is None or running_agent is _AGENT_PENDING_SENTINEL:
-                    running_agent = self._owned_background_parent(_quick_key)
+                    running_agent = claimed_agent or self._owned_background_parent(_quick_key)
                 if running_agent and running_agent is not _AGENT_PENDING_SENTINEL:
                     # interrupt(message) means replacement user input. A slash
                     # command must not invent a later inference from its reason.
@@ -3194,6 +3231,11 @@ class GatewayRunner:
         # same session — corrupting the transcript.
         self._running_agents[_quick_key] = _AGENT_PENDING_SENTINEL
         self._running_agents_ts[_quick_key] = time.time()
+        if not hasattr(self, "_session_claims"):
+            self._session_claims = {}
+        claim = _GatewaySessionClaim()
+        self._session_claims[_quick_key] = claim
+        claim_token = _gateway_session_claim.set((self, _quick_key, claim))
 
         try:
             return await self._handle_message_with_agent(event, source, _quick_key)
@@ -3202,9 +3244,12 @@ class GatewayRunner:
             # then cleaned it up, this is a no-op.  If we exited early
             # (exception, command fallthrough, etc.) the sentinel must
             # not linger or the session would be permanently locked out.
-            if self._running_agents.get(_quick_key) is _AGENT_PENDING_SENTINEL:
-                del self._running_agents[_quick_key]
-            self._running_agents_ts.pop(_quick_key, None)
+            if self._owns_session_claim(_quick_key, claim):
+                self._session_claims.pop(_quick_key, None)
+                if self._running_agents.get(_quick_key) is _AGENT_PENDING_SENTINEL:
+                    del self._running_agents[_quick_key]
+                self._running_agents_ts.pop(_quick_key, None)
+            _gateway_session_claim.reset(claim_token)
 
     async def _prepare_inbound_message_text(
         self,
@@ -3364,6 +3409,7 @@ class GatewayRunner:
 
     async def _handle_message_with_agent(self, event, source, _quick_key: str):
         """Inner handler that runs under the _running_agents sentinel guard."""
+        claim = self._current_session_claim(_quick_key)
         _msg_start_time = time.time()
         _platform_name = source.platform.value if hasattr(source.platform, "value") else str(source.platform)
         _msg_preview = (event.text or "")[:80].replace("\n", " ")
@@ -3823,6 +3869,9 @@ class GatewayRunner:
             }
             await self.hooks.emit("agent:start", hook_ctx)
 
+            if not self._owns_session_claim(_quick_key, claim):
+                return None
+
             # Run the agent
             agent_result = await self._run_agent(
                 message=message_text,
@@ -3833,6 +3882,8 @@ class GatewayRunner:
                 session_key=session_key,
                 event_message_id=event.message_id,
             )
+            if not self._owns_session_claim(_quick_key, claim):
+                return None
 
             # Stop persistent typing indicator now that the agent is done
             try:
@@ -3914,6 +3965,8 @@ class GatewayRunner:
                 **hook_ctx,
                 "response": (response or "")[:500],
             })
+            if not self._owns_session_claim(_quick_key, claim):
+                return None
 
             # Check for pending process watchers (check_interval on background processes)
             try:
@@ -4067,6 +4120,8 @@ class GatewayRunner:
 
         except Exception as e:
             # Stop typing indicator on error too
+            if not self._owns_session_claim(_quick_key, claim):
+                return None
             try:
                 _err_adapter = self.adapters.get(source.platform)
                 if _err_adapter and hasattr(_err_adapter, "stop_typing"):
@@ -4413,8 +4468,9 @@ class GatewayRunner:
         session_key = session_entry.session_key
 
         agent = self._running_agents.get(session_key)
+        claimed_agent = self._cancel_session_claim(session_key)
         if agent is _AGENT_PENDING_SENTINEL:
-            background_parent = self._owned_background_parent(session_key)
+            background_parent = claimed_agent or self._owned_background_parent(session_key)
             if background_parent is not None:
                 background_parent.interrupt()
             # Force-clean the sentinel so the session is unlocked.
@@ -4423,7 +4479,7 @@ class GatewayRunner:
             self._running_agents_ts.pop(session_key, None)
             logger.info("STOP (pending) for session %s — sentinel cleared", session_key[:20])
             return "⚡ Stopped. The agent hadn't started yet — you can continue this session."
-        agent = agent or self._owned_background_parent(session_key)
+        agent = agent or claimed_agent or self._owned_background_parent(session_key)
         if agent:
             # No replacement message: stopped work waits for explicit input.
             agent.interrupt()
@@ -8243,6 +8299,10 @@ class GatewayRunner:
         from core.run_agent import AIAgent
 
         user_config = _load_gateway_config()
+        claim = self._current_session_claim(session_key)
+        worker_owner = object()
+        if not self._owns_session_claim(session_key, claim):
+            return {"final_response": "", "messages": []}
         self._refresh_live_config_state(user_config)
         platform_key = _platform_config_key(source.platform)
 
@@ -8703,8 +8763,12 @@ class GatewayRunner:
             if _cache_lock and _cache is not None:
                 with _cache_lock:
                     cached = _cache.get(session_key)
-                    if cached and cached[1] == _sig:
+                    if (cached and cached[1] == _sig
+                            and getattr(cached[0], "_gateway_worker_owner", None) is None):
+                        if not self._owns_session_claim(session_key, claim):
+                            return {"final_response": "", "messages": []}
                         agent = cached[0]
+                        agent._gateway_worker_owner = worker_owner
                         logger.debug("Reusing cached agent for session %s", session_key)
 
             if agent is None:
@@ -8735,8 +8799,21 @@ class GatewayRunner:
                 )
                 if _cache_lock and _cache is not None:
                     with _cache_lock:
-                        _cache[session_key] = (agent, _sig)
+                        agent._gateway_worker_owner = worker_owner
+                        if self._owns_session_claim(session_key, claim):
+                            _cache[session_key] = (agent, _sig)
                 logger.debug("Created new agent for session %s (sig=%s)", session_key, _sig)
+
+            # A stopped worker can still be inside constructor/plugin work.
+            # Use the runtime's existing cancellation latch: clear_interrupt()
+            # at conversation startup must not erase a Stop received earlier.
+            agent_holder[0] = agent
+            agent._spark_async_cancel_event = threading.Event()
+            agent._spark_async_cancel_message = None
+            if claim is not None:
+                claim.agent = agent
+                if claim.cancelled.is_set():
+                    agent._spark_async_cancel_event.set()
 
             # Per-message state — callbacks and reasoning config change every
             # turn and must not be baked into the cached agent constructor.
@@ -8921,6 +8998,8 @@ class GatewayRunner:
             _approval_session_token = set_current_session_key(_approval_session_key)
             register_gateway_notify(_approval_session_key, _approval_notify_sync)
             try:
+                if not self._owns_session_claim(session_key, claim):
+                    return {"final_response": "", "messages": []}
                 result = agent.run_conversation(message, conversation_history=agent_history, task_id=session_id)
             finally:
                 unregister_gateway_notify(_approval_session_key)
@@ -9061,6 +9140,18 @@ class GatewayRunner:
                 "error": result.get("error"),
             }
 
+        def run_owned_sync():
+            try:
+                return run_sync()
+            finally:
+                # A timeout can release the async handler while this worker is
+                # still live. Release cache ownership only when it really exits.
+                agent = agent_holder[0]
+                if agent is not None:
+                    with self._agent_cache_lock:
+                        if getattr(agent, "_gateway_worker_owner", None) is worker_owner:
+                            agent._gateway_worker_owner = None
+
         # Start progress message sender if enabled
         progress_task = None
         if tool_progress_enabled:
@@ -9086,7 +9177,7 @@ class GatewayRunner:
             # Wait for agent to be created
             while agent_holder[0] is None:
                 await asyncio.sleep(0.05)
-            if session_key:
+            if session_key and self._owns_session_claim(session_key, claim):
                 self._running_agents[session_key] = agent_holder[0]
                 if self._draining:
                     self._update_runtime_status("draining")
@@ -9107,6 +9198,8 @@ class GatewayRunner:
 
             while True:
                 await asyncio.sleep(0.2)  # Check every 200ms
+                if not self._owns_session_claim(session_key, claim):
+                    return
                 try:
                     # Re-resolve adapter each iteration so reconnects don't
                     # leave us holding a stale reference.
@@ -9199,7 +9292,7 @@ class GatewayRunner:
             _agent_warning_raw = float(os.getenv("SPARK_AGENT_TIMEOUT_WARNING", 900))
             _agent_warning = _agent_warning_raw if _agent_warning_raw > 0 else None
             _warning_fired = False
-            _executor_task = asyncio.create_task(_run_blocking(run_sync))
+            _executor_task = asyncio.create_task(_run_blocking(run_owned_sync))
 
             _inactivity_timeout = False
             _POLL_INTERVAL = 5.0
@@ -9356,6 +9449,11 @@ class GatewayRunner:
                     "history_offset": 0,
                     "failed": True,
                 }
+
+            # Superseded handlers cannot consume a replacement's queued input,
+            # evict its cache entry, or publish their late result.
+            if not self._owns_session_claim(session_key, claim):
+                return {"final_response": "", "messages": []}
 
             # Track fallback model state: if the agent switched to a
             # fallback model during this run, persist it so /model shows
@@ -9537,9 +9635,9 @@ class GatewayRunner:
 
             # Clean up tracking
             tracking_task.cancel()
-            if session_key and session_key in self._running_agents:
-                del self._running_agents[session_key]
-            if session_key:
+            if (session_key and self._owns_session_claim(session_key, claim)
+                    and self._running_agents.get(session_key) is agent_holder[0]):
+                self._running_agents.pop(session_key, None)
                 self._running_agents_ts.pop(session_key, None)
             if self._draining:
                 self._update_runtime_status("draining")
