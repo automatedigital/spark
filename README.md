@@ -311,7 +311,7 @@ using the [repository tracker conventions](docs/agents/issue-tracker.md).
 ```bash
 source .venv/bin/activate
 pip install -e ".[dev,web]"
-python -m pytest tests/ -m "not slow and not integration" -q
+python -m pytest tests/ -m "not slow and not integration" -q -n 0
 ruff check src/
 mypy src/agent/ src/spark_cli/
 python scripts/generate_tool_manifest.py --check

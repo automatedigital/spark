@@ -47,13 +47,22 @@ spark                               # Start interactive TUI
 spark setup                         # Interactive config wizard
 spark doctor                        # Diagnose environment
 
-python -m pytest tests/ -q                          # Full suite
-python -m pytest tests/ -k "test_name" -q           # Focused test
-python -m pytest tests/ -m "not slow and not integration" -q  # Skip slow/external tests
-python -m pytest tests/ -m "not integration" -q     # Skip external services
+python -m pytest tests/ -q -n 0                     # Full suite, including serial cases
+python -m pytest tests/ -k "test_name" -q -n 0      # Focused test
+python -m pytest tests/ -m "not slow and not integration" -q -n 0  # Skip slow/external tests
+python -m pytest tests/ -m "not integration" -q -n 0  # Skip external services
 ruff check src/
 mypy src/agent/ src/spark_cli/
 python scripts/generate_tool_manifest.py --check
+```
+
+Pytest defaults to xdist workers; the `serial` marker does not automatically
+serialize a test. Use `-n 0` for any selection containing serial cases. For a
+split local run, execute both commands sequentially and require both to pass:
+
+```bash
+python -m pytest tests/ -m "not serial and not integration and not network" -q -n 4
+python -m pytest tests/ -m "serial and not integration and not network" -q -n 0
 ```
 
 The web extra is required for dashboard work and tests importing FastAPI routes.

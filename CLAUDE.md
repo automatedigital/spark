@@ -25,7 +25,7 @@ extra for dashboard work and tests that import route modules.
 ```bash
 source .venv/bin/activate
 pip install -e ".[dev,web]"
-python -m pytest tests/ -m "not slow and not integration" -q
+python -m pytest tests/ -m "not slow and not integration" -q -n 0
 ruff check src/
 mypy src/agent/ src/spark_cli/
 python scripts/generate_tool_manifest.py --check
@@ -47,6 +47,9 @@ a directory or symlink named `node@22` does not establish the runtime version.
 Run focused checks while iterating, then the relevant wider suite. Record preexisting
 lint/type failures separately. Override pytest markers carefully: integration tests
 are excluded by default, but a supplied `-m` replaces that expression.
+The `serial` marker does not override xdist's default workers. Use `-n 0` when
+serial cases are selected, or run the separate parallel/serial selections in
+`AGENTS.md` sequentially and require both to pass.
 
 ## Boundaries to preserve
 
