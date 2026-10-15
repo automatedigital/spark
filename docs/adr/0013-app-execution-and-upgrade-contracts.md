@@ -104,6 +104,21 @@ references; do not pretend there is an atomic transaction across both databases.
 Late writes from reclaimed workers must fail. Unknown side effects require review
 rather than automatic rerun. Text-only auto-close remains unverified user_review.
 
+### Gateway notification and execution lifetimes
+
+A session routing key is not a worker ownership token. Callback cleanup and
+approval waiters must belong to the execution that registered them; stale cleanup
+cannot remove a replacement's callback or report a user decision that never occurred.
+
+Normal parent completion ends that turn's notification callback while authorized
+async children can continue within their existing permissions. A later ordinary
+explicit parent turn must preserve those children. Explicit Stop revokes all
+owned live execution contexts; replacing an overlapping, superseded root must
+also fence its late tool calls. These are separate events from normal completion.
+An earlier child cannot borrow a later turn's approval callback. If its required
+responder is unavailable, report that limitation rather than fabricate approval
+or denial. Tests must cross normal completion, sequential turns, Stop and overlap.
+
 ## Delivery and rollback
 
 Single migration writer; independent agents own disjoint modules/worktrees.
