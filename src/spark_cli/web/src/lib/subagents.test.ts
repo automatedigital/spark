@@ -2,15 +2,62 @@ import { describe, expect, it } from "vitest";
 import type { SubagentRun } from "@/lib/api";
 import {
   mergeSubagentLiveEvents,
+  mergeChildMessagePage,
   mergeSubagentLiveEvent,
   mergeSubagentSnapshot,
   replaceSubagentSnapshot,
+  reconcileSubagentSnapshot,
   preserveSelectedSubagentId,
   subagentDisplayName,
   subagentVisual,
 } from "./subagents";
 
 describe("subagent state merger", () => {
+  it("accumulates more than 1,000 messages with stable order and retains older pages on refresh", () => {
+    const page = (start: number, end: number) => ({
+      session_id: "parent", subagent_id: "child", child_session_id: "child-thread", limit: 200, total: 1400,
+      messages: Array.from({ length: end - start + 1 }, (_, i) => ({ id: String(start + i), role: "assistant" as const, content: String(start + i) })),
+      has_earlier: start > 1, next_before_id: start > 1 ? start : null,
+    });
+    let result = mergeChildMessagePage(null, page(1201, 1400));
+    for (let end = 1200; end > 0; end -= 200) result = mergeChildMessagePage(result, page(end - 199, end), "earlier");
+    result = mergeChildMessagePage(result, page(1201, 1400));
+    expect(result.messages).toHaveLength(1400);
+    expect(result.messages[0].id).toBe("1");
+    expect(result.messages.at(-1)?.id).toBe("1400");
+    expect(result).toMatchObject({ has_earlier: false, next_before_id: null });
+    expect(mergeChildMessagePage(result, { ...page(1, 2), subagent_id: "sibling" }).messages).toHaveLength(2);
+  });
+
+  it("appends event pages beyond 1,000 and keeps equal-timestamp SQLite rows ordered", () => {
+    let runs: SubagentRun[] = [];
+    for (let start = 1; start <= 1200; start += 200) {
+      runs = mergeSubagentSnapshot(runs, [{ id: "child", status: "running", events: Array.from({ length: 200 }, (_, i) => ({ id: String(start + i), event_id: `stable-${start + i}`, ts: 1, type: "thinking" })) }]);
+    }
+    expect(runs[0].events).toHaveLength(1200);
+    expect(runs[0].events?.[9].id).toBe("10");
+    expect(runs[0].events?.at(-1)?.id).toBe("1200");
+  });
+  it("replays events received during a snapshot without retaining obsolete members", () => {
+    const rows = reconcileSubagentSnapshot([
+      { id: "removed", status: "running" },
+      { id: "retained", status: "running", events: [{ event_id: "history", type: "thinking", text: "loaded detail" }] },
+    ], [{ id: "retained", status: "running" }], [
+      { topic: "chat.subagent.completed", data: { id: "retained", status: "completed", summary: "raced result", event: { event_id: "done", type: "completed" } } },
+      { topic: "chat.subagent.started", data: { id: "new", status: "running" } },
+    ]);
+    expect(rows.map((run) => run.id).sort()).toEqual(["new", "retained"]);
+    expect(rows.find((run) => run.id === "retained")).toMatchObject({ status: "completed", summary: "raced result" });
+    expect(rows.find((run) => run.id === "retained")?.events).toHaveLength(2);
+  });
+
+  it("reconciles uncertain restart status and deduplicates persisted/live event IDs", () => {
+    const rows = reconcileSubagentSnapshot([{ id: "child", status: "running" }], [{
+      id: "child", status: "uncertain", events: [{ id: "db-row", event_id: "stable", type: "uncertain", ts: 4 }],
+    }], [{ topic: "chat.subagent.uncertain", data: { id: "child", status: "uncertain", event: { event_id: "stable", type: "uncertain", ts: 4 } } }]);
+    expect(rows[0].status).toBe("uncertain");
+    expect(rows[0].events).toHaveLength(1);
+  });
   it("normalizes and sorts snapshot runs", () => {
     const runs = mergeSubagentSnapshot([], [
       { id: "b", status: "running", task: "second", started_at: 20 },

@@ -23,6 +23,7 @@ const STALE_AFTER_MS = 45_000;
 const WATCHDOG_INTERVAL_MS = 10_000;
 
 export const BUS_RECONNECTED_TOPIC = "bus.reconnected";
+export const BUS_DISCONNECTED_TOPIC = "bus.disconnected";
 export const BUS_GAP_TOPIC = "bus.gap";
 export const BUS_STALE_TOPIC = "bus.stale";
 export const BUS_WAKE_TOPIC = "bus.wake";
@@ -181,6 +182,7 @@ export class ConnectionSupervisor {
       source.close();
       if (this.source === source) this.source = null;
       this.wasDisconnected = true;
+      this.notifySynthetic(BUS_DISCONNECTED_TOPIC, {});
       this.scheduleReconnect();
     };
   }

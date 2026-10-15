@@ -1,4 +1,5 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Check,
   ChevronDown,
@@ -46,7 +47,7 @@ import {
 import type { ThreadCreatedMeta } from "@/lib/sessionStore";
 import { useSubagents } from "@/hooks/useSubagents";
 import { SubagentsPanel } from "@/components/chat/SubagentsPanel";
-import { preserveSelectedSubagentId } from "@/lib/subagents";
+import { readSidebarPreference, writeSidebarPreference, sidebarPreferenceKey, SIDEBAR_SCOPE_EVENT } from "@/lib/sidebarPrefs";
 
 const WorkspaceTerminalPanel = lazy(() =>
   import("@/components/workspace/WorkspaceTerminalPanel").then((module) => ({
@@ -470,12 +471,12 @@ function rightTabKey(slug: string | null, sessionId: string | null) {
 }
 
 function loadRightTab(slug: string | null, sessionId: string | null): RightTab {
-  const saved = localStorage.getItem(rightTabKey(slug, sessionId));
+  const saved = readSidebarPreference(rightTabKey(slug, sessionId));
   return RIGHT_TAB_META.some((m) => m.id === saved) ? (saved as RightTab) : "files";
 }
 
 function saveRightTab(slug: string | null, sessionId: string | null, tab: RightTab) {
-  localStorage.setItem(rightTabKey(slug, sessionId), tab);
+  writeSidebarPreference(rightTabKey(slug, sessionId), tab);
 }
 
 function rightPanelOpenKey(slug: string | null, sessionId: string | null) {
@@ -485,13 +486,13 @@ function rightPanelOpenKey(slug: string | null, sessionId: string | null) {
 }
 
 function loadRightPanelOpen(slug: string | null, sessionId: string | null) {
-  const saved = localStorage.getItem(rightPanelOpenKey(slug, sessionId));
+  const saved = readSidebarPreference(rightPanelOpenKey(slug, sessionId));
   if (saved !== null) return saved !== "false";
   return Boolean(slug);
 }
 
 function saveRightPanelOpen(slug: string | null, sessionId: string | null, open: boolean) {
-  localStorage.setItem(rightPanelOpenKey(slug, sessionId), String(open));
+  writeSidebarPreference(rightPanelOpenKey(slug, sessionId), String(open));
 }
 
 function availableRightTabs(hasWorkspaceScope: boolean, isProject: boolean, hasSession: boolean, subagentsEnabled = true): RightTabMeta[] {
@@ -652,6 +653,10 @@ function WorkspaceRightPanel({
   subagentsLoading,
   subagentsError,
   subagentsEnabled,
+  subagentCapabilities,
+  subagentEventPages,
+  onReloadSubagents,
+  onLoadSubagentDetail,
   onSelectTab,
   onSelectSubagent,
   onCloseSubagentDetail,
@@ -667,6 +672,10 @@ function WorkspaceRightPanel({
   selectedSubagentId: string | null;
   subagentsLoading: boolean;
   subagentsError: string | null;
+  subagentCapabilities: ReturnType<typeof useSubagents>["capabilities"];
+  onReloadSubagents: () => Promise<void>;
+  onLoadSubagentDetail: ReturnType<typeof useSubagents>["loadSubagentDetail"];
+  subagentEventPages: ReturnType<typeof useSubagents>["eventPages"];
   subagentsEnabled: boolean;
   onSelectTab: (tab: RightTab) => void;
   onSelectSubagent: (id: string) => void;
@@ -836,6 +845,10 @@ function WorkspaceRightPanel({
             loading={subagentsLoading}
             error={subagentsError}
             sessionId={sessionId}
+            capabilities={subagentCapabilities}
+            eventPage={selectedSubagentId ? subagentEventPages[selectedSubagentId] : undefined}
+            onReload={onReloadSubagents}
+            onLoadDetail={onLoadSubagentDetail}
             onSelect={onSelectSubagent}
             onCloseDetail={onCloseSubagentDetail}
           />
@@ -870,19 +883,32 @@ export default function ChatPage() {
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("files");
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
-    const saved = localStorage.getItem("spark-chat-right-panel-width");
+    const saved = readSidebarPreference("spark-chat-right-panel-width");
     return saved ? Math.max(240, parseInt(saved, 10)) : 320;
   });
   const [subagentPanelWidth, setSubagentPanelWidth] = useState(() => {
-    const saved = localStorage.getItem("spark-chat-subagents-panel-width");
+    const saved = readSidebarPreference("spark-chat-subagents-panel-width");
     return saved ? Math.max(320, parseInt(saved, 10)) : 420;
   });
   const [subagentsSidebarEnabled, setSubagentsSidebarEnabled] = useState(true);
-  const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
+  const [subagentSelections, setSubagentSelections] = useState<Record<string, string | null>>({});
+  const [preferenceScope, setPreferenceScope] = useState(() => sidebarPreferenceKey("chat"));
+  const selectionStorageKey = `spark-child-selection:${selectedId ?? ""}`;
+  const selectionKey = `${preferenceScope}:${selectionStorageKey}`;
+  const selectedSubagentId = subagentSelections[selectionKey] !== undefined
+    ? subagentSelections[selectionKey] : readSidebarPreference(selectionStorageKey);
+  const setSelectedSubagentId = useCallback((id: string | null) => {
+    setSubagentSelections((previous) => ({ ...previous, [selectionKey]: id }));
+    writeSidebarPreference(selectionStorageKey, id ?? "");
+  }, [selectionKey, selectionStorageKey]);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const previousSubagentCountRef = useRef(0);
   const lastSubagentTriggerRef = useRef<HTMLElement | null>(null);
   const {
     subagents,
+    capabilities: subagentCapabilities,
+    eventPages: subagentEventPages,
+    reload: reloadSubagents,
     loading: subagentsLoading,
     error: subagentsError,
     loadSubagentDetail,
@@ -924,13 +950,20 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    setSelectedSubagentId(null);
     previousSubagentCountRef.current = 0;
   }, [selectedId]);
 
   useEffect(() => {
-    setSelectedSubagentId((current) => preserveSelectedSubagentId(current, subagents));
-  }, [subagents]);
+    const refresh = () => {
+      setPreferenceScope(sidebarPreferenceKey("chat"));
+      setRightTab(loadRightTab(activeWorkspaceSlug, selectedId));
+      setRightPanelOpen(loadRightPanelOpen(activeWorkspaceSlug, selectedId));
+      setRightPanelWidth(Number(readSidebarPreference("spark-chat-right-panel-width")) || 320);
+      setSubagentPanelWidth(Number(readSidebarPreference("spark-chat-subagents-panel-width")) || 420);
+    };
+    window.addEventListener(SIDEBAR_SCOPE_EVENT, refresh);
+    return () => window.removeEventListener(SIDEBAR_SCOPE_EVENT, refresh);
+  }, [activeWorkspaceSlug, selectedId]);
 
   useEffect(() => {
     if (selectedSubagentId) void loadSubagentDetail(selectedSubagentId);
@@ -1018,14 +1051,14 @@ export default function ChatPage() {
     if (rightTab === "subagents") {
       setSubagentPanelWidth((width) => {
         const next = Math.max(320, Math.min(760, width - delta));
-        localStorage.setItem("spark-chat-subagents-panel-width", String(next));
+        writeSidebarPreference("spark-chat-subagents-panel-width", String(next));
         return next;
       });
       return;
     }
     setRightPanelWidth((width) => {
       const next = Math.max(240, Math.min(720, width - delta));
-      localStorage.setItem("spark-chat-right-panel-width", String(next));
+      writeSidebarPreference("spark-chat-right-panel-width", String(next));
       return next;
     });
   }, [rightTab]);
@@ -1034,22 +1067,35 @@ export default function ChatPage() {
     const active = document.activeElement;
     lastSubagentTriggerRef.current = active instanceof HTMLElement ? active : null;
     setSelectedSubagentId(id);
-  }, []);
+  }, [setSelectedSubagentId]);
 
   const handleCloseSubagentDetail = useCallback(() => {
     setSelectedSubagentId(null);
     window.setTimeout(() => {
-      lastSubagentTriggerRef.current?.focus();
+      const trigger = lastSubagentTriggerRef.current;
+      if (trigger?.isConnected) trigger.focus();
+      else {
+        const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-subagent-row]"));
+        rows.find((row) => row.dataset.subagentRow === selectedSubagentId && row.getClientRects().length)?.focus();
+      }
       lastSubagentTriggerRef.current = null;
     }, 0);
-  }, []);
+  }, [selectedSubagentId, setSelectedSubagentId]);
 
   useEffect(() => {
     if (!selectedSubagentId) return;
+    const overlay = overlayRef.current;
+    if (window.matchMedia("(max-width: 767px)").matches) overlay?.querySelector<HTMLElement>("button")?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      handleCloseSubagentDetail();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleCloseSubagentDetail();
+      }
+      if (event.key !== "Tab" || !overlay || !window.matchMedia("(max-width: 767px)").matches) return;
+      const focusable = Array.from(overlay.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], [tabindex='0']")).filter((element) => element.getClientRects().length);
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1096,12 +1142,12 @@ export default function ChatPage() {
                   />
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {subagentsSidebarEnabled && subagents.length > 0 && !rightPanelOpen && (
+                  {subagentsSidebarEnabled && subagents.length > 0 && (
                     <button
                       type="button"
                       aria-label={`Show ${subagents.length} subagents`}
                       onClick={openSubagentsFromHeader}
-                      className="inline-flex h-7 items-center gap-1.5 rounded px-2 text-[11px] text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                      className={cn("inline-flex h-7 items-center gap-1.5 rounded px-2 text-[11px] text-muted-foreground transition hover:bg-secondary hover:text-foreground", rightPanelOpen && "md:hidden")}
                     >
                       <Bot className="h-3.5 w-3.5" />
                       <span className="rounded bg-secondary px-1.5 py-0.5 font-mono-ui text-[10px]">
@@ -1153,24 +1199,32 @@ export default function ChatPage() {
               subagentsLoading={subagentsLoading}
               subagentsError={subagentsError}
               subagentsEnabled={subagentsSidebarEnabled}
+              subagentCapabilities={subagentCapabilities}
+              subagentEventPages={subagentEventPages}
+              onReloadSubagents={reloadSubagents}
+              onLoadSubagentDetail={loadSubagentDetail}
               onSelectTab={selectRightTab}
               onSelectSubagent={handleSelectSubagent}
               onCloseSubagentDetail={handleCloseSubagentDetail}
             />
           </div>
         )}
-        {selectedSubagentId && (
-          <div className="fixed inset-0 z-50 flex bg-background md:hidden" role="dialog" aria-modal="true" aria-label="Subagent detail">
+        {selectedSubagentId && createPortal(
+          <div ref={overlayRef} className="fixed inset-0 z-50 flex bg-background md:hidden" role="dialog" aria-modal="true" aria-label="Subagent detail">
             <SubagentsPanel
               subagents={subagents}
               selectedId={selectedSubagentId}
               loading={subagentsLoading}
               error={subagentsError}
               sessionId={selectedId}
+              capabilities={subagentCapabilities}
+              eventPage={selectedSubagentId ? subagentEventPages[selectedSubagentId] : undefined}
+              onReload={reloadSubagents}
+              onLoadDetail={loadSubagentDetail}
               onSelect={handleSelectSubagent}
               onCloseDetail={handleCloseSubagentDetail}
             />
-          </div>
+          </div>, document.body,
         )}
       </div>
     </div>

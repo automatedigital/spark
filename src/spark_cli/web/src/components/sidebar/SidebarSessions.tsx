@@ -255,7 +255,7 @@ function ProjectGroup({
             {savingRename && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
           </form>
         ) : (
-          <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={onToggle}>
+          <button type="button" aria-expanded={isExpanded} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={onToggle}>
             <span className="text-muted-foreground/50">
               {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </span>

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 // Square/Send/handleKeyDown removed — now handled by PromptBar
 import { api, type SubagentRun, type WebPendingAction, type WebPlan, type WebTurnOutcome } from "@/lib/api";
+import { sidebarPreferenceKey } from "@/lib/sidebarPrefs";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/BrandLogo";
 import { saveOutput } from "@/lib/savedOutputs";
@@ -180,6 +181,9 @@ export function ChatPanel({
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollViewportTopRef = useRef<number | null>(null);
+  const threadScrollPositions = useRef(new Map<string, { top: number; anchorId: string | null; offset: number }>());
+  const pendingThreadScroll = useRef<{ sessionId: string; top: number; anchorId: string | null; offset: number } | null>(null);
+  const restoringThreadScroll = useRef(false);
 
   useLayoutEffect(() => {
     const element = scrollContainerRef.current;
@@ -524,12 +528,14 @@ export function ChatPanel({
     recoverySignalBudgetRef.current = initialRecoverySignalBudget();
     prevCountRef.current = 0;
     lastAutoScrollAtRef.current = 0;
-    scrollStateRef.current = reduceChatScrollState(initialChatScrollState(initialTranscript.length), {
-      type: "jump-to-bottom",
-      itemCount: initialTranscript.length,
-    });
-    setDetachedFromBottom(false);
-    followStreamRef.current = true;
+    const savedScroll = resetSessionId ? threadScrollPositions.current.get(sidebarPreferenceKey(`chat-scroll:${resetSessionId}`)) : null;
+    pendingThreadScroll.current = savedScroll && resetSessionId ? { ...savedScroll, sessionId: resetSessionId } : null;
+    restoringThreadScroll.current = Boolean(savedScroll);
+    scrollStateRef.current = savedScroll
+      ? { mode: "detached", lastItemCount: initialTranscript.length, anchorId: savedScroll.anchorId }
+      : reduceChatScrollState(initialChatScrollState(initialTranscript.length), { type: "jump-to-bottom", itemCount: initialTranscript.length });
+    setDetachedFromBottom(Boolean(savedScroll));
+    followStreamRef.current = !savedScroll;
     setEditingUser(null);
     setDiagnosticsOpen(false);
     setConversationDiagnostics(null);
@@ -1200,6 +1206,8 @@ export function ChatPanel({
     gap: 12,
   });
   const measuredSessionRef = useRef<string | null>(null);
+  const timelineTurnsRef = useRef(timelineTurns);
+  timelineTurnsRef.current = timelineTurns;
 
   useLayoutEffect(() => {
     const previous = measuredSessionRef.current;
@@ -1298,7 +1306,7 @@ export function ChatPanel({
     const el = scrollContainerRef.current;
     if (!el) return;
     const updateFollowState = () => {
-      if (loadingHistory || scrollStateRef.current.mode === "jumping-to-bottom") return;
+      if (loadingHistory || restoringThreadScroll.current || activeSessionRef.current !== activeSessionId || scrollStateRef.current.mode === "jumping-to-bottom") return;
       const firstVisibleIndex = virtualizer.getVirtualItems()[0]?.index;
       scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
         type: "user-scroll",
@@ -1310,6 +1318,15 @@ export function ChatPanel({
         anchorId: firstVisibleIndex == null ? null : timelineTurns[firstVisibleIndex]?.id ?? null,
       });
       followStreamRef.current = scrollStateRef.current.mode === "following";
+      if (activeSessionId) {
+        const key = sidebarPreferenceKey(`chat-scroll:${activeSessionId}`);
+        if (followStreamRef.current) threadScrollPositions.current.delete(key);
+        else {
+          const viewport = el.getBoundingClientRect();
+          const anchor = Array.from(el.querySelectorAll<HTMLElement>("[data-row-id]")).find((row) => row.getBoundingClientRect().bottom > viewport.top);
+          threadScrollPositions.current.set(key, { top: el.scrollTop, anchorId: anchor?.dataset.rowId ?? null, offset: anchor ? anchor.getBoundingClientRect().top - viewport.top : 0 });
+        }
+      }
       setDetachedFromBottom(
         scrollStateRef.current.mode === "detached" ||
         scrollStateRef.current.mode === "pending-new-message",
@@ -1318,7 +1335,30 @@ export function ChatPanel({
     updateFollowState();
     el.addEventListener("scroll", updateFollowState, { passive: true });
     return () => el.removeEventListener("scroll", updateFollowState);
-  }, [activeSessionId, loadingHistory, timelineTurns, virtualizer]);
+  }, [activeSessionId, activeSessionRef, loadingHistory, timelineTurns, virtualizer]);
+
+  useEffect(() => {
+    const saved = pendingThreadScroll.current;
+    if (!saved || saved.sessionId !== activeSessionId || loadingHistory || !timelineTurnsRef.current.length) return;
+    const restoreGeneration = prependRestoreGenerationRef.current;
+    let frame = 0, remaining = 30;
+    const restore = () => {
+      frame = requestAnimationFrame(() => {
+        if (restoreGeneration !== prependRestoreGenerationRef.current) return;
+        const element = scrollContainerRef.current;
+        if (!element) return;
+        const index = timelineTurnsRef.current.findIndex((turn) => turn.id === saved.anchorId);
+        const anchor = saved.anchorId ? element.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(saved.anchorId)}"]`) : null;
+        if (anchor) element.scrollTop += anchor.getBoundingClientRect().top - element.getBoundingClientRect().top - saved.offset;
+        else if (index >= 0) virtualizer.scrollToIndex(index, { align: "start", behavior: "instant" });
+        else element.scrollTop = saved.top;
+        if (--remaining > 0) restore();
+        else { pendingThreadScroll.current = null; restoringThreadScroll.current = false; }
+      });
+    };
+    restore();
+    return () => cancelAnimationFrame(frame);
+  }, [activeSessionId, loadingHistory, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
