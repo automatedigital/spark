@@ -105,6 +105,10 @@ jobs:
             tests/spark_cli/test_web_projections.py \
             tests/gateway/test_async_delegation_delivery.py \
             tests/gateway/test_stop_ownership.py \
+            tests/gateway/test_approval_ownership.py \
+            tests/gateway/test_approval_button_ownership.py \
+            tests/gateway/test_approval_button_ids.py \
+            tests/tools/test_approval_ownership.py \
             tests/test_model_tools_lazy_imports.py tests/tools/test_lazy_manifest.py \
             tests/test_minimal_startup.py
           python scripts/generate_tool_manifest.py --check
