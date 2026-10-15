@@ -1,134 +1,81 @@
-# CLAUDE.md
+# Claude Code entry point
 
-Claude Code guidance for this repository. `AGENTS.md` is the canonical and more
-detailed guide; this file is the compact Claude-specific version.
+Read [AGENTS.md](AGENTS.md) first. It is the canonical development guide and
+contains the full safety, extension and verification rules. This file adds no
+separate architecture or permission policy.
 
-## Start Here
+## Orientation
+
+- [CONTEXT.md](CONTEXT.md): domain vocabulary and current/proposed distinctions.
+- [STRUCTURE.md](STRUCTURE.md): source map, state ownership and build boundaries.
+- [PLAN.md](PLAN.md): proposed app upgrade, packet dependencies, delegated briefs,
+  estimates and acceptance gates. Pending packets are not implemented features.
+- [docs/adr/](docs/adr/): accepted decisions, especially ADR-0001 (prompt cache)
+  and ADR-0012 (lazy discovery and runtime boundaries).
+- [Issue workflow](docs/agents/issue-tracker.md) and
+  [triage labels](docs/agents/triage-labels.md): GitHub Issues via `gh`.
+
+## Development commands
+
+Activate `.venv` before Python, tests, linters or local servers. Include the web
+extra for dashboard work and tests that import route modules.
 
 ```bash
 source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-Always activate `.venv` before running Python, tests, linters, or local servers.
-
-Common commands:
-
-```bash
-spark                               # Start interactive TUI
-spark setup                         # Interactive config wizard
-spark doctor                        # Diagnose environment
-
-python -m pytest tests/ -q
-python -m pytest tests/ -k "test_name" -q
-python -m pytest tests/ -m "not slow" -q
+pip install -e ".[dev,web]"
+python -m pytest tests/ -m "not slow and not integration" -q
 ruff check src/
 mypy src/agent/ src/spark_cli/
+python scripts/generate_tool_manifest.py --check
+
+(cd src/spark_cli/web && npm ci)
+(cd src/spark_cli/web && npm run lint && npm test && npm run build)
+(cd src/spark_cli/web && npm run test:e2e)
+(cd src/spark_cli/web && npm run test:e2e:recovery)
+(cd src/spark_cli/web && npm run test:e2e:sidebar)
 ```
 
-## Architecture
+Use Node.js 22 and the frontend's own lockfile. Browser suites need the Playwright
+browsers specified in `web-quality.yml`; Python and Node suites use separate
+installations. Use isolated `SPARK_HOME` and synthetic data for manual servers.
+Run focused checks while iterating, then the relevant wider suite. Record preexisting
+lint/type failures separately. Override pytest markers carefully: integration tests
+are excluded by default, but a supplied `-m` replaces that expression.
 
-All Python source lives under `src/`:
+## Boundaries to preserve
 
-- `core/` - agent runtime, CLI orchestration, session DB, tool routing
-- `core/run_agent/` - `AIAgent`; import with `from core.run_agent import AIAgent`
-- `core/cli/` - `SparkCLI` package plus concern mixins
-- `agent/` - prompt, context, memory, model, and adapter internals
-- `spark_cli/` - CLI entrypoint, commands, setup, web UI/server
-- `tools/` - tool implementations and registry
-- `gateway/` - messaging gateway, sessions, platform adapters
-- `cron/`, `acp_adapter/`, `plugins/` - scheduler, editor integrations, backends
+- Import `AIAgent` from `core.run_agent`; its loop lives in `turn_loop.py`.
+- Built-in schemas come from `tools/generated_manifest.py`. Register handlers,
+  update `tools/manifest_spec.py` and toolsets, then regenerate the manifest.
+  Do not add eager imports to `_discover_tools()` or hand-edit generated schemas.
+- Keep tool schemas, cached prompt prefixes and past messages stable during a
+  conversation. ADR-0001 cache goldens gate runtime changes; ADR-0012 guards lazy
+  startup. Skill instructions enter as user messages, not system-prompt edits.
+- Use `get_spark_home()` for state and `display_spark_home()` in messages.
+  Profile listing is HOME-anchored by design. Never test against real user state.
+- `web_server.py` owns chat lifecycle; `spark_state.py` owns durable session
+  persistence; `web_state.py` owns bounded web journal envelopes. Their cursors
+  differ. Reconcile snapshots after restart; do not replay uncertain side effects.
+- Root completion owns parent completion. Child completion, cancel acceptance,
+  stale UI and worker silence do not establish it. Preserve child permissions.
+- Keep Kanban Task identity separate from conversation Run/Attempt and Subagent.
+  Fence worker writes by claim ownership when changing execution behavior.
+- Gate provider-specific controls by supported capabilities and existing runtime
+  resolution; do not invent provider parity or silently downgrade isolation.
+- Make source edits in `web/src/` and Tauri edits in `web/src-tauri/`.
+  Regenerate tracked `web_dist/` only through the build workflow at the web gate.
 
-Tool discovery flows through:
+## Team execution and reporting
 
-```text
-src/core/spark_constants.py
-       |
-src/tools/registry.py
-       ↑
-src/tools/*.py
-       ↑
-src/core/model_tools.py
-       ↑
-src/core/run_agent/, src/core/cli/, src/core/batch_runner.py
-```
+Inspect dirty work first and preserve unrelated edits. Use descriptive `feat/`,
+`fix/` or `docs/` branches, isolated worktrees and narrow staging. Give delegated
+packets a committed base, allowed paths, dependencies, contract, acceptance checks
+and required evidence. One agent owns each shared schema, migration, lockfile,
+manifest and bundle at a time. Integrate in dependency order.
 
-Slash commands are defined in `src/spark_cli/commands.py` as `CommandDef`
-entries in `COMMAND_REGISTRY`. CLI dispatch, gateway hooks, help text, Telegram
-menus, Slack routing, and autocomplete derive from that registry.
-
-## Adding Things
-
-Add a tool in three places:
-
-1. Create `src/tools/your_tool.py`, implement the handler, and register it.
-2. Add the import to `_discover_tools()` in `src/core/model_tools.py`.
-3. Add it to `_SPARK_CORE_TOOLS` or another toolset in `src/core/toolsets.py`.
-
-All tool handlers must return JSON strings.
-
-Add a slash command in three places:
-
-1. Add a `CommandDef` in `src/spark_cli/commands.py`.
-2. Add CLI handling in `SparkCLI.process_command()` or the relevant mixin.
-3. If gateway-available, add gateway handling in `src/gateway/run.py`.
-
-Config settings live in `DEFAULT_CONFIG` in `src/spark_cli/config.py`; bump
-`_config_version` when existing user configs need migration. `.env` metadata
-lives in `OPTIONAL_ENV_VARS`.
-
-## Critical Rules
-
-Use profile-aware paths:
-
-```python
-from core.spark_constants import get_spark_home, display_spark_home
-
-config_path = get_spark_home() / "config.yaml"
-print(f"Saved to {display_spark_home()}/config.yaml")
-```
-
-Never hardcode `~/.spark` or `Path.home() / ".spark"` for Spark state. Tests
-that mock `Path.home()` must also set `SPARK_HOME`.
-
-Do not alter past context, change toolsets, reload memories, or rebuild system
-prompts mid-conversation. The valid place to alter context is during context
-compression.
-
-Do not edit ignored build artifacts as source. If a generated bundle has stale
-local content, clean it as generated output and make the source edit in the real
-tracked file.
-
-## Web UI And Gateway Checks
-
-For chat/session/gateway changes, test in the local web UI or Codex preview.
-Exercise long conversations, multiple chats, and switching chats while responses
-are still generating. Verify loading, streaming, offline, complete, reconnect,
-refresh, and gateway-restart states.
-
-Backend session/task state should be the source of truth. UI-only status should
-expire, reconcile, or be replaced by confirmed backend state.
-
-## Known Pitfalls
-
-- Use `curses`, not `simple_term_menu`, for interactive menus.
-- Do not use `\033[K` under `prompt_toolkit`'s `patch_stdout`; use space-padding.
-- Do not mention unavailable cross-tool names in static tool schema descriptions.
-- `_last_resolved_tool_names` is process-global in `model_tools.py`.
-- Tool handlers must not catch `KeyboardInterrupt` or `SystemExit`; catch
-  `Exception`, not `BaseException`.
-- Optional SDKs should not break tool discovery; guard imports with
-  `try/except ImportError` or import inside the function that needs them.
-- Tests must not write to the real `~/.spark/`; use the existing test fixtures.
-
-## User State
-
-```text
-~/.spark/
-├── config.yaml
-├── .env
-├── memories/
-├── sessions/
-├── skills/
-└── profiles/
-```
+For chat/gateway changes, verify three concurrent chats, long history, project
+creation/expansion, child detail, pending decisions, refresh, disconnection and
+gateway restart. Keep drafts, staged attachments, scroll and thread identity
+intact. Report the exact browser flow, test exit status and remaining limitations.
+Mark a packet complete only with acceptance evidence. Verify served web assets and
+installed desktop packages independently; a successful build is not platform QA.

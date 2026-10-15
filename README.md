@@ -11,11 +11,11 @@
 
 # Spark
 
-**A self-improving AI agent harness for the terminal and beyond**
+**An AI agent workbench for chat, code, and automation**
 
-A modular AI harness that runs in your terminal, connects to any LLM provider, and gets smarter over time. Learns from your sessions, adapts to your workflow, and bridges the terminal with messaging platforms like Telegram, Discord, and Slack.
+A modular Python agent with a shared web and desktop workbench, terminal UI, and messaging gateway. Organize project conversations, inspect delegated work, use tools and skills, and keep durable tasks and memory across sessions. Provider support depends on the configured runtime and credentials.
 
-<img src="https://img.shields.io/badge/version-1.3.5-blue" alt="Version 1.3.5">
+<a href="https://github.com/automatedigital/spark/releases"><img src="https://img.shields.io/github/v/release/automatedigital/spark" alt="Latest Spark release"></a>
 <a href="https://img.shields.io/github/commit-activity/m/automatedigital/spark">
   <img src="https://img.shields.io/github/commit-activity/m/automatedigital/spark?label=commits%20this%20month" alt="Commits this month" />
 </a>
@@ -31,6 +31,7 @@ A modular AI harness that runs in your terminal, connects to any LLM provider, a
 - **Memory by default** — **Holographic** local memory is on by default and **updates itself at the end of every session** (auto-extraction), alongside persistent, curated patterns (`MEMORY.md` / `USER.md`). Run `/dream` for a deeper reflection pass and `/learnings` to review what it proposes. Optional [memory provider plugins](./docs/memory/providers.md) (Mem0, Honcho, and others) let you swap backends when you need them.
 - **Coding-agent TUI** — File-aware context, tools, skills, checkpoints, and a polished terminal UI comparable in spirit to Claude Code or OpenCode-style workflows.
 - **Task board + web dashboard** — Durable multi-agent task board (SQLite `kanban.db`), `spark kanban` / `/kanban`, REST + SSE in the bundled dashboard (`spark dashboard`), optional embed alongside the gateway, and an Admin area for bounded gateway/profile/diagnostic/plugin/MCP/backup/update control. Gateway worker dispatch is opt-in via `kanban.dispatch_in_gateway`. Configure under `dashboard.*` and `kanban.*` in `config.yaml`.
+- **Project chat workbench** — Project-grouped conversations, pins and Inbox, recoverable drafts and attachments, conversation search, file/terminal/preview panels, and parent-linked subagent detail in the shared React UI.
 - **Simple layout** — One install directory, config and state under `~/.spark/` (or a [profile](./docs/cli/profiles.md)), and a clear split between CLI, gateway, tools, and plugins.
 - **Straightforward onboarding** — One-line install; first launch runs interactive setup if you are not configured yet.
 
@@ -69,17 +70,18 @@ source ~/.bashrc   # or: source ~/.zshrc
 
 A native **Spark.app** bundles the Web UI and Python backend in one drag-to-install package — no separate `spark dashboard` step.
 
-**[Download Spark Desktop v1.0](https://github.com/automatedigital/spark/releases/tag/desktop-v1.0.0)** (401 MB DMG, Apple Silicon)
+**[Download Spark Desktop](https://github.com/automatedigital/spark/releases)** — choose the macOS artifact and read its release-specific requirements.
 
-**Requirements:** macOS 13+, Apple Silicon (M1/M2/M3)
+The repository also contains a Windows desktop beta build workflow. Platform artifacts and validation vary by release; a source build is not a claim that an installed package has passed QA.
 
 **Install:**
 
 1. Download **Spark.dmg** and open it.
 2. Drag **Spark.app** to Applications.
-3. On first launch, **right-click → Open** (unsigned build).
+3. Open **Spark.app** and follow the release's signing/install instructions.
 
-If macOS blocks the app: **System Settings → Privacy & Security → Open Anyway**.
+For an unsigned development build, use **right-click → Open**; macOS may also
+require **System Settings → Privacy & Security → Open Anyway**.
 
 Fully silent installs require Apple notarization (`scripts/notarize_mac.sh` for maintainers with a Developer ID).
 
@@ -88,6 +90,8 @@ The desktop app uses the same `~/.spark/` config and state as the CLI.
 ### Manual / development install
 
 See **[Installation](./docs/getting-started/installation.md)** in the docs (clone with submodules, venv, `pip install -e .`, shell hook).
+
+Contributors should start with [Development](#development) below.
 
 ---
 
@@ -244,7 +248,7 @@ Full reference: [Slash commands](./docs/cli/slash-commands.md).
 |------|----------------|
 | **Tools** | Terminal, files, web search, browser automation, vision, MCP, delegation, code execution, and more — grouped into [toolsets](./docs/reference/toolsets-reference.md) you can toggle per platform. |
 | **Skills** | Shareable instruction packs ([agentskills.io](https://agentskills.io/specification)-compatible); browse and install from the TUI with `/skills`. |
-| **Memory** | **Always-on by default**: at the end of each session Spark updates both the **Holographic** local store (auto-extraction) and curated `MEMORY.md`/`USER.md` — no action needed. This is the "gets smarter over time" behavior. Optional backends (Mem0, Honcho, …) — see [Memory](./docs/memory.md) and [Memory providers](./docs/memory/providers.md). |
+| **Memory** | **Always-on by default**: at the end of each session Spark updates both the **Holographic** local store (auto-extraction) and curated `MEMORY.md`/`USER.md` — no action needed. This is the "gets smarter over time" behavior. Optional backends (Mem0, Honcho, …) — see [Memory](./docs/memory/index.md) and [Memory providers](./docs/memory/providers.md). |
 | **Dream** | `/dream` — a heavier, **explicitly-invoked** reflection pass (never auto-fires at session end) that mines recent session transcripts + the holographic store via a single LLM synthesis call, proposes consolidated insights and a `MEMORY.md` cleanup, merges duplicates, and writes a human-readable summary to the llm-wiki under `dreams/`. Runs on demand or on a daily schedule. |
 | **Learnings** | `/learnings` — review surface for what Spark has learned: see recent dreams and confirm/keep the memory changes Dream proposes (stale-fact removals are confirmed here, never applied silently). |
 | **Goal tracking** | `/goal <objective>` — set a durable, verifiable objective that Spark works toward across every session until you mark it done. Goals are backed by the Kanban board (`goals` board), so they're visible and manageable in the Dashboard in real time. Supports stopping conditions (`-- <done when>`), pause/resume, and a full history. |
@@ -260,7 +264,7 @@ Full reference: [Slash commands](./docs/cli/slash-commands.md).
 ## Requirements
 
 - **Git** — the installer clones the repo and sets up the environment.
-- **macOS, Linux, or WSL2** — Native Windows is not supported; use WSL2.
+- **macOS, Linux, or WSL2** for the documented CLI/source installation. The separate native Windows desktop path is a beta workflow; consult its release notes for support and validation.
 - **Python 3.11+** — Installed for you by the official installer (via `uv` on desktop).
 
 ---
@@ -280,17 +284,62 @@ Full reference: [Slash commands](./docs/cli/slash-commands.md).
 ## Repository layout
 
 ```
-spark-agent/
-├── core/           # Agent runtime and conversation loop
-├── agent/          # Prompts, compression, display, skills helpers
-├── spark_cli/      # CLI entrypoint, config, web dashboard server
-├── tools/          # Built-in tools and environments
-├── gateway/        # Messaging platform adapters
-├── plugins/        # Memory and extension plugins
+spark/
+├── src/
+│   ├── core/       # Runtime, session/task persistence, CLI orchestration
+│   ├── agent/      # Prompts, compression, memory and model internals
+│   ├── spark_cli/  # Commands, FastAPI, React web UI and Tauri shell
+│   ├── tools/      # Built-in tools and lazy schema manifest
+│   ├── gateway/    # Messaging platform adapters
+│   └── plugins/    # Memory and extension plugins
 ├── skills/         # Bundled skill library
 ├── tests/
 ├── scripts/        # install.sh and utilities
 └── docs/           # Markdown documentation
 ```
 
-Developer-oriented detail: **[AGENTS.md](./AGENTS.md)**.
+The complete ownership/build/state map is in [STRUCTURE.md](STRUCTURE.md).
+
+## Development
+
+Read [AGENTS.md](AGENTS.md) for development rules, [CONTEXT.md](CONTEXT.md) for
+domain language, and [accepted architecture decisions](docs/adr/) before changing
+runtime or persistence. [CLAUDE.md](CLAUDE.md) is a compact entry point to the same
+rules. Issues are tracked in [GitHub Issues](https://github.com/automatedigital/spark/issues)
+using the [repository tracker conventions](docs/agents/issue-tracker.md).
+
+```bash
+source .venv/bin/activate
+pip install -e ".[dev,web]"
+python -m pytest tests/ -m "not slow and not integration" -q
+ruff check src/
+mypy src/agent/ src/spark_cli/
+python scripts/generate_tool_manifest.py --check
+
+# React/Vite frontend: Node.js 22 and its own npm lockfile
+(cd src/spark_cli/web && npm ci)
+(cd src/spark_cli/web && npm run dev)
+(cd src/spark_cli/web && npm run lint && npm test && npm run build)
+```
+
+Keep `.venv` active for servers and browser tests. Use an isolated `SPARK_HOME`
+for manual testing. The existing browser suites cover concurrent chats, recovery,
+drafts and sidebar scale; prerequisite details and exact flows are in
+[AGENTS.md](AGENTS.md) and `.github/workflows/web-quality.yml`. Make changes in
+`web/src/`; regenerate the tracked `web_dist/` bundle through the build workflow.
+Verify installed desktop packages separately from the web build.
+Vite proxies `/api` to `127.0.0.1:9119` by default; start the isolated dashboard
+backend separately, or set `SPARK_API_TARGET` to its address.
+
+## Upgrade roadmap
+
+[PLAN.md](PLAN.md) contains the proposed app update based on pinned reviews of
+[Hermes Agent](https://github.com/nousresearch/hermes-agent) for agent features and
+[T3 Code](https://github.com/pingdotgg/t3code) for sidebar and orchestration-v2
+patterns. It defines a five-day core slice, agent-sized packets, dependencies,
+acceptance tests and separately estimated extensions.
+
+The core targets consistent execution state, asynchronous delegated-work controls,
+explicit coding worktree isolation, improved sidebar organization and worker
+recovery. These are planned changes, not a list of shipped features. Existing
+memory, skills, search, tasks, drafts and subagent UI are foundations to extend.

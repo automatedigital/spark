@@ -18,11 +18,23 @@ Instructions for AI coding assistants and developers working in this repository.
 Keep this file focused on rules that change how work should be done. Put long
 architecture notes in `docs/` when they are not needed on every agent run.
 
+## Read Before Changing Code
+
+- This file is the canonical development guide; `CLAUDE.md` is a compact entry point.
+- Read `CONTEXT.md` for domain language, `STRUCTURE.md` for source ownership, and
+  relevant accepted decisions in `docs/adr/` before changing architecture.
+- `PLAN.md` is the proposed app-upgrade roadmap. Its packets and new paths are
+  planned work, not shipped features. Track execution and evidence in GitHub Issues.
+- Inspect `git status` first. Preserve unrelated dirty work and stage only the
+  intended files. Use descriptive `feat/`, `fix/` or `docs/` branches.
+- Review references at the commit pinned in the plan. Adapt small, tested pieces;
+  preserve applicable upstream license notices when copying code.
+
 ## Quick Start
 
 ```bash
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,web]"
 ```
 
 Always activate `.venv` before running Python, tests, linters, or local servers.
@@ -40,7 +52,25 @@ python -m pytest tests/ -m "not slow and not integration" -q  # Skip slow/extern
 python -m pytest tests/ -m "not integration" -q     # Skip external services
 ruff check src/
 mypy src/agent/ src/spark_cli/
+python scripts/generate_tool_manifest.py --check
 ```
+
+The web extra is required for dashboard work and tests importing FastAPI routes.
+For the shared web/desktop frontend, use Node.js 22 and the nested npm lockfile:
+
+```bash
+(cd src/spark_cli/web && npm ci)
+(cd src/spark_cli/web && npm run dev)
+(cd src/spark_cli/web && npm run lint && npm test && npm run build)
+(cd src/spark_cli/web && npm run test:e2e)
+(cd src/spark_cli/web && npm run test:e2e:recovery)
+(cd src/spark_cli/web && npm run test:e2e:sidebar)
+```
+
+Keep `.venv` active for browser suites that launch Python. The Node and Python
+Playwright suites need their respective browser installations; see
+`.github/workflows/web-quality.yml`. Manual servers and browser fixtures must use
+an isolated `SPARK_HOME`, not the user's live profile.
 
 Before pushing, run the relevant focused tests while iterating, then run
 `ruff check src/`, the relevant pytest subset, and the full suite when practical
@@ -67,6 +97,13 @@ src/
 ├── cron/             # Scheduler
 └── plugins/          # Memory and connector backends
 ```
+
+The React/Vite source is `src/spark_cli/web/src/`; the Tauri shell is
+`src/spark_cli/web/src-tauri/`. `src/spark_cli/web_dist/` is the packaged web
+bundle, not the source. `web_server.py` owns chat lifecycle; domain routes live
+in `src/spark_cli/*_routes.py`. `web_state.py` owns bounded web replay envelopes;
+`core/spark_state.py` owns durable session events and projections. These cursors
+are distinct. See `STRUCTURE.md` for the detailed map.
 
 Other important directories:
 
@@ -98,19 +135,20 @@ The `core.run_agent` namespace is intentionally stable:
 from core.run_agent import AIAgent
 ```
 
-Tool discovery flows through this chain:
+Built-in tool discovery uses a deterministic schema manifest (ADR-0012):
 
 ```text
-src/core/spark_constants.py
-       |
-src/tools/registry.py
-       ↑
-src/tools/*.py
-       ↑
-src/core/model_tools.py
-       ↑
-src/core/run_agent/, src/core/cli/, src/core/batch_runner.py
+tools/manifest_spec.py + tools/*.py registrations
+       -> scripts/generate_tool_manifest.py
+       -> tools/generated_manifest.py
+       -> core/model_tools.py -> tools/registry.py (schema-only entries)
+       -> owning handler imported once on first invocation
 ```
+
+Configured MCP discovery remains eager; unconfigured optional features remain
+lazy. `_discover_tools()` is a compatibility hook, not a list of eager built-in
+imports. Keep `from core.run_agent import AIAgent` stable; the conversation loop
+is in `core/run_agent/turn_loop.py` and caching logic in `prompt_cache.py`.
 
 `SparkCLI` lives in `src/core/cli/__init__.py` and is composed from concern
 mixins such as `commands_mixin`, `display_mixin`, `streaming_mixin`,
@@ -129,11 +167,14 @@ Adding an alias should only require updating `aliases=` on the existing
 
 ### Tools
 
-Adding a normal tool requires three files:
+Adding a normal built-in tool requires registration, discovery metadata and a
+toolset entry:
 
 1. Create `src/tools/your_tool.py`, implement the handler, and call
    `registry.register(...)`.
-2. Add the import to `_discover_tools()` in `src/core/model_tools.py`.
+2. Add the module to `BUILTIN_TOOL_MODULES` in `src/tools/manifest_spec.py`;
+   maintain optional dependency guards/metadata there when applicable. Regenerate
+   with `python scripts/generate_tool_manifest.py` and verify with `--check`.
 3. Add the tool to `_SPARK_CORE_TOOLS` or another toolset in
    `src/core/toolsets.py`.
 
@@ -212,6 +253,45 @@ Do not edit ignored build artifacts as source. If generated bundles contain
 stale local copies, clean them only as generated remnants and make the source
 change in the real tracked file.
 
+`src/tools/generated_manifest.py` is regenerated by its script, never hand-edited.
+The production bundle in `src/spark_cli/web_dist/` is tracked: regenerate it from
+verified frontend source at the web release gate, following the existing build
+workflow. Do not have several agents regenerate bundles or lockfiles at once.
+
+## Coordinating Implementation Work
+
+Use `PLAN.md` packet IDs when executing the upgrade. Give each delegated task an
+outcome, committed base, dependencies, allowed paths, contract fixtures, acceptance
+flows, checks and expected report. Separate worktrees begin at committed content;
+they do not include the parent's uncommitted changes.
+
+Assign one writer for migrations, shared API schemas/config, generated manifests,
+lockfiles and production bundles. Parallel agents should work on independent
+paths. Integrate in dependency order and rerun relevant checks after integration.
+Record evidence in the issue before marking its packet complete. Do not equate a
+child's final message with verified completion.
+
+## Execution And Persistence Invariants
+
+- Reuse Spark session, turn, subagent and Kanban run identities. A durable Task,
+  conversation Run and delegated Subagent are different concepts (`CONTEXT.md`).
+- Only authoritative root completion may finish a parent run. Child/tool
+  completion and interrupt acknowledgement are not parent completion.
+- Persist lifecycle transitions before publishing them. Avoid competing writes
+  in runtime and transport callbacks; define one owner when changing this path.
+- Web replay journal sequence/epoch and durable session event sequence are
+  distinct. Reconnect beyond retention or after process loss must reconcile a
+  snapshot; never auto-replay an uncertain prompt or tool action.
+- Gate runtime-specific controls on actual capabilities. Preserve existing
+  provider/custom-model resolution and child tool/permission restrictions.
+- Fence worker updates by their owned attempt/claim. Never infer success from
+  silence, an expired lease, a spinner, or a child's summary.
+- Requested worktree isolation must be explicit. Preserve dirty/committed child
+  work and reject unsupported isolation rather than silently sharing paths.
+
+These rules constrain new work; the upgrade plan identifies existing paths that
+still need reconciliation. They are not claims that the upgrade has shipped.
+
 ## Web UI And Gateway Work
 
 The web UI and VPS path are common places for long-thread and multi-chat bugs.
@@ -231,6 +311,18 @@ When changing chat/session/gateway behavior:
 
 When testing manually, leave a short note in the ticket or final response with
 the exact flow tested and whether preview/browser behavior matched expectations.
+
+Use replay fixtures at external provider/process boundaries for lifecycle work;
+exercise real persistence and projections. Keep the cache goldens, lazy manifest
+and minimal-startup tests in the gate for runtime/tool changes. A command-line
+pytest marker overrides the default: retain `not integration` unless external
+services are intended; run serial/shared-state tests with `-n 0` as needed.
+
+Compare measured latency/stream/sidebar behavior against a recorded baseline.
+Report baseline lint/type debt separately from new failures. Web builds, served
+assets, installed macOS packages and installed Windows packages are separate
+claims requiring separate evidence. Packaging and publishing are separate steps;
+see the build/release workflows and do not infer platform success from compilation.
 
 ## Known Pitfalls
 
