@@ -73,13 +73,6 @@ db.close()
   const webBase = `http://127.0.0.1:${vitePort}`;
   start(python, ["-c", `
 from spark_cli import web_server
-from spark_cli.sidebar_routes import router, get_sidebar_settle_guard
-web_server.app.include_router(router)
-# The production module has already registered its SPA catch-all on import.
-# Integration must include the sidebar router before mount_spa(app).
-routes = web_server.app.router.routes
-routes[:] = routes[-len(router.routes):] + routes[:-len(router.routes)]
-web_server.app.dependency_overrides[get_sidebar_settle_guard] = lambda: lambda sid: "Live run is still active" if web_server._is_web_turn_active(sid) else None
 web_server.start_server("127.0.0.1", ${apiPort}, False)
 `]);
   start(path.join(webRoot, "node_modules/.bin/vite"), [webRoot, "--host", "127.0.0.1", "--port", String(vitePort)], { SPARK_API_TARGET: apiBase });

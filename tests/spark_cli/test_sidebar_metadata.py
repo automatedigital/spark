@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -364,6 +365,58 @@ def test_created_child_without_transcript_keeps_parent_visible_and_blocks_settle
         ).status_code
         == 409
     )
+
+
+@pytest.mark.parametrize("status", ["working", "stopping"])
+def test_canonical_live_child_states_block_settlement(db, client, status):
+    db.create_subagent_run({"id": "live-child", "parent_session_id": "upgrade-parent", "status": status})
+    assert client.get("/api/sidebar/threads").json()["attention"]["upgrade-parent"]["running"]
+    response = client.patch(
+        "/api/sidebar/threads/upgrade-parent", json={"expected_revision": 0, "settled": True}
+    )
+    assert response.status_code == 409
+
+
+def test_integrated_guard_covers_compression_alias_without_database_reentry(client, monkeypatch):
+    from spark_cli import web_server
+
+    monkeypatch.setattr(web_server, "_web_active_turns", {
+        "compressed-leaf": SimpleNamespace(
+            active_agent_session_id="compressed-leaf", session_aliases={"upgrade-parent"}
+        )
+    })
+    monkeypatch.setattr(web_server, "_web_turn_aliases", {})
+    monkeypatch.setattr(web_server, "_web_agents", {})
+    def no_database_lookup(_sid):
+        raise AssertionError("Guard must not open SQLite inside a metadata write")
+    monkeypatch.setattr(web_server, "_resolve_web_turn_ids", no_database_lookup)
+    client.app.dependency_overrides[get_sidebar_settle_guard] = lambda: web_server._sidebar_settle_block_reason
+    blocked = client.patch(
+        "/api/sidebar/threads/upgrade-parent", json={"expected_revision": 0, "settled": True}
+    )
+    assert blocked.status_code == 409
+    assert "live work" in blocked.json()["detail"]
+    web_server._web_active_turns.clear()
+    settled = client.patch(
+        "/api/sidebar/threads/upgrade-parent", json={"expected_revision": 0, "settled": True}
+    )
+    assert settled.status_code == 200
+
+
+def test_integrated_guard_covers_child_after_parent_turn_finishes(client, monkeypatch):
+    from spark_cli import web_server
+
+    monkeypatch.setattr(web_server, "_web_active_turns", {})
+    monkeypatch.setattr(web_server, "_web_turn_aliases", {})
+    monkeypatch.setattr(web_server, "_web_agents", {
+        "upgrade-parent": SimpleNamespace(_active_children=[object()])
+    })
+    client.app.dependency_overrides[get_sidebar_settle_guard] = lambda: web_server._sidebar_settle_block_reason
+    response = client.patch(
+        "/api/sidebar/threads/upgrade-parent", json={"expected_revision": 0, "settled": True}
+    )
+    assert response.status_code == 409
+    assert "delegated work" in response.json()["detail"]
 
 
 def test_compressed_child_decision_remains_owned_by_parent(db, client):

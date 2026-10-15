@@ -92,6 +92,7 @@ from spark_cli.onboarding_validation import (
 )
 from spark_cli.plugins_routes import register_plugins_routes
 from spark_cli.profiles_routes import register_profiles_routes
+from spark_cli.sidebar_routes import get_sidebar_settle_guard, router as sidebar_router
 from spark_cli.providers_routes import (
     _truncate_str,
     register_providers_routes,
@@ -8939,6 +8940,35 @@ async def list_workspace_conversations(slug: str, limit: int = 30, offset: int =
         db.close()
     return {"sessions": sessions, "total": total, "limit": limit, "offset": offset}
 
+
+def _sidebar_settle_block_reason(session_id: str) -> str | None:
+    """Read live ownership without opening SQLite inside the metadata write.
+
+    Durable decision/child/compression checks run in the metadata transaction.
+    This guard closes the live-registry gap before the next persisted projection.
+    """
+    candidates = set(_web_turn_candidate_keys(session_id, resolve=False))
+    with _with_web_turn_lock():
+        for key, turn in _web_active_turns.items():
+            aliases = {key, turn.active_agent_session_id, *turn.session_aliases}
+            if candidates.intersection(aliases):
+                return "Wait for live work to finish before settling this thread"
+    for key, agent in list(_web_agents.items()):
+        if key not in candidates:
+            continue
+        lock = getattr(agent, "_active_children_lock", None)
+        if lock is not None:
+            with lock:
+                children = list(getattr(agent, "_active_children", []) or [])
+        else:
+            children = list(getattr(agent, "_active_children", []) or [])
+        if children:
+            return "Wait for delegated work to finish before settling this thread"
+    return None
+
+
+app.include_router(sidebar_router)
+app.dependency_overrides[get_sidebar_settle_guard] = lambda: _sidebar_settle_block_reason
 
 mount_spa(app)
 

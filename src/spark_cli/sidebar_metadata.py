@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from core.spark_state import SessionDB
 
@@ -20,11 +20,13 @@ LIVE_STATES = {
     "queued",
     "starting",
     "running",
+    "working",
     "streaming",
     "waiting",
     "waiting_for_input",
     "waiting_for_approval",
     "cancel_requested",
+    "stopping",
 }
 
 
@@ -216,7 +218,7 @@ class SidebarMetadata:
                             "Wait for live work to finish before settling this thread"
                         )
                 if conn.execute(
-                    f"SELECT 1 FROM subagent_runs WHERE parent_session_id IN ({placeholders}) AND status IN ('created', 'pending', 'queued', 'starting', 'running', 'streaming', 'waiting', 'waiting_for_input', 'waiting_for_approval', 'cancel_requested') LIMIT 1",
+                    f"SELECT 1 FROM subagent_runs WHERE parent_session_id IN ({placeholders}) AND status IN ('created', 'pending', 'queued', 'starting', 'running', 'working', 'streaming', 'waiting', 'waiting_for_input', 'waiting_for_approval', 'cancel_requested', 'stopping') LIMIT 1",
                     owned,
                 ).fetchone():
                     raise SettleBlocked(
@@ -250,4 +252,4 @@ class SidebarMetadata:
 
         updated, event = self.db._execute_write(write)
         self.db._publish_committed_events([event])
-        return updated
+        return cast("dict[str, Any]", updated)
