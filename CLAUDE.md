@@ -8,8 +8,10 @@ separate architecture or permission policy.
 
 - [CONTEXT.md](CONTEXT.md): domain vocabulary and current/proposed distinctions.
 - [STRUCTURE.md](STRUCTURE.md): source map, state ownership and build boundaries.
-- [PLAN.md](PLAN.md): proposed app upgrade, packet dependencies, delegated briefs,
+- [PLAN.md](PLAN.md): approved app upgrade, packet dependencies, delegated briefs,
   estimates and acceptance gates. Pending packets are not implemented features.
+- [Rollout runbook](docs/development/app-upgrade-rollout.md): consistent backups,
+  isolated opt-in flags, process-local limits and schema-compatible rollback.
 - [docs/adr/](docs/adr/): accepted decisions, especially ADR-0001 (prompt cache)
   and ADR-0012 (lazy discovery and runtime boundaries).
 - [Issue workflow](docs/agents/issue-tracker.md) and

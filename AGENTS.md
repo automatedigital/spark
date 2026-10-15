@@ -23,8 +23,9 @@ architecture notes in `docs/` when they are not needed on every agent run.
 - This file is the canonical development guide; `CLAUDE.md` is a compact entry point.
 - Read `CONTEXT.md` for domain language, `STRUCTURE.md` for source ownership, and
   relevant accepted decisions in `docs/adr/` before changing architecture.
-- `PLAN.md` is the proposed app-upgrade roadmap. Its packets and new paths are
-  planned work, not shipped features. Track execution and evidence in GitHub Issues.
+- `PLAN.md` tracks the approved app upgrade. Check individual items only after
+  their acceptance evidence passes; integrated foundations do not close browser,
+  rollout or package gates. Keep evidence in GitHub Issues too.
 - Inspect `git status` first. Preserve unrelated dirty work and stage only the
   intended files. Use descriptive `feat/`, `fix/` or `docs/` branches.
 - Review references at the commit pinned in the plan. Adapt small, tested pieces;

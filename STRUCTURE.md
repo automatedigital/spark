@@ -1,8 +1,8 @@
 # Spark repository structure
 
-Source map verified for the 2026-10-15 planning review at `0ed3654b`.
+Source map updated during the 2026-10-15 app upgrade.
 [AGENTS.md](AGENTS.md) owns development rules, [CONTEXT.md](CONTEXT.md) owns domain
-language, and [PLAN.md](PLAN.md) owns the proposed upgrade. New paths named in the
+language, and [PLAN.md](PLAN.md) owns the approved upgrade. New paths named in the
 plan are proposals unless they appear in the current source map below.
 
 ## Top level
@@ -36,6 +36,9 @@ plan are proposals unless they appear in the current source map below.
 | `src/tools/registry.py`, `manifest_spec.py`, `generated_manifest.py` | Lazy handler registry, built-in module metadata and generated deterministic schemas (ADR-0012) |
 | `src/core/toolsets.py` | Named tool bundles and core tool membership |
 | `src/tools/delegate_tool.py`, `src/agent/subagents.py` | Restricted child execution and bounded/persisted lifecycle callbacks |
+| `src/core/orchestration/` | Durable async dispatch/receipts, process-local worker reconciliation, safe turn-boundary delivery and child capabilities |
+| `src/tools/subagent_worktree.py` | Explicit local Git checkout setup, ownership records and conservative cleanup |
+| `src/spark_cli/sidebar_metadata.py`, `sidebar_routes.py` | Profile-local pin/order/settlement metadata, revision conflicts and live-work guards |
 | `src/tools/session_search_tool.py`, `checkpoint_manager.py` | Historical recall and filesystem checkpoints |
 | `src/agent/` | Prompt/context compression, model/provider helpers, memory and skills internals |
 | `src/plugins/memory/`, `src/core/dream.py` | Local/optional memory providers and explicitly invoked/scheduled reflection |
@@ -63,6 +66,7 @@ Paths in this table are relative to `src/spark_cli/`.
 | `web/src/pages/ChatPage.tsx` | Primary Chat workbench and project/right-panel coordination |
 | `web/src/components/sidebar/` | Project/session rows, Inbox, project creation and virtualized row model |
 | `web/src/lib/sessionStore.tsx`, `sidebarPrefs.ts` | Shared session/project selection/list state and navigation preferences |
+| `web/src/lib/api_sidebar.ts`, `sidebarOrganization.ts` | Durable sidebar API and organization; device preferences remain backend/profile scoped |
 | `web/src/hooks/useChatSessionController.ts`, `useChatStreamController.ts` | History/session loading and live stream lifecycle |
 | `web/src/hooks/useEventBus.ts` | Shared event transport/subscription and reconnect consumption |
 | `web/src/lib/webState.ts`, `chatStreamReducer.ts`, `chatRecovery.ts` | Envelope normalization, stream merge and recovery interpretation |

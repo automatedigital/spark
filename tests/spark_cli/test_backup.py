@@ -19,8 +19,10 @@ def _make_spark_tree(root: Path) -> None:
     """Create a realistic ~/.spark directory structure for testing."""
     (root / "config.yaml").write_text("model:\n  provider: openrouter\n")
     (root / ".env").write_text("OPENROUTER_API_KEY=sk-test-123\n")
-    (root / "memory_store.db").write_bytes(b"fake-sqlite")
-    (root / "core.spark_state.db").write_bytes(b"fake-state")
+    for name in ("memory_store.db", "core.spark_state.db"):
+        with sqlite3.connect(root / name) as db:
+            db.execute("CREATE TABLE example (value TEXT)")
+            db.execute("INSERT INTO example VALUES ('preserved')")
 
     # Sessions
     (root / "sessions").mkdir(exist_ok=True)
@@ -694,7 +696,9 @@ class TestBackupEdgeCases:
 
         from spark_cli.backup import run_backup
         try:
-            run_backup(args)
+            with pytest.raises(SystemExit) as failure:
+                run_backup(args)
+            assert failure.value.code == 1
         finally:
             # Restore permissions for cleanup
             bad_file.chmod(0o644)
@@ -942,6 +946,79 @@ class TestProfileRestoration:
 # ---------------------------------------------------------------------------
 
 class TestSafeCopyDb:
+    def test_corrupt_database_is_not_copied_as_a_successful_snapshot(self, tmp_path):
+        from spark_cli.backup import _safe_copy_db
+
+        source = tmp_path / "corrupt.db"
+        destination = tmp_path / "copy.db"
+        source.write_bytes(b"not a SQLite database")
+        assert _safe_copy_db(source, destination) is False
+        assert source.read_bytes() == b"not a SQLite database"
+        assert not destination.exists()
+
+    def test_backup_restores_live_profile_wal_without_raw_sidecars(self, tmp_path, monkeypatch):
+        from core.spark_state import SessionDB
+        from spark_cli.backup import run_backup
+        from spark_cli.sidebar_metadata import SidebarMetadata
+
+        root = tmp_path / ".spark"
+        profile = root / "profiles" / "upgrade-test"
+        profile.mkdir(parents=True)
+        monkeypatch.setenv("SPARK_HOME", str(profile))
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        (profile / "config.yaml").write_text("delegation:\n  async_enabled: false\n")
+        skill = profile / "skills" / "example" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("# Existing skill\n")
+        drafts = profile / "drafts.json"
+        drafts.write_text('{"legacy":"unsent draft"}')
+        db = SessionDB()
+        try:
+            db._conn.execute("PRAGMA wal_autocheckpoint=0")
+            db.create_session("legacy", "web")
+            db.append_message("legacy", "user", "committed WAL content")
+            SidebarMetadata(db)
+            assert Path(str(db.db_path) + "-wal").stat().st_size > 0
+            archive = tmp_path / "upgrade-backup.zip"
+            run_backup(Namespace(output=str(archive)))
+            restored = tmp_path / "restored"
+            with zipfile.ZipFile(archive) as zf:
+                assert not any(name.endswith(("-wal", "-shm", "-journal")) for name in zf.namelist())
+                zf.extractall(restored)
+            restored_profile = restored / "profiles" / "upgrade-test"
+            restored_db = SessionDB(restored_profile / "state.db")
+            try:
+                assert restored_db.get_messages("legacy")[0]["content"] == "committed WAL content"
+                assert restored_db._conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+                assert SidebarMetadata(restored_db).snapshot()["legacy"]["revision"] == 0
+            finally:
+                restored_db.close()
+            assert (restored_profile / "skills/example/SKILL.md").read_text() == skill.read_text()
+            assert (restored_profile / "drafts.json").read_text() == drafts.read_text()
+            assert (restored_profile / "config.yaml").read_text() == (profile / "config.yaml").read_text()
+            assert db.get_messages("legacy")[0]["content"] == "committed WAL content"
+        finally:
+            db.close()
+
+    def test_failed_database_backup_reports_incomplete_and_nonzero(self, tmp_path, monkeypatch, capsys):
+        from spark_cli.backup import run_backup
+
+        root = tmp_path / ".spark"
+        root.mkdir()
+        monkeypatch.setenv("SPARK_HOME", str(root))
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        (root / "state.db").write_bytes(b"corrupted")
+        (root / "config.yaml").write_text("delegation: {}\n")
+        archive = tmp_path / "incomplete.zip"
+        with pytest.raises(SystemExit) as failure:
+            run_backup(Namespace(output=str(archive)))
+        assert failure.value.code == 1
+        output = capsys.readouterr().out
+        assert "Backup incomplete:" in output
+        assert "Restore with:" not in output
+        with zipfile.ZipFile(archive) as zf:
+            assert "state.db" not in zf.namelist()
+
     def test_copies_valid_database(self, tmp_path):
         from spark_cli.backup import _safe_copy_db
         src = tmp_path / "test.db"

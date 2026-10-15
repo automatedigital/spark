@@ -5,7 +5,8 @@ spec — it defines terms, not implementations. When code or conversation drifts
 from these definitions, that drift is a bug in one or the other.
 
 Development rules live in [AGENTS.md](AGENTS.md); implementation ownership is in
-[STRUCTURE.md](STRUCTURE.md). [PLAN.md](PLAN.md) describes proposed upgrades.
+[STRUCTURE.md](STRUCTURE.md). [PLAN.md](PLAN.md) tracks the approved upgrade and
+its acceptance evidence.
 Terms marked **planned** below establish vocabulary without claiming those
 contracts or controls are already implemented.
 
@@ -127,16 +128,21 @@ show subagents in the same right-side project/task sidebar pattern, and let user
 open a subagent thread in that sidebar while the main parent chat stays visible in
 the center.
 
-Spark currently supports synchronous single/batch delegation with persisted
-lifecycle records. Durable asynchronous handles, cancellation and completion
-delivery are **planned** extensions. A child transcript is not an independent
-top-level task request. Preserve restricted child tools and permission scope.
+Spark supports synchronous single/batch delegation and opt-in asynchronous
+delegation with durable handles, command receipts and cooperative cancellation.
+Async workers are process-local: proven process loss becomes uncertain, with no
+automatic rerun. Stored results enter the next explicit parent turn once; they
+do not wake an idle parent automatically. End-to-end acceptance remains tracked
+in PLAN.md. A child transcript is not an independent top-level task request.
+Preserve restricted child tools and permission scope.
 
-### Worktree isolation *(planned for delegated work)*
+### Worktree isolation
 A separate Git checkout/branch rooted at a recorded commit for a coding child.
 It does not include the parent's uncommitted changes. It is distinct from isolated
 conversation context or a container/remote terminal backend. Requested isolation
 must report unsupported configurations rather than silently sharing files.
+Delegated worktrees are opt-in and profile-scoped. Useful changes and uncertain
+ownership prevent cleanup; cleanup never merges work automatically.
 
 ### Inbox and attention
 The existing navigation surface for conversations that need attention or have
@@ -144,16 +150,19 @@ background outcomes. Attention is derived from structured execution/decision
 state, distinct from unread text. A completion cannot conceal an unresolved
 decision.
 
-### Settled thread *(planned durable metadata)*
+### Settled thread
 A thread parked outside active work without deleting its transcript or stopping
 execution. Distinct from a completed Run, resolved decision, archived skill or
-finished Task. Server-owned settlement/order and Undo are planned sidebar work;
-snooze and automatic settlement are follow-on scope.
+finished Task. Server-owned settlement/order and revision-checked Undo are
+implemented. Live work and pending decisions prevent settlement; snooze and
+automatic settlement are follow-on scope.
 
-### Provider capability *(planned shared contract)*
+### Provider capability
 An explicit, versioned statement of supported runtime behavior, including an
-unsupported reason. It drives controls such as interruption and resume. Model
-availability, authentication and actual lifecycle support are separate facts.
+unsupported reason. The child-control snapshot describes exercised local
+inspection, interruption and retry support. It is not a promise of native
+provider resume. Model availability, authentication and actual lifecycle support
+are separate facts.
 
 ### Context handoff *(planned)*
 An explicit, source-linked context artifact for a fork or provider transition at

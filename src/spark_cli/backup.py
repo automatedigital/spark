@@ -17,6 +17,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -78,24 +79,24 @@ def _should_exclude(rel_path: Path) -> bool:
 def _safe_copy_db(src: Path, dst: Path) -> bool:
     """Copy a SQLite database safely using the backup() API.
 
-    Handles WAL mode — produces a consistent snapshot even while
-    the DB is being written to.  Falls back to raw copy on failure.
+    Handles WAL mode. Failure must never produce a raw, potentially inconsistent
+    database copy that a caller could mistake for a restorable snapshot.
     """
     try:
-        conn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
-        backup_conn = sqlite3.connect(str(dst))
-        conn.backup(backup_conn)
-        backup_conn.close()
-        conn.close()
+        deadline = time.monotonic() + 30
+
+        def check_deadline(status: int, remaining: int, total: int) -> None:
+            if time.monotonic() > deadline:
+                raise TimeoutError("SQLite backup exceeded 30 seconds")
+
+        with closing(sqlite3.connect(src.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            with closing(sqlite3.connect(str(dst))) as backup_conn:
+                conn.backup(backup_conn, pages=256, progress=check_deadline)
         return True
     except Exception as exc:
         logger.warning("SQLite safe copy failed for %s: %s", src, exc)
-        try:
-            shutil.copy2(src, dst)
-            return True
-        except Exception as exc2:
-            logger.error("Raw copy also failed for %s: %s", src, exc2)
-            return False
+        dst.unlink(missing_ok=True)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +163,11 @@ def run_backup(args) -> None:
             if _should_exclude(rel):
                 continue
 
+            # Each .db is snapshotted through SQLite. Replaying an unrelated raw
+            # WAL/journal over that snapshot on import could undo its consistency.
+            if any(fname.endswith(".db" + suffix) for suffix in ("-wal", "-shm", "-journal")):
+                continue
+
             # Skip the output zip itself if it happens to be inside spark root
             try:
                 if fpath.resolve() == out_path.resolve():
@@ -214,7 +220,7 @@ def run_backup(args) -> None:
 
     # Summary
     print()
-    print(f"Backup complete: {out_path}")
+    print(f"Backup {'incomplete' if errors else 'complete'}: {out_path}")
     print(f"  Files:       {file_count}")
     print(f"  Original:    {_format_size(total_bytes)}")
     print(f"  Compressed:  {_format_size(zip_size)}")
@@ -231,6 +237,10 @@ def run_backup(args) -> None:
             print(e)
         if len(errors) > 10:
             print(f"  ... and {len(errors) - 10} more")
+
+    if errors:
+        print("\nBackup is incomplete; resolve the errors and create a new backup before upgrading.")
+        sys.exit(1)
 
     print(f"\nRestore with: spark import {out_path.name}")
 

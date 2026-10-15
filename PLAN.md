@@ -435,7 +435,7 @@ Record exact failures and exclusions rather than relabelling tests to pass.
 
 ### P10 — Compatibility rollout, packages and handover (lead + C; 1.5 days; P09)
 
-- [ ] Keep new async execution/control paths disabled until core acceptance passes; document exact config keys/defaults in P00 and add migrations through `DEFAULT_CONFIG` when needed.
+- [x] Keep new async execution/control paths disabled until core acceptance passes; document exact config keys/defaults in P00 and add migrations through `DEFAULT_CONFIG` when needed.
 - [ ] Back up profile databases/config with a consistent SQLite backup, not a live file-only copy. Run additive migrations once and verify old conversations, tasks, drafts and skills remain accessible.
 - [ ] Enable in an isolated profile, then a staging/test instance. Record source SHA, served hashed assets, schema/config versions and selected feature flags.
 - [ ] Build via existing desktop scripts only after web gates. Smoke installed macOS quit/relaunch, sleep/wake, unavailable backend, Quick Ask handoff and child controls. Run equivalent Windows beta tests on Windows or leave that gate explicitly pending.
@@ -520,7 +520,7 @@ keep checkboxes above open until acceptance is demonstrated.
 | P01–P04 | Runtime agent + lead | P01/P02/P04 verified; P03 acceptance open | See checkpoints | 45 core/cache tests; 105 delegation/isolation tests | Inspector integration in progress | Completion waits for explicit parent turn; browser acceptance pending |
 | P05–P07 | App agent | P05 integrated; P06/P07 in progress | `dff9d0df`, `6409bba` | 405 frontend; 288 web; 33 sidebar tests pass | 1,000-session flow passes | Failed create, responsive themes and inspector acceptance pending |
 | P08–P09 | Reliability / lead | P08 verified; P09 in progress | `0357b35a`, `1805f6b`, `a7281b8` | 12,404 local tests pass; 52 worker/task tests pass | Replay and browser/CI agents running | Final performance and failure matrix pending; external services excluded |
-| P10 | Lead | Pending | — | — | — | No package/release produced |
+| P10 | Lead | Synthetic backup/migration checks pass; rollout pending | See checkpoints | 78 backup/lifecycle tests; mypy 129 pass | No package/release produced | Installed platforms and staging still pending |
 | E01–E05 | Unassigned | Backlog | — | — | — | Outside five-day core |
 
 ### Implementation checkpoint — 2026-10-15
@@ -573,3 +573,9 @@ keep checkboxes above open until acceptance is demonstrated.
 - `python -m pytest tests/ -m 'not integration and not network' -q -n 4`: **12,404 passed, 151 skipped, 135 warnings**, exit 0, 493.70 seconds. Log: `/tmp/spark-upgrade-20261015/full-local-pytest.txt`. External services are excluded. Warnings include unawaited MCP coroutines; their provenance has not been compared against the baseline.
 - This run began before the assigned-profile transcript follow-up; the later worker changes separately pass all **52** focused worker/task tests and clean-cache mypy (**129 source files**). New inspector/replay/browser changes will receive their own integration checks.
 - Three isolated agents continue P06/P07 inspector/recovery, P09 transport replay and P09 browser/CI/performance. Package, staging and production gates remain open.
+
+### Rollout preparation — 2026-10-15
+
+- Fixed an existing backup hazard: SQLite backup failure no longer falls back to raw file copy or reports a complete archive. Backup excludes raw `.db-wal`/`.db-shm`/`.db-journal` companions and exits nonzero on incomplete archives. SQLite connections close on failure; bounded backup progress times out after 30 seconds.
+- **78 backup/lifecycle tests passed**, including live-profile WAL restore, corrupt database rejection, configuration/skills/file-draft preservation and additive/idempotent schema-12→15 checks. Browser local-storage drafts and cross-database transactional consistency are separate concerns; workers must be quiesced before a migration backup.
+- CI Ruff ratchet and touched-file Ruff pass; mypy passes **129 source files**. Added `docs/development/app-upgrade-rollout.md` and refreshed root docs to distinguish implemented gated foundations from remaining acceptance. No real user state was migrated/restored; no package/staging acceptance claimed.

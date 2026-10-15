@@ -333,13 +333,18 @@ backend separately, or set `SPARK_API_TARGET` to its address.
 
 ## Upgrade roadmap
 
-[PLAN.md](PLAN.md) contains the proposed app update based on pinned reviews of
+[PLAN.md](PLAN.md) tracks the approved app update based on pinned reviews of
 [Hermes Agent](https://github.com/nousresearch/hermes-agent) for agent features and
 [T3 Code](https://github.com/pingdotgg/t3code) for sidebar and orchestration-v2
 patterns. It defines a five-day core slice, agent-sized packets, dependencies,
 acceptance tests and separately estimated extensions.
 
-The core targets consistent execution state, asynchronous delegated-work controls,
-explicit coding worktree isolation, improved sidebar organization and worker
-recovery. These are planned changes, not a list of shipped features. Existing
-memory, skills, search, tasks, drafts and subagent UI are foundations to extend.
+Implemented foundations include atomic child lifecycle events, idempotent control
+receipts, durable sidebar pin/order/settlement and fenced task workers with
+profile-local transcripts. Async delegation and local Git worktree isolation are
+opt-in (`delegation.async_enabled` and `delegation.worktree_isolation`, both false
+by default). Async workers are process-local; lost work becomes uncertain and
+stored results are delivered on the next explicit parent turn. Inspector,
+recovery, performance and package acceptance remain in progress in the plan.
+See the [rollout runbook](docs/development/app-upgrade-rollout.md) for backup,
+isolated enablement and rollback boundaries.
