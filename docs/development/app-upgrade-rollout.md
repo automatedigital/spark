@@ -94,6 +94,10 @@ require a Windows host and remain pending when one is unavailable.
 
 ## Evidence recorded so far
 
+- [Actual old-source rehearsal](../performance/app-upgrade-rollout-rehearsal-2026-10-15.md)
+  creates schema 12 with `0ed3654b`, upgrades twice, verifies old datastore
+  read/write on schema 15, and restores both consistent archives using production
+  import into disposable roots. It records the exact post-backup loss inventory.
 - `tests/core/test_child_lifecycle.py` reconstructs schema 12, upgrades twice and
   verifies legacy child records/events survive.
 - `tests/spark_cli/test_backup.py` restores committed live-profile WAL data and

@@ -1,0 +1,64 @@
+{
+  "source_commit": "60fae7c62f3303fb2e7e9ff73334a5d7d4d6d9f0",
+  "old_source_commit": "0ed3654b5b956aad7434addebbf5ce740466a53c",
+  "output": "/private/tmp/spark-upgrade-rollout-rehearsal-20261015",
+  "restored": {
+    "rollback": {
+      "schema_version": 12,
+      "message_count": 1,
+      "integrity": "ok"
+    },
+    "current": {
+      "schema_version": 15,
+      "message_count": 3,
+      "integrity": "ok"
+    }
+  },
+  "archives": {
+    "before.zip": {
+      "sha256": "e9db0946ca7154183dad36f587660cb878a3d7e75e1df0a77caa963bd0214c63",
+      "members": [
+        "config.yaml",
+        "profiles/rehearsal-lab/state.db",
+        "profiles/rehearsal-lab/config.yaml",
+        "profiles/rehearsal-lab/kanban.db",
+        "profiles/rehearsal-lab/drafts/example.txt",
+        "profiles/rehearsal-lab/skills/example.md"
+      ]
+    },
+    "after.zip": {
+      "sha256": "63641d849c8d978585d97e3187d63e42e6e364afe69caa76a1c882b66cbbc9c6",
+      "members": [
+        "config.yaml",
+        "profiles/rehearsal-lab/state.db",
+        "profiles/rehearsal-lab/config.yaml",
+        "profiles/rehearsal-lab/kanban.db",
+        "profiles/rehearsal-lab/drafts/example.txt",
+        "profiles/rehearsal-lab/skills/example.md"
+      ]
+    }
+  },
+  "checks": [
+    "real schema12 creation",
+    "live WAL consistent backup",
+    "12\u219215 additive migration",
+    "repeat open",
+    "legacy child/task/files preserved",
+    "old datastore writer on schema15",
+    "production backup/import in disposable profiles",
+    "old backup restored and read by old datastore"
+  ],
+  "rollback_loss": [
+    "Post-backup user message",
+    "Old datastore writer message",
+    "Post-backup command receipt",
+    "Post-backup sidebar pin"
+  ],
+  "limits": [
+    "Datastore compatibility only; not full old-app/runtime compatibility",
+    "Synthetic skill/file draft, not browser IndexedDB or localStorage",
+    "Alias output redirected to disposable directory",
+    "No real user state, providers, workers or external sends",
+    "No installed desktop/Windows/staging/production acceptance"
+  ]
+}
