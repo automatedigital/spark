@@ -359,5 +359,41 @@
       "No performance improvement inferred from changed selection endpoint.",
       "Retention, later source integrations, final regression and package acceptance remain open."
     ]
+  },
+  "current_integrated_candidate": {
+    "commit": "e8d6713",
+    "application_source_commit": "e8c50260",
+    "canonical_manifest_sha256": "90eaa3dc157086d3ea041f065d9de4c1a9d0a1e4c4879080787a0df08fdc1f1f",
+    "canonical_entry": "assets/index-D1VeEVIg.js",
+    "canonical_entry_sha256": "332bfff3eccc8495434ebf72d18a6e5578134229becceb156cfbb68d1bfc96ee",
+    "node_version": "v22.22.1",
+    "frontend_tests_passed": 436,
+    "frontend_files": 76,
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "build_exit": 0,
+    "initial_js_gzip_kib": 241.16,
+    "mypy_source_files": 133,
+    "mypy_exit": 0,
+    "ci_ruff_exit": 0,
+    "manifest_check_exit": 0,
+    "dev_chat_contracts_exit": 0,
+    "canonical_inspector_checks": 11,
+    "canonical_inspector_exit": 0,
+    "production_recovery_checks": 9,
+    "production_recovery_exit": 0,
+    "full_local_pytest": {
+      "status": "running_with_failures_observed",
+      "log": "/tmp/spark-upgrade-20261015/full-local-pytest-integrated-approval.txt"
+    },
+    "independent_approval_review": "pending",
+    "retention_acceptance": "open",
+    "logs": [
+      "/tmp/spark-upgrade-20261015/frontend-integrated-approval-build.txt",
+      "/tmp/spark-upgrade-20261015/mypy-integrated-approval.txt",
+      "/tmp/spark-upgrade-20261015/chat-contracts-integrated-approval.txt",
+      "/tmp/spark-upgrade-20261015/inspector-built-integrated-approval/report.json",
+      "/tmp/spark-upgrade-20261015/recovery-built-integrated-approval/production.json"
+    ]
   }
 }
