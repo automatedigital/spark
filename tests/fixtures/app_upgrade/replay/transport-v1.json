@@ -1,0 +1,29 @@
+{
+  "schema": "spark.test.provider-transport-replay.v1",
+  "provenance": {
+    "kind": "hand-authored synthetic HTTP response script",
+    "date": "2026-10-15",
+    "source_commit": "bed0d01007b47e78e6a90c8f8f5db0a754bf2ac0",
+    "protocol": "OpenAI Chat Completions JSON and SSE at httpx.HTTPTransport.handle_request",
+    "credentials": "none; reserved .invalid origin and synthetic key only",
+    "limits": "No recorded inference, messaging service, gateway restart, browser or installed-platform evidence"
+  },
+  "model": "replay-model",
+  "origin": "https://provider-replay.invalid/v1",
+  "root_prompt": "REPLAY: launch two children",
+  "dispatch": {
+    "mode": "async",
+    "request_id": "replay-dispatch-1",
+    "tasks": [{"goal": "REPLAY: alpha"}, {"goal": "REPLAY: beta"}]
+  },
+  "root_result": "Root provider finished explicitly.",
+  "children": {
+    "REPLAY: alpha": "Alpha read the fixture.",
+    "REPLAY: beta": "Beta read the fixture."
+  },
+  "provider_error": {
+    "status": 400,
+    "body": {"error": {"message": "Synthetic provider rejected this request", "type": "invalid_request_error", "code": "invalid_request"}}
+  },
+  "file_content": "Synthetic replay file. No user data.\n"
+}
