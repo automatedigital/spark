@@ -470,10 +470,45 @@ async function measureStream(page, apiBase, marker) {
   await createEmptyStreamSession(apiBase, sessionId, title);
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForChatSession(page, sessionId, title);
+  const streamNavigations = [];
+  const onStreamNavigation = (frame) => {
+    if (frame === page.mainFrame()) streamNavigations.push({ url: frame.url(), at: performance.now() });
+  };
+  page.on("framenavigated", onStreamNavigation);
   await page.evaluate(({ sampleMarker, expectedTokens }) => {
     const panel = document.querySelector('[data-testid="chat-panel"]');
     const samples = [];
     if (!panel) throw new Error("Chat panel missing for stream instrumentation");
+    // A diagnostic comparison only: authoritative samples still come from the
+    // original fixed-panel observer. Never use this series to rescue a failure.
+    const freshSamples = [];
+    const identity = [];
+    let previousPanel = panel;
+    let freshLastVisibleTokens = 0;
+    const freshCapture = () => {
+      const current = document.querySelector('[data-testid="chat-panel"]');
+      const text = current?.textContent ?? "";
+      let visibleTokens = 0;
+      for (let index = 1; index <= expectedTokens; index += 1) {
+        if (text.includes(`${sampleMarker} token ${index}.`)) visibleTokens += 1;
+      }
+      if (current !== previousPanel || visibleTokens > freshLastVisibleTokens) {
+        identity.push({ at: performance.now(), originalConnected: panel.isConnected,
+          currentIsOriginal: current === panel, currentConnected: current?.isConnected ?? false,
+          currentSession: current?.getAttribute("data-session-id") ?? null,
+          panelReplaced: current !== previousPanel, visibleTokens });
+      }
+      previousPanel = current;
+      if (visibleTokens <= freshLastVisibleTokens) return;
+      freshLastVisibleTokens = visibleTokens;
+      freshSamples.push({ at: performance.now(), visibleTokens,
+        visibleChars: Number(current.getAttribute("data-stream-visible-chars") || 0),
+        streaming: current.getAttribute("data-streaming") });
+    };
+    const freshObserver = new MutationObserver(freshCapture);
+    freshObserver.observe(document.body, { attributes: true,
+      attributeFilter: ["data-stream-visible-chars", "data-streaming", "data-session-id"],
+      childList: true, characterData: true, subtree: true });
     let lastVisibleTokens = 0;
     const capture = () => {
       const text = panel.textContent ?? "";
@@ -504,9 +539,30 @@ async function measureStream(page, apiBase, marker) {
       samples,
       observer,
       capture,
+      freshCapture,
+      freshObserver,
+      freshSamples,
+      identity,
+      nodeState: () => ({
+        originalConnected: panel.isConnected,
+        currentIsOriginal: document.querySelector('[data-testid="chat-panel"]') === panel,
+        originalSession: panel.getAttribute("data-session-id"),
+        currentSession: document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") ?? null,
+      }),
       marker: sampleMarker,
       expectedTokens,
+      timeOrigin: performance.timeOrigin,
     };
+    sessionStorage.removeItem("spark-stream-observation-archive");
+    window.addEventListener("pagehide", () => {
+      capture(); freshCapture();
+      const trace = window.__sparkStreamTrace;
+      sessionStorage.setItem("spark-stream-observation-archive", JSON.stringify({
+        timeOrigin: trace.timeOrigin, startedAt: trace.startedAt, expectedTokens,
+        samples, freshSamples, identity, originalConnected: panel.isConnected,
+        currentIsOriginal: document.querySelector('[data-testid="chat-panel"]') === panel,
+      }));
+    }, { once: true });
   }, { sampleMarker: marker, expectedTokens: streamTokenCount });
   await createStreamProbe(apiBase, sessionId, title, marker);
   await page.waitForFunction(({ sampleMarker, expectedTokens }) => {
@@ -515,10 +571,13 @@ async function measureStream(page, apiBase, marker) {
   }, { sampleMarker: marker, expectedTokens: streamTokenCount }, { timeout: 15_000 });
   await waitForTurnIdle(apiBase, sessionId);
   await page.waitForTimeout(150);
-  return page.evaluate(() => {
+  page.off("framenavigated", onStreamNavigation);
+  return page.evaluate((streamNavigations) => {
     const trace = window.__sparkStreamTrace;
     trace?.capture();
     trace?.observer.disconnect();
+    trace?.freshCapture();
+    trace?.freshObserver.disconnect();
     const samples = trace?.samples ?? [];
     const last = samples.at(-1)?.at ?? null;
     const elapsedMs = last == null || trace?.startedAt == null
@@ -527,6 +586,11 @@ async function measureStream(page, apiBase, marker) {
     const efficiency = window.__sparkWebEfficiency?.snapshot?.() ?? null;
     return {
       samples,
+      observationDiagnostic: { freshSamples: trace?.freshSamples, identity: trace?.identity,
+        tracePresent: Boolean(trace),
+        nodeState: trace?.nodeState(),
+        timeOrigin: performance.timeOrigin, traceTimeOrigin: trace?.timeOrigin,
+        streamNavigations, archived: JSON.parse(sessionStorage.getItem("spark-stream-observation-archive") || "null") },
       startedAt: trace?.startedAt,
       firstVisibleTokenMs: samples.length ? samples[0].at - trace.startedAt : null,
       syntheticInitialDelayMs: 60,
@@ -539,7 +603,7 @@ async function measureStream(page, apiBase, marker) {
       finalVisibleTokenCount: samples.at(-1)?.visibleTokens ?? 0,
       efficiency,
     };
-  });
+  }, streamNavigations);
 }
 
 async function captureCase({ browser, apiBase, webBase, screenshotRoot, size, viewport, theme }) {
@@ -637,6 +701,16 @@ async function captureCase({ browser, apiBase, webBase, screenshotRoot, size, vi
         session: document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id"),
         buttons: [...document.querySelectorAll("button")].filter((el) => /Load earlier|Loading/.test(el.textContent)).map((el) => ({ text: el.textContent, disabled: el.disabled })),
         mountedRows: [...document.querySelectorAll("[data-row-id]")].map((el) => el.getAttribute("data-row-id")),
+        streamObservation: {
+          timeOrigin: performance.timeOrigin,
+          tracePresent: Boolean(window.__sparkStreamTrace),
+          traceTimeOrigin: window.__sparkStreamTrace?.timeOrigin,
+          samples: window.__sparkStreamTrace?.samples,
+          freshSamples: window.__sparkStreamTrace?.freshSamples,
+          identity: window.__sparkStreamTrace?.identity,
+          nodeState: window.__sparkStreamTrace?.nodeState(),
+          archived: JSON.parse(sessionStorage.getItem("spark-stream-observation-archive") || "null"),
+        },
       })).catch(() => null),
     };
     await mkdir(screenshotRoot, { recursive: true });
@@ -682,6 +756,13 @@ async function validateCaseResult(result, stagedScreenshotRoot) {
   if (!result.scrollDrift.before || !result.scrollDrift.after
     || !Number.isFinite(result.scrollDrift.driftPx)) {
     throw new Error(`${label} did not record a stable scroll-drift sample: ${JSON.stringify(result.scrollDrift)}`);
+  }
+  const observation = result.stream.observationDiagnostic;
+  if (!observation.tracePresent) {
+    throw new Error(`${label} stream observation trace missing from current document; capture invalid (navigation/pagehide diagnostics retained, archived samples are not substituted)`);
+  }
+  if (observation.timeOrigin !== observation.traceTimeOrigin || observation.streamNavigations.length > 0) {
+    throw new Error(`${label} stream document changed during capture; continuity measurement invalid`);
   }
   if (result.stream.updateCount <= 0
     || !Number.isFinite(result.stream.elapsedMs)
@@ -811,6 +892,7 @@ async function run(iteration) {
         branch: spawnSync("git", ["branch", "--show-current"], { cwd: repoRoot, encoding: "utf8" }).stdout.trim(),
         browser: await browser.version(),
         node: process.version,
+        nodeExecutable: process.execPath,
       },
       fixtureSizes,
       viewports: viewports.map((width) => ({ width, height: viewportHeight, deviceScaleFactor: 1 })),

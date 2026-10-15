@@ -258,11 +258,37 @@ db.close()
       await page.waitForFunction((id) => document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") === `scale-${id}`, id);
     };
     await row("000").evaluate((element) => {
-      window.__sparkSelectionStartedAt = performance.now(); element.click();
+      const expectedSession = "scale-000";
+      window.__sparkSelectionObservation = {
+        expectedSession,
+        initialSession: document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") ?? null,
+        committedAt: null,
+      };
+      const observer = new MutationObserver(() => {
+        if (document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") !== expectedSession) return;
+        window.__sparkSelectionObservation.committedAt = performance.now();
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-session-id"] });
+      window.__sparkSelectionStartedAt = performance.now();
+      element.click();
     });
     await page.waitForFunction(() => document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") === "scale-000");
     assert.equal(await row("000").getAttribute("aria-current"), "page");
-    metrics.selectionMs = await page.evaluate(() => performance.now() - window.__sparkSelectionStartedAt);
+    // Retain the old endpoint, including automation polling/protocol trips.
+    // The budget below now uses the same DOM-identity boundary on browser time.
+    metrics.selectionLegacyObservedMs = await page.evaluate(() => performance.now() - window.__sparkSelectionStartedAt);
+    metrics.selectionObservation = await page.evaluate(() => ({
+      ...window.__sparkSelectionObservation,
+      startedAt: window.__sparkSelectionStartedAt,
+      definition: "inline-click-to-session-dom-commit",
+    }));
+    const selection = metrics.selectionObservation;
+    assert.notEqual(selection.initialSession, selection.expectedSession, "Selection measurement must observe a real session transition");
+    assert.ok(Number.isFinite(selection.committedAt) && selection.committedAt >= selection.startedAt,
+      "Selection measurement did not observe the expected session DOM commit");
+    metrics.selectionMs = selection.committedAt - selection.startedAt;
+    metrics.selectionObservation.legacyObservationTailMs = metrics.selectionLegacyObservedMs - metrics.selectionMs;
     await select("000");
     let search = page.getByPlaceholder("Search", { exact: true });
     metrics.localSearchMs = await measureSearchResult(search, "Scale chat 049", '[role="button"][aria-label^="Scale chat 049,"]');
