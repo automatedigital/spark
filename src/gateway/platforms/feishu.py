@@ -1069,8 +1069,8 @@ class FeishuAdapter(BasePlatformAdapter):
         self._media_batch_state = FeishuBatchState()
         self._pending_media_batches = self._media_batch_state.events
         self._pending_media_batch_tasks = self._media_batch_state.tasks
-        # Exec approval button state (approval_id → {session_key, message_id, chat_id})
-        self._approval_state: dict[int, dict[str, str]] = {}
+        # Exec approval button state includes the original entry's action_id.
+        self._approval_state: dict[int | str, dict[str, str]] = {}
         self._approval_counter = itertools.count(1)
         self._load_seen_message_ids()
 
@@ -1424,6 +1424,7 @@ class FeishuAdapter(BasePlatformAdapter):
         self, chat_id: str, command: str, session_key: str,
         description: str = "dangerous command",
         metadata: dict[str, Any] | None = None,
+        *, action_id: str | None = None,
     ) -> SendResult:
         """Send an interactive card with approval buttons.
 
@@ -1435,7 +1436,7 @@ class FeishuAdapter(BasePlatformAdapter):
             return SendResult(success=False, error="Not connected")
 
         try:
-            approval_id = next(self._approval_counter)
+            approval_id = action_id or next(self._approval_counter)
             cmd_preview = command[:3000] + "..." if len(command) > 3000 else command
 
             def _btn(label: str, action_name: str, btn_type: str = "default") -> dict:
@@ -1482,6 +1483,7 @@ class FeishuAdapter(BasePlatformAdapter):
             if result.success:
                 self._approval_state[approval_id] = {
                     "session_key": session_key,
+                    "action_id": action_id or "",
                     "message_id": result.message_id or "",
                     "chat_id": chat_id,
                 }
@@ -1496,12 +1498,12 @@ class FeishuAdapter(BasePlatformAdapter):
         """Replace the approval card with a resolved status card."""
         if not self._client or not message_id:
             return
-        icon = "❌" if choice == "deny" else "✅"
+        icon = "⏱" if choice == "expired" else "❌" if choice == "deny" else "✅"
         card = {
             "config": {"wide_screen_mode": True},
             "header": {
                 "title": {"content": f"{icon} {label}", "tag": "plain_text"},
-                "template": "red" if choice == "deny" else "green",
+                "template": "orange" if choice == "expired" else "red" if choice == "deny" else "green",
             },
             "elements": [
                 {
@@ -1980,16 +1982,17 @@ class FeishuAdapter(BasePlatformAdapter):
             sender_profile = await self._resolve_sender_profile(sender_id)
             user_name = sender_profile.get("user_name") or open_id
 
-            # Resolve the approval — unblocks the agent thread
-            try:
-                from tools.approval import resolve_gateway_approval
-                count = resolve_gateway_approval(state["session_key"], choice)
-                logger.info(
-                    "Feishu button resolved %d approval(s) for session %s (choice=%s, user=%s)",
-                    count, state["session_key"], choice, user_name,
-                )
-            except Exception as exc:
-                logger.error("Failed to resolve gateway approval from Feishu button: %s", exc)
+            count = 0
+            entry_id = state.get("action_id")
+            if entry_id:
+                try:
+                    from tools.approval import resolve_gateway_approval
+                    count = resolve_gateway_approval(state["session_key"], choice, action_id=entry_id)
+                except Exception as exc:
+                    logger.error("Failed to resolve gateway approval from Feishu button: %s", exc)
+            if not count:
+                label = "Approval is no longer pending"
+                choice = "expired"
 
             # Update the card to show the decision
             await self._update_approval_card(state.get("message_id", ""), label, user_name, choice)

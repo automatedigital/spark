@@ -7,7 +7,7 @@
   ],
   "base_commit": "3097f32b",
   "root_window_clear_utc": "18:57",
-  "validation_status": "sequential_parent_followup_focused_passed_broad_neighbors_held",
+  "validation_status": "transport_identity_focused_and_approval_web_neighbors_passed_root_acceptance_pending",
   "sequential_parent_followup": {
     "base_commit": "873573b0",
     "parent_finding": "Ordinary next parent registration cancels earlier legitimate background child authorization",
@@ -188,8 +188,99 @@
     "No dangerous command executed; safe pwd guards have no shell effect",
     "Local RPC regression runs harmless Python with synthetic dispatch to real guard",
     "No live messaging network/authentication or remote sandbox",
-    "No Node, browser, build, install, push, PR or release command",
+    "No browser, build, install, push, PR or release command; focused Node22 Web helper test recorded separately",
     "Root owns canonical mypy, CI, full suite and P03/P09 acceptance",
     "Already-running hooks and callback sends remain cooperative"
-  ]
+  ],
+  "transport_identity_followup": {
+    "base_commit": "d044b79a",
+    "scope": [
+      "src/tools/approval.py",
+      "narrow gateway notification forwarding",
+      "Slack/Telegram/Discord/Feishu approval send/click paths",
+      "Web submission helper and both ChatPanel button paths",
+      "focused tests and this evidence"
+    ],
+    "baseline": {
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_approval_button_ownership.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+      "result": "1 failed in 6.12s",
+      "production_source": "unchanged d044b79a",
+      "assertion": "A's stale button resolved B's different command",
+      "proof": {
+        "old_prompt_label": "✅ Approved once by synthetic owner",
+        "replacement_decision": {
+          "approved": true,
+          "description": "world/other-writable permissions",
+          "message": null,
+          "user_approved": true
+        },
+        "replacement_still_waiting": false
+      },
+      "boundary": "Real runner/AIAgent/guard and actual Slack sender/click methods; local Telegram-source fixture bridges notification arguments; local SDK sends and synthetic HTTP only; Internet sockets forbidden; no dangerous command execution",
+      "reported_before_broad_neighbors": true
+    },
+    "repair": "UUID per-entry action identity forwarded by actual gateway; exact-ID resolution for all four transports before UI decision labels; explicit empty/unknown IDs never use FIFO; owner lifetimes unchanged; both Web button paths reject missing IDs while backend legacy API remains current-queue",
+    "checks": [
+      {
+        "id": "transport_focused",
+        "command": "PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_approval_button_ownership.py tests/gateway/test_approval_button_ids.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py -q -n 0 -m 'not integration' --tb=short --durations=6",
+        "result": "58 passed in 11.84s"
+      },
+      {
+        "id": "node_version",
+        "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node --version",
+        "result": "v22.22.1"
+      },
+      {
+        "id": "web_helper",
+        "setup": "frontend_check_dir=$(mktemp -d /tmp/spark-approval-web.XXXXXX)\ncat > \"$frontend_check_dir/vitest.config.mjs\" <<'EOF'\nexport default {\n  root: '/Users/joe/.t3/worktrees/spark/t3-8fdb9cde/src/spark_cli/web',\n  cacheDir: process.env.SPARK_APPROVAL_TEST_CACHE,\n  resolve: { alias: { vitest: '/Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/vitest/dist/index.js' } },\n  test: { environment: 'node', include: ['src/lib/chatApproval.test.ts'] },\n};\nEOF",
+        "command": "SPARK_APPROVAL_TEST_CACHE=\"$frontend_check_dir/cache\" /Users/joe/.nvm/versions/node/v22.22.1/bin/node /Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/vitest/vitest.mjs run --config \"$frontend_check_dir/vitest.config.mjs\"",
+        "result": "5 passed; Vitest duration 362ms; existing dependencies reused without installation"
+      },
+      {
+        "id": "approval_web_lifetime_neighbors",
+        "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py tests/tools/test_approval.py tests/tools/test_command_guards.py tests/tools/test_yolo_mode.py tests/gateway/test_approve_deny_commands.py tests/spark_cli/test_web_server_events.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+        "result": "322 passed in 149.39s",
+        "estimate_reported_before_start": "roughly 3 minutes"
+      },
+      {
+        "id": "runtime_guards",
+        "command": "PYTHONPATH=$PWD/src python -m pytest tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "13 passed in 9.84s"
+      },
+      {
+        "id": "new_test_imports",
+        "command": "ruff check tests/gateway/test_approval_button_ownership.py tests/gateway/test_approval_button_ids.py --fix",
+        "result": "Found 1 error (1 fixed, 0 remaining)."
+      },
+      {
+        "id": "test_lint",
+        "command": "ruff check tests/gateway/test_approval_button_ownership.py tests/gateway/test_approval_button_ids.py tests/tools/test_approval_ownership.py",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "source_lint",
+        "command": "ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "manifest",
+        "command": "PYTHONPATH=$PWD/src python scripts/generate_tool_manifest.py --check",
+        "result": "Tool manifest valid: 70 tools across 28 isolated modules; 4 optional guards"
+      },
+      {
+        "id": "whitespace",
+        "command": "git diff --check",
+        "result": "exit 0"
+      }
+    ],
+    "all_validation_commands_exited": true,
+    "planned_more_broad_batches": false,
+    "limits": [
+      "No live messaging network/authentication, external provider calls, external sends or dangerous command execution",
+      "Discord application adapter/view code tested with optional-SDK UI shim; other platform SDK I/O local",
+      "No dependency installs, repository config/lockfile/bundle changes, browser, build, push, PR or release",
+      "Root owns canonical frontend lint/type/build/browser and final integration"
+    ]
+  }
 }

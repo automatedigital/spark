@@ -8960,6 +8960,7 @@ class GatewayRunner:
                                 chat_id=_status_chat_id,
                                 command=cmd,
                                 session_key=_approval_session_key,
+                                action_id=approval_data["action_id"],
                                 description=desc,
                                 metadata=_status_thread_metadata,
                             ),

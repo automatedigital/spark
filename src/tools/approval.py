@@ -15,6 +15,7 @@ import re
 import sys
 import threading
 import unicodedata
+import uuid
 import weakref
 
 logger = logging.getLogger(__name__)
@@ -224,6 +225,9 @@ class _ApprovalEntry:
 
     def __init__(self, data: dict, owner=None):
         self.event = threading.Event()
+        # A decision identifies one waiter, independently of its execution owner.
+        # Web durable actions reuse this identity rather than minting a new one.
+        data.setdefault("action_id", uuid.uuid4().hex)
         self.data = data          # command, description, pattern_keys, …
         self.result: str | None = None  # "once"|"session"|"always"|"deny"
         self.owner = owner
@@ -346,12 +350,16 @@ def resolve_gateway_approval(session_key: str, choice: str,
     is resolved (FIFO).
 
     Returns the number of approvals resolved (0 means nothing was pending).
+    Omitting action_id retains FIFO/all semantics for explicit text commands and
+    legacy APIs. An explicit empty or unknown identity never falls back to FIFO.
     """
     with _lock:
         queue = _gateway_queues.get(session_key)
         if not queue:
             return 0
-        if action_id:
+        if action_id is not None:
+            if not isinstance(action_id, str) or not action_id.strip():
+                return 0
             targets = [
                 entry for entry in queue
                 if str(entry.data.get("action_id") or "") == action_id

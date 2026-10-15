@@ -1,6 +1,7 @@
 """Tests for Slack Block Kit approval buttons and thread context fetching."""
 
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -77,6 +78,7 @@ class TestSlackExecApproval:
             command="rm -rf /important",
             session_key="agent:main:slack:group:C1:1111",
             description="dangerous deletion",
+            action_id="entry-a",
         )
 
         assert result.success is True
@@ -99,9 +101,9 @@ class TestSlackExecApproval:
         assert "spark_approve_session" in action_ids
         assert "spark_approve_always" in action_ids
         assert "spark_deny" in action_ids
-        # Each button carries the session key as value
+        # Every button carries both conversation and exact entry identity.
         for e in elements:
-            assert e["value"] == "agent:main:slack:group:C1:1111"
+            assert json.loads(e["value"]) == {"session_key": "agent:main:slack:group:C1:1111", "action_id": "entry-a"}
 
     @pytest.mark.asyncio
     async def test_sends_in_thread(self):
@@ -171,7 +173,7 @@ class TestSlackApprovalAction:
         }
         action = {
             "action_id": "spark_approve_once",
-            "value": "agent:main:slack:group:C1:1111",
+            "value": json.dumps({"session_key": "agent:main:slack:group:C1:1111", "action_id": "entry-a"}),
         }
 
         mock_client = adapter._team_clients["T1"]
@@ -181,7 +183,7 @@ class TestSlackApprovalAction:
             await adapter._handle_approval_action(ack, body, action)
 
         ack.assert_called_once()
-        mock_resolve.assert_called_once_with("agent:main:slack:group:C1:1111", "once")
+        mock_resolve.assert_called_once_with("agent:main:slack:group:C1:1111", "once", action_id="entry-a")
 
         # Message should be updated with decision
         mock_client.chat_update.assert_called_once()
@@ -224,7 +226,7 @@ class TestSlackApprovalAction:
             "channel": {"id": "C1"},
             "user": {"name": "alice"},
         }
-        action = {"action_id": "spark_deny", "value": "session-key"}
+        action = {"action_id": "spark_deny", "value": json.dumps({"session_key": "session-key", "action_id": "entry-deny"})}
 
         mock_client = adapter._team_clients["T1"]
         mock_client.chat_update = AsyncMock()
@@ -232,7 +234,7 @@ class TestSlackApprovalAction:
         with patch("tools.approval.resolve_gateway_approval", return_value=1) as mock_resolve:
             await adapter._handle_approval_action(ack, body, action)
 
-        mock_resolve.assert_called_once_with("session-key", "deny")
+        mock_resolve.assert_called_once_with("session-key", "deny", action_id="entry-deny")
         update_kwargs = mock_client.chat_update.call_args[1]
         assert "Denied by alice" in update_kwargs["text"]
 

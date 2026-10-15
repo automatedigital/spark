@@ -83,8 +83,9 @@ window at **18:57 UTC**. Every Python run activated
 via `PYTHONPATH` (except the explicit baseline-source check), and set a fresh
 temporary `SPARK_HOME` before collection. All pytest runs used `-n 0` and
 `-m 'not integration'`. These are test wall times with other correctness work
-permitted, not controlled performance samples. No Node, browser, build, install,
-push, PR or release command ran here.
+permitted, not controlled performance samples. No Node command ran for the initial
+ownership validation; the later transport/Web follow-up below records a focused
+Node check. No browser, build, install, push, PR or release command ran here.
 
 Exact invocation arguments and results, including unsuccessful attempts, are in
 the companion JSON. Important retained attempts:
@@ -211,10 +212,85 @@ A first focused lint check reported one import-order violation (`I001`) in the
 new gateway test import; Ruff corrected that import and the rerun passed.
 
 All focused commands exited and that boundary was reported to root before any
-new broad neighbor batch. Further heavy validation is held for root's next
+new broad neighbor batch. Further heavy validation was held for root's next
 observation window. Earlier 312/376/92 results above apply to the preceding
 implementation; this follow-up does not claim they were rerun against the owner-set
 change. Root retains canonical/full-suite and final acceptance ownership.
+
+## Transport decision identity follow-up from `d044b79a`
+
+Independent source review found a pre-existing transport hole after finding no
+remaining weak-lifetime blocker: gateway notifications sent only the session key,
+and interactive responses resolved the oldest current waiter. A sent A prompt
+could survive Stop, B could queue a different command, and A's button could
+authorize B. Slack, Telegram, Discord and Feishu had the same session-only path.
+Their UI also published approval labels before confirming that a waiter resolved.
+
+The bounded regression ran before production edits, after root cleared the browser
+measurement window: **1 failed in 6.12s** against unchanged `d044b79a`, on the
+intended assertion `A's stale button resolved B's different command`. Raw proof:
+
+```json
+{"old_prompt_label":"✅ Approved once by synthetic owner","replacement_decision":{"approved":true,"description":"world/other-writable permissions","message":null,"user_approved":true},"replacement_still_waiting":false}
+```
+
+This uses the real authorized gateway runner, AIAgent, plugin hook and command
+guard; the existing local Telegram-source inbound fixture bridges the gateway's
+unchanged notification arguments to the real Slack sender/click handler. Only
+Slack SDK sends/edits and provider HTTP responses are synthetic. Internet sockets
+are forbidden, SPARK_HOME is temporary, and neither dangerous command executes.
+This proves the application button boundary, not live Slack inbound/auth/network.
+The failure was reported and its command had exited before broader validation.
+
+The repair adds a UUID action ID when creating each approval entry and forwards
+that same ID from actual gateway notification to all four button transports.
+Slack encodes session plus entry ID in its button value; Telegram callback data
+uses the opaque entry identity and stores its session binding, avoiding counter
+reuse after adapter reconstruction. Discord's view and Feishu's card state retain
+the original entry ID. Every response resolves only that ID and publishes an
+approved/denied label only when the resolver returns a nonzero count. Missing,
+old-format or cancelled IDs fail closed; expired Feishu cards use a neutral
+expiry state. Late notifications retain their cancelled entry identity.
+
+Execution owners, weak lifetime sets, Stop and normal sequential-parent behavior
+are unchanged by this transport fix. Entry identity is a decision identity, not
+an execution owner. Omitting an ID in the core resolver intentionally preserves
+FIFO and resolve-all behavior for `/approve`, `/approve all`, `/deny` and legacy
+backend APIs. An explicit empty/unknown ID resolves zero and cannot fall back.
+Old direct platform sender calls remain callable without a new required argument,
+but resulting ID-less interactive responses cannot authorize anything.
+
+The Web route already validates durable action/session identity and targets that
+waiter, so no production route change was needed. Its legacy API still accepts
+current-queue requests. The audit found a historical timeline button could omit
+its ID; with explicit scope approval, both built-in Web button paths now use the
+strict submission helper, which refuses missing/blank identities before any API
+request. Valid action IDs remain intact. Added backend regression confirms an old
+durable action cannot resolve a newer waiter in the same session.
+
+Validation (exact commands and environment details are in JSON):
+
+- Real gateway/Slack stale-click and delayed-send regressions, 12 four-platform
+  scenarios (cancelled/missing ID/reverse-order parallel decisions), and existing
+  Slack/Telegram/Feishu button neighbors: **58 passed in 11.84s**.
+- Web submission helper: **5 passed**, Vitest **362ms**, with live-verified Node
+  **v22.22.1** at `/Users/joe/.nvm/versions/node/v22.22.1/bin/node`. An isolated
+  temporary Vitest config reused existing root node_modules and a temporary cache;
+  no dependency installation, lockfile, source config or bundle change.
+- Approval/guards/YOLO, all ownership/lifetime/GC/sequential-parent cases, gateway
+  text decisions and full Web events: **322 passed in 149.39s**. The roughly
+  three-minute estimate was reported before this neighbor batch began.
+- Cache goldens, lazy manifest and minimal startup: **13 passed in 9.84s**.
+- Focused test lint and selected source CI lint: **passed**. Ruff corrected one
+  import-order issue in a new test before the final check.
+- Manifest: **70 tools / 28 isolated modules / 4 optional guards**, valid.
+- `git diff --check`: **exit 0**.
+
+Discord tests execute actual adapter/view source against a local optional-SDK UI
+shim; Feishu uses local SDK send/profile/card-update boundaries. Telegram/Slack
+also use local SDK I/O. These do not establish installed SDK or live messaging
+behavior. Root owns canonical frontend lint/type/build/browser gates and final
+integration. All validation commands exited; no further broad batch is planned.
 
 Not established here: live messaging network/authentication, live remote sandbox,
 browser recovery, installed packages, full root suite, canonical CI or P03/P09

@@ -213,6 +213,7 @@ class TestFeishuApprovalCallback:
     async def test_resolves_approval_on_click(self):
         adapter = _make_adapter()
         adapter._approval_state[1] = {
+            "action_id": "entry-1",
             "session_key": "agent:main:feishu:group:oc_12345",
             "message_id": "msg_001",
             "chat_id": "oc_12345",
@@ -232,7 +233,7 @@ class TestFeishuApprovalCallback:
         ):
             await adapter._handle_card_action_event(data)
 
-        mock_resolve.assert_called_once_with("agent:main:feishu:group:oc_12345", "once")
+        mock_resolve.assert_called_once_with("agent:main:feishu:group:oc_12345", "once", action_id="entry-1")
         mock_update.assert_called_once_with("msg_001", "Approved once", "Norbert", "once")
 
         # State should be cleaned up
@@ -242,6 +243,7 @@ class TestFeishuApprovalCallback:
     async def test_deny_button(self):
         adapter = _make_adapter()
         adapter._approval_state[2] = {
+            "action_id": "entry-2",
             "session_key": "some-session",
             "message_id": "msg_002",
             "chat_id": "oc_12345",
@@ -262,13 +264,14 @@ class TestFeishuApprovalCallback:
         ):
             await adapter._handle_card_action_event(data)
 
-        mock_resolve.assert_called_once_with("some-session", "deny")
+        mock_resolve.assert_called_once_with("some-session", "deny", action_id="entry-2")
         mock_update.assert_called_once_with("msg_002", "Denied", "Alice", "deny")
 
     @pytest.mark.asyncio
     async def test_session_approval(self):
         adapter = _make_adapter()
         adapter._approval_state[3] = {
+            "action_id": "entry-3",
             "session_key": "sess-3",
             "message_id": "msg_003",
             "chat_id": "oc_99",
@@ -289,13 +292,14 @@ class TestFeishuApprovalCallback:
         ):
             await adapter._handle_card_action_event(data)
 
-        mock_resolve.assert_called_once_with("sess-3", "session")
+        mock_resolve.assert_called_once_with("sess-3", "session", action_id="entry-3")
         mock_update.assert_called_once_with("msg_003", "Approved for session", "Bob", "session")
 
     @pytest.mark.asyncio
     async def test_always_approval(self):
         adapter = _make_adapter()
         adapter._approval_state[4] = {
+            "action_id": "entry-4",
             "session_key": "sess-4",
             "message_id": "msg_004",
             "chat_id": "oc_55",
@@ -316,7 +320,7 @@ class TestFeishuApprovalCallback:
         ):
             await adapter._handle_card_action_event(data)
 
-        mock_resolve.assert_called_once_with("sess-4", "always")
+        mock_resolve.assert_called_once_with("sess-4", "always", action_id="entry-4")
 
     @pytest.mark.asyncio
     async def test_already_resolved_drops_silently(self):

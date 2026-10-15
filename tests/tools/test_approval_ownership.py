@@ -181,6 +181,22 @@ def test_no_callback_legacy_batch_fallback_is_preserved():
         approval.reset_current_session_key(token)
 
 
+@pytest.mark.parametrize("identity", ["", "   ", "cancelled-or-unknown-entry"])
+def test_explicit_invalid_entry_id_never_falls_back_to_fifo(identity):
+    first = approval._ApprovalEntry({"command": "synthetic-A"})
+    second = approval._ApprovalEntry({"command": "synthetic-B"})
+    with approval._lock:
+        approval._gateway_queues[KEY] = [first, second]
+    assert first.data["action_id"] != second.data["action_id"]
+    assert approval.resolve_gateway_approval(KEY, "once", action_id=identity) == 0
+    assert not first.event.is_set() and not second.event.is_set()
+    # Omitting identity deliberately retains the text/API current-queue contract.
+    assert approval.resolve_gateway_approval(KEY, "once") == 1
+    assert first.result == "once" and not second.event.is_set()
+    assert approval.resolve_gateway_approval(KEY, "deny", resolve_all=True) == 1
+    assert second.result == "deny"
+
+
 def test_legacy_session_binding_does_not_acquire_execution_ownership():
     approval.register_gateway_notify(KEY, lambda data: None)
     token = approval.set_current_session_key(KEY)

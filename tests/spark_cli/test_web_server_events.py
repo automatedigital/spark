@@ -2920,6 +2920,34 @@ class TestConversationControl:
                 approval_mod._gateway_queues.pop("approval-owner", None)
             web_server._clear_web_turn("approval-owner")
 
+    def test_cancelled_web_action_cannot_resolve_newer_approval(self, web_client):
+        from core.spark_state import SessionDB
+        from spark_cli import web_server
+        from tools import approval
+
+        sid = "approval-stale-button"
+        db = SessionDB()
+        try:
+            db.ensure_session(sid, source="web", model="test-model")
+        finally:
+            db.close()
+        web_server._mark_web_turn_active(sid)
+        old = web_server._create_web_pending_action(sid, kind="approval", payload={"command": "synthetic-A"})
+        new = web_server._create_web_pending_action(sid, kind="approval", payload={"command": "synthetic-B"})
+        entry = approval._ApprovalEntry({"action_id": new["action_id"], "command": "synthetic-B"})
+        with approval._lock:
+            approval._gateway_queues[sid] = [entry]
+        try:
+            stale = web_client.post(f"/api/conversations/{sid}/approval", json={"choice": "once", "action_id": old["action_id"]})
+            assert stale.status_code == 404
+            assert not entry.event.is_set() and approval.has_blocking_approval(sid)
+            current = web_client.post(f"/api/conversations/{sid}/approval", json={"choice": "once", "action_id": new["action_id"]})
+            assert current.status_code == 200 and current.json()["resolved"] == 1
+            assert entry.result == "once" and not approval.has_blocking_approval(sid)
+        finally:
+            approval.unregister_gateway_notify(sid)
+            web_server._clear_web_turn(sid)
+
     def test_approval_action_uses_current_session_after_migration(self, web_client):
         from core.spark_state import SessionDB
         from spark_cli import web_server

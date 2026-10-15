@@ -870,8 +870,12 @@ export function ChatPanel({
       sessionId: sid,
       choice,
       busy: approvalBusy || approvalBusyRef.current,
+      actionId,
     });
-    if (!submission) return;
+    if (!submission) {
+      if (!actionId?.trim()) setError("This approval is no longer pending.");
+      return;
+    }
     approvalBusyRef.current = true;
     setApprovalBusy(true);
     try {
@@ -879,7 +883,7 @@ export function ChatPanel({
         submission.sessionId,
         submission.payload.choice,
         submission.payload.resolve_all,
-        actionId,
+        submission.payload.action_id,
       );
       await refreshTurnSurfaces();
     } catch (err) {
@@ -2092,7 +2096,18 @@ export function ChatPanel({
         busyActionIds={busyActionIds}
         onApprovalChoice={(action, choice) => runPendingAction(
           action,
-          () => api.submitConversationApproval(activeSessionId ?? action.session_id, choice, false, action.action_id),
+          async () => {
+            const submission = approvalSubmission({
+              sessionId: activeSessionId ?? action.session_id,
+              choice,
+              busy: false,
+              actionId: action.action_id,
+            });
+            if (!submission) throw new Error("This approval is no longer pending.");
+            return api.submitConversationApproval(
+              submission.sessionId, choice, false, submission.payload.action_id,
+            );
+          },
         )}
         onSubmitInput={(action, response) => runPendingAction(
           action,

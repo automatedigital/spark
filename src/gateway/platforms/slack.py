@@ -1221,6 +1221,7 @@ class SlackAdapter(BasePlatformAdapter):
         self, chat_id: str, command: str, session_key: str,
         description: str = "dangerous command",
         metadata: dict[str, Any] | None = None,
+        *, action_id: str | None = None,
     ) -> SendResult:
         """Send a Block Kit approval prompt with interactive buttons.
 
@@ -1233,6 +1234,7 @@ class SlackAdapter(BasePlatformAdapter):
         try:
             cmd_preview = command[:2900] + "..." if len(command) > 2900 else command
             thread_ts = self._resolve_thread_ts(None, metadata)
+            button_value = json.dumps({"session_key": session_key, "action_id": action_id})
 
             blocks = [
                 {
@@ -1254,26 +1256,26 @@ class SlackAdapter(BasePlatformAdapter):
                             "text": {"type": "plain_text", "text": "Allow Once"},
                             "style": "primary",
                             "action_id": "spark_approve_once",
-                            "value": session_key,
+                            "value": button_value,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Allow Session"},
                             "action_id": "spark_approve_session",
-                            "value": session_key,
+                            "value": button_value,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Always Allow"},
                             "action_id": "spark_approve_always",
-                            "value": session_key,
+                            "value": button_value,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Deny"},
                             "style": "danger",
                             "action_id": "spark_deny",
-                            "value": session_key,
+                            "value": button_value,
                         },
                     ],
                 },
@@ -1302,7 +1304,14 @@ class SlackAdapter(BasePlatformAdapter):
         await ack()
 
         action_id = action.get("action_id", "")
-        session_key = action.get("value", "")
+        try:
+            identity = json.loads(action.get("value", ""))
+        except (ValueError, TypeError):
+            identity = {}
+        if not isinstance(identity, dict):
+            identity = {}
+        session_key = identity.get("session_key", "")
+        approval_id = identity.get("action_id")
         message = body.get("message", {})
         msg_ts = message.get("ts", "")
         channel_id = body.get("channel", {}).get("id", "")
@@ -1335,6 +1344,16 @@ class SlackAdapter(BasePlatformAdapter):
         if self._approval_resolved.pop(msg_ts, True):
             return
 
+        # Resolve the exact entry before publishing a decision. Missing/old
+        # button identities never fall back to the session's current queue.
+        count = 0
+        if session_key and isinstance(approval_id, str) and approval_id:
+            try:
+                from tools.approval import resolve_gateway_approval
+                count = resolve_gateway_approval(session_key, choice, action_id=approval_id)
+            except Exception as exc:
+                logger.error("Failed to resolve gateway approval from Slack button: %s", exc)
+
         # Update the message to show the decision and remove buttons
         label_map = {
             "once": f"✅ Approved once by {user_name}",
@@ -1343,6 +1362,8 @@ class SlackAdapter(BasePlatformAdapter):
             "deny": f"❌ Denied by {user_name}",
         }
         decision_text = label_map.get(choice, f"Resolved by {user_name}")
+        if not count:
+            decision_text = "This approval is no longer pending."
 
         # Get original text from the section block
         original_text = ""
@@ -1376,17 +1397,6 @@ class SlackAdapter(BasePlatformAdapter):
             )
         except Exception as e:
             logger.warning("[Slack] Failed to update approval message: %s", e)
-
-        # Resolve the approval — this unblocks the agent thread
-        try:
-            from tools.approval import resolve_gateway_approval
-            count = resolve_gateway_approval(session_key, choice)
-            logger.info(
-                "Slack button resolved %d approval(s) for session %s (choice=%s, user=%s)",
-                count, session_key, choice, user_name,
-            )
-        except Exception as exc:
-            logger.error("Failed to resolve gateway approval from Slack button: %s", exc)
 
         # (approval state already consumed by atomic pop above)
 
