@@ -24,11 +24,13 @@ export function StreamedBrowser({
   url,
   persistent = true,
   onTitle,
+  visible = true,
 }: {
   slug: string;
   url: string;
   persistent?: boolean;
   onTitle?: (title: string) => void;
+  visible?: boolean;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [frameSrc, setFrameSrc] = useState("");
@@ -45,9 +47,14 @@ export function StreamedBrowser({
   const [retryKey, setRetryKey] = useState(0);
 
   const refetchFrame = useCallback(() => {
-    if (unavailable || screencast) return;
+    if (!visible || unavailable || screencast) return;
     setFrameSrc(api.streamBrowserFrameUrl(slug, Date.now()));
-  }, [slug, unavailable, screencast]);
+  }, [slug, visible, unavailable, screencast]);
+
+  // Observer visibility/frame transport changes must not navigate the shared
+  // browser again (which could undo an agent's navigation while hidden).
+  const refetchFrameRef = useRef(refetchFrame);
+  useEffect(() => { refetchFrameRef.current = refetchFrame; }, [refetchFrame]);
 
   // Start the session at the target URL, then begin polling frames.
   useEffect(() => {
@@ -70,7 +77,7 @@ export function StreamedBrowser({
         completed = true;
         window.clearTimeout(timeout);
         if (res?.title) onTitle?.(res.title);
-        refetchFrame();
+        refetchFrameRef.current();
       })
       .catch((e) => {
         if (cancelled) return;
@@ -90,14 +97,14 @@ export function StreamedBrowser({
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [slug, url, persistent, onTitle, refetchFrame, retryKey]);
+  }, [slug, url, persistent, onTitle, retryKey]);
 
   // Preferred frame source: CDP screencast over SSE (push). Each base64 JPEG
   // frame is turned into a blob URL and shown in the <img>. If the stream
   // fails to open (501/network) we silently leave `screencast` false and the
   // polling effect below takes over — the v1 graceful fallback.
   useEffect(() => {
-    if (unavailable) return;
+    if (!visible || unavailable) return;
     let closed = false;
     const es = new EventSource(api.streamBrowserScreencastUrl(slug));
     es.onmessage = (ev) => {
@@ -130,14 +137,14 @@ export function StreamedBrowser({
         objectUrlRef.current = null;
       }
     };
-  }, [slug, url, unavailable]);
+  }, [slug, url, visible, unavailable]);
 
   // Poll for fresh frames — only while the screencast isn't active (fallback).
   useEffect(() => {
-    if (unavailable || screencast) return;
+    if (!visible || unavailable || screencast) return;
     const id = window.setInterval(refetchFrame, FRAME_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [refetchFrame, unavailable, screencast]);
+  }, [refetchFrame, visible, unavailable, screencast]);
 
   const sendInput = useCallback(
     (input: StreamBrowserInput) => {

@@ -47,6 +47,7 @@ import { StreamedBrowser } from "./StreamedBrowser";
 import { NativePreview } from "./NativePreview";
 import { nativePreview } from "@/lib/nativePreview";
 import { isDirectPreviewUrl } from "@/lib/previewUrl";
+import { observePreviewRequest } from "@/lib/previewRequests";
 
 function hostOf(url: string): string {
   try {
@@ -87,6 +88,11 @@ const DEVICES: { id: DeviceId; label: string; width: number | null; Icon: typeof
 ];
 
 export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; visible?: boolean }) {
+  // Project-local state must not carry a previous URL into the next project.
+  return <WorkspacePreviewSession key={slug} slug={slug} visible={visible} />;
+}
+
+function WorkspacePreviewSession({ slug, visible }: { slug: string; visible: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
@@ -134,11 +140,11 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   // Push the selected device preset to the streamed backend so the server-side
   // viewport (and click-coordinate mapping) matches what the pane renders.
   useEffect(() => {
-    if (!streamedMode) return;
+    if (!visible || !streamedMode) return;
     const w = deviceWidth ?? 1280;
     const h = device === "phone" ? 844 : device === "tablet" ? 1180 : 800;
     void api.streamBrowserViewport(slug, w, h).catch(() => {});
-  }, [streamedMode, deviceWidth, device, slug]);
+  }, [visible, streamedMode, deviceWidth, device, slug]);
 
   const toggleDarkEmulation = useCallback(() => {
     const next = !darkEmulation;
@@ -147,20 +153,15 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
     void api.streamBrowserEmulate(slug, next ? true : null).catch(() => {});
   }, [darkEmulation, slug]);
 
-  const refreshTabs = useCallback(() => {
-    if (!streamedMode) {
-      setTabs([]);
-      return;
-    }
-    void api
-      .streamBrowserTabs(slug)
-      .then((r) => setTabs(r.tabs ?? []))
-      .catch(() => setTabs([]));
-  }, [streamedMode, slug]);
-
+  const [tabsRevision, setTabsRevision] = useState(0);
+  const refreshTabs = useCallback(() => setTabsRevision((value) => value + 1), []);
   useEffect(() => {
-    refreshTabs();
-  }, [refreshTabs, frameSrc]);
+    if (!visible || !streamedMode) return;
+    return observePreviewRequest(
+      (signal) => api.streamBrowserTabs(slug, signal),
+      (result) => setTabs(result.tabs ?? []),
+    );
+  }, [visible, streamedMode, slug, frameSrc, tabsRevision]);
 
   const openTab = useCallback(() => {
     void api
@@ -196,45 +197,31 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
     void api.streamBrowserTakeover(slug, next).catch(() => setTakeover(!next));
   }, [takeover, slug]);
 
-  // Poll take-over state so the badge reflects external toggles.
+  // Hidden panes retain the backend browser but do not occupy HTTP connections.
   useEffect(() => {
-    if (!streamedMode) return;
-    let alive = true;
-    const tick = () =>
-      void api
-        .streamBrowserTakeoverState(slug)
-        .then((r) => alive && setTakeover(r.paused))
-        .catch(() => {});
-    tick();
-    const id = window.setInterval(tick, 3000);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [streamedMode, slug]);
+    if (!visible || !streamedMode) return;
+    return observePreviewRequest(
+      (signal) => api.streamBrowserTakeoverState(slug, signal),
+      (result) => setTakeover(result.paused),
+      3000,
+    );
+  }, [visible, streamedMode, slug]);
 
   // Follow-agent overlay: surface the agent's most recent browser action.
   useEffect(() => {
-    if (!streamedMode) return;
-    let alive = true;
-    const tick = () =>
-      void api
-        .getWorkspacePreviewActionLog(slug, agentActionTsRef.current, 20)
-        .then((r) => {
-          if (!alive || !r.actions.length) return;
-          const last = r.actions[r.actions.length - 1];
-          agentActionTsRef.current = last.ts;
-          const ref = (last.detail?.ref as string | undefined) ?? undefined;
-          setAgentAction({ action: last.action, ref, ts: Date.now() });
-        })
-        .catch(() => {});
-    tick();
-    const id = window.setInterval(tick, 1500);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [streamedMode, slug]);
+    if (!visible || !streamedMode) return;
+    return observePreviewRequest(
+      (signal) => api.getWorkspacePreviewActionLog(slug, agentActionTsRef.current, 20, signal),
+      (result) => {
+        if (!result.actions.length) return;
+        const last = result.actions[result.actions.length - 1];
+        agentActionTsRef.current = last.ts;
+        const ref = (last.detail?.ref as string | undefined) ?? undefined;
+        setAgentAction({ action: last.action, ref, ts: Date.now() });
+      },
+      1500,
+    );
+  }, [visible, streamedMode, slug]);
 
   // Auto-fade the follow-agent toast a few seconds after the last action.
   useEffect(() => {
@@ -247,67 +234,46 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
   // surface them in the console drawer (closes the edit→reload→check loop).
   const consoleSeqRef = useRef(0);
   useEffect(() => {
-    if (!streamedMode) return;
-    consoleSeqRef.current = 0;
-    let alive = true;
-    const tick = () =>
-      void api
-        .streamBrowserConsole(slug, consoleSeqRef.current)
-        .then((r) => {
-          if (!alive || !r.entries.length) return;
-          consoleSeqRef.current = r.entries[r.entries.length - 1].seq;
-          setLogs((prev) => [
-            ...prev.slice(-499),
-            ...r.entries.map((e) => ({
-              ts: e.ts,
-              type: "log" as const,
-              stream: e.kind === "network" ? "network" : e.level === "error" || e.kind === "exception" ? "error" : "console",
-              text: e.text,
-            })),
-          ]);
-        })
-        .catch(() => {});
-    tick();
-    const id = window.setInterval(tick, 2000);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [streamedMode, slug, frameSrc]);
+    if (!visible || !streamedMode) return;
+    return observePreviewRequest(
+      (signal) => api.streamBrowserConsole(slug, consoleSeqRef.current, signal),
+      (result) => {
+        if (!result.entries.length) return;
+        consoleSeqRef.current = result.entries[result.entries.length - 1].seq;
+        setLogs((prev) => [
+          ...prev.slice(-499),
+          ...result.entries.map((entry) => ({
+            ts: entry.ts,
+            type: "log" as const,
+            stream: entry.kind === "network" ? "network" : entry.level === "error" || entry.kind === "exception" ? "error" : "console",
+            text: entry.text,
+          })),
+        ]);
+      },
+      2000,
+    );
+  }, [visible, streamedMode, slug, frameSrc]);
 
   // Action-log pane: poll the auditable agent action transcript while open.
   useEffect(() => {
-    if (!showActionLog) return;
-    let alive = true;
-    const tick = () =>
-      void api
-        .getWorkspacePreviewActionLog(slug)
-        .then((r) => alive && setActions(r.actions))
-        .catch(() => {});
-    tick();
-    const id = window.setInterval(tick, 2000);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [showActionLog, slug]);
+    if (!visible || !showActionLog) return;
+    return observePreviewRequest(
+      (signal) => api.getWorkspacePreviewActionLog(slug, undefined, 500, signal),
+      (result) => setActions(result.actions),
+      2000,
+    );
+  }, [visible, showActionLog, slug]);
 
-  // Dev-loop: auto-detect running local dev servers to offer in the URL bar.
+  // Detection scans local listeners; never start it for a CSS-hidden pane.
   const [devServers, setDevServers] = useState<{ url: string; port: number }[]>([]);
   useEffect(() => {
-    let alive = true;
-    const tick = () =>
-      void api
-        .detectDevServers(slug)
-        .then((r) => alive && setDevServers(r.servers ?? []))
-        .catch(() => {});
-    tick();
-    const id = window.setInterval(tick, 8000);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [slug]);
+    if (!visible) return;
+    return observePreviewRequest(
+      (signal) => api.detectDevServers(slug, signal),
+      (result) => setDevServers(result.servers ?? []),
+      8000,
+    );
+  }, [visible, slug]);
 
   const screenshotToChat = useCallback(() => {
     setShowMenu(false);
@@ -394,28 +360,25 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
     }
   }, [activeUrl]);
 
-  const loadStatus = useCallback(async () => {
-    try {
-      const next = await api.getWorkspacePreviewStatus(slug);
-      setStatus(next);
-      setUrlInput(next.url ?? "");
-    } catch (e) {
-      console.error("Browser status failed", e);
-    }
-  }, [slug]);
-
-  const loadLogs = useCallback(async () => {
-    try {
-      const res = await api.getWorkspacePreviewLogs(slug);
-      setLogs(res.logs);
-    } catch (e) {
-      console.error("Browser logs failed", e);
-    }
-  }, [slug]);
+  // URL changes update refresh behavior without reconnecting the event stream
+  // and refetching the same status/logs on every navigation.
+  const reloadFrameRef = useRef(reloadFrame);
+  useEffect(() => { reloadFrameRef.current = reloadFrame; }, [reloadFrame]);
 
   useEffect(() => {
-    void loadStatus();
-    void loadLogs();
+    if (!visible) return;
+    const stopStatus = observePreviewRequest(
+      (signal) => api.getWorkspacePreviewStatus(slug, signal),
+      (next) => { setStatus(next); setUrlInput(next.url ?? ""); },
+      undefined,
+      (error) => console.error("Browser status failed", error),
+    );
+    const stopLogs = observePreviewRequest(
+      (signal) => api.getWorkspacePreviewLogs(slug, signal),
+      (result) => setLogs(result.logs),
+      undefined,
+      (error) => console.error("Browser logs failed", error),
+    );
     const source = api.streamWorkspacePreviewEvents(slug);
     eventSourceRef.current = source;
     source.onmessage = (ev) => {
@@ -427,7 +390,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
         setLogs((prev) => [...prev.slice(-499), event]);
       } else if (event.type === "refresh") {
         setLastRefreshReason(event.reason ?? "manual");
-        reloadFrame();
+        reloadFrameRef.current();
       }
     };
     source.onerror = () => {
@@ -435,10 +398,13 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
       if (eventSourceRef.current === source) eventSourceRef.current = null;
     };
     return () => {
+      stopStatus();
+      stopLogs();
+      source.onmessage = null;
       source.close();
       if (eventSourceRef.current === source) eventSourceRef.current = null;
     };
-  }, [loadLogs, loadStatus, reloadFrame, slug]);
+  }, [visible, slug]);
 
   const parsedPort = () => {
     const n = Number.parseInt(portOverride.trim(), 10);
@@ -916,7 +882,7 @@ export function WorkspacePreviewPanel({ slug, visible = true }: { slug: string; 
               <NativePreview slug={slug} url={frameSrc} persistent={!privateMode} visible={visible} />
             ) : !isDirectPreviewUrl(frameSrc) ? (
               // Web: external sites can't be iframed; stream a server-side browser.
-              <StreamedBrowser slug={slug} url={frameSrc} persistent={!privateMode} onTitle={setPageTitle} />
+              <StreamedBrowser slug={slug} url={frameSrc} persistent={!privateMode} onTitle={setPageTitle} visible={visible} />
             ) : (
               <iframe
                 ref={iframeRef}

@@ -149,6 +149,7 @@ db.close()
   const rawRequests = [];
   const titleProbeRequests = [];
   const activeRequests = new Set();
+  const networkTrace = [];
   let browser;
   let page;
   const extraProcesses = [];
@@ -158,7 +159,7 @@ db.close()
     await waitFor(`${apiBase}/api/status`);
     metrics.backendReadyMs = performance.now() - backendStartedAt;
     await waitFor(webBase);
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true, args: outputDir ? [`--log-net-log=${path.join(outputDir, "netlog.json")}`] : [] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const snapshot = async () => (await (await fetch(`${apiBase}/api/sidebar/threads`)).json());
     const scope = (await snapshot()).preference_scope;
@@ -183,6 +184,25 @@ db.close()
       localStorage.setItem(`spark-chat-expanded:v1:${encodeURIComponent(webBase)}:${scope}`, JSON.stringify(Array.from({ length: 10 }, (_, index) => `project-${index}`)));
     }, { webBase, scope });
     page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Network.enable");
+    const networkIds = new Set();
+    cdp.on("Network.requestWillBeSent", (event) => {
+      if (!event.request.url.includes("/api/")) return;
+      networkIds.add(event.requestId);
+      networkTrace.push({ phase: "request", requestId: event.requestId, url: event.request.url, method: event.request.method, timestamp: event.timestamp, wallTime: event.wallTime });
+    });
+    cdp.on("Network.responseReceived", (event) => {
+      if (!networkIds.has(event.requestId)) return;
+      const { url, status, protocol, connectionId, connectionReused, timing } = event.response;
+      networkTrace.push({ phase: "response", requestId: event.requestId, timestamp: event.timestamp, url, status, protocol, connectionId, connectionReused, timing });
+    });
+    cdp.on("Network.loadingFailed", (event) => {
+      if (networkIds.has(event.requestId)) networkTrace.push({ phase: "failed", ...event });
+    });
+    cdp.on("Network.loadingFinished", (event) => {
+      if (networkIds.has(event.requestId)) networkTrace.push({ phase: "finished", ...event });
+    });
     const initialSnapshots = [];
     const waitRequest = async (predicate) => {
       const deadline = Date.now() + 15_000;
@@ -426,6 +446,7 @@ db.close()
     throw new Error(`${error.message}\nbody:\n${body.slice(0, 4000)}\nbackend:\n${backend.logs.join("")}\nvite:\n${vite.logs.join("")}`);
   } finally {
     if (browser) await browser.close();
+    if (outputDir) await writeFile(path.join(outputDir, "network-trace.json"), JSON.stringify(networkTrace, null, 2));
     for (const process of extraProcesses) await stopProcess(process);
     if (secondHome) await rm(secondHome, { recursive: true, force: true });
     await stopProcess(vite);

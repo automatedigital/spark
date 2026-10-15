@@ -1,0 +1,2091 @@
+{
+  "schema": "spark.p09.preview-request-scheduling.v1",
+  "captured_at": "2026-10-15T18:04:24.022Z",
+  "base": "c152d2ee05173e555f4472b2a21cf3f486fd000f",
+  "branch": "fix/preview-request-scheduling",
+  "sources": [
+    {
+      "path": "src/spark_cli/web/src/components/workspace/WorkspacePreviewPanel.tsx",
+      "sha256": "89f988ed84ebb76444116e6c54b6cffa45939372d1241105bccae1aae3c52d9c"
+    },
+    {
+      "path": "src/spark_cli/web/src/components/workspace/StreamedBrowser.tsx",
+      "sha256": "9ce4057867e5125a7623d8bdc8d8cde35ed4250fc021850c415532b9f4ee59c8"
+    },
+    {
+      "path": "src/spark_cli/web/src/lib/api.ts",
+      "sha256": "b6be54f50105bd03f95a2531b103ad39083048ce243e1b04cbd53d6ef289507f"
+    },
+    {
+      "path": "src/spark_cli/web/src/lib/api_browser.ts",
+      "sha256": "487d38ba2611ef6bf54ab824ae4bb721492f4be259f26a6c2ca73bc99c13e403"
+    },
+    {
+      "path": "src/spark_cli/web/src/lib/api_workspace.ts",
+      "sha256": "7e7f20e7154dc6fb1ae050c4664c110144e625b817c561cafa8679feb13607a2"
+    },
+    {
+      "path": "src/spark_cli/web/src/lib/previewRequests.ts",
+      "sha256": "0ce28a666034ae967ee61bb512410c7d6b57452dcbeb1d63275687b27de89396"
+    },
+    {
+      "path": "src/spark_cli/web/src/lib/previewRequests.test.ts",
+      "sha256": "3103e636df8c965c1e43a08179e69fbe9ca261c20dbd38e4a8746c2efd3d4d5c"
+    },
+    {
+      "path": "src/spark_cli/web/e2e/preview-lifecycle.mjs",
+      "sha256": "55d62a17a549675a0f27ff909ce402e825f22a6b179948ca143ff20043992ce8"
+    },
+    {
+      "path": "src/spark_cli/web/e2e/sidebar-scale.mjs",
+      "sha256": "24d8cea8fd677c6252a20ac2b38ab77a0b856c4c23d1fe0dd500c8ff63e61e9b"
+    }
+  ],
+  "environment": {
+    "node": "v22.22.1",
+    "venv": "/Users/joe/Developer/github/spark/.venv",
+    "pythonpath": "$PWD/src",
+    "state": "isolated temporary profiles only; no provider calls",
+    "dependencies": "worktree-local npm ci with unchanged lockfile",
+    "browser": "Playwright Chromium; earned repository fallback; uncontrolled shared host load"
+  },
+  "checks": {
+    "typescript": {
+      "exit": 0
+    },
+    "lint": {
+      "exit": 0
+    },
+    "vitest": {
+      "exit": 0,
+      "tests": 416,
+      "files": 73,
+      "newTests": 5
+    },
+    "build": {
+      "exit": 0,
+      "path": "/tmp/spark-p09-preview-build-20261015",
+      "gzipKiB": 235.53,
+      "budgetKiB": 600,
+      "canonicalBundleTouched": false
+    },
+    "lifecycle": {
+      "exit": 0,
+      "report": {
+        "passed": true,
+        "checks": [
+          "hidden: zero reads/SSE",
+          "hide: abort/close",
+          "late response fenced",
+          "switch aborts and resets URL",
+          "navigation retains SSE",
+          "Start works",
+          "reopen revalidates",
+          "hidden external frame stream closes; reopen never re-navigates"
+        ]
+      }
+    },
+    "productionRecovery": {
+      "gate": {
+        "suite": "production-recovery",
+        "repeat": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "command": "/Users/joe/Developer/github/spark/.venv/bin/python",
+            "args": [
+              "e2e/production-recovery.py",
+              "--output-dir",
+              "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01"
+            ],
+            "directory": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01",
+            "timeoutMs": 300000,
+            "elapsedMs": 11897,
+            "timedOut": false,
+            "exit": 0,
+            "signal": null
+          }
+        ]
+      },
+      "result": {
+        "passed": 9,
+        "checks": [
+          "draft survives immediate chat switch and browser refresh",
+          "failed send preserves draft through refresh",
+          "late acknowledgement clears only submitted draft without switching chat",
+          "concurrent tab edit preserves local input and exposes conflict",
+          "thread drafts remain isolated across refresh and switching",
+          "uploaded file reference and context selection survive refresh",
+          "interrupted upload recovers as missing and blocks send until removed",
+          "failed attachment remains visible without losing typed text",
+          "profile identity isolates stored drafts at same browser origin"
+        ]
+      }
+    }
+  },
+  "before": {
+    "gate": {
+      "suite": "sidebar",
+      "repeat": 1,
+      "attempts": [
+        {
+          "attempt": 1,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/sidebar-scale.mjs"
+          ],
+          "directory": "/tmp/spark-p09-preview-before-20261015/attempt-01",
+          "timeoutMs": 240000,
+          "elapsedMs": 17878,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        }
+      ]
+    },
+    "report": {
+      "sessionCount": 1000,
+      "projects": 10,
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "mode": "dev",
+      "checks": [
+        "Inbox semantic selection/local/full-history search",
+        "legacy pins do not cross profile boundary",
+        "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+        "SSE insertion scroll anchor and nonselected unread marker",
+        "server pin; duplicate placements; collapse/expand; drag to project",
+        "virtualized ArrowDown moves keyboard focus to the next row",
+        "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+        "Inbox explicit next-page paging",
+        "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+      ],
+      "correctnessFailures": [],
+      "backendReadyMs": 870.526042,
+      "firstUsefulMs": 1338.3717910000003,
+      "initialSnapshots": [
+        {
+          "sessionLimit": 50,
+          "sessionCount": 50,
+          "limits": {
+            "sessions": 50,
+            "messages": 200,
+            "detail_idle_ttl_ms": 120000
+          }
+        },
+        {
+          "sessionLimit": 50,
+          "sessionCount": 50,
+          "limits": {
+            "sessions": 50,
+            "messages": 200,
+            "detail_idle_ttl_ms": 120000
+          }
+        },
+        {
+          "sessionLimit": 50,
+          "sessionCount": 50,
+          "limits": {
+            "sessions": 50,
+            "messages": 200,
+            "detail_idle_ttl_ms": 120000
+          }
+        },
+        {
+          "sessionLimit": 50,
+          "sessionCount": 50,
+          "limits": {
+            "sessions": 50,
+            "messages": 200,
+            "detail_idle_ttl_ms": 120000
+          }
+        }
+      ],
+      "startupRequests": [],
+      "selectionMs": 77.60000002384186,
+      "localSearchMs": 72.69999998807907,
+      "fullHistorySearchMs": 284.5,
+      "titleProbePendingRequests": [
+        "http://127.0.0.1:55115/api/events?topics=notifications",
+        "http://127.0.0.1:55115/api/workspace/projects/project-0/preview/detect-servers",
+        "http://127.0.0.1:55115/api/workspace/projects/project-9/preview/detect-servers",
+        "http://127.0.0.1:55115/api/workspace/projects/__workspace__/preview/detect-servers",
+        "http://127.0.0.1:55115/api/workspace/projects/project-0/preview/detect-servers",
+        "http://127.0.0.1:55115/api/conversations/scale-000/turn-status",
+        "http://127.0.0.1:55115/api/workspace/projects/project-0/preview/events",
+        "http://127.0.0.1:55115/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=78b3f91afc684daeaac5478549b7e7a5&detail_session_id=scale-000",
+        "http://127.0.0.1:55115/api/sessions/scale-000/messages?limit=50&_=1792086889030"
+      ],
+      "sidebarUpdateMs": 3533.400000035763,
+      "titleProbe": {
+        "started": 2938.699999988079,
+        "startedWallTime": 1792086889307,
+        "response": 6436.800000011921,
+        "rendered": 6472.100000023842,
+        "events": [
+          {
+            "at": 6440.300000011921,
+            "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=78b3f91afc684daeaac5478549b7e7a5&detail_session_id=scale-000",
+            "schema_version": 1,
+            "topic": "sessions.changed",
+            "entity_id": "scale-000",
+            "session_id": "scale-000",
+            "sequence": 1,
+            "projection_version": 1,
+            "timestamp": 1792086892.8034,
+            "ts": 1792086892.8034,
+            "payload": {
+              "action": "updated",
+              "session_id": "scale-000",
+              "session": {
+                "id": "scale-000",
+                "is_active": null,
+                "title": "Scale measured update",
+                "kanban_status": "backlog",
+                "estimated_cost_usd": null,
+                "input_tokens": 0,
+                "last_active": null,
+                "message_count": 0,
+                "model": "test-model",
+                "source": "workspace:project-0",
+                "output_tokens": 0,
+                "tool_call_count": 0,
+                "ended_at": null,
+                "preview": null,
+                "started_at": 1792086884.940393
+              }
+            },
+            "data": {
+              "action": "updated",
+              "session_id": "scale-000",
+              "session": {
+                "id": "scale-000",
+                "is_active": null,
+                "title": "Scale measured update",
+                "kanban_status": "backlog",
+                "estimated_cost_usd": null,
+                "input_tokens": 0,
+                "last_active": null,
+                "message_count": 0,
+                "model": "test-model",
+                "source": "workspace:project-0",
+                "output_tokens": 0,
+                "tool_call_count": 0,
+                "ended_at": null,
+                "preview": null,
+                "started_at": 1792086884.940393
+              }
+            },
+            "server_epoch": "78b3f91afc684daeaac5478549b7e7a5",
+            "sequence_start": 1
+          }
+        ]
+      },
+      "mountedSessionRows": 20,
+      "secondPageRequests": 1,
+      "anchor": {
+        "before": "session:scale-032",
+        "after": "session:scale-032"
+      },
+      "metadataUpdateMs": 298.1442910000005,
+      "fullHistoryRequests": [
+        "ancient needle"
+      ],
+      "titleProbeRequests": [
+        {
+          "pathname": "/api/web-state/snapshot",
+          "method": "GET",
+          "startTime": 1792086887491.355,
+          "domainLookupStart": -1,
+          "domainLookupEnd": -1,
+          "connectStart": -1,
+          "secureConnectionStart": -1,
+          "connectEnd": -1,
+          "requestStart": 0.21,
+          "responseStart": 170.678,
+          "responseEnd": 171.276
+        },
+        {
+          "pathname": "/api/web-state/snapshot",
+          "method": "GET",
+          "startTime": 1792086887789.846,
+          "domainLookupStart": 0.12,
+          "domainLookupEnd": 0.127,
+          "connectStart": 0.127,
+          "secureConnectionStart": -1,
+          "connectEnd": 0.38,
+          "requestStart": 0.461,
+          "responseStart": 197.678,
+          "responseEnd": 198.304
+        },
+        {
+          "pathname": "/api/web-state/snapshot",
+          "method": "GET",
+          "startTime": 1792086888497.89,
+          "domainLookupStart": 0.175,
+          "domainLookupEnd": 0.184,
+          "connectStart": 0.184,
+          "secureConnectionStart": -1,
+          "connectEnd": 0.462,
+          "requestStart": 0.529,
+          "responseStart": 228.514,
+          "responseEnd": 229.443
+        },
+        {
+          "pathname": "/api/web-state/snapshot",
+          "method": "GET",
+          "startTime": 1792086888911.8992,
+          "domainLookupStart": 59.4,
+          "domainLookupEnd": 59.408,
+          "connectStart": 59.408,
+          "secureConnectionStart": -1,
+          "connectEnd": 59.57,
+          "requestStart": 59.612,
+          "responseStart": 105.597,
+          "responseEnd": 106.61
+        },
+        {
+          "pathname": "/api/sessions/scale-000/title",
+          "method": "PATCH",
+          "startTime": 1792086889307.7842,
+          "domainLookupStart": 3490.607,
+          "domainLookupEnd": 3490.617,
+          "connectStart": 3490.617,
+          "secureConnectionStart": -1,
+          "connectEnd": 3490.793,
+          "requestStart": 3490.851,
+          "responseStart": 3496.943,
+          "responseEnd": 3497.528
+        }
+      ]
+    },
+    "titlePhases": {
+      "renderMs": 3533.400000035763,
+      "browserPreTransmissionMs": 3490.851,
+      "requestToHeadersMs": 6.092000000000098,
+      "eventToRenderMs": 31.80000001192093,
+      "timing": {
+        "pathname": "/api/sessions/scale-000/title",
+        "method": "PATCH",
+        "startTime": 1792086889307.7842,
+        "domainLookupStart": 3490.607,
+        "domainLookupEnd": 3490.617,
+        "connectStart": 3490.617,
+        "secureConnectionStart": -1,
+        "connectEnd": 3490.793,
+        "requestStart": 3490.851,
+        "responseStart": 3496.943,
+        "responseEnd": 3497.528
+      }
+    },
+    "activeRequestsAtTitle": [
+      {
+        "params": {
+          "initiator": "http://127.0.0.1:55115",
+          "load_flags": 73744,
+          "method": "GET",
+          "network_isolation_key": "http://127.0.0.1 http://127.0.0.1",
+          "request_type": "other",
+          "site_for_cookies": "SiteForCookies: {site=http://127.0.0.1; schemefully_same=true}",
+          "url": "http://127.0.0.1:55115/api/events?topics=notifications"
+        },
+        "phase": 1,
+        "source": {
+          "id": 812,
+          "start_time": "415550173",
+          "type": 1
+        },
+        "time": "415550173",
+        "type": 132
+      },
+      {
+        "params": {
+          "initiator": "http://127.0.0.1:55115",
+          "load_flags": 73728,
+          "method": "GET",
+          "network_isolation_key": "http://127.0.0.1 http://127.0.0.1",
+          "request_type": "other",
+          "site_for_cookies": "SiteForCookies: {site=http://127.0.0.1; schemefully_same=true}",
+          "url": "http://127.0.0.1:55115/api/workspace/projects/project-0/preview/detect-servers"
+        },
+        "phase": 1,
+        "source": {
+          "id": 924,
+          "start_time": "415550469",
+          "type": 1
+        },
+        "time": "415550469",
+        "type": 132
+      },
+      {
+        "params": {
+          "initiator": "http://127.0.0.1:55115",
+          "load_flags": 73728,
+          "method": "GET",
+          "network_isolation_key": "http://127.0.0.1 http://127.0.0.1",
+          "request_type": "other",
+          "site_for_cookies": "SiteForCookies: {site=http://127.0.0.1; schemefully_same=true}",
+          "url": "http://127.0.0.1:55115/api/workspace/projects/project-9/preview/detect-servers"
+        },
+        "phase": 1,
+        "source": {
+          "id": 1046,
+          "start_time": "415551174",
+          "type": 1
+        },
+        "time": "415551174",
+        "type": 132
+      },
+      {
+        "params": {
+          "initiator": "http://127.0.0.1:55115",
+          "load_flags": 73728,
+          "method": "GET",
+          "network_isolation_key": "http://127.0.0.1 http://127.0.0.1",
+          "request_type": "other",
+          "site_for_cookies": "SiteForCookies: {site=http://127.0.0.1; schemefully_same=true}",
+          "url": "http://127.0.0.1:55115/api/workspace/projects/__workspace__/preview/detect-servers"
+        },
+        "phase": 1,
+        "source": {
+          "id": 1140,
+          "start_time": "415551436",
+          "type": 1
+        },
+        "time": "415551436",
+        "type": 132
+      },
+      {
+        "params": {
+          "initiator": "http://127.0.0.1:55115",
+          "load_flags": 73744,
+          "method": "GET",
+          "network_isolation_key": "http://127.0.0.1 http://127.0.0.1",
+          "request_type": "other",
+          "site_for_cookies": "SiteForCookies: {site=http://127.0.0.1; schemefully_same=true}",
+          "url": "http://127.0.0.1:55115/api/workspace/projects/project-0/preview/events"
+        },
+        "phase": 1,
+        "source": {
+          "id": 1205,
+          "start_time": "415551634",
+          "type": 1
+        },
+        "time": "415551634",
+        "type": 132
+      },
+      {
+        "params": {
+          "initiator": "http://127.0.0.1:55115",
+          "load_flags": 73744,
+          "method": "GET",
+          "network_isolation_key": "http://127.0.0.1 http://127.0.0.1",
+          "request_type": "other",
+          "site_for_cookies": "SiteForCookies: {site=http://127.0.0.1; schemefully_same=true}",
+          "url": "http://127.0.0.1:55115/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=78b3f91afc684daeaac5478549b7e7a5&detail_session_id=scale-000"
+        },
+        "phase": 1,
+        "source": {
+          "id": 1217,
+          "start_time": "415551701",
+          "type": 1
+        },
+        "time": "415551701",
+        "type": 132
+      }
+    ],
+    "titleNetlog": [
+      {
+        "params": {
+          "priority": "MEDIUM",
+          "traffic_annotation": 101845102,
+          "url": "http://127.0.0.1:55115/api/sessions/scale-000/title"
+        },
+        "phase": 1,
+        "source": {
+          "id": 1254,
+          "start_time": "415551982",
+          "type": 1
+        },
+        "time": "415551982",
+        "type": "REQUEST_ALIVE"
+      },
+      {
+        "params": {
+          "initiator": "http://127.0.0.1:55115",
+          "load_flags": 65536,
+          "method": "PATCH",
+          "network_isolation_key": "http://127.0.0.1 http://127.0.0.1",
+          "request_type": "other",
+          "site_for_cookies": "SiteForCookies: {site=http://127.0.0.1; schemefully_same=true}",
+          "upload_id": "0",
+          "url": "http://127.0.0.1:55115/api/sessions/scale-000/title"
+        },
+        "phase": 1,
+        "source": {
+          "id": 1254,
+          "start_time": "415551982",
+          "type": 1
+        },
+        "time": "415551982",
+        "type": "URL_REQUEST_START_JOB"
+      },
+      {
+        "params": {
+          "group_id": "http://127.0.0.1:55115"
+        },
+        "phase": 0,
+        "source": {
+          "id": 1256,
+          "start_time": "415551982",
+          "type": 17
+        },
+        "time": "415551982",
+        "type": "TCP_CLIENT_SOCKET_POOL_REQUESTED_SOCKET"
+      },
+      {
+        "phase": 1,
+        "source": {
+          "id": 1256,
+          "start_time": "415551982",
+          "type": 17
+        },
+        "time": "415551982",
+        "type": "SOCKET_POOL"
+      },
+      {
+        "phase": 0,
+        "source": {
+          "id": 1256,
+          "start_time": "415551982",
+          "type": 17
+        },
+        "time": "415551982",
+        "type": "SOCKET_POOL_STALLED_MAX_SOCKETS_PER_GROUP"
+      },
+      {
+        "params": {
+          "backup_job": false,
+          "group_id": "http://127.0.0.1:55115"
+        },
+        "phase": 0,
+        "source": {
+          "id": 1276,
+          "start_time": "415555473",
+          "type": 6
+        },
+        "time": "415555473",
+        "type": "SOCKET_POOL_CONNECT_JOB_CREATED"
+      },
+      {
+        "params": {
+          "source_dependency": {
+            "id": 1276,
+            "type": 6
+          }
+        },
+        "phase": 0,
+        "source": {
+          "id": 1256,
+          "start_time": "415551982",
+          "type": 17
+        },
+        "time": "415555473",
+        "type": "SOCKET_POOL_BOUND_TO_CONNECT_JOB"
+      },
+      {
+        "params": {
+          "source_dependency": {
+            "id": 1277,
+            "type": 10
+          }
+        },
+        "phase": 0,
+        "source": {
+          "id": 1256,
+          "start_time": "415551982",
+          "type": 17
+        },
+        "time": "415555473",
+        "type": "SOCKET_POOL_BOUND_TO_SOCKET"
+      },
+      {
+        "phase": 2,
+        "source": {
+          "id": 1256,
+          "start_time": "415551982",
+          "type": 17
+        },
+        "time": "415555473",
+        "type": "SOCKET_POOL"
+      },
+      {
+        "params": {
+          "headers": [
+            "Host: 127.0.0.1:55115",
+            "Connection: keep-alive",
+            "Content-Length: 33",
+            "sec-ch-ua-platform: \"macOS\"",
+            "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/147.0.7727.15 Safari/537.36",
+            "sec-ch-ua: \"HeadlessChrome\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\"",
+            "content-type: application/json",
+            "sec-ch-ua-mobile: ?0",
+            "Accept: */*",
+            "Origin: http://127.0.0.1:55115",
+            "Sec-Fetch-Site: same-origin",
+            "Sec-Fetch-Mode: cors",
+            "Sec-Fetch-Dest: empty",
+            "Referer: http://127.0.0.1:55115/",
+            "Accept-Encoding: gzip, deflate, br, zstd"
+          ],
+          "line": "PATCH /api/sessions/scale-000/title HTTP/1.1\r\n"
+        },
+        "phase": 0,
+        "source": {
+          "id": 1254,
+          "start_time": "415551982",
+          "type": 1
+        },
+        "time": "415555473",
+        "type": "HTTP_TRANSACTION_SEND_REQUEST_HEADERS"
+      },
+      {
+        "params": {
+          "headers": [
+            "HTTP/1.1 200 OK",
+            "access-control-allow-origin: http://127.0.0.1:55115",
+            "vary: Origin",
+            "date: Thu, 15 Oct 2026 17:54:52 GMT",
+            "server: uvicorn",
+            "content-length: 68",
+            "content-type: application/json",
+            "connection: close"
+          ]
+        },
+        "phase": 0,
+        "source": {
+          "id": 1254,
+          "start_time": "415551982",
+          "type": 1
+        },
+        "time": "415555479",
+        "type": "HTTP_TRANSACTION_READ_RESPONSE_HEADERS"
+      },
+      {
+        "phase": 2,
+        "source": {
+          "id": 1254,
+          "start_time": "415551982",
+          "type": 1
+        },
+        "time": "415555479",
+        "type": "URL_REQUEST_START_JOB"
+      },
+      {
+        "params": {
+          "reason": "Connection was closed when it was returned to the pool"
+        },
+        "phase": 0,
+        "source": {
+          "id": 1277,
+          "start_time": "415555473",
+          "type": 10
+        },
+        "time": "415555479",
+        "type": "SOCKET_POOL_CLOSING_SOCKET"
+      },
+      {
+        "phase": 2,
+        "source": {
+          "id": 1254,
+          "start_time": "415551982",
+          "type": 1
+        },
+        "time": "415555479",
+        "type": "REQUEST_ALIVE"
+      }
+    ],
+    "detectResponses": [
+      {
+        "phase": "response",
+        "requestId": "20842.261",
+        "timestamp": 415555.459771,
+        "url": "http://127.0.0.1:55115/api/workspace/projects/project-0/preview/detect-servers",
+        "status": 200,
+        "protocol": "http/1.1",
+        "connectionId": 972,
+        "connectionReused": false,
+        "timing": {
+          "requestTime": 415550.469878,
+          "proxyStart": -1,
+          "proxyEnd": -1,
+          "dnsStart": 107.093,
+          "dnsEnd": 107.1,
+          "connectStart": 107.1,
+          "connectEnd": 107.226,
+          "sslStart": -1,
+          "sslEnd": -1,
+          "workerStart": -1,
+          "workerReady": -1,
+          "workerFetchStart": -1,
+          "workerRespondWithSettled": -1,
+          "sendStart": 107.484,
+          "sendEnd": 107.507,
+          "pushStart": 0,
+          "pushEnd": 0,
+          "receiveHeadersStart": 4989.561,
+          "receiveHeadersEnd": 4989.629
+        }
+      },
+      {
+        "phase": "response",
+        "requestId": "20842.281",
+        "timestamp": 415556.258622,
+        "url": "http://127.0.0.1:55115/api/workspace/projects/project-9/preview/detect-servers",
+        "status": 200,
+        "protocol": "http/1.1",
+        "connectionId": 1097,
+        "connectionReused": false,
+        "timing": {
+          "requestTime": 415551.174976,
+          "proxyStart": -1,
+          "proxyEnd": -1,
+          "dnsStart": 86.095,
+          "dnsEnd": 86.104,
+          "connectStart": 86.104,
+          "connectEnd": 86.369,
+          "sslStart": -1,
+          "sslEnd": -1,
+          "workerStart": -1,
+          "workerReady": -1,
+          "workerFetchStart": -1,
+          "workerRespondWithSettled": -1,
+          "sendStart": 86.436,
+          "sendEnd": 86.477,
+          "pushStart": 0,
+          "pushEnd": 0,
+          "receiveHeadersStart": 5083.13,
+          "receiveHeadersEnd": 5083.251
+        }
+      },
+      {
+        "phase": "response",
+        "requestId": "20842.296",
+        "timestamp": 415556.454901,
+        "url": "http://127.0.0.1:55115/api/workspace/projects/__workspace__/preview/detect-servers",
+        "status": 200,
+        "protocol": "http/1.1",
+        "connectionId": 1160,
+        "connectionReused": false,
+        "timing": {
+          "requestTime": 415551.436628,
+          "proxyStart": -1,
+          "proxyEnd": -1,
+          "dnsStart": 17.399,
+          "dnsEnd": 17.407,
+          "connectStart": 17.407,
+          "connectEnd": 17.63,
+          "sslStart": -1,
+          "sslEnd": -1,
+          "workerStart": -1,
+          "workerReady": -1,
+          "workerFetchStart": -1,
+          "workerRespondWithSettled": -1,
+          "sendStart": 17.686,
+          "sendEnd": 17.722,
+          "pushStart": 0,
+          "pushEnd": 0,
+          "receiveHeadersStart": 5017.835,
+          "receiveHeadersEnd": 5017.913
+        }
+      },
+      {
+        "phase": "response",
+        "requestId": "20842.305",
+        "timestamp": 415561.483663,
+        "url": "http://127.0.0.1:55115/api/workspace/projects/project-0/preview/detect-servers",
+        "status": 200,
+        "protocol": "http/1.1",
+        "connectionId": 1287,
+        "connectionReused": false,
+        "timing": {
+          "requestTime": 415551.588926,
+          "proxyStart": -1,
+          "proxyEnd": -1,
+          "dnsStart": 3898.218,
+          "dnsEnd": 3898.227,
+          "connectStart": 3898.227,
+          "connectEnd": 3898.394,
+          "sslStart": -1,
+          "sslEnd": -1,
+          "workerStart": -1,
+          "workerReady": -1,
+          "workerFetchStart": -1,
+          "workerRespondWithSettled": -1,
+          "sendStart": 3898.453,
+          "sendEnd": 3898.489,
+          "pushStart": 0,
+          "pushEnd": 0,
+          "receiveHeadersStart": 9894.32,
+          "receiveHeadersEnd": 9894.381
+        }
+      }
+    ]
+  },
+  "after": {
+    "gate": {
+      "suite": "sidebar",
+      "repeat": 3,
+      "attempts": [
+        {
+          "attempt": 1,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/sidebar-scale.mjs"
+          ],
+          "directory": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-01",
+          "timeoutMs": 240000,
+          "elapsedMs": 12142,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        },
+        {
+          "attempt": 2,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/sidebar-scale.mjs"
+          ],
+          "directory": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-02",
+          "timeoutMs": 240000,
+          "elapsedMs": 12706,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        },
+        {
+          "attempt": 3,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/sidebar-scale.mjs"
+          ],
+          "directory": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-03",
+          "timeoutMs": 240000,
+          "elapsedMs": 13061,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        }
+      ]
+    },
+    "reports": [
+      {
+        "sessionCount": 1000,
+        "projects": 10,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "theme": "dark",
+        "mode": "dev",
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+          "SSE insertion scroll anchor and nonselected unread marker",
+          "server pin; duplicate placements; collapse/expand; drag to project",
+          "virtualized ArrowDown moves keyboard focus to the next row",
+          "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+          "Inbox explicit next-page paging",
+          "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+        ],
+        "correctnessFailures": [],
+        "backendReadyMs": 836.989167,
+        "firstUsefulMs": 1200.9402500000003,
+        "initialSnapshots": [
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          }
+        ],
+        "startupRequests": [],
+        "selectionMs": 74.40000003576279,
+        "localSearchMs": 45.30000001192093,
+        "fullHistorySearchMs": 277.30000001192093,
+        "titleProbePendingRequests": [
+          "http://127.0.0.1:58985/api/events?topics=notifications",
+          "http://127.0.0.1:58985/api/model/status",
+          "http://127.0.0.1:58985/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=25133f3a3b95406e8bd46eccf65c67d4&detail_session_id=scale-000"
+        ],
+        "sidebarUpdateMs": 15.799999952316284,
+        "titleProbe": {
+          "started": 2756.900000035763,
+          "startedWallTime": 1792087234222,
+          "response": 2764.199999988079,
+          "rendered": 2772.699999988079,
+          "events": [
+            {
+              "at": 2764.800000011921,
+              "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=25133f3a3b95406e8bd46eccf65c67d4&detail_session_id=scale-000",
+              "schema_version": 1,
+              "topic": "sessions.changed",
+              "entity_id": "scale-000",
+              "session_id": "scale-000",
+              "sequence": 1,
+              "projection_version": 1,
+              "timestamp": 1792087234.228329,
+              "ts": 1792087234.228329,
+              "payload": {
+                "action": "updated",
+                "session_id": "scale-000",
+                "session": {
+                  "input_tokens": 0,
+                  "ended_at": null,
+                  "tool_call_count": 0,
+                  "output_tokens": 0,
+                  "is_active": null,
+                  "title": "Scale measured update",
+                  "started_at": 1792087230.102601,
+                  "kanban_status": "backlog",
+                  "message_count": 0,
+                  "estimated_cost_usd": null,
+                  "model": "test-model",
+                  "id": "scale-000",
+                  "source": "workspace:project-0",
+                  "preview": null,
+                  "last_active": null
+                }
+              },
+              "data": {
+                "action": "updated",
+                "session_id": "scale-000",
+                "session": {
+                  "input_tokens": 0,
+                  "ended_at": null,
+                  "tool_call_count": 0,
+                  "output_tokens": 0,
+                  "is_active": null,
+                  "title": "Scale measured update",
+                  "started_at": 1792087230.102601,
+                  "kanban_status": "backlog",
+                  "message_count": 0,
+                  "estimated_cost_usd": null,
+                  "model": "test-model",
+                  "id": "scale-000",
+                  "source": "workspace:project-0",
+                  "preview": null,
+                  "last_active": null
+                }
+              },
+              "server_epoch": "25133f3a3b95406e8bd46eccf65c67d4",
+              "sequence_start": 1
+            }
+          ]
+        },
+        "mountedSessionRows": 20,
+        "secondPageRequests": 1,
+        "anchor": {
+          "before": "session:scale-041",
+          "after": "session:scale-041"
+        },
+        "metadataUpdateMs": 229.73500000000058,
+        "fullHistoryRequests": [
+          "ancient needle"
+        ],
+        "titleProbeRequests": [
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087232417.038,
+            "domainLookupStart": -1,
+            "domainLookupEnd": -1,
+            "connectStart": -1,
+            "secureConnectionStart": -1,
+            "connectEnd": -1,
+            "requestStart": 0.267,
+            "responseStart": 203.555,
+            "responseEnd": 204.17
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087232761.1711,
+            "domainLookupStart": 0.103,
+            "domainLookupEnd": 0.111,
+            "connectStart": 0.111,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.625,
+            "requestStart": 0.722,
+            "responseStart": 206.063,
+            "responseEnd": 206.797
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087233389.4539,
+            "domainLookupStart": 0.153,
+            "domainLookupEnd": 0.163,
+            "connectStart": 0.163,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.473,
+            "requestStart": 0.531,
+            "responseStart": 161.668,
+            "responseEnd": 162.382
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087233858.573,
+            "domainLookupStart": 0.199,
+            "domainLookupEnd": 0.21,
+            "connectStart": 0.21,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.553,
+            "requestStart": 0.646,
+            "responseStart": 88.982,
+            "responseEnd": 89.884
+          },
+          {
+            "pathname": "/api/sessions/scale-000/title",
+            "method": "PATCH",
+            "startTime": 1792087234222.7932,
+            "domainLookupStart": 0.131,
+            "domainLookupEnd": 0.139,
+            "connectStart": 0.139,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.456,
+            "requestStart": 0.533,
+            "responseStart": 6.476,
+            "responseEnd": 6.952
+          }
+        ]
+      },
+      {
+        "sessionCount": 1000,
+        "projects": 10,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "theme": "dark",
+        "mode": "dev",
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+          "SSE insertion scroll anchor and nonselected unread marker",
+          "server pin; duplicate placements; collapse/expand; drag to project",
+          "virtualized ArrowDown moves keyboard focus to the next row",
+          "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+          "Inbox explicit next-page paging",
+          "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+        ],
+        "correctnessFailures": [],
+        "backendReadyMs": 840.760834,
+        "firstUsefulMs": 1215.792667,
+        "initialSnapshots": [
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          }
+        ],
+        "startupRequests": [],
+        "selectionMs": 83.59999996423721,
+        "localSearchMs": 56.69999998807907,
+        "fullHistorySearchMs": 274.19999998807907,
+        "titleProbePendingRequests": [
+          "http://127.0.0.1:59312/api/events?topics=notifications",
+          "http://127.0.0.1:59312/api/model/status",
+          "http://127.0.0.1:59312/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=1d048ce898ef44899021d670147d87ea&detail_session_id=scale-000"
+        ],
+        "sidebarUpdateMs": 18.600000023841858,
+        "titleProbe": {
+          "started": 2861.199999988079,
+          "startedWallTime": 1792087246475,
+          "response": 2870.099999964237,
+          "rendered": 2879.800000011921,
+          "events": [
+            {
+              "at": 2871.099999964237,
+              "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=1d048ce898ef44899021d670147d87ea&detail_session_id=scale-000",
+              "schema_version": 1,
+              "topic": "sessions.changed",
+              "entity_id": "scale-000",
+              "session_id": "scale-000",
+              "sequence": 1,
+              "projection_version": 1,
+              "timestamp": 1792087246.482164,
+              "ts": 1792087246.482164,
+              "payload": {
+                "action": "updated",
+                "session_id": "scale-000",
+                "session": {
+                  "started_at": 1792087242.261877,
+                  "kanban_status": "backlog",
+                  "ended_at": null,
+                  "title": "Scale measured update",
+                  "tool_call_count": 0,
+                  "last_active": null,
+                  "estimated_cost_usd": null,
+                  "preview": null,
+                  "message_count": 0,
+                  "model": "test-model",
+                  "id": "scale-000",
+                  "output_tokens": 0,
+                  "input_tokens": 0,
+                  "is_active": null,
+                  "source": "workspace:project-0"
+                }
+              },
+              "data": {
+                "action": "updated",
+                "session_id": "scale-000",
+                "session": {
+                  "started_at": 1792087242.261877,
+                  "kanban_status": "backlog",
+                  "ended_at": null,
+                  "title": "Scale measured update",
+                  "tool_call_count": 0,
+                  "last_active": null,
+                  "estimated_cost_usd": null,
+                  "preview": null,
+                  "message_count": 0,
+                  "model": "test-model",
+                  "id": "scale-000",
+                  "output_tokens": 0,
+                  "input_tokens": 0,
+                  "is_active": null,
+                  "source": "workspace:project-0"
+                }
+              },
+              "server_epoch": "1d048ce898ef44899021d670147d87ea",
+              "sequence_start": 1
+            }
+          ]
+        },
+        "mountedSessionRows": 20,
+        "secondPageRequests": 1,
+        "anchor": {
+          "before": "session:scale-041",
+          "after": "session:scale-041"
+        },
+        "metadataUpdateMs": 299.00624999999945,
+        "fullHistoryRequests": [
+          "ancient needle"
+        ],
+        "titleProbeRequests": [
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087244602.44,
+            "domainLookupStart": -1,
+            "domainLookupEnd": -1,
+            "connectStart": -1,
+            "secureConnectionStart": -1,
+            "connectEnd": -1,
+            "requestStart": 0.314,
+            "responseStart": 173.633,
+            "responseEnd": 174.476
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087244931.165,
+            "domainLookupStart": 0.098,
+            "domainLookupEnd": 0.105,
+            "connectStart": 0.105,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.337,
+            "requestStart": 0.687,
+            "responseStart": 143.519,
+            "responseEnd": 144.229
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087245622.0369,
+            "domainLookupStart": 0.215,
+            "domainLookupEnd": 0.233,
+            "connectStart": 0.233,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.566,
+            "requestStart": 1.005,
+            "responseStart": 139.479,
+            "responseEnd": 140.238
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087246143.769,
+            "domainLookupStart": 0.262,
+            "domainLookupEnd": 0.272,
+            "connectStart": 0.272,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.578,
+            "requestStart": 0.644,
+            "responseStart": 66.491,
+            "responseEnd": 67.388
+          },
+          {
+            "pathname": "/api/sessions/scale-000/title",
+            "method": "PATCH",
+            "startTime": 1792087246475.859,
+            "domainLookupStart": 0.145,
+            "domainLookupEnd": 0.156,
+            "connectStart": 0.156,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.495,
+            "requestStart": 0.573,
+            "responseStart": 8.002,
+            "responseEnd": 8.49
+          }
+        ]
+      },
+      {
+        "sessionCount": 1000,
+        "projects": 10,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "theme": "dark",
+        "mode": "dev",
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+          "SSE insertion scroll anchor and nonselected unread marker",
+          "server pin; duplicate placements; collapse/expand; drag to project",
+          "virtualized ArrowDown moves keyboard focus to the next row",
+          "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+          "Inbox explicit next-page paging",
+          "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+        ],
+        "correctnessFailures": [],
+        "backendReadyMs": 840.4565839999999,
+        "firstUsefulMs": 1116.7777080000003,
+        "initialSnapshots": [
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          }
+        ],
+        "startupRequests": [],
+        "selectionMs": 85,
+        "localSearchMs": 55.80000001192093,
+        "fullHistorySearchMs": 296.19999998807907,
+        "titleProbePendingRequests": [
+          "http://127.0.0.1:59619/api/events?topics=notifications",
+          "http://127.0.0.1:59619/api/model/status",
+          "http://127.0.0.1:59619/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=9d65a4163fd343bea638d9c2491f804e&detail_session_id=scale-000"
+        ],
+        "sidebarUpdateMs": 18.399999976158142,
+        "titleProbe": {
+          "started": 2761,
+          "startedWallTime": 1792087259059,
+          "response": 2770,
+          "rendered": 2779.399999976158,
+          "events": [
+            {
+              "at": 2770.5,
+              "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=9d65a4163fd343bea638d9c2491f804e&detail_session_id=scale-000",
+              "schema_version": 1,
+              "topic": "sessions.changed",
+              "entity_id": "scale-000",
+              "session_id": "scale-000",
+              "sequence": 1,
+              "projection_version": 1,
+              "timestamp": 1792087259.0671868,
+              "ts": 1792087259.0671868,
+              "payload": {
+                "action": "updated",
+                "session_id": "scale-000",
+                "session": {
+                  "title": "Scale measured update",
+                  "id": "scale-000",
+                  "input_tokens": 0,
+                  "estimated_cost_usd": null,
+                  "tool_call_count": 0,
+                  "ended_at": null,
+                  "last_active": null,
+                  "kanban_status": "backlog",
+                  "message_count": 0,
+                  "source": "workspace:project-0",
+                  "started_at": 1792087254.949615,
+                  "preview": null,
+                  "output_tokens": 0,
+                  "model": "test-model",
+                  "is_active": null
+                }
+              },
+              "data": {
+                "action": "updated",
+                "session_id": "scale-000",
+                "session": {
+                  "title": "Scale measured update",
+                  "id": "scale-000",
+                  "input_tokens": 0,
+                  "estimated_cost_usd": null,
+                  "tool_call_count": 0,
+                  "ended_at": null,
+                  "last_active": null,
+                  "kanban_status": "backlog",
+                  "message_count": 0,
+                  "source": "workspace:project-0",
+                  "started_at": 1792087254.949615,
+                  "preview": null,
+                  "output_tokens": 0,
+                  "model": "test-model",
+                  "is_active": null
+                }
+              },
+              "server_epoch": "9d65a4163fd343bea638d9c2491f804e",
+              "sequence_start": 1
+            }
+          ]
+        },
+        "mountedSessionRows": 20,
+        "secondPageRequests": 1,
+        "anchor": {
+          "before": "session:scale-041",
+          "after": "session:scale-041"
+        },
+        "metadataUpdateMs": 221.48991599999954,
+        "fullHistoryRequests": [
+          "ancient needle"
+        ],
+        "titleProbeRequests": [
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087257177.728,
+            "domainLookupStart": -1,
+            "domainLookupEnd": -1,
+            "connectStart": -1,
+            "secureConnectionStart": -1,
+            "connectEnd": -1,
+            "requestStart": 0.179,
+            "responseStart": 184.43,
+            "responseEnd": 185.057
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087257518.725,
+            "domainLookupStart": 0.109,
+            "domainLookupEnd": 0.117,
+            "connectStart": 0.117,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.267,
+            "requestStart": 0.317,
+            "responseStart": 123.341,
+            "responseEnd": 124.033
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087258130.546,
+            "domainLookupStart": 0.237,
+            "domainLookupEnd": 0.253,
+            "connectStart": 0.253,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.607,
+            "requestStart": 0.68,
+            "responseStart": 205.254,
+            "responseEnd": 206.222
+          },
+          {
+            "pathname": "/api/web-state/snapshot",
+            "method": "GET",
+            "startTime": 1792087258670.076,
+            "domainLookupStart": 0.176,
+            "domainLookupEnd": 0.186,
+            "connectStart": 0.186,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.533,
+            "requestStart": 0.629,
+            "responseStart": 109.127,
+            "responseEnd": 109.98
+          },
+          {
+            "pathname": "/api/sessions/scale-000/title",
+            "method": "PATCH",
+            "startTime": 1792087259060.519,
+            "domainLookupStart": 0.135,
+            "domainLookupEnd": 0.144,
+            "connectStart": 0.144,
+            "secureConnectionStart": -1,
+            "connectEnd": 0.503,
+            "requestStart": 0.609,
+            "responseStart": 8.04,
+            "responseEnd": 8.571
+          }
+        ]
+      }
+    ],
+    "titlePhases": [
+      {
+        "renderMs": 15.799999952316284,
+        "browserPreTransmissionMs": 0.533,
+        "requestToHeadersMs": 5.943,
+        "eventToRenderMs": 7.899999976158142,
+        "timing": {
+          "pathname": "/api/sessions/scale-000/title",
+          "method": "PATCH",
+          "startTime": 1792087234222.7932,
+          "domainLookupStart": 0.131,
+          "domainLookupEnd": 0.139,
+          "connectStart": 0.139,
+          "secureConnectionStart": -1,
+          "connectEnd": 0.456,
+          "requestStart": 0.533,
+          "responseStart": 6.476,
+          "responseEnd": 6.952
+        }
+      },
+      {
+        "renderMs": 18.600000023841858,
+        "browserPreTransmissionMs": 0.573,
+        "requestToHeadersMs": 7.429,
+        "eventToRenderMs": 8.700000047683716,
+        "timing": {
+          "pathname": "/api/sessions/scale-000/title",
+          "method": "PATCH",
+          "startTime": 1792087246475.859,
+          "domainLookupStart": 0.145,
+          "domainLookupEnd": 0.156,
+          "connectStart": 0.156,
+          "secureConnectionStart": -1,
+          "connectEnd": 0.495,
+          "requestStart": 0.573,
+          "responseStart": 8.002,
+          "responseEnd": 8.49
+        }
+      },
+      {
+        "renderMs": 18.399999976158142,
+        "browserPreTransmissionMs": 0.609,
+        "requestToHeadersMs": 7.430999999999999,
+        "eventToRenderMs": 8.899999976158142,
+        "timing": {
+          "pathname": "/api/sessions/scale-000/title",
+          "method": "PATCH",
+          "startTime": 1792087259060.519,
+          "domainLookupStart": 0.135,
+          "domainLookupEnd": 0.144,
+          "connectStart": 0.144,
+          "secureConnectionStart": -1,
+          "connectEnd": 0.503,
+          "requestStart": 0.609,
+          "responseStart": 8.04,
+          "responseEnd": 8.571
+        }
+      }
+    ],
+    "summary": {
+      "firstUsefulMs": {
+        "raw": [
+          1200.9402500000003,
+          1215.792667,
+          1116.7777080000003
+        ],
+        "n": 3,
+        "median": 1200.9402500000003,
+        "p95_nearest_rank": 1215.792667,
+        "p00": {
+          "raw": [
+            1052.0583749999998,
+            1000.426125,
+            1098.155959
+          ],
+          "median": 1052.0583749999998,
+          "p95_nearest_rank": 1098.155959
+        },
+        "median_delta_pct": 14.151484227289245,
+        "p95_delta_pct": 10.71220413056102
+      },
+      "selectionMs": {
+        "raw": [
+          74.40000003576279,
+          83.59999996423721,
+          85
+        ],
+        "n": 3,
+        "median": 83.59999996423721,
+        "p95_nearest_rank": 85,
+        "p00": {
+          "raw": [
+            42.09999996423721,
+            43.80000001192093,
+            42.299999952316284
+          ],
+          "median": 42.299999952316284,
+          "p95_nearest_rank": 43.80000001192093
+        },
+        "median_delta_pct": 97.63593394439094,
+        "p95_delta_pct": 94.06392688782141
+      },
+      "localSearchMs": {
+        "raw": [
+          45.30000001192093,
+          56.69999998807907,
+          55.80000001192093
+        ],
+        "n": 3,
+        "median": 55.80000001192093,
+        "p95_nearest_rank": 56.69999998807907,
+        "p00": {
+          "raw": [
+            41.69999998807907,
+            42.10000002384186,
+            29.399999976158142
+          ],
+          "median": 41.69999998807907,
+          "p95_nearest_rank": 42.10000002384186
+        },
+        "median_delta_pct": 33.812949707128716,
+        "p95_delta_pct": 34.67933481227794
+      },
+      "fullHistorySearchMs": {
+        "raw": [
+          277.30000001192093,
+          274.19999998807907,
+          296.19999998807907
+        ],
+        "n": 3,
+        "median": 277.30000001192093,
+        "p95_nearest_rank": 296.19999998807907,
+        "p00": {
+          "raw": [
+            269.19999998807907,
+            336.60000002384186,
+            282.30000001192093
+          ],
+          "median": 282.30000001192093,
+          "p95_nearest_rank": 336.60000002384186
+        },
+        "median_delta_pct": -1.771165426776078,
+        "p95_delta_pct": -12.002376718033625
+      },
+      "sidebarUpdateMs": {
+        "raw": [
+          15.799999952316284,
+          18.600000023841858,
+          18.399999976158142
+        ],
+        "n": 3,
+        "median": 18.399999976158142,
+        "p95_nearest_rank": 18.600000023841858,
+        "p00": {
+          "raw": [
+            31.30000001192093,
+            40,
+            35.19999998807907
+          ],
+          "median": 35.19999998807907,
+          "p95_nearest_rank": 40
+        },
+        "median_delta_pct": -47.72727277730245,
+        "p95_delta_pct": -53.49999994039536
+      }
+    },
+    "previewRequests": [
+      [],
+      [],
+      []
+    ]
+  },
+  "previousFailure": {
+    "attempt": 2,
+    "suite": "sidebar",
+    "gate_exit": 1,
+    "title_pre_request_ms": 5515.06,
+    "title_request_to_headers_ms": 9.418,
+    "consequence": "PATCH arrived after the 5000ms probe restore and overwrote the restored title; later Scale chat 000 locator timed out at 15000ms",
+    "sidebar_anchor_failures": 0
+  },
+  "carriedNotRerun": {
+    "source": "docs/performance/app-upgrade-browser-fixes-2026-10-15.json",
+    "longThread": {
+      "backend_ready_ms": {
+        "raw": [
+          1278.6718339999998,
+          844.6282080000001,
+          856.7819579999998,
+          837.6638750000002,
+          868.723209
+        ],
+        "n": 5,
+        "median": 856.7819579999998,
+        "p95_nearest_rank": 1278.6718339999998,
+        "p00": {
+          "raw": [
+            651.3195000000001,
+            652.363,
+            653.6757500000001
+          ],
+          "median": 652.363,
+          "p95_nearest_rank": 653.6757500000001
+        },
+        "median_delta_pct": 31.335155120691958,
+        "p95_delta_pct": 95.61255469550454
+      },
+      "first_render_ms": {
+        "raw": [
+          2198.98,
+          2010.48,
+          2033.67,
+          1743.37,
+          1547.32
+        ],
+        "n": 5,
+        "median": 2010.48,
+        "p95_nearest_rank": 2198.98,
+        "p00": {
+          "raw": [
+            1058.42,
+            1155.95,
+            1194.83
+          ],
+          "median": 1155.95,
+          "p95_nearest_rank": 1194.83
+        },
+        "median_delta_pct": 73.92447770232276,
+        "p95_delta_pct": 84.04124436112252
+      },
+      "first_visible_token_ms": {
+        "raw": [
+          239.79999995231628,
+          241.19999998807907,
+          230.80000001192093,
+          243.10000002384186,
+          284.19999998807907
+        ],
+        "n": 5,
+        "median": 241.19999998807907,
+        "p95_nearest_rank": 284.19999998807907,
+        "p00": {
+          "raw": [
+            255.20000004768372,
+            187.60000002384186,
+            252.80000001192093
+          ],
+          "median": 252.80000001192093,
+          "p95_nearest_rank": 255.20000004768372
+        },
+        "median_delta_pct": -4.58860760415144,
+        "p95_delta_pct": 11.363636338157024
+      },
+      "first_visible_minus_synthetic_delay_ms": {
+        "raw": [
+          179.79999995231628,
+          181.19999998807907,
+          170.80000001192093,
+          183.10000002384186,
+          224.19999998807907
+        ],
+        "n": 5,
+        "median": 181.19999998807907,
+        "p95_nearest_rank": 224.19999998807907,
+        "p00": {
+          "raw": [
+            195.20000004768372,
+            127.60000002384186,
+            192.80000001192093
+          ],
+          "median": 192.80000001192093,
+          "p95_nearest_rank": 195.20000004768372
+        },
+        "median_delta_pct": -6.016597522367539,
+        "p95_delta_pct": 14.856557342884823
+      },
+      "max_visible_update_gap_ms": {
+        "raw": [
+          250.19999998807907,
+          265.80000001192093,
+          215.19999998807907,
+          228.39999997615814,
+          242.80000001192093
+        ],
+        "n": 5,
+        "median": 242.80000001192093,
+        "p95_nearest_rank": 265.80000001192093,
+        "p00": {
+          "raw": [
+            188.5999999642372,
+            197.30000001192093,
+            228.30000001192093
+          ],
+          "median": 197.30000001192093,
+          "p95_nearest_rank": 228.30000001192093
+        },
+        "median_delta_pct": 23.06132792562132,
+        "p95_delta_pct": 16.425755583899203
+      },
+      "js_heap_used_bytes": {
+        "raw": [
+          51576452,
+          41836988,
+          48979072,
+          59720524,
+          28873116
+        ],
+        "n": 5,
+        "median": 48979072,
+        "p95_nearest_rank": 59720524,
+        "p00": {
+          "raw": [
+            37094464,
+            53101276,
+            28972368
+          ],
+          "median": 37094464,
+          "p95_nearest_rank": 53101276
+        },
+        "median_delta_pct": 32.038764598404754,
+        "p95_delta_pct": 12.465327575179174
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "/tmp/spark-p09-preview-before-20261015/attempt-01/netlog.json",
+      "bytes": 7447032,
+      "sha256": "ec1e36b8d4a7f837ee2167657b7d905a9e25d60bcc9665bc67e561b1891255d6"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-before-20261015/attempt-01/network-trace.json",
+      "bytes": 127852,
+      "sha256": "731d7ad13cec94d35573347122c5a754f1da475ff40f8575493dfcf384c09180"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-before-20261015/attempt-01/report.json",
+      "bytes": 6960,
+      "sha256": "560400cc417261abbdf4f23e373a974dca4ac74f27d877cd5838832e2852e85a"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-before-20261015/attempt-01/sidebar.png",
+      "bytes": 112854,
+      "sha256": "b1736e865d929cd7d0f5c93b9dd9a195e4974414ca924f9e5c9ce1c502a2be1b"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-before-20261015/attempt-01/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-before-20261015/attempt-01/stdout.log",
+      "bytes": 5230,
+      "sha256": "2ad3a20fd18323de561478f58995e2407331a4a1e9f8a6adc383141f1e927343"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-before-20261015/gate.json",
+      "bytes": 405,
+      "sha256": "d3094a6a2fefd70a8438ebb97086951d8faad744ba6c2ade1cc10978e98e8bd8"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-01/netlog.json",
+      "bytes": 7146824,
+      "sha256": "4d594ac36362e28b8411439c5a9ace79afc51f221ad58771802321ef8cca52b2"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-01/network-trace.json",
+      "bytes": 104220,
+      "sha256": "efffe2ff3f97114753689d43f4995ae2af5175113b971f00546e03be88a74f76"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-01/report.json",
+      "bytes": 6421,
+      "sha256": "d5d1c03f678df6b88684daa4cdbb2bdf2fab6ef9bd98ecd02c2988d97fc21bb2"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-01/sidebar.png",
+      "bytes": 112854,
+      "sha256": "b1736e865d929cd7d0f5c93b9dd9a195e4974414ca924f9e5c9ce1c502a2be1b"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-01/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-01/stdout.log",
+      "bytes": 4721,
+      "sha256": "dd5304663fc16e5b341e12bf8ced39ebfcb3a8a3a052b25b4969bb9d1025e957"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-02/netlog.json",
+      "bytes": 7154169,
+      "sha256": "da61de61b9926b614fa9a8d75207fd17b7ed2774fa5f287c8f8b4a6537acf4a7"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-02/network-trace.json",
+      "bytes": 105288,
+      "sha256": "0c53cde5fe9c7ac563b6e6e254fc5546fad30a554ec917070373ff15b68162e6"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-02/report.json",
+      "bytes": 6413,
+      "sha256": "46e6e25575b55e7146fcca954ba4e18399909349e8e2e7d69bbe6d1098d07e1f"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-02/sidebar.png",
+      "bytes": 112824,
+      "sha256": "3745d83ef732a0990c647e97640620ebe14e29e7cf56e4310b949bb0c47ac15e"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-02/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-02/stdout.log",
+      "bytes": 4713,
+      "sha256": "1b997b54810e9c61a6149a3196703e47ea36a508e7956565e81f9040401e762b"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-03/netlog.json",
+      "bytes": 7198899,
+      "sha256": "0e72ff2d978a3499cf660b21ea0b6c59c20657fab9488831bfd7ebb236b8ae76"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-03/network-trace.json",
+      "bytes": 107564,
+      "sha256": "585fbca24c7a7cd1271bd68e80cc51d1909af1c9197092eea6fae23697692ac9"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-03/report.json",
+      "bytes": 6376,
+      "sha256": "d8cdc77caf2a705e723d61f3d8e9bce65a62dd6c30f358fbe1959c8bb1a1ba2c"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-03/sidebar.png",
+      "bytes": 112854,
+      "sha256": "b1736e865d929cd7d0f5c93b9dd9a195e4974414ca924f9e5c9ce1c502a2be1b"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-03/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/attempt-03/stdout.log",
+      "bytes": 4676,
+      "sha256": "56b08345cf2da3aafe54c872baf3c4a1f910abd0748c47f1bfe4930b70a40be6"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-sidebar-20261015-final/gate.json",
+      "bytes": 1118,
+      "sha256": "ba633d1d02cf5ed8c7e70dc0a9f3611555057fcb16a17af68a75e1a6c2cc62f7"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/build.log",
+      "bytes": 1084,
+      "sha256": "8ffb46189fabff4873b54a96d09ce4490bb5272a25399bac3970392de03dcdb0"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-codex-1024.png",
+      "bytes": 78726,
+      "sha256": "dd6a7163085fb2f36b33306cfa5bd5c99ff5f823cde6a484c2e768d0fc186bdb"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-codex-1440.png",
+      "bytes": 88627,
+      "sha256": "3b75e0d233bb5073b88823391beedf0ac42d031a94909cc345018764c7573444"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-codex-390.png",
+      "bytes": 31937,
+      "sha256": "e511952ce674978b05a5b6c43121b57feb1c45e9724bcd640fd18fb4ec28da34"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-codex-768.png",
+      "bytes": 73786,
+      "sha256": "0a368caf553f98f07a15cce26b33041d76e9041caa4a2682d146a39653fd35c0"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-conflict.png",
+      "bytes": 97524,
+      "sha256": "ae0dde3bfffc48d748ba71395c81e125ad166b7689cce4383fd92efecbd3ae79"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-daylight-1024.png",
+      "bytes": 141388,
+      "sha256": "17eb024bdf98322e54af5324eb91088d7c37f6cd1c25f263bfbf8d012ea4f5b0"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-daylight-1440.png",
+      "bytes": 156716,
+      "sha256": "450c3049a49c10381c2426b5b9470a63ba402ae8857a0b4ed94da0cbd35a27a6"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-daylight-390.png",
+      "bytes": 69521,
+      "sha256": "ae083ca67e3dbf97f235ccf29dd0c8094c9726ab81d4f7dc86e237346baef913"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/draft-daylight-768.png",
+      "bytes": 129798,
+      "sha256": "33a8924fe25fadd9c51acaf0e660120eb311b8152105f12668826c62b986f8fc"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/initial.png",
+      "bytes": 50007,
+      "sha256": "ce9db05d0cae5d21297f8da1fae7cf4eb3c32c980a61ececbe83063446edc9d4"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/manifest.json",
+      "bytes": 14960,
+      "sha256": "66cc3b0873f2c7e810da890161046b06b5a0abbd539e09e150cb723952b194d6"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/production.json",
+      "bytes": 615,
+      "sha256": "99a2fea7ee9a7799591aa627f6f28fe03d23b09dba356ce32ee80951acb8390c"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/report.json",
+      "bytes": 633,
+      "sha256": "362383b380220f2a0cacb1191b699d6c8a3b3b727e08fc8dee3c34ef741f0cf5"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/stdout.log",
+      "bytes": 648,
+      "sha256": "2514c18aa0e9e0d80ac5a8341d1dc0468af5a23cd50653078ae52218561ac9db"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/attempt-01/verified.png",
+      "bytes": 70354,
+      "sha256": "f93c561fad72d0ebd7dd83bc5335b82e57a82f96ba8ac600126d9a2a34ad5c41"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-recovery-20261015-final/gate.json",
+      "bytes": 526,
+      "sha256": "dfb91cf0291b47abafbd2ef8449dd5ac761d40a7e62990b47eb26834c9abfd27"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-unit-20261015.log",
+      "sha256": "466f896ead2902e1fb431b5078de5c45050a1610b6ec7aa237c54a6a343d3a79"
+    },
+    {
+      "path": "/tmp/spark-p09-preview-build-20261015.log",
+      "sha256": "c2429d85bba9c0355944c1bec602194290c0a93608b40dd6b000e223b21b6ce7"
+    },
+    {
+      "path": "/var/folders/px/w5ttjwk56dg761_zbyj1c2bw0000gn/T/spark-preview-lifecycle-yBQ1wm/report.json",
+      "sha256": "27920cf8af93685c6793d25873b6f6c0b740ae96322bd8329e3d9d41e54d76b8"
+    }
+  ],
+  "limitations": [
+    "Three repetitions are bounded local evidence, not universal reliability or controlled performance proof.",
+    "P00 title flow differs: this gate switches to full-history search result and back before PATCH.",
+    "Initial browser remains on Files, so visibility gating correctly removes all preview calls in these sidebar runs. Separate controlled React lifecycle fixture verifies visible-pane reads, aborts, SSE, explicit Start and external viewer pause/resume.",
+    "Aborting fetch releases browser ownership; synchronous backend scans already running may finish. No backend endpoint changes.",
+    "Shared notification SSE/model-status duplication remains outside scope.",
+    "Broader P09 matrix, controlled performance rerun, long-thread rerun on integrated source, CI, bundles and installed platform/release gates remain parent owned."
+  ]
+}

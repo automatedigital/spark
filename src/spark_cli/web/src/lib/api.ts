@@ -416,9 +416,10 @@ export const api = {
       body: JSON.stringify({ content }),
     });
   },
-  detectDevServers: (slug: string) =>
+  detectDevServers: (slug: string, signal?: AbortSignal) =>
     fetchJSON<{ slug: string; servers: { url: string; port: number }[] }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/detect-servers`,
+      { signal },
     ),
   listArtifacts: (type: string = "all", limit = 200) =>
     fetchJSON<ArtifactsResponse>(
