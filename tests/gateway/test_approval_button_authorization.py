@@ -218,18 +218,49 @@ async def test_feishu_dm_does_not_apply_group_disabled_policy(monkeypatch):
     assert entry.result == "once"
 
 
-async def test_telegram_direct_topic_preserves_owner_retry(monkeypatch):
+@pytest.mark.parametrize("choice", ["once", "session", "always", "deny"])
+@pytest.mark.parametrize("route", ["dm_direct", "dm_precedence", "dm_legacy_thread", "forum"])
+async def test_telegram_approval_routes_from_inbound_builder(monkeypatch, choice, route):
+    from gateway.platforms import telegram
+    from gateway.platforms.base import MessageType
+
     monkeypatch.setenv("GATEWAY_ALLOWED_USERS", "123")
     wire = transport("telegram", monkeypatch)
-    source = SessionSource(platform=Platform.TELEGRAM, chat_id="123", chat_type="dm", direct_messages_topic_id="77")
-    entry = approval._ApprovalEntry({"command": "synthetic", "source": source})
+    monkeypatch.setattr(telegram, "ChatType", SimpleNamespace(
+        PRIVATE="private", GROUP="group", SUPERGROUP="supergroup", CHANNEL="channel"))
+    monkeypatch.setattr(wire.adapter, "_get_dm_topic_info", lambda chat_id, thread_id: None)
+    direct_topic = 77 if route in ("dm_direct", "dm_precedence") else None
+    message_thread = None if route == "dm_direct" else 11 if route == "dm_precedence" else 77
+    inbound = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="supergroup" if route == "forum" else "private", title=None, full_name="fixture"),
+        from_user=SimpleNamespace(id=123, full_name="owner"),
+        message_thread_id=message_thread,
+        direct_messages_topic=SimpleNamespace(topic_id=direct_topic),
+        forum_topic_created=None, reply_to_message=None, text="synthetic", message_id=1, date=None,
+    )
+    source = wire.adapter._build_message_event(inbound, MessageType.TEXT).source
+    assert source.thread_id == "77"
+    assert source.direct_messages_topic_id == ("77" if direct_topic else None)
+    assert source.chat_type == ("group" if route == "forum" else "dm")
+    entry = approval._ApprovalEntry({
+        "command": "synthetic", "source": source,
+        "metadata": wire.adapter.source_metadata(source),
+    })
     with approval._lock:
         approval._gateway_queues[KEY] = [entry]
-    await wire.send(entry.data)
-    await wire.click(wire.cards[0], topic_id="wrong")
+    assert (await wire.send(entry.data)).success
+    if direct_topic:
+        wrong = {"thread_id": 77, "topic_id": 999}
+    else:
+        wrong = {"thread_id": 999, "topic_id": 77 if route == "forum" else None}
+    await wire.click(wire.cards[0], choice=choice, **wrong)
     assert not entry.event.is_set()
-    await wire.click(wire.cards[0], topic_id="77")
-    assert entry.result == "once"
+    # Private direct topics take precedence even if message_thread_id differs
+    # or is absent. Forum routing must keep the message thread authoritative.
+    await wire.click(wire.cards[0], choice=choice, thread_id=message_thread,
+                     topic_id=direct_topic if route != "forum" else 999)
+    assert entry.result == choice, f"Matching {route} callback rejected"
+    assert approval.resolve_gateway_approval(KEY, "once") == 0
 
 
 @pytest.mark.parametrize("choice", ["once", "session", "always", "deny"])

@@ -7,7 +7,7 @@
   ],
   "base_commit": "3097f32b",
   "root_window_clear_utc": "18:57",
-  "validation_status": "caller_authorization_focused_and_bounded_neighbors_completed_root_acceptance_pending",
+  "validation_status": "telegram_private_topic_followup_focused_passed_root_acceptance_pending",
   "sequential_parent_followup": {
     "base_commit": "873573b0",
     "parent_finding": "Ordinary next parent registration cancels earlier legitimate background child authorization",
@@ -388,5 +388,48 @@
     ],
     "all_heavy_commands_exited": true,
     "planned_more_heavy_commands": false
+  },
+  "telegram_private_topic_followup": {
+    "base_commit": "6a88765b",
+    "finding": "Independent v4 review found callback route check passed only raw message_thread_id although actual inbound builder uses direct_messages_topic.topic_id as thread_id in private chats. No additional policy bypass or execution-lifetime defect found.",
+    "scope": [
+      "src/gateway/platforms/telegram.py callback normalization",
+      "tests/gateway/test_approval_button_authorization.py actual inbound-builder route regression",
+      "existing approval ownership evidence"
+    ],
+    "reproduction": {
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nvalidation_home=$(mktemp -d /tmp/spark-approval-topic-before.XXXXXX)\nSPARK_HOME=\"$validation_home\" PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_approval_button_authorization.py -k telegram_approval_routes_from_inbound_builder -q -n 0 -m 'not integration' --tb=short --durations=3",
+      "result": "8 failed, 8 passed, 103 deselected in 0.63s",
+      "production_source": "unchanged 6a88765b",
+      "details": "All eight matching private direct-topic callbacks rejected across once/session/always/deny: no message_thread_id, or a different raw message_thread_id. Eight legacy private-thread/forum cases passed. Source built by actual TelegramAdapter._build_message_event, not manually assembled; lookup and SDK transport synthetic only."
+    },
+    "repair": "Normalize callback IDs with existing _telegram_id_to_str and apply the same private-topic precedence as _build_message_event. Trusted source chat_type determines private precedence; group/forum threads retain raw message_thread_id. Existing route and caller policy checks unchanged.",
+    "checks": [
+      {
+        "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nvalidation_home=$(mktemp -d /tmp/spark-approval-topic-focused.XXXXXX)\nSPARK_HOME=\"$validation_home\" PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_telegram_thread_fallback.py tests/gateway/test_telegram_reply_mode.py tests/gateway/test_telegram_group_gating.py -q -n 0 -m 'not integration' --tb=short --durations=5",
+        "result": "173 passed in 8.12s",
+        "coverage": "All choices; actual inbound builder sources for private direct topics, conflicting private raw thread IDs, legacy private threads and group forum threads; wrong route rejected before matching authorized retry, each resolves once. Full caller authorization fixture and existing private-topic send/fallback/reply/group neighbors."
+      },
+      {
+        "command": "ruff check tests/gateway/test_approval_button_authorization.py",
+        "result": "All checks passed!"
+      },
+      {
+        "command": "ruff check src/gateway/platforms/telegram.py --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+        "result": "All checks passed!"
+      },
+      {
+        "command": "git diff --check",
+        "result": "exit 0"
+      }
+    ],
+    "all_commands_exited": true,
+    "broad_suite_run": false,
+    "limits": [
+      "Isolated worktree only; root frozen full-suite source unchanged",
+      "No caller allowlist/pairing/group policy or execution-owner lifetime changes",
+      "No live SDK/external sends/provider calls, command execution, installs, browser or build",
+      "Root canonical integration/final acceptance remains pending"
+    ]
   }
 }

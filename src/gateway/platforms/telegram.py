@@ -1619,11 +1619,19 @@ class TelegramAdapter(BasePlatformAdapter):
                     await query.answer(text="This approval has already been resolved.")
                     return
                 message = getattr(query, "message", None)
-                if not self.is_approval_authorized(
-                    state.get("source") if isinstance(state, dict) else None,
-                    caller_id, str(getattr(message, "chat_id", "") or ""),
-                    getattr(message, "message_thread_id", None),
+                source = state.get("source") if isinstance(state, dict) else None
+                direct_topic_id = self._telegram_id_to_str(
                     getattr(getattr(message, "direct_messages_topic", None), "topic_id", None),
+                )
+                thread_id = self._telegram_id_to_str(getattr(message, "message_thread_id", None))
+                # Match _build_message_event: private direct topics take
+                # precedence; forum/group threads use message_thread_id.
+                if source and source.chat_type == "dm" and direct_topic_id:
+                    thread_id = direct_topic_id
+                if not self.is_approval_authorized(
+                    source,
+                    caller_id, str(getattr(message, "chat_id", "") or ""),
+                    thread_id, direct_topic_id,
                 ):
                     await query.answer(text="⛔ You are not authorized to approve commands.")
                     return

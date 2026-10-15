@@ -375,3 +375,46 @@ SDK sends, external provider calls, shell effects, browser, installation or buil
 was used. Root's separate cleanup/fixture changes and canonical acceptance remain
 root-owned; this worktree did not overwrite them. SDK compatibility, live network
 authentication and full root-suite success are not established here.
+
+## Telegram private-topic follow-up from `6a88765b`
+
+Independent v4 caller-policy review found one P2 regression, with no additional
+policy bypass or owner-lifetime defect: private inbound messages store
+`direct_messages_topic.topic_id` as both `source.thread_id` and
+`source.direct_messages_topic_id`. The callback passed only its raw
+`message_thread_id` to the route guard, so a matching direct-topic callback with
+no raw message thread was rejected. The earlier fixture manually constructed a
+source without `thread_id`, missing this actual inbound contract.
+
+The replacement regression builds its source through the real
+`TelegramAdapter._build_message_event` and forwards real source metadata into the
+sender. Before production edits, unchanged `6a88765b` gave **8 failed, 8 passed,
+103 deselected in 0.63s**. All four choices failed for each private direct-topic
+case (raw message thread absent, or differing from the direct topic). Legacy
+private-thread and group forum cases passed. Wrong-topic clicks leave the waiter
+pending before the matching authorized retry.
+
+The narrow callback fix normalizes IDs using existing `_telegram_id_to_str` and
+uses the same precedence as the inbound builder: private direct topic first,
+otherwise the raw message thread. Group/forum routes retain their message-thread
+identity. Caller allowlist/pairing/group policies and base route checks are
+unchanged. No execution-owner, transport decision-ID or Web changes are included.
+
+Focused validation, with the root .venv active, fresh temporary SPARK_HOME and
+this worktree's src on PYTHONPATH:
+
+```text
+python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_telegram_thread_fallback.py tests/gateway/test_telegram_reply_mode.py tests/gateway/test_telegram_group_gating.py -q -n 0 -m 'not integration' --tb=short --durations=5
+```
+
+Result: **173 passed in 8.12s**. Covers every choice, correct/wrong actual-builder
+private direct-topic and forum routes, private precedence when both IDs exist,
+legacy private threads, authorized retry/once-only resolution, existing caller
+authorization cases and private-topic send/fallback/reply/group neighbors.
+Focused test lint, selected Telegram CI lint and whitespace checks passed. Exact
+commands, setup and the failed proof are retained in JSON.
+
+All commands exited; no broad suite was run. SDK sends and topic lookup were
+local fixtures, with Internet sockets forbidden. No shell execution, provider
+calls, installs, browser or builds occurred. Root's frozen full-suite source was
+not changed; canonical integration and final acceptance remain root-owned.
