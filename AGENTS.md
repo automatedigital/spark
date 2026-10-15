@@ -59,6 +59,9 @@ python scripts/generate_tool_manifest.py --check
 The web extra is required for dashboard work and tests importing FastAPI routes.
 For the shared web/desktop frontend, use Node.js 22 and the nested npm lockfile:
 
+Verify `node --version` and `node -p process.execPath` before acceptance runs;
+an installation path or symlink named `node@22` may point to another version.
+
 ```bash
 (cd src/spark_cli/web && npm ci)
 (cd src/spark_cli/web && npm run dev)

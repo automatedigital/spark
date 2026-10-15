@@ -42,6 +42,8 @@ python scripts/generate_tool_manifest.py --check
 Use Node.js 22 and the frontend's own lockfile. Browser suites need the Playwright
 browsers specified in `web-quality.yml`; Python and Node suites use separate
 installations. Use isolated `SPARK_HOME` and synthetic data for manual servers.
+Verify `node --version` and `node -p process.execPath` before frontend acceptance;
+a directory or symlink named `node@22` does not establish the runtime version.
 Run focused checks while iterating, then the relevant wider suite. Record preexisting
 lint/type failures separately. Override pytest markers carefully: integration tests
 are excluded by default, but a supplied `-m` replaces that expression.
