@@ -2,7 +2,7 @@
 
 Date: 2026-10-15
 
-Status: Proposed; no implementation tasks completed by this review.
+Status: Approved; implementation in progress on `feat/app-orchestration-upgrade`.
 
 Spark baseline: `0ed3654b` (`main` must be rechecked before execution).
 Delivery shape: five working days for the core slice, then independently scheduled extensions.
@@ -290,11 +290,11 @@ Day 5. Ship a verified web slice independently and label desktop status separate
 
 ### P00 — Baseline, contracts and decisions (lead; 0.5 day)
 
-- [ ] Record branch, SHA, dirty paths, configured test commands and baseline lint/type failures without fixing unrelated files.
+- [x] Record branch, SHA, dirty paths, configured test commands and baseline lint/type failures without fixing unrelated files.
 - [ ] Use temporary `SPARK_HOME`, synthetic sessions and no external sends. Capture current long-thread, three-chat, project-create, child-run, pending-decision and reconnect behavior.
 - [ ] Record repeated first-token latency (separate provider time), backend/gateway readiness, sidebar update/select latency, stream gaps, browser memory and bundle size.
 - [ ] Write ADRs for execution identity/write ownership, async completion, cursor semantics, compatibility/migration and worktree lifecycle. Resolve the identified Kanban/profile risks.
-- [ ] Publish contract fixtures/types and assign files before implementation agents start.
+- [x] Publish contract fixtures/types and assign files before implementation agents start.
 
 **Done when:** documented current/target behavior, evidence locations and bounded
 packet briefs exist. Any unknown is explicitly assigned rather than hidden in an
@@ -511,14 +511,38 @@ not prove installed desktop behavior.
 
 ## 10. Execution ledger
 
-All implementation packets are pending. Fill this table as work is verified;
+Implementation is in progress. Fill this table as work is verified;
 keep checkboxes above open until acceptance is demonstrated.
 
 | Packet | Owner | State | Commit / PR | Automated evidence | Browser / package evidence | Limitations |
 | --- | --- | --- | --- | --- | --- | --- |
-| P00 | Lead | Pending | — | — | — | Runtime baseline not captured by planning review |
-| P01–P04 | Runtime / reliability | Pending | — | — | — | No new runtime or isolation implemented |
-| P05–P07 | App | Pending | — | — | — | UI specification only |
+| P00 | Lead + baseline agent | In progress | `73c5032` contracts | mypy passes; 305 baseline Ruff findings | Isolated browser baseline running | Baseline and risk reproduction still open |
+| P01–P04 | Runtime agent + lead | In progress | — | Atomic lifecycle/receipts and worktree tests underway | Pending integration | Async controls and acceptance still open |
+| P05–P07 | App agent | In progress (P05) | — | Durable sidebar implementation underway | Pending | P06/P07 follow runtime integration |
 | P08–P09 | Reliability / lead | Pending | — | — | — | Worker risks need reproduction |
 | P10 | Lead | Pending | — | — | — | No package/release produced |
 | E01–E05 | Unassigned | Backlog | — | — | — | Outside five-day core |
+
+### Implementation checkpoint — 2026-10-15
+
+- User approved execution and parallel delegation. Branch: `feat/app-orchestration-upgrade`; approved roadmap commit `2a41925`, shared ADR0013/fixture commit `73c5032`.
+- Preserved the preexisting `HANDOFF_100826.md` to `docs/HANDOFF_100826.md` move outside all commits.
+- Baseline full Ruff: **305 findings**, exit 1, captured before source changes. Baseline mypy: **127 source files pass**, exit 0. Logs: `/tmp/spark-upgrade-20261015/{ruff,mypy}-baseline.txt` (local, not release evidence).
+- Parallel isolated worktrees: runtime (`feat/durable-child-runtime`), app (`feat/sidebar-metadata`), baseline (`test/spark-baseline-fixture-audit`). Lead owns P04 isolation, shared contracts, integration and checklist review.
+- Source tracing confirms the dedicated subagent callback prevents simultaneous lifecycle/web persistence in the normal path; atomicity and duplicate transport delivery remain P01 work. Existing transcript/interrupt APIs will be extended, not duplicated.
+- No new packet is accepted yet; only individually evidenced P00 items are checked above.
+
+| Tracker | Issue |
+| --- | --- |
+| umbrella | https://github.com/automatedigital/spark/issues/129 |
+| P00 | https://github.com/automatedigital/spark/issues/130 |
+| P01 | https://github.com/automatedigital/spark/issues/131 |
+| P02 | https://github.com/automatedigital/spark/issues/132 |
+| P03 | https://github.com/automatedigital/spark/issues/133 |
+| P04 | https://github.com/automatedigital/spark/issues/134 |
+| P05 | https://github.com/automatedigital/spark/issues/135 |
+| P06 | https://github.com/automatedigital/spark/issues/136 |
+| P07 | https://github.com/automatedigital/spark/issues/137 |
+| P08 | https://github.com/automatedigital/spark/issues/138 |
+| P09 | https://github.com/automatedigital/spark/issues/139 |
+| P10 | https://github.com/automatedigital/spark/issues/140 |
