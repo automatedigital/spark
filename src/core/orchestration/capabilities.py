@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-TERMINAL_CHILD_STATES = frozenset({"completed", "failed", "interrupted", "uncertain"})
+TERMINAL_CHILD_STATES = frozenset({"completed", "failed", "interrupted", "cancelled", "uncertain"})
 
 
 def owned_live_child(parent: Any, run: dict[str, Any]) -> Any:
@@ -18,7 +18,8 @@ def owned_live_child(parent: Any, run: dict[str, Any]) -> Any:
     else:
         children = list(getattr(parent, "_active_children", []) or [])
     return next((child for child in children
-                 if child_sid and getattr(child, "session_id", None) == child_sid), None)
+                 if child_sid and getattr(child, "session_id", None) == child_sid
+                 and callable(getattr(child, "interrupt", None))), None)
 
 
 def child_capabilities(

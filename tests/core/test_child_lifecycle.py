@@ -139,3 +139,29 @@ def test_dedicated_callback_remains_the_single_writer_and_failure_does_not_publi
         emit(parent, record, "completed")
     assert len(progress) == 1
     db.close()
+
+
+def test_cancelled_is_terminal_and_large_events_remain_bounded(tmp_path):
+    db = SessionDB(tmp_path / "state.db")
+    db.create_session("parent", "cli")
+    db.create_subagent_run({"id": "cancelled", "parent_session_id": "parent", "status": "cancelled"})
+    result = db.commit_subagent_lifecycle(
+        {"id": "cancelled", "parent_session_id": "parent", "status": "running"},
+        {"event_id": "huge-late-tool", "event": "tool_started", "payload": {"text": "x" * 100_000}},
+    )
+    assert result["run"]["status"] == "cancelled"
+    assert result["event"]["event_id"] == "huge-late-tool"
+    assert result["event"]["subagent_run"]["status"] == "cancelled"
+    assert len(json.dumps(result["event"])) <= 24_000
+    assert db.get_subagent_events("cancelled")[0]["data"] == result["event"]
+    db.close()
+
+
+def test_interrupt_capability_requires_callable_on_owned_live_child():
+    from core.orchestration.capabilities import owned_live_child
+    run = {"status": "running", "child_session_id": "child"}
+    parent = SimpleNamespace(_active_children=[SimpleNamespace(session_id="child")])
+    assert owned_live_child(parent, run) is None
+    parent._active_children[0].interrupt = lambda message: None
+    assert owned_live_child(parent, run) is parent._active_children[0]
+    assert owned_live_child(parent, {**run, "status": "cancelled"}) is None

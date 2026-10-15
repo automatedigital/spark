@@ -1666,12 +1666,24 @@ class SessionDB:
             parent = current.get("parent_session_id") or run.get("parent_session_id")
             if current and run.get("parent_session_id") not in (None, parent):
                 raise ValueError("Child lifecycle ownership cannot change")
-            terminal = current.get("status") in {"completed", "failed", "interrupted", "uncertain"}
+            terminal = current.get("status") in {"completed", "failed", "interrupted", "cancelled", "uncertain"}
             snapshot = current if terminal else {**current, **run, "parent_session_id": parent}
             self._write_subagent_run(conn, snapshot)
             row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
             snapshot = self._subagent_row_to_dict(row)
             committed = {**event, "projection_version": 1, "subagent_run": snapshot}
+            bounded = self._decode_json_field(_bounded_json(committed), {})
+            if bounded.get("_truncated"):
+                # Preserve identity/control fields when reducing oversized legacy
+                # payloads. A preview wrapper alone would destroy dedup identity.
+                keys = ("id", "parent_session_id", "child_session_id", "root_run_id",
+                        "attempt_id", "node_id", "parent_node_id", "status", "projection_version")
+                bounded = {"event_id": event_id, "event": event_type,
+                           "type": f"subagent.{event_type}", "id": subagent_id,
+                           "projection_version": 1,
+                           "subagent_run": {key: snapshot.get(key) for key in keys},
+                           "payload": {"_truncated": True, "preview": bounded["preview"][:2000]}}
+            committed = bounded
             conn.execute(
                 """INSERT INTO subagent_events (subagent_id, event_id, event_type, data_json, timestamp)
                    VALUES (?, ?, ?, ?, ?)""",
