@@ -496,9 +496,16 @@
     "prior_live_file_and_async_config_failure_groups_present": false,
     "failure_cause": "Not yet attributed; cancellation/interrupt symptoms are confirmed, further fixture diagnosis delegated.",
     "serial_validation": {
-      "status": "running",
+      "status": "passed",
       "command": "python -m pytest tests/ -m 'serial and not integration and not network' -q -n 0",
-      "log": "/tmp/spark-upgrade-20261015/serial-runtime-owned-cleanup.txt"
+      "log": "/tmp/spark-upgrade-20261015/serial-runtime-owned-cleanup.txt",
+      "exit": 0,
+      "passed": 182,
+      "skipped": 15,
+      "deselected": 12613,
+      "warnings": 1,
+      "seconds": 289.03,
+      "warning": "Existing unregistered ssh marker during collection"
     },
     "limit": "Parallel run also scheduled serial-marked cases; serial-only acceptance is separate. No failure is excluded or relabeled."
   }
