@@ -16,8 +16,8 @@ import subprocess
 import sys
 import tempfile
 import time
-from urllib.parse import parse_qs, urlparse
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from playwright.async_api import async_playwright, expect
 
@@ -70,6 +70,8 @@ def fixture_server(port):
         database = SessionDB()
         try:
             run = database.get_subagent_run(body["id"])
+            if run is None:
+                raise ValueError("Fixture child not found")
             server._persist_and_publish_subagent_event(run["parent_session_id"], {
                 "event_id": body["event_id"], "event": body.get("event", "status"),
                 "id": run["id"], "run_id": run["id"],
