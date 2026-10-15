@@ -1,0 +1,310 @@
+{
+  "status": "in_progress",
+  "application_source_commit": "3097f32b",
+  "recorded_at_commit": "b432e028a55868fa043d6620ebddc8c791d0f571",
+  "canonical_manifest_sha256": "c8a2adf0354a2446602a6ca5bbb0e77dc66f554031b489d216ffa4aa058fec7d",
+  "node22": {
+    "version": "v22.22.1",
+    "executable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+    "frontend": {
+      "lint_exit": 0,
+      "typescript_exit": 0,
+      "tests_passed": 435,
+      "test_files": 76,
+      "build_exit": 0,
+      "initial_js_gzip_kib": 241.05,
+      "budget_kib": 600
+    },
+    "browser_suites": [
+      {
+        "suite": "multi-chat",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/multi-chat.mjs"
+        ],
+        "node": "v22.22.1",
+        "exit": 0,
+        "timeout": false,
+        "seconds": 60.65
+      },
+      {
+        "suite": "chat-contracts",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/chat-contracts.mjs"
+        ],
+        "node": "v22.22.1",
+        "exit": 0,
+        "timeout": false,
+        "seconds": 19.81
+      },
+      {
+        "suite": "recovery",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/recovery-state.mjs"
+        ],
+        "node": "v22.22.1",
+        "exit": 0,
+        "timeout": false,
+        "seconds": 13.34
+      },
+      {
+        "suite": "sidebar-3",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/browser-gates.mjs",
+          "--suite",
+          "sidebar",
+          "--repeat",
+          "3",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar"
+        ],
+        "node": "v22.22.1",
+        "exit": 1,
+        "timeout": false,
+        "seconds": 54.41
+      },
+      {
+        "suite": "matrix-18",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/baseline-capture.mjs",
+          "--repeat",
+          "1",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/final-browser-node22/matrix"
+        ],
+        "node": "v22.22.1",
+        "exit": 1,
+        "timeout": false,
+        "seconds": 61.46
+      }
+    ]
+  },
+  "unsupported_node25_diagnostics": {
+    "version": "v25.8.0",
+    "requested_executable": "/opt/homebrew/opt/node@22/bin/node",
+    "actual_executable": "/opt/homebrew/Cellar/node/25.8.0/bin/node",
+    "suites": [
+      {
+        "suite": "multi-chat",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/multi-chat.mjs"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 65.33,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/multi-chat.log"
+      },
+      {
+        "suite": "chat-contracts",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/chat-contracts.mjs"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 19.65,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/chat-contracts.log"
+      },
+      {
+        "suite": "recovery",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/recovery-state.mjs"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 14.11,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/recovery.log"
+      },
+      {
+        "suite": "sidebar-3",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/browser-gates.mjs",
+          "--suite",
+          "sidebar",
+          "--repeat",
+          "3",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar"
+        ],
+        "exit": 1,
+        "timed_out": false,
+        "seconds": 59.78,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar-3.log"
+      },
+      {
+        "suite": "matrix-18",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/baseline-capture.mjs",
+          "--repeat",
+          "1",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/final-browser-gates/matrix"
+        ],
+        "exit": 1,
+        "timed_out": false,
+        "seconds": 81.22,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/matrix-18.log"
+      },
+      {
+        "suite": "production-recovery",
+        "args": [
+          "/Users/joe/Developer/github/spark/.venv/bin/python",
+          "-c",
+          "import asyncio,importlib.util; from pathlib import Path; p=Path('e2e/work-recovery.py'); s=importlib.util.spec_from_file_location('final_recovery',p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.REPORTS=Path('/tmp/spark-upgrade-20261015/final-browser-gates/production-recovery'); asyncio.run(m.main())"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 19.09,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/production-recovery.log"
+      }
+    ],
+    "matrix_note": "Parent deliberately stopped only its owned process group after runtime mismatch was found; partial artifacts retained."
+  },
+  "canonical_production_draft_recovery": {
+    "exit": 0,
+    "checks": [
+      "draft survives immediate chat switch and browser refresh",
+      "failed send preserves draft through refresh",
+      "late acknowledgement clears only submitted draft without switching chat",
+      "concurrent tab edit preserves local input and exposes conflict",
+      "thread drafts remain isolated across refresh and switching",
+      "uploaded file reference and context selection survive refresh",
+      "interrupted upload recovers as missing and blocks send until removed",
+      "failed attachment remains visible without losing typed text",
+      "profile identity isolates stored drafts at same browser origin"
+    ]
+  },
+  "sidebars": {
+    "node22": [
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-01/failure.json",
+        "sha256": "343be844582bb3f8c389b6bd0d1536941401de50a45390d019c4daf1d43f37a0",
+        "selection_ms": 125.19999998807907,
+        "local_search_ms": 71.90000003576279,
+        "full_history_search_ms": 280.10000002384186,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 125.19999998807907ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-02/failure.json",
+        "sha256": "c1b32cc022526c0234b834c8f681edb71884a051e267169108447044cbcc5f08",
+        "selection_ms": 166,
+        "local_search_ms": 74.69999998807907,
+        "full_history_search_ms": 290.7000000476837,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 166ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-03/failure.json",
+        "sha256": "286eddd124a72b7416f6a0d3a5573851cd4b9471eeb285abd293c3a7f5ce8d3c",
+        "selection_ms": 124.80000001192093,
+        "local_search_ms": 20,
+        "full_history_search_ms": 354.30000001192093,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 124.80000001192093ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      }
+    ],
+    "node25": [
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar/attempt-01/failure.json",
+        "sha256": "78f8e0bcb449c76f30186bc4ef57cf617f48220b89ce07843d89df12188cf64e",
+        "selection_ms": 118.5,
+        "local_search_ms": 167.89999997615814,
+        "full_history_search_ms": 338.89999997615814,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 118.5ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar/attempt-02/failure.json",
+        "sha256": "e65a5ecf9551a6057a4aefc1bbc7162b20ff34d7b5146304d378196d0a8daf7f",
+        "selection_ms": 147.5,
+        "local_search_ms": 134.39999997615814,
+        "full_history_search_ms": 307.60000002384186,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 147.5ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar/attempt-03/failure.json",
+        "sha256": "782c1bb0aac5d835ac350e40dd42df076e32f6089ec629909ca9854de50f7e08",
+        "selection_ms": 144.70000004768372,
+        "local_search_ms": 85.70000004768372,
+        "full_history_search_ms": 351.60000002384186,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 144.70000004768372ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      }
+    ]
+  },
+  "limits": [
+    "P03 approval ownership repair still under validation",
+    "P09 retention and browser observation ownership audits remain open",
+    "No installed macOS/Windows, staging or release evidence",
+    "Current source backend full suite has not yet rerun after all followups"
+  ],
+  "selection_end_diagnostic": {
+    "original_assertion_exit": 1,
+    "original_observed_ms": 101,
+    "same_dom_commit_ms": 69.39999997615814,
+    "path": "/tmp/spark-upgrade-20261015/selection-observation-diagnostic/failure.json",
+    "sha256": "2442fd4e71795d568f457a45d65ed9ea57468b5ec87e6f311df1c4dd6116c69b",
+    "note": "Additional MutationObserver mark only; original 100ms assertion unchanged. Parent command initially used an incorrect relative activation path; fixture itself invoked root venv Python. Diagnostic only, not acceptance."
+  },
+  "matrix_failure": {
+    "path": "/tmp/spark-upgrade-20261015/final-browser-node22/matrix/run-01/failure.json",
+    "sha256": "c44f3ca3eeb831cdf5de08a071917be23f4921b7c9036be8a729bc1544c01115",
+    "error": "Error: dark:2000:1440 stream probe did not produce nonzero rendered updates and events\n    at validateCaseResult (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:691:11)\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:787:17)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:857:9",
+    "completed_case_records": 7,
+    "last_case": {
+      "rows": 2000,
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "stream": {
+        "samples": [],
+        "firstVisibleTokenMs": null,
+        "syntheticInitialDelayMs": 60,
+        "firstVisibleMinusSyntheticDelayMs": null,
+        "maxVisibleUpdateGapMs": null,
+        "updateCount": 0,
+        "elapsedMs": null,
+        "updatesPerSecond": null,
+        "expectedTokenCount": null,
+        "finalVisibleTokenCount": 0,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 5,
+          "eventPayloadBytes": 5087,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 32,
+          "streamRecoveryActions": 0
+        }
+      },
+      "scroll_drift": {
+        "before": {
+          "id": "turn:user:db:1925",
+          "top": 34,
+          "scrollTop": 93275
+        },
+        "after": {
+          "id": "turn:user:db:1925",
+          "top": 34,
+          "scrollTop": 93275
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    }
+  }
+}
