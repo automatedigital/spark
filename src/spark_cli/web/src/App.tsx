@@ -22,7 +22,7 @@ import { CodexUsageBadge } from "@/components/CodexUsageBadge";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LazyLoadBoundary } from "@/components/LazyLoadBoundary";
 import { CursorGlow } from "@/components/CursorGlow";
-import { GLOBAL_NAV_EVENT, setGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
+import { GLOBAL_NAV_EVENT, pageForGlobalNavTarget, setGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { onDeepLink, onNewChat, deepLinkToNavTarget, hideAgentCursor, updateAgentCursor } from "@/lib/desktop";
 import { isTauri } from "@/sidecar";
 import { BUS_STALE_TOPIC, BUS_WAKE_TOPIC, useEventBus } from "@/hooks/useEventBus";
@@ -45,6 +45,7 @@ const PRIMARY_NAV = [
 ] as const;
 
 const CronPage = lazy(() => import("@/pages/CronPage"));
+const KanbanPage = lazy(() => import("@/pages/KanbanPage"));
 const FilesPage = lazy(() => import("@/pages/FilesPage"));
 const SkillsPage = lazy(() => import("@/pages/SkillsPage"));
 const ConnectorsPage = lazy(() => import("@/pages/ConnectorsPage"));
@@ -64,6 +65,7 @@ const OnboardingWizard = lazy(() =>
 const PAGE_COMPONENTS = {
   chat: ChatPage,
   cron: CronPage,
+  kanban: KanbanPage,
   skills: SkillsPage,
   files: FilesPage,
   connectors: ConnectorsPage,
@@ -76,6 +78,7 @@ type PageId = keyof typeof PAGE_COMPONENTS;
 type NavLabelKey =
   | (typeof PRIMARY_NAV)[number]["labelKey"]
   | "chat"
+  | "kanban"
   | "newSession"
   | "skills"
   | "connectors"
@@ -84,6 +87,7 @@ type NavLabelKey =
 
 const PAGE_LABEL_KEYS: Record<PageId, NavLabelKey> = {
   chat: "chat",
+  kanban: "kanban",
   files: "files",
   cron: "cron",
   skills: "skills",
@@ -111,23 +115,6 @@ const ActivePageOutlet = memo(function ActivePageOutlet({
     </LazyLoadBoundary>
   );
 });
-
-function pageForGlobalNavTarget(target: GlobalNavTarget): PageId {
-  switch (target.type) {
-    case "file":
-      return "files";
-    case "task":
-      return "chat";
-    case "scheduled-task":
-      return "cron";
-    case "skill":
-      return "skills";
-    case "thread":
-    case "project":
-    default:
-      return "chat";
-  }
-}
 
 function formatVersionDate(date = new Date()) {
   const day = String(date.getDate()).padStart(2, "0");

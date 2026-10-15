@@ -782,6 +782,19 @@ export interface SubagentControlSupport {
   reason: string | null;
 }
 
+export interface SubagentNavigation {
+  schema_version: 1;
+  subagent_id: string;
+  task: SubagentControlSupport & { id?: string; run_id?: number; title?: string; board_slug?: string };
+  worktree: SubagentControlSupport & { project_slug?: string; path?: string; branch?: string };
+}
+
+export interface SubagentWorktreeProject {
+  ok: true;
+  subagent_id: string;
+  project_slug: string;
+}
+
 export interface SubagentCapabilities {
   schema_version: 1;
   controls: Record<"inspect" | "interrupt" | "retry", SubagentControlSupport>;

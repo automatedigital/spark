@@ -211,6 +211,36 @@ def kanban_db_path() -> Path:
     return (home if home is not None else get_spark_home()) / "kanban.db"
 
 
+def task_references_for_sessions(session_ids: Sequence[str]) -> list[dict[str, Any]]:
+    """Read active-profile board links without creating or repairing a board DB.
+
+    Deliberately ignore worker board-home overrides: dashboard navigation must
+    never follow an assignment into another profile's board. Legacy/unreadable
+    schemas have no verified references. Session names are never task identity.
+    """
+    path = get_spark_home() / "kanban.db"
+    if not session_ids or not path.is_file() or path.resolve().parent != get_spark_home().resolve():
+        return []
+    conn = None
+    try:
+        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        placeholders = ",".join("?" for _ in session_ids)
+        rows = conn.execute(
+            "SELECT t.id, t.title, t.board_slug, r.id AS run_id FROM task_runs r "
+            "JOIN tasks t ON t.id = r.task_id WHERE json_extract("
+            "CASE WHEN json_valid(r.metadata_json) THEN r.metadata_json ELSE '{}' END, "
+            "'$.execution.session_id') IN (" + placeholders + ") ORDER BY r.id DESC",
+            tuple(session_ids),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.DatabaseError:
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _require_claim(conn: sqlite3.Connection, task_id: str, token: str, run_id: int) -> None:
     row = conn.execute(
         "SELECT 1 FROM tasks t JOIN task_runs r ON r.id = t.current_run_id "

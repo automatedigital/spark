@@ -22,6 +22,7 @@ import {
 } from "@/lib/subagents";
 import { beginChildCommand, childCommandKey, childControlSupport, readChildCommand, saveChildCommand, type ChildCommand } from "@/lib/subagentControls";
 import type { ChildEventPage } from "@/hooks/useSubagents";
+import { useSubagentNavigation } from "@/hooks/useSubagentNavigation";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
@@ -367,6 +368,7 @@ function SubagentDetail({
   const [retryCommand, setRetryCommand] = useState<ChildCommand | null>(() => readChildCommand(retryKey));
   const [retrying, setRetrying] = useState(false);
   const [copied, setCopied] = useState(false);
+  const navigation = useSubagentNavigation(sessionId, run.id);
   const [historyLimit, setHistoryLimit] = useState(200);
   const [paging, setPaging] = useState(false);
   const [transcript, setTranscript] = useState<ConversationSubagentMessagesResponse | null>(null);
@@ -531,6 +533,19 @@ function SubagentDetail({
               <div key={label}><dt className="inline font-medium">{label}: </dt><dd className="inline break-all font-mono-ui">{value}</dd></div>
             ) : null)}
           </dl>
+          <section aria-label="Child navigation" className="space-y-2 rounded border border-border p-2">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={navigation.busy || !navigation.navigation?.task.supported} onClick={() => void navigation.open("task")}
+                title={navigation.navigation?.task.reason ?? "Open the linked board task"} className="rounded border px-2 py-1 disabled:opacity-50">Open linked task</button>
+              <button type="button" disabled={navigation.busy || !navigation.navigation?.worktree.supported} onClick={() => void navigation.open("worktree")}
+                title={navigation.navigation?.worktree.reason ?? "Open the verified checkout as a project"} className="rounded border px-2 py-1 disabled:opacity-50">Open worktree</button>
+              <button type="button" disabled={navigation.busy} onClick={navigation.refresh} className="rounded border px-2 py-1 disabled:opacity-50">Refresh destinations</button>
+            </div>
+            {!navigation.navigation && !navigation.error && <p role="status">Checking navigation destinations in this profile…</p>}
+            {navigation.navigation?.task.reason && <p className="text-muted-foreground">{navigation.navigation.task.reason}</p>}
+            {navigation.navigation?.worktree.reason && <p className="text-muted-foreground">{navigation.navigation.worktree.reason}</p>}
+            {navigation.error && <p role="alert">{navigation.error}</p>}
+          </section>
           {result && <div className="rounded border border-border p-2">
             <button type="button" onClick={() => void copyResult()} className="mb-2 rounded border px-2 py-1">{copied ? "Result copied" : "Copy result"}</button>
             <Markdown content={result} />

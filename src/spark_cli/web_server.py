@@ -7415,6 +7415,46 @@ async def get_conversation_subagent(
         db.close()
 
 
+def _owned_child_navigation(db, session_id: str, subagent_id: str):
+    sid = db.resolve_session_id(session_id)
+    if not sid:
+        raise HTTPException(status_code=404, detail="Session not found")
+    family = db.resolve_compression_chain(sid)
+    run = db.get_subagent_run(subagent_id)
+    if not run or run.get("parent_session_id") not in family:
+        raise HTTPException(status_code=404, detail="Subagent not found")
+    return run, family
+
+
+@app.get("/api/conversations/{session_id}/subagents/{subagent_id}/navigation")
+def get_conversation_subagent_navigation(session_id: str, subagent_id: str):
+    from core.spark_state import SessionDB
+    from spark_cli.subagent_navigation import navigation_destinations
+
+    db = SessionDB()
+    try:
+        run, family = _owned_child_navigation(db, session_id, subagent_id)
+        return navigation_destinations(run, family)
+    finally:
+        db.close()
+
+
+@app.post("/api/conversations/{session_id}/subagents/{subagent_id}/navigation/worktree")
+def open_conversation_subagent_worktree(session_id: str, subagent_id: str):
+    from core.spark_state import SessionDB
+    from spark_cli.subagent_navigation import NavigationUnavailable, open_worktree_project
+
+    db = SessionDB()
+    try:
+        run, _ = _owned_child_navigation(db, session_id, subagent_id)
+        try:
+            return open_worktree_project(run)
+        except NavigationUnavailable as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        db.close()
+
+
 @app.get("/api/conversations/{session_id}/subagents/{subagent_id}/messages")
 async def get_conversation_subagent_messages(
     session_id: str,

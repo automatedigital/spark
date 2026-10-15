@@ -16,7 +16,7 @@ import {
 } from "react";
 import { DEFAULT_SIDEBAR_METADATA, SidebarMutationError, type SidebarAttention, type SidebarMetadata } from "./api_sidebar";
 import { isEffectivelySettled, mergeSidebarEntries, sidebarMovePatches, type SidebarEntries } from "./sidebarOrganization";
-import { readSidebarPreference, writeSidebarPreference, setSidebarPreferenceScope } from "./sidebarPrefs";
+import { readSidebarPreference, writeSidebarPreference, setSidebarPreferenceScope, sidebarPreferenceKey, SIDEBAR_SCOPE_EVENT } from "./sidebarPrefs";
 import { api } from "@/lib/api";
 import type {
   ProjectCreateRequest,
@@ -229,7 +229,7 @@ export interface SessionStoreValue {
   renameProject: (slug: string, name: string) => Promise<string>;
   reloadSessions: () => Promise<void>;
   loadMoreSessions: () => Promise<void>;
-  reloadProjects: () => Promise<void>;
+  reloadProjects: (requiredSlug?: string) => Promise<boolean>;
 }
 
 const SessionStoreContext = createContext<SessionStoreValue | null>(null);
@@ -289,15 +289,21 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   selectedIdRef.current = selectedId;
 
   // ── Load data ──
-  const reloadProjects = useCallback(async () => {
+  const projectRequestRef = useRef(0);
+  const reloadProjects = useCallback(async (requiredSlug?: string) => {
+    const request = ++projectRequestRef.current;
+    const scope = sidebarPreferenceKey("project-list");
     setLoadingProjects(true);
     try {
       const res = await api.listWorkspaceProjects();
+      if (request !== projectRequestRef.current || scope !== sidebarPreferenceKey("project-list")) return false;
       setProjects(res.projects);
+      return !requiredSlug || res.projects.some((project) => project.slug === requiredSlug);
     } catch (e) {
       console.error("Load projects failed", e);
+      return false;
     } finally {
-      setLoadingProjects(false);
+      if (request === projectRequestRef.current) setLoadingProjects(false);
     }
   }, []);
 
@@ -451,6 +457,9 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     void reloadProjects();
+    const refresh = () => { void reloadProjects(); };
+    window.addEventListener(SIDEBAR_SCOPE_EVENT, refresh);
+    return () => window.removeEventListener(SIDEBAR_SCOPE_EVENT, refresh);
   }, [reloadProjects]);
 
   // Pins are durable across reloads and may point outside the recent page.
@@ -761,7 +770,12 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
     const handler = (event: Event) => {
       const target = (event as CustomEvent<GlobalNavTarget>).detail;
-      if (target?.type === "project" || target?.type === "thread") openGlobalTarget(target);
+      if (target?.type === "project" || target?.type === "thread") {
+        // The store remains mounted across navigation. Consume live targets as
+        // well as initial ones so reload cannot reopen an old worktree project.
+        takeGlobalNavTarget(target.type);
+        openGlobalTarget(target);
+      }
     };
     window.addEventListener(GLOBAL_NAV_EVENT, handler);
     return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
