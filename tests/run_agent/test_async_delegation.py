@@ -16,12 +16,7 @@ from tools.delegate_tool import delegate_task
 
 @pytest.fixture
 def replay_runtime(monkeypatch):
-    from tools import delegate_tool, interrupt
-
-    # Some parents have never entered run_conversation, so interrupt() targets
-    # this test's thread. Keep real interrupt behavior inside the replay without
-    # leaving cancellation flags on the next test's local shell operations.
-    monkeypatch.setattr(interrupt, "_interrupted_threads", set())
+    from tools import delegate_tool
 
     monkeypatch.setattr("core.run_agent.get_tool_definitions", lambda **kw: [])
     monkeypatch.setattr("core.run_agent.check_toolset_requirements", lambda: {})
@@ -86,7 +81,12 @@ def replay_runtime(monkeypatch):
     deadline = time.monotonic() + 8
     while any(p._active_children for p in parents) and time.monotonic() < deadline:
         time.sleep(0.01)
+    assert all(not parent._active_children for parent in parents), "child cleanup timed out"
     for parent in parents:
+        # A parent stopped before its first conversation targets this thread.
+        # Clear through the same real API that set the signal, after children
+        # drain; swapping a module registry can miss retained function globals.
+        parent.clear_interrupt()
         parent.close()
     db.close()
 

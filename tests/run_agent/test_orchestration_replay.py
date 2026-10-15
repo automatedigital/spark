@@ -194,7 +194,7 @@ def replay(monkeypatch, tmp_path, request):
     script = json.loads(FIXTURE.read_text())
     assert script["schema"] == "spark.test.provider-transport-replay.v1"
     home = Path(os.environ["SPARK_HOME"])
-    # Real file/config boundary. No config, prompt, tools or model resolution mocks.
+    # Real profile config and the runtime slot preferred by the delegate loader.
     config = {
         "model": {"context_length": 128000}, "compression": {"enabled": False},
         "delegation": {"async_enabled": True, "max_iterations": 4, "max_concurrent_children": 3},
@@ -205,6 +205,10 @@ def replay(monkeypatch, tmp_path, request):
     }
     config["compression"].update(getattr(request, "param", {}))
     (home / "config.yaml").write_text(yaml.safe_dump(config))
+    # CLI collection/runtime can populate this before the isolated profile exists.
+    # Bind its actual config slot; keep the real loader and child resolution.
+    from core import cli
+    monkeypatch.setattr(cli, "CLI_CONFIG", config)
     wire = HTTPReplay(script, tmp_path)
     def handle(transport, request):
         body = json.loads(request.content)

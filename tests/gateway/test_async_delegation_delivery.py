@@ -98,6 +98,7 @@ async def gateway(monkeypatch, tmp_path):
         adapter.set_message_handler(runner._handle_message)
         adapter.set_busy_session_handler(runner._handle_active_session_busy_message)
         adapter.set_session_store(runner.session_store)
+        adapter.set_approval_authorizer(runner._is_user_authorized)
         runners.append(runner)
         return runner, adapter
 
@@ -116,6 +117,10 @@ async def gateway(monkeypatch, tmp_path):
             await until(lambda: not adapter._background_tasks, "adapter cleanup")
             for parent, _signature in runner._agent_cache.values():
                 await until(lambda: not parent._active_children, "child cleanup")
+                # Teardown interrupted these owned parents, including idle ones
+                # whose turn already cleared its signal. Clear only after all
+                # adapter/child workers drain, before their thread IDs are reused.
+                parent.clear_interrupt()
                 parent.close()
             runner._session_db.close()
             if runner.session_store._db:
