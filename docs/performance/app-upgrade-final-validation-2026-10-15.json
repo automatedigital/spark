@@ -520,10 +520,25 @@
       "cancellation_failure_cause": "unproved",
       "evidence": "/tmp/spark-upgrade-cancel-isolation-20261015/",
       "next_diagnostic": "One read-only worker-traced nonserial -n 4 run, 900-second process-group limit; authorized while correctness repair runs. No performance claims."
+    },
+    "nonserial_traced_attempt": {
+      "exit": 3,
+      "passed": 9697,
+      "failed": 1,
+      "skipped": 74,
+      "warnings": 134,
+      "seconds": 266.58,
+      "full_acceptance": false,
+      "diagnostic_fault": "Tracer consumed fixture-mocked time.monotonic finite iterator; StopIteration/internal error.",
+      "original_37_nodes_passed": 37,
+      "original_cause": "unproved",
+      "process_groups_closed": true,
+      "evidence": "/tmp/spark-upgrade-cancel-transition-20261015T213250Z/",
+      "automatic_retry": false
     }
   },
   "panel_ownership_source_review": {
-    "status": "changes_required",
+    "status": "response_review_pending",
     "candidate_base": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
     "frozen_source_files": 13,
     "hashes_verified": true,
@@ -535,10 +550,16 @@
     "confirmed_source_findings": 1,
     "finding": "Delayed approval/action completion refreshes turn surfaces without checking live owner and backend/profile/credential scope before API reads. Existing continuation, incomplete fence; runtime reproduction pending.",
     "retention_captures_started": false,
-    "protocol_version": 2,
-    "protocol_manifest_sha256": "015955716ed4728df31c2826411ed6171bc46813748b88147afe39dd0df23b8d",
+    "protocol_version": 3,
+    "protocol_manifest_sha256": "794d209d067031769fa3aa8993fb5684e01e4f5bca880fd954b9cab5a1528ae3",
     "protocol_input_hashes_verified": 29,
     "source_acceptance": "open",
-    "inspector_aggregate": "Historical exit 1 on unproved HTTP 304 cache revalidation; not a passing aggregate."
+    "inspector_aggregate": "Historical exit 1 on unproved HTTP 304 cache revalidation; not a passing aggregate.",
+    "finding_runtime_proved": true,
+    "app_response_changed_lines": 2,
+    "response_cases_passed": 3,
+    "response_checks_each": 11,
+    "source_manifest_sha256": "88fef8effbc184aa36de578136ad49826fb185444018ccd3cfb449665cc3ec85",
+    "candidate_source_sha256": "3a191ae41f3eab4cc67a461fe054bbd8892eeed7f3688c932daa87d9fbea840e"
   }
 }
