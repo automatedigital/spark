@@ -852,7 +852,8 @@ def delegate_task(
         if not request_id or not isinstance(db, SessionDB) or not db.get_session(parent_agent.session_id):
             return tool_error("Async delegation requires request_id and a durable owning session")
         try:
-            receipt = db.get_runtime_command(parent_agent.session_id, "subagent.dispatch", request_id, command_payload)
+            receipt = db.get_runtime_command(parent_agent.session_id, "subagent.dispatch", request_id,
+                                             command_payload, compression_family=True)
         except ValueError as exc:
             return tool_error(str(exc))
         if receipt:

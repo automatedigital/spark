@@ -141,3 +141,19 @@ provider performance, multi-backend browser isolation, installed macOS/Windows
 package or release evidence was produced. Existing browser/performance and
 baseline objections remain separate. P04 integration and CI wiring stay with
 the parent. Terminal test completion does not accept P09.
+
+## Parent integration follow-up
+
+Integrated replay contribution in `f48d7974`. Parent fixed dispatch receipt
+lookup across the authorized compression family, retaining the original receipt
+owner and acceptance. New dispatches use the compression root; the transaction
+rechecks family receipts under `BEGIN IMMEDIATE`. Earlier leaf-owned receipts
+remain discoverable. Forks and child transcripts do not join the parent scope;
+payload conflicts still fail and profiles retain separate databases.
+
+The compression defect's strict xfail marker was removed. An unrelated replay
+payload audit was updated to include P04's additive `isolation: null` field,
+matching the real tool's recorded payload rather than weakening hash checks.
+Integrated runtime/delegation/worktree/receipt checks: **133 passed, 1 xfailed**,
+exit 0, 18.16 seconds. The remaining strict xfail is the unsupported-stream defect;
+a separate isolated implementation task owns that fix. This is not P09 acceptance.

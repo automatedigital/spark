@@ -123,8 +123,10 @@ def dispatch_async_children(
     if not isinstance(db, SessionDB) or not db.get_session(parent.session_id):
         raise ValueError("Async delegation requires a durable owning session")
     reconcile_lost_children(db)
-    owner = owner_session_id or parent.session_id
-    existing = db.get_runtime_command(owner, command_kind, request_id, payload)
+    family_dispatch = command_kind == "subagent.dispatch"
+    owner = owner_session_id or db.resolve_compression_chain(parent.session_id)[0]
+    existing = db.get_runtime_command(owner, command_kind, request_id, payload,
+                                      compression_family=family_dispatch)
     if existing:
         return dict(existing["acceptance"])
     children: list[dict[str, Any]] = []
@@ -153,7 +155,7 @@ def dispatch_async_children(
         owner, command_kind, request_id, payload,
         {"mode": "async", "status": "accepted", "handles": handles},
         {"children": [h["id"] for h in handles], "worker_kind": "process_local"},
-        children=children, max_children=max_children,
+        children=children, max_children=max_children, compression_family=family_dispatch,
     )
     if not receipt["created"]:
         return dict(receipt["acceptance"])

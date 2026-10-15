@@ -427,7 +427,7 @@ def test_actual_process_loss_after_http_dispatch_is_uncertain_and_never_redispat
     assert "uncertain effects need review" in rejected["error"]
     receipt = r.db.get_runtime_command("lost-process", "subagent.dispatch", r.script["dispatch"]["request_id"], {
         "goal": None, "context": None, "toolsets": None, "tasks": r.script["dispatch"]["tasks"],
-        "max_iterations": None, "acp_command": None, "acp_args": None,
+        "max_iterations": None, "acp_command": None, "acp_args": None, "isolation": None,
     })
     assert receipt["state"] == "uncertain"
     parent.run_conversation("REPLAY: explicit recovery")
@@ -586,7 +586,6 @@ def test_two_real_profile_databases_reuse_request_key_without_reading_other_prof
 
 
 @pytest.mark.parametrize("replay", [{"checkpoint_mode": "legacy"}], indirect=True)
-@pytest.mark.xfail(strict=True, reason="Reproduced: dispatch receipt lookup uses current session rather than compression family; retry creates duplicate children")
 def test_lost_dispatch_ack_retry_after_real_compression_reuses_original_receipt(replay):
     r = replay
     parent = r.parent(web=False)

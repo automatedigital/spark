@@ -1793,24 +1793,34 @@ class SessionDB:
         }
 
     def get_runtime_command(
-        self, session_id: str, command_kind: str, request_id: str, payload: dict[str, Any]
+        self, session_id: str, command_kind: str, request_id: str, payload: dict[str, Any],
+        *, compression_family: bool = False,
     ) -> dict[str, Any] | None:
         """Look up a scoped receipt after the caller validates resource ownership."""
         payload_hash = self._command_payload_hash(payload)
+        owners = self.resolve_compression_chain(session_id) if compression_family else [session_id]
         with self._lock:
-            row = self._conn.execute(
-                """SELECT * FROM runtime_command_receipts
-                   WHERE session_id=? AND command_kind=? AND request_id=?""",
-                (session_id, command_kind, request_id),
-            ).fetchone()
-        if row and row["payload_hash"] != payload_hash:
-            raise ValueError("request_id was already accepted with a different payload")
+            row = self._find_runtime_command_row(self._conn, owners, command_kind, request_id, payload_hash)
         return self._command_receipt_dict(row) if row else None
+
+    @staticmethod
+    def _find_runtime_command_row(conn, owners, command_kind, request_id, payload_hash):
+        placeholders = ",".join("?" for _ in owners)
+        rows = conn.execute(
+            f"""SELECT * FROM runtime_command_receipts
+                WHERE session_id IN ({placeholders}) AND command_kind=? AND request_id=?
+                ORDER BY created_at, session_id""",
+            (*owners, command_kind, request_id),
+        ).fetchall()
+        if any(row["payload_hash"] != payload_hash for row in rows):
+            raise ValueError("request_id was already accepted with a different payload")
+        return rows[0] if rows else None
 
     def accept_runtime_command(
         self, session_id: str, command_kind: str, request_id: str,
         payload: dict[str, Any], acceptance: dict[str, Any], intent: dict[str, Any],
         *, children: list[dict[str, Any]] | None = None, max_children: int = 3,
+        compression_family: bool = False,
     ) -> dict[str, Any]:
         """Commit acceptance and dispatch intent before an external side effect.
 
@@ -1821,17 +1831,14 @@ class SessionDB:
         if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 200:
             raise ValueError("request_id must be a non-empty string of at most 200 characters")
         payload_hash = self._command_payload_hash(payload)
+        owners = self.resolve_compression_chain(session_id) if compression_family else [session_id]
         now = time.time()
 
         def _do(conn):
-            row = conn.execute(
-                """SELECT * FROM runtime_command_receipts
-                   WHERE session_id=? AND command_kind=? AND request_id=?""",
-                (session_id, command_kind, request_id),
-            ).fetchone()
+            # Repeat the family lookup under BEGIN IMMEDIATE: a preflight read
+            # alone cannot fence concurrent retries from old and compressed IDs.
+            row = self._find_runtime_command_row(conn, owners, command_kind, request_id, payload_hash)
             if row:
-                if row["payload_hash"] != payload_hash:
-                    raise ValueError("request_id was already accepted with a different payload")
                 return {"created": False, **self._command_receipt_dict(row)}, []
             child_events = []
             if children:
