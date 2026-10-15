@@ -507,6 +507,38 @@
       "seconds": 289.03,
       "warning": "Existing unregistered ssh marker during collection"
     },
-    "limit": "Parallel run also scheduled serial-marked cases; serial-only acceptance is separate. No failure is excluded or relabeled."
+    "limit": "Parallel run also scheduled serial-marked cases; serial-only acceptance is separate. No failure is excluded or relabeled.",
+    "bounded_diagnostic_followup": {
+      "family_run_passed": 82,
+      "family_seconds": 111.38,
+      "fallback_order_passed": 3,
+      "fallback_order_seconds": 5.07,
+      "owner_group_passed": 42,
+      "owner_group_failed": 1,
+      "owner_group_seconds": 23.47,
+      "failure": "Async child entry after Gemini reload; distinct source-class identity explanation not runtime-confirmed.",
+      "cancellation_failure_cause": "unproved",
+      "evidence": "/tmp/spark-upgrade-cancel-isolation-20261015/",
+      "next_diagnostic": "One read-only worker-traced nonserial -n 4 run, 900-second process-group limit; authorized while correctness repair runs. No performance claims."
+    }
+  },
+  "panel_ownership_source_review": {
+    "status": "changes_required",
+    "candidate_base": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
+    "frozen_source_files": 13,
+    "hashes_verified": true,
+    "frontend_passed": 444,
+    "frontend_files": 77,
+    "type_exit": 0,
+    "lint_errors": 0,
+    "lint_warnings": 0,
+    "confirmed_source_findings": 1,
+    "finding": "Delayed approval/action completion refreshes turn surfaces without checking live owner and backend/profile/credential scope before API reads. Existing continuation, incomplete fence; runtime reproduction pending.",
+    "retention_captures_started": false,
+    "protocol_version": 2,
+    "protocol_manifest_sha256": "015955716ed4728df31c2826411ed6171bc46813748b88147afe39dd0df23b8d",
+    "protocol_input_hashes_verified": 29,
+    "source_acceptance": "open",
+    "inspector_aggregate": "Historical exit 1 on unproved HTTP 304 cache revalidation; not a passing aggregate."
   }
 }
