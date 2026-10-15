@@ -487,3 +487,18 @@ def test_known_spawn_failure_limit_remains_blocked_with_closed_run():
     assert kb.get_task(tid)["status"] == "blocked"
     assert kb.get_task_detail(tid)["runs"][0]["outcome"] == "spawn_failed"
     assert [event["kind"] for event in kb.append_events_since()][-2:] == ["spawn_failed", "gave_up"]
+
+
+def test_worker_provider_arguments_bind_to_real_agent_interface():
+    import inspect
+
+    from core.run_agent import AIAgent
+    from spark_cli.kanban_worker import _agent_runtime_kwargs
+
+    runtime = {"provider": "acp", "command": "fixture-harness", "args": ["--stdio"],
+               "api_key": "fixture", "ignored_provider_metadata": "not-a-constructor-argument"}
+    kwargs = _agent_runtime_kwargs(runtime)
+    # Validate against the actual consumer instead of a permissive fake's **kwargs.
+    bound = inspect.signature(AIAgent).bind_partial(**kwargs)
+    assert bound.arguments["acp_command"] == "fixture-harness"
+    assert bound.arguments["acp_args"] == ["--stdio"]

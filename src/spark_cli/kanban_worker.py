@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import threading
@@ -12,6 +13,19 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+
+
+def _agent_runtime_kwargs(runtime: dict) -> dict:
+    kwargs = {
+        key: runtime[key]
+        for key in ("provider", "api_key", "base_url", "api_mode", "credential_pool")
+        if runtime.get(key) is not None
+    }
+    if runtime.get("command") is not None:
+        kwargs["acp_command"] = runtime["command"]
+    if runtime.get("args") is not None:
+        kwargs["acp_args"] = runtime["args"]
+    return kwargs
 
 
 def main() -> int:
@@ -139,19 +153,7 @@ def main() -> int:
                     "session_search",
                     "kanban",
                 ],
-                **{
-                    key: runtime[key]
-                    for key in (
-                        "provider",
-                        "api_key",
-                        "base_url",
-                        "api_mode",
-                        "credential_pool",
-                        "command",
-                        "args",
-                    )
-                    if runtime.get(key) is not None
-                },
+                **_agent_runtime_kwargs(runtime),
             )
             refs = {
                 key: value
@@ -257,6 +259,12 @@ def main() -> int:
     finally:
         stop.set()
         thread.join(timeout=5)
+        close = getattr(agent, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                logging.getLogger(__name__).exception("Worker resource cleanup failed")
 
 
 if __name__ == "__main__":

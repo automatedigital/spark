@@ -308,7 +308,7 @@ estimate.
 
 - [x] Map existing session/turn/subagent IDs; persist parent/root/attempt relationships and a versioned projection with stable pending-decision IDs.
 - [x] Select one lifecycle writer; atomically append durable events and update their projection. Publish only committed data.
-- [ ] Root terminal closes its Run; child/tool/plan terminal never does. Preserve independent child failure and waiting states.
+- [x] Root terminal closes its Run; child/tool/plan terminal never does. Preserve independent child failure and waiting states.
 - [x] Add deterministic migration from schema 12 fixtures, idempotent rerun and rollback guidance. Keep old sessions readable without replaying tools.
 
 **Acceptance:** real SQLite replay produces the same parent/child projection after
@@ -320,9 +320,9 @@ same child. Existing caching goldens and public imports remain unchanged.
 **Touch:** `web_server.py`, `runtime_provider.py`, model/provider routes; proposed
 receipt/service helpers and additive frontend API types owned through the lead.
 
-- [ ] Add durable request receipts for async dispatch, cancel and retry, with payload hash, accepted IDs and committed cursor.
-- [ ] Repeated accepted request returns its original result; changed payload with reused ID fails. Validate profile/thread authorization before lookup or mutation.
-- [ ] Expose versioned runtime capabilities including custom model/provider selections, unsupported reasons and stale/offline availability.
+- [x] Add durable request receipts for async dispatch, cancel and retry, with payload hash, accepted IDs and committed cursor.
+- [x] Repeated accepted request returns its original result; changed payload with reused ID fails. Validate profile/thread authorization before lookup or mutation.
+- [x] Expose versioned runtime capabilities including custom model/provider selections, unsupported reasons and stale/offline availability.
 - [x] Preserve current conversation endpoints and synchronous `delegate_task` contract. New mode is explicit and feature-gated for the compatibility release.
 
 **Acceptance:** duplicate HTTP/tool dispatch creates one app attempt; lost response
@@ -335,11 +335,11 @@ effect; receipt tests cover concurrent clients and restart.
 boundaries, narrow proposed execution/delivery service. Keep prompt-cache code out
 of scope except invariant tests.
 
-- [ ] Return a durable async handle and retain existing sync mode. Implement inspect/status and cooperative child cancellation with ownership validation.
-- [ ] Bound concurrent children and shared resources per profile; record model, provider, permissions, budget and target directory at dispatch.
+- [x] Return a durable async handle and retain existing sync mode. Implement inspect/status and cooperative child cancellation with ownership validation.
+- [x] Bound concurrent children and shared resources per profile; record model, provider, permissions, budget and target directory at dispatch.
 - [ ] Deliver stored child result at a safe subsequent parent boundary with a deduplicated delivery identity. Support parent idle, busy, disconnected and stopped states.
-- [ ] Reconcile startup after worker loss; never claim daemon-thread durability or blindly rerun uncertain work. Record heartbeat/progress separately from deadlines.
-- [ ] Keep child restrictions; define parent stop cascade, partial batch cancellation and terminal acknowledgement. Failed child cannot complete parent.
+- [x] Reconcile startup after worker loss; never claim daemon-thread durability or blindly rerun uncertain work. Record heartbeat/progress separately from deadlines.
+- [x] Keep child restrictions; define parent stop cascade, partial batch cancellation and terminal acknowledgement. Failed child cannot complete parent.
 
 **Acceptance:** two children complete in either order while the user switches chats;
 parent remains correct; stop one child leaves its sibling running; parent stop
@@ -351,10 +351,10 @@ Exercise CLI and web plus a gateway transport fixture with external sends disabl
 **Touch:** proposed `src/tools/subagent_worktree.py`, delegation integration owned
 by A, checkpoint manager interfaces and temporary-repository tests.
 
-- [ ] Record repository root/base commit/branch/path and requested isolation before spawn. Use `feat/subagent-<id>` style branches and profile-scoped metadata.
-- [ ] Start from committed content; expose that unsaved changes are absent. Validate paths and command arguments; preserve parent dirty files and existing worktrees.
-- [ ] Run setup in the child checkout with bounded failure reporting. Refuse unsupported local/remote/backend combinations before execution.
-- [ ] Retain worktrees with commits, dirty files or uncertain inspection. Explicit cleanup only after proof and no active worker; return diff/commit references for lead review.
+- [x] Record repository root/base commit/branch/path and requested isolation before spawn. Use `feat/subagent-<id>` style branches and profile-scoped metadata.
+- [x] Start from committed content; expose that unsaved changes are absent. Validate paths and command arguments; preserve parent dirty files and existing worktrees.
+- [x] Run setup in the child checkout with bounded failure reporting. Refuse unsupported local/remote/backend combinations before execution.
+- [x] Retain worktrees with commits, dirty files or uncertain inspection. Explicit cleanup only after proof and no active worker; return diff/commit references for lead review.
 
 **Acceptance:** parallel children edit the same filename without collisions; parent
 checkout stays unchanged; setup failure, cancel, crash and branch-name collision
@@ -365,11 +365,11 @@ are recoverable. No automatic merge or deletion of useful child work.
 **Touch:** `App.tsx`, `sessionStore.tsx`, `sidebarPrefs.ts`, sidebar components and
 row tests; backend metadata endpoints/migrations are coordinated with A/lead.
 
-- [ ] Extract project wizard/row actions from the large sidebar module where needed; preserve existing virtualization, paging and search.
-- [ ] Implement consistent row hierarchy/status and durable pin/manual order/settlement fields with versioned migration of eligible local preferences.
-- [ ] Manual ordering stays stable during stream updates. Server versions resolve concurrent metadata edits; Undo restores prior metadata without undoing newer run state.
+- [x] Extract project wizard/row actions from the large sidebar module where needed; preserve existing virtualization, paging and search.
+- [x] Implement consistent row hierarchy/status and durable pin/manual order/settlement fields with versioned migration of eligible local preferences.
+- [x] Manual ordering stays stable during stream updates. Server versions resolve concurrent metadata edits; Undo restores prior metadata without undoing newer run state.
 - [ ] New project chat appears inside an expanded folder; failed creation preserves the draft. Standalone/project/child identity remains distinct.
-- [ ] Add keyboard actions, selected-row focus retention, empty/error/loading states and search outside the first page.
+- [x] Add keyboard actions, selected-row focus retention, empty/error/loading states and search outside the first page.
 
 **Acceptance:** 1,000-session fixture with mixed projects/pins/settled rows remains
 usable; refresh and a second client agree; two profiles/backends do not leak local
@@ -408,10 +408,10 @@ cross-thread output.
 **Touch:** `kanban_db.py`, `kanban_dispatch.py`, `kanban_worker.py`, task APIs/tests;
 coordinate any session linkage schema with A.
 
-- [ ] Carry explicit board-owner profile, execution profile and claim/run token into workers. Resolve configuration/state deliberately instead of relying on inherited environment.
-- [ ] Fence heartbeat, completion and failure updates by claim token/attempt. Extend lease while owned; reject late writes from reclaimed workers.
-- [ ] Use recorded worker identity/liveness, not PID alone or elapsed TTL, to decide safe reclaim. Uncertain side effects require review rather than blind rerun.
-- [ ] Link task runs to conversation/child execution; require changed files, verification and limitations on completion. Auto-closed text-only results remain visibly unverified `user_review`.
+- [x] Carry explicit board-owner profile, execution profile and claim/run token into workers. Resolve configuration/state deliberately instead of relying on inherited environment.
+- [x] Fence heartbeat, completion and failure updates by claim token/attempt. Extend lease while owned; reject late writes from reclaimed workers.
+- [x] Use recorded worker identity/liveness, not PID alone or elapsed TTL, to decide safe reclaim. Uncertain side effects require review rather than blind rerun.
+- [x] Link task runs to conversation/child execution; require changed files, verification and limitations on completion. Auto-closed text-only results remain visibly unverified `user_review`.
 
 **Acceptance:** two dispatchers cannot own one task; a live long worker survives
 TTL; a stale worker cannot overwrite its replacement; assigned profiles use the
@@ -555,3 +555,13 @@ keep checkboxes above open until acceptance is demonstrated.
 - P04 helper `395f3336`: real Git isolation/retention tests pass; integration still pending.
 - Reproduced Kanban risk in a temporary home with controlled clock and a live PID: lease stayed at 110 after heartbeat at 105, and reclaim at 111 returned the live worker task to ready. Evidence `/tmp/spark-upgrade-20261015/kanban-risk.json`; P08 must fence/renew ownership.
 - Manual Playwright baseline opened and switched a synthetic project chat with no browser errors. Collaborative preview snapshot timed out twice; repository Playwright is the acceptance fallback. Local screenshots `/tmp/spark-upgrade-20261015/baseline-{preview,selected-chat}.png`. Wider P00 matrix remains with baseline agent.
+
+### Sidebar, isolation and worker milestone — 2026-10-15
+
+- Integrated sidebar `dff9d0df` and authoritative guard/router integration `6409bba`. Parent checks: **288 Python web tests**, **33 sidebar tests**, **405 Vitest tests**, frontend lint/types, and the production-wired 1,000-session acceptance flow all passed. The browser mounted 23 rows and requested page offset 50; order during fake streaming, second-client SSE, settlement/Undo conflicts, pending decisions, drafts/attachments, search, project expansion, keyboard focus and scroll recovery passed.
+- Integrated async runtime `a67d9ec3`, terminal-state safety `0afe3d2a`, compression control fix `bed0d010`; preserved additive schema 12→15 and opt-in `delegation.async_enabled: false`. **45** independent core/cache/lazy/manifest/runtime-route tests passed after regeneration. Process-local workers do not survive a process crash; lost workers become uncertain without automatic re-execution. Results currently wait for the next explicit parent turn; autonomous wake-up is not implemented, so P03 delivery acceptance stays open.
+- Delegation/worktree integration `0829497`: **105** tests passed across existing delegation, async execution and real Git isolation. Synchronous and async children used different worktrees and actual file operations against the same filename; parent unsaved content stayed intact. Setup timeout/collision/retention and cleanup tests passed.
+- Integrated worker ownership `0357b35a`: **52** independent Kanban DB, worker-process and gateway task tests passed. Lead corrected external-process provider argument mapping against the real AIAgent constructor and added worker resource cleanup. Old worker binaries must be stopped/restarted to gain fencing.
+- Clean-cache parent mypy passes **129 source files**. The baseline worktree recorded 2,706 imported-module errors under its distinct PYTHONPATH context; that observation is retained in its report, but is not the parent checkout's current type-check status. Full Ruff baseline debt remains separate from clean CI/touched-file gates.
+- Baseline report/evidence committed in `89616f95`: `docs/performance/app-upgrade-baseline-2026-10-15.{md,json}`. It records a preexisting long-history failure in 1 of 4 trials and obsolete canonical sidebar locators; P09 must retain/fix these gates.
+- Parallel follow-ups now own P06/P07 inspector/recovery and P09 transport replay; P00/P03/P05 full acceptance, final browser/performance comparisons, rollout and installed packages remain open. No release or deployment performed.
