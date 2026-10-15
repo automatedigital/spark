@@ -25,6 +25,7 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from typing import Any
 
 from agent import subagents as subagent_lifecycle
@@ -1025,6 +1026,7 @@ def delegate_task(
             futures = {}
             for i, t, child, lifecycle_run in children:
                 future = executor.submit(
+                    copy_context().run,
                     _run_single_child,
                     task_index=i,
                     goal=t["goal"],

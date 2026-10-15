@@ -52,6 +52,11 @@ async def gateway(monkeypatch, tmp_path):
         "auxiliary": {"title_generation": runtime},
     }
     (home / "config.yaml").write_text(yaml.safe_dump(config))
+    # CLI tests can import this process-global config during collection, before
+    # this isolated profile exists. Bind the synthetic runtime config too: the
+    # real delegate loader prefers CLI_CONFIG over config.yaml when populated.
+    import core.cli as cli
+    monkeypatch.setattr(cli, "CLI_CONFIG", config)
     for name, value in {
         "TELEGRAM_HOME_CHANNEL": "fixture-parent",
         "TELEGRAM_ALLOWED_USERS": "fixture-owner", "TELEGRAM_ALLOW_ALL_USERS": "false",

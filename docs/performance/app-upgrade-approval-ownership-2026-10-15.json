@@ -1,0 +1,134 @@
+{
+  "schema": "spark.approval-ownership-evidence.v1",
+  "date": "2026-10-15",
+  "packets": [
+    "P03",
+    "P09"
+  ],
+  "base_commit": "3097f32b",
+  "root_window_clear_utc": "18:57",
+  "validation_status": "focused_and_neighbor_validation_complete_root_acceptance_pending",
+  "environment": {
+    "venv": "/Users/joe/Developer/github/spark/.venv",
+    "pythonpath": "$PWD/src",
+    "spark_home": "Fresh mktemp directory before collection; tests also isolate each profile",
+    "integration": false,
+    "pytest_workers": 0,
+    "performance_claim": false
+  },
+  "independent_before": {
+    "test": "/tmp/spark-gateway-ownership-review/test_approval_overlap.py",
+    "output": "/tmp/spark-gateway-ownership-review/repro-output.txt",
+    "result": "1 passed in 11.21s; assertions establish the bug",
+    "production_modified": false,
+    "replacement_after_old_exit": {
+      "callback_present": false,
+      "blocking_approval": false,
+      "approved": false,
+      "message": "BLOCKED: Command denied by user. Do NOT retry this command."
+    }
+  },
+  "checks": [
+    {
+      "id": "initial_ownership",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "18 passed in 44.13s",
+      "phase": "interim source, superseded by lifetime repair"
+    },
+    {
+      "id": "parent_review_regression",
+      "command": "PYTHONPATH=$PWD/src python -m pytest 'tests/gateway/test_approval_ownership.py::test_async_child_guard_after_normal_parent_completion[normal]' -q -n 0 -m 'not integration' --tb=short",
+      "result": "1 failed in 7.25s",
+      "reason": "Confirmed interim repair cancelled safe async-child guards after normal parent completion"
+    },
+    {
+      "id": "lifetime_repair",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "24 passed in 64.82s"
+    },
+    {
+      "id": "initial_mixed_neighbors",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval.py tests/tools/test_command_guards.py tests/tools/test_yolo_mode.py tests/tools/test_delegate.py tests/tools/test_delegate_toolset_scope.py tests/tools/test_code_execution.py tests/cli/test_cli_approval_ui.py tests/gateway/test_approve_deny_commands.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_stop_ownership.py tests/gateway/test_session_race_guard.py tests/gateway/test_async_delegation_delivery.py tests/gateway/test_agent_cache.py tests/gateway/test_restart_drain.py tests/gateway/test_session_reset_notify.py tests/gateway/test_transcript_offset.py tests/gateway/test_gateway_inactivity_timeout.py tests/gateway/test_flush_memory_stale_guard.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "9 failed, 459 passed in 307.53s",
+      "reason": "CLI collection populated CLI_CONFIG with defaults; real delegate loader returned Async execution is disabled"
+    },
+    {
+      "id": "baseline_order_reproduction",
+      "setup": "baseline_dir=$(mktemp -d /tmp/spark-approval-base.XXXXXX)\ngit archive 3097f32b src | tar -x -C \"$baseline_dir\"\nvalidation_home=$(mktemp -d /tmp/spark-approval-base-home.XXXXXX)",
+      "command": "SPARK_HOME=\"$validation_home\" PYTHONPATH=\"$baseline_dir/src\" python -m pytest tests/cli/test_cli_approval_ui.py 'tests/gateway/test_async_delegation_delivery.py::test_gateway_busy_chat_switch_idle_then_explicit_delivery_once[order0]' -q -n 0 -m 'not integration' --tb=short --durations=3",
+      "result": "1 failed, 5 passed in 11.44s",
+      "production_source": "archived unchanged 3097f32b"
+    },
+    {
+      "id": "mixed_fixture_repair",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/cli/test_cli_approval_ui.py 'tests/gateway/test_async_delegation_delivery.py::test_gateway_busy_chat_switch_idle_then_explicit_delivery_once[order0]' tests/gateway/test_approval_ownership.py::test_async_child_guard_after_normal_parent_completion -q -n 0 -m 'not integration' --tb=short --durations=5",
+      "result": "9 passed in 44.75s"
+    },
+    {
+      "id": "tools_cli_platform_neighbors",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval.py tests/tools/test_command_guards.py tests/tools/test_yolo_mode.py tests/tools/test_delegate.py tests/tools/test_delegate_toolset_scope.py tests/tools/test_code_execution.py tests/cli/test_cli_approval_ui.py tests/gateway/test_approve_deny_commands.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_slack_approval_buttons.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "376 passed in 132.78s",
+      "phase": "lifetime repair, before final session-only binding compatibility adjustment"
+    },
+    {
+      "id": "gateway_runtime_neighbors",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_stop_ownership.py tests/gateway/test_async_delegation_delivery.py tests/gateway/test_agent_cache.py tests/gateway/test_session_race_guard.py tests/gateway/test_restart_drain.py tests/gateway/test_session_reset_notify.py tests/gateway/test_transcript_offset.py tests/gateway/test_gateway_inactivity_timeout.py tests/gateway/test_flush_memory_stale_guard.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "92 passed in 213.01s",
+      "phase": "lifetime repair, before final session-only binding compatibility adjustment"
+    },
+    {
+      "id": "focused_web",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/spark_cli/test_web_server_events.py -k 'approval or requested_input' -q -n 0 -m 'not integration' --tb=short --durations=5",
+      "result": "6 passed, 105 deselected in 3.00s"
+    },
+    {
+      "id": "final_approval_web",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py tests/tools/test_approval.py tests/tools/test_command_guards.py tests/tools/test_yolo_mode.py tests/gateway/test_approve_deny_commands.py tests/spark_cli/test_web_server_events.py -k 'not requested_input or requested_input' -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "selection_note": "The -k expression is a tautology and selected every test in the listed files",
+      "result": "312 passed in 113.35s; includes all 25 new ownership/lifetime/compatibility cases"
+    },
+    {
+      "id": "tests_lint",
+      "command": "ruff check tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py tests/gateway/test_async_delegation_delivery.py",
+      "result": "All checks passed!"
+    },
+    {
+      "id": "ci_selected_source_lint",
+      "command": "ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+      "result": "All checks passed!"
+    },
+    {
+      "id": "manifest",
+      "command": "PYTHONPATH=$PWD/src python scripts/generate_tool_manifest.py --check",
+      "result": "Tool manifest valid: 70 tools across 28 isolated modules; 4 optional guards"
+    },
+    {
+      "id": "full_source_lint",
+      "command": "ruff check src/ --output-format concise",
+      "result": "exit 1; 299 baseline violations; 15 in touched source"
+    },
+    {
+      "id": "baseline_gateway_lint",
+      "command": "git show 3097f32b:src/gateway/run.py | ruff check --stdin-filename src/gateway/run.py - --output-format concise",
+      "result": "exit 1; 14 baseline E402/E702 violations match touched gateway source"
+    },
+    {
+      "id": "baseline_delegate_lint",
+      "command": "git show 3097f32b:src/tools/delegate_tool.py | ruff check --stdin-filename src/tools/delegate_tool.py - --output-format concise",
+      "result": "exit 1; one baseline E402 violation matches touched delegate source"
+    },
+    {
+      "id": "whitespace",
+      "command": "git diff --check",
+      "result": "exit 0"
+    }
+  ],
+  "limits": [
+    "No dangerous command executed; safe pwd guards have no shell effect",
+    "Local RPC regression runs harmless Python with synthetic dispatch to real guard",
+    "No live messaging network/authentication or remote sandbox",
+    "No Node, browser, build, install, push, PR or release command",
+    "Root owns canonical mypy, CI, full suite and P03/P09 acceptance",
+    "Already-running hooks and callback sends remain cooperative"
+  ]
+}

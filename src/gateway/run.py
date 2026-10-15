@@ -2582,11 +2582,15 @@ class GatewayRunner:
         )
 
     def _cancel_session_claim(self, session_key: str):
+        from tools.approval import unregister_gateway_notify
+
+        # Explicit user Stop cancels the session's current approval owner now,
+        # including when a worker is still blocked in an extension hook.
         claim = getattr(self, "_session_claims", {}).pop(session_key, None)
         if claim is not None:
             claim.cancelled.set()
-            return claim.agent
-        return None
+        unregister_gateway_notify(session_key)
+        return claim.agent if claim is not None else None
 
     async def _handle_message(self, event: MessageEvent) -> str | None:
         """
@@ -8995,14 +8999,19 @@ class GatewayRunner:
                 message = _msn + "\n\n" + message
 
             _approval_session_key = session_key or ""
-            _approval_session_token = set_current_session_key(_approval_session_key)
-            register_gateway_notify(_approval_session_key, _approval_notify_sync)
+            if not self._owns_session_claim(session_key, claim):
+                return {"final_response": "", "messages": []}
+            _approval_owner = register_gateway_notify(
+                _approval_session_key, _approval_notify_sync,
+                cancelled=claim.cancelled if claim is not None else None,
+            )
+            _approval_session_token = set_current_session_key(_approval_session_key, owner=_approval_owner)
             try:
                 if not self._owns_session_claim(session_key, claim):
                     return {"final_response": "", "messages": []}
                 result = agent.run_conversation(message, conversation_history=agent_history, task_id=session_id)
             finally:
-                unregister_gateway_notify(_approval_session_key)
+                unregister_gateway_notify(_approval_session_key, _approval_owner)
                 reset_current_session_key(_approval_session_token)
             result_holder[0] = result
 

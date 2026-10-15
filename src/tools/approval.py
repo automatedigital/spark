@@ -15,6 +15,7 @@ import re
 import sys
 import threading
 import unicodedata
+import weakref
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +23,23 @@ logger = logging.getLogger(__name__)
 # Gateway runs agent turns concurrently in executor threads, so reading a
 # process-global env var for session identity is racy. Keep env fallback for
 # legacy single-threaded callers, but prefer the context-local value when set.
-_approval_session_key: contextvars.ContextVar[str] = contextvars.ContextVar(
+_approval_session_key: contextvars.ContextVar[tuple[str, object | None]] = contextvars.ContextVar(
     "approval_session_key",
-    default="",
+    default=("", None),
 )
 
 
-def set_current_session_key(session_key: str) -> contextvars.Token[str]:
-    """Bind the active approval session key to the current context."""
-    return _approval_session_key.set(session_key or "")
+def set_current_session_key(session_key: str, *, owner=None) -> contextvars.Token:
+    """Bind session identity and, optionally, an explicit registration owner.
+
+    Gateway workers pass the token returned by registration. Copied contexts
+    retain it after Stop/replacement. Existing one-argument CLI/web callers keep
+    their session-only behavior, including their whole-session cleanup APIs.
+    """
+    return _approval_session_key.set((session_key or "", owner))
 
 
-def reset_current_session_key(token: contextvars.Token[str]) -> None:
+def reset_current_session_key(token: contextvars.Token) -> None:
     """Restore the prior approval session key context."""
     _approval_session_key.reset(token)
 
@@ -46,7 +52,7 @@ def get_current_session_key(default: str = "default") -> str:
     2. session_context contextvars (set by _set_session_env)
     3. os.environ fallback (CLI, cron, tests)
     """
-    session_key = _approval_session_key.get()
+    session_key, _owner = _approval_session_key.get()
     if session_key:
         return session_key
     from gateway.session_context import get_session_env
@@ -198,6 +204,7 @@ def detect_dangerous_command(command: str) -> tuple:
 
 _lock = threading.Lock()
 _pending: dict[str, dict] = {}
+_pending_owners: dict[str, object] = {}
 _session_approved: dict[str, set] = {}
 _session_yolo: set[str] = set()
 _permanent_approved: set = set()
@@ -213,41 +220,106 @@ _permanent_approved: set = set()
 
 class _ApprovalEntry:
     """One pending dangerous-command approval inside a gateway session."""
-    __slots__ = ("event", "data", "result")
+    __slots__ = ("event", "data", "result", "owner")
 
-    def __init__(self, data: dict):
+    def __init__(self, data: dict, owner=None):
         self.event = threading.Event()
         self.data = data          # command, description, pattern_keys, …
         self.result: str | None = None  # "once"|"session"|"always"|"deny"
+        self.owner = owner
+
+
+class _GatewayApprovalOwner:
+    """Execution authorization can outlive its parent's notification callback."""
+    __slots__ = ("cancelled", "__weakref__")
+
+    def __init__(self):
+        self.cancelled = False
 
 
 _gateway_queues: dict[str, list] = {}        # session_key → [_ApprovalEntry, …]
 _gateway_notify_cbs: dict[str, object] = {}  # session_key → callable(approval_data)
+_gateway_owners: dict[str, object] = {}      # session_key → registration token
+# Background child contexts keep their owner alive after normal parent return.
+# This index does not retain completed sessions; Stop/replacement can still find
+# and revoke an owner while any of its copied execution contexts remain live.
+_gateway_lifetimes: weakref.WeakValueDictionary[str, _GatewayApprovalOwner] = weakref.WeakValueDictionary()
 
 
-def register_gateway_notify(session_key: str, cb) -> None:
+def register_gateway_notify(session_key: str, cb, *, cancelled=None) -> object:
     """Register a per-session callback for sending approval requests to the user.
 
     The callback signature is ``cb(approval_data: dict) -> None`` where
     *approval_data* contains ``command``, ``description``, and
     ``pattern_keys``.  The callback bridges sync→async (runs in the agent
     thread, must schedule the actual send on the event loop).
+    Returns an opaque owner token for conditional cleanup. Replacing a callback
+    cancels the previous registration's waiters before publishing the new owner.
     """
     with _lock:
+        owner = _GatewayApprovalOwner()
+        # Stop can win between the runner's ownership check and registration.
+        # Return a retired token so even that worker's late tool calls fail closed.
+        if cancelled is not None and cancelled.is_set():
+            owner.cancelled = True
+            return owner
+        previous = _gateway_lifetimes.get(session_key)
+        if previous is not None:
+            previous.cancelled = True
+        _cancel_gateway_waiters_locked(session_key)
+        _gateway_lifetimes[session_key] = owner
+        _gateway_owners[session_key] = owner
         _gateway_notify_cbs[session_key] = cb
+        return owner
 
 
-def unregister_gateway_notify(session_key: str) -> None:
+def unregister_gateway_notify(session_key: str, owner=None) -> None:
     """Unregister the per-session gateway approval callback.
 
-    Signals ALL blocked threads for this session so they don't hang forever
-    (e.g. when the agent run finishes or is interrupted).
+    An owner token limits cleanup to that registration. Omitting it preserves
+    intentional whole-session cancellation for Stop and legacy callers.
     """
     with _lock:
-        _gateway_notify_cbs.pop(session_key, None)
-        entries = _gateway_queues.pop(session_key, [])
-        for entry in entries:
+        if owner is None:
+            previous = _gateway_lifetimes.pop(session_key, None)
+            if previous is not None:
+                previous.cancelled = True
+        if owner is None or _gateway_owners.get(session_key) is owner:
+            _gateway_notify_cbs.pop(session_key, None)
+            _gateway_owners.pop(session_key, None)
+        _cancel_gateway_waiters_locked(session_key, owner)
+
+
+def _cancel_gateway_waiters_locked(session_key: str, owner=None) -> None:
+    if owner is None or _pending_owners.get(session_key) is owner:
+        _pending.pop(session_key, None)
+        _pending_owners.pop(session_key, None)
+    queue = _gateway_queues.get(session_key, [])
+    for entry in list(queue):
+        if owner is None or entry.owner is owner:
+            queue.remove(entry)
             entry.event.set()
+    if not queue:
+        _gateway_queues.pop(session_key, None)
+
+
+def _stale_gateway_owner_locked(session_key: str) -> bool:
+    bound_key, owner = _approval_session_key.get()
+    return bound_key == session_key and owner is not None and (
+        not isinstance(owner, _GatewayApprovalOwner) or owner.cancelled
+    )
+
+
+def _cancelled_approval() -> dict:
+    return {"approved": False, "message": "BLOCKED: Approval request cancelled because its execution ended or was replaced. Do NOT retry."}
+
+
+def _current_approval_cancelled() -> bool:
+    session_key, owner = _approval_session_key.get()
+    if owner is None:
+        return False
+    with _lock:
+        return _stale_gateway_owner_locked(session_key)
 
 
 def resolve_gateway_approval(session_key: str, choice: str,
@@ -281,9 +353,11 @@ def resolve_gateway_approval(session_key: str, choice: str,
         if not queue:
             _gateway_queues.pop(session_key, None)
 
-    for entry in targets:
-        entry.result = choice
-        entry.event.set()
+        # Resolve under the same lock as replacement/unregister: a detached
+        # waiter cannot receive an approval after cancellation won ownership.
+        for entry in targets:
+            entry.result = choice
+            entry.event.set()
     return len(targets)
 
 
@@ -296,7 +370,16 @@ def has_blocking_approval(session_key: str) -> bool:
 def submit_pending(session_key: str, approval: dict):
     """Store a pending approval request for a session."""
     with _lock:
+        if _stale_gateway_owner_locked(session_key):
+            return
+        _key, owner = _approval_session_key.get()
+        if _key == session_key and owner is not None and session_key not in _gateway_notify_cbs:
+            return
         _pending[session_key] = approval
+        if _key == session_key and owner is not None:
+            _pending_owners[session_key] = owner
+        else:
+            _pending_owners.pop(session_key, None)
 
 
 def approve_session(session_key: str, pattern_key: str):
@@ -329,7 +412,12 @@ def clear_session(session_key: str) -> None:
         _session_approved.pop(session_key, None)
         _session_yolo.discard(session_key)
         _pending.pop(session_key, None)
-        _gateway_queues.pop(session_key, None)
+        previous = _gateway_lifetimes.pop(session_key, None)
+        if previous is not None:
+            previous.cancelled = True
+        _gateway_notify_cbs.pop(session_key, None)
+        _gateway_owners.pop(session_key, None)
+        _cancel_gateway_waiters_locked(session_key)
 
 
 def is_session_yolo_enabled(session_key: str) -> bool:
@@ -601,6 +689,8 @@ def check_dangerous_command(command: str, env_type: str,
     Returns:
         {"approved": True/False, "message": str or None, ...}
     """
+    if _current_approval_cancelled():
+        return _cancelled_approval()
     if env_type in ("docker", "singularity", "modal", "daytona"):
         return {"approved": True, "message": None}
 
@@ -702,6 +792,9 @@ def check_all_command_guards(command: str, env_type: str,
     a gateway force=True replay from bypassing one check when only the
     other was shown to the user.
     """
+    if _current_approval_cancelled():
+        return _cancelled_approval()
+
     # Skip containers for both checks
     if env_type in ("docker", "singularity", "modal", "daytona"):
         return {"approved": True, "message": None}
@@ -709,6 +802,8 @@ def check_all_command_guards(command: str, env_type: str,
     # --yolo or approvals.mode=off: bypass all approval prompts.
     # Gateway /yolo is session-scoped; CLI --yolo remains process-scoped.
     approval_mode = _get_approval_mode()
+    if _current_approval_cancelled():
+        return _cancelled_approval()
     if os.getenv("SPARK_YOLO_MODE") or is_current_session_yolo_enabled() or approval_mode == "off":
         return {"approved": True, "message": None}
 
@@ -737,6 +832,8 @@ def check_all_command_guards(command: str, env_type: str,
     is_dangerous, pattern_key, description = detect_dangerous_command(command)
 
     # --- Phase 2: Decide ---
+    if _current_approval_cancelled():
+        return _cancelled_approval()
 
     # Collect warnings that need approval
     warnings = []  # list of (pattern_key, description, is_tirith)
@@ -770,6 +867,8 @@ def check_all_command_guards(command: str, env_type: str,
     if approval_mode == "smart":
         combined_desc_for_llm = "; ".join(desc for _, desc, _ in warnings)
         verdict = _smart_approve(command, combined_desc_for_llm)
+        if _current_approval_cancelled():
+            return _cancelled_approval()
         if verdict == "approve":
             # Auto-approve and grant session-level approval for these patterns
             for key, _, _ in warnings:
@@ -802,24 +901,34 @@ def check_all_command_guards(command: str, env_type: str,
     # input() flow.  The agent never sees "approval_required"; it either
     # gets the command output (approved) or a definitive "BLOCKED" message.
     if is_gateway or is_ask:
-        notify_cb = None
+        approval_data = {
+            "command": command,
+            "pattern_key": primary_key,
+            "pattern_keys": all_keys,
+            "description": combined_desc,
+        }
         with _lock:
+            if _stale_gateway_owner_locked(session_key):
+                return _cancelled_approval()
             notify_cb = _gateway_notify_cbs.get(session_key)
+            bound_key, bound_owner = _approval_session_key.get()
+            if notify_cb is None and bound_key == session_key and bound_owner is not None:
+                return {
+                    "approved": False,
+                    "message": "BLOCKED: No active approval callback for this execution. Ask the user to start a new turn. Do NOT retry.",
+                }
+            # Capture callback AND enqueue atomically with register/unregister.
+            # Each entry belongs to the captured registration, never its successor.
+            entry = _ApprovalEntry(approval_data, _gateway_owners.get(session_key))
+            if notify_cb is not None:
+                _gateway_queues.setdefault(session_key, []).append(entry)
+            else:
+                _pending[session_key] = approval_data
 
         if notify_cb is not None:
             # --- Blocking gateway approval (queue-based) ---
             # Each call gets its own _ApprovalEntry so parallel subagents
             # and execute_code threads can block concurrently.
-            approval_data = {
-                "command": command,
-                "pattern_key": primary_key,
-                "pattern_keys": all_keys,
-                "description": combined_desc,
-            }
-            entry = _ApprovalEntry(approval_data)
-            with _lock:
-                _gateway_queues.setdefault(session_key, []).append(entry)
-
             # Notify the user (bridges sync agent thread → async gateway)
             try:
                 notify_cb(approval_data)
@@ -853,6 +962,10 @@ def check_all_command_guards(command: str, env_type: str,
                     queue.remove(entry)
                 if not queue:
                     _gateway_queues.pop(session_key, None)
+                stale = entry.owner is not None and _gateway_owners.get(session_key) is not entry.owner
+
+            if stale or (resolved and entry.result is None):
+                return _cancelled_approval()
 
             choice = entry.result
             if not resolved or choice is None or choice == "deny":
@@ -880,12 +993,6 @@ def check_all_command_guards(command: str, env_type: str,
 
         # Fallback: no gateway callback registered (e.g. cron, batch).
         # Return approval_required for backward compat.
-        submit_pending(session_key, {
-            "command": command,
-            "pattern_key": primary_key,
-            "pattern_keys": all_keys,
-            "description": combined_desc,
-        })
         return {
             "approved": False,
             "pattern_key": primary_key,

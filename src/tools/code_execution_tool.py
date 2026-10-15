@@ -43,6 +43,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextvars import copy_context
 from typing import Any
 
 _IS_WINDOWS = platform.system() == "Windows"
@@ -813,8 +814,9 @@ def _execute_remote(
 
         # Start RPC polling thread
         rpc_thread = threading.Thread(
-            target=_rpc_poll_loop,
+            target=copy_context().run,
             args=(
+                _rpc_poll_loop,
                 env, f"{sandbox_dir}/rpc", effective_task_id,
                 tool_call_log, tool_call_counter, max_tool_calls,
                 sandbox_tools, stop_event,
@@ -1012,8 +1014,9 @@ def execute_code(
         server_sock.listen(1)
 
         rpc_thread = threading.Thread(
-            target=_rpc_server_loop,
+            target=copy_context().run,
             args=(
+                _rpc_server_loop,
                 server_sock, task_id, tool_call_log,
                 tool_call_counter, max_tool_calls, sandbox_tools,
             ),
