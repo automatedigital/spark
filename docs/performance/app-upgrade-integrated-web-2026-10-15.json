@@ -46,8 +46,112 @@
   },
   "mode": "synthetic temporary SPARK_HOME; actual canonical bundle served by source Python backend",
   "limitations": [
-    "Inspector end-to-end integration pending",
+    "Task/worktree navigation pending; supplied references and result copy are implemented",
     "Controlled performance and gateway handler acceptance pending",
     "No installed macOS/Windows package, staging or production rollout evidence"
-  ]
+  ],
+  "served_production_inspector": {
+    "checks": [
+      "real runtime capability disables unsupported Stop with reason",
+      "three live chat switches retain selection/draft/attachment and detached scroll (1000.0 -> 1000.0px)",
+      "exact per-child capabilities permit the owned child beside an unsupported live sibling; transport receipts reuse Stop/Retry IDs after uncertain responses; Stop waits for real terminal SSE; retry retains earlier attempt",
+      "late Stop and Retry acknowledgements stay with their initiating child across chat switches",
+      "committed child result arriving during an older HTTP snapshot survives reconciliation; child failure leaves parent streaming",
+      "cursor event pages append and older message pages prepend without losing existing history; actual worktree refs render",
+      "real completed snapshot renders result, child transcript and app-owned parent/root/attempt references; result copies",
+      "offline/reconnect keeps loaded event/message pages, child selection and parent draft without resubmission",
+      "390px daylight overlay fits, traps keyboard focus, Escape returns focus, reduced motion enabled",
+      "real backend restart changes epoch; selected child and draft survive, parent stops streaming within 5s, no prompt/control is replayed",
+      "project compose opens folder; failed creation preserves draft and attachment across chat switch and refresh"
+    ],
+    "page_errors": [],
+    "asset_responses": [
+      {
+        "url": "index-B8JIJF7v.css",
+        "status": 200
+      },
+      {
+        "url": "vendor-react-Dc-lrgX9.js",
+        "status": 200
+      },
+      {
+        "url": "index-BGQqgJBk.js",
+        "status": 200
+      },
+      {
+        "url": "index-BGQqgJBk.js",
+        "status": 200
+      },
+      {
+        "url": "vendor-react-Dc-lrgX9.js",
+        "status": 200
+      },
+      {
+        "url": "index-B8JIJF7v.css",
+        "status": 200
+      },
+      {
+        "url": "index-BGQqgJBk.js",
+        "status": 200
+      },
+      {
+        "url": "vendor-react-Dc-lrgX9.js",
+        "status": 200
+      },
+      {
+        "url": "index-B8JIJF7v.css",
+        "status": 200
+      },
+      {
+        "url": "index-B8JIJF7v.css",
+        "status": 200
+      },
+      {
+        "url": "vendor-react-Dc-lrgX9.js",
+        "status": 200
+      },
+      {
+        "url": "index-BGQqgJBk.js",
+        "status": 200
+      },
+      {
+        "url": "index-B8JIJF7v.css",
+        "status": 200
+      },
+      {
+        "url": "vendor-react-Dc-lrgX9.js",
+        "status": 200
+      },
+      {
+        "url": "index-BGQqgJBk.js",
+        "status": 200
+      },
+      {
+        "url": "index-B8JIJF7v.css",
+        "status": 200
+      },
+      {
+        "url": "vendor-react-Dc-lrgX9.js",
+        "status": 200
+      },
+      {
+        "url": "index-BGQqgJBk.js",
+        "status": 200
+      },
+      {
+        "url": "index-B8JIJF7v.css",
+        "status": 200
+      },
+      {
+        "url": "vendor-react-Dc-lrgX9.js",
+        "status": 200
+      },
+      {
+        "url": "index-BGQqgJBk.js",
+        "status": 200
+      }
+    ],
+    "built_web": true,
+    "driver_origin": "app agent worktree; imported with root ROOT/WEB, root runtime PYTHONPATH and canonical SPARK_E2E_ASSET_DIR"
+  }
 }

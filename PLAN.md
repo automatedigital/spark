@@ -368,7 +368,7 @@ row tests; backend metadata endpoints/migrations are coordinated with A/lead.
 - [x] Extract project wizard/row actions from the large sidebar module where needed; preserve existing virtualization, paging and search.
 - [x] Implement consistent row hierarchy/status and durable pin/manual order/settlement fields with versioned migration of eligible local preferences.
 - [x] Manual ordering stays stable during stream updates. Server versions resolve concurrent metadata edits; Undo restores prior metadata without undoing newer run state.
-- [ ] New project chat appears inside an expanded folder; failed creation preserves the draft. Standalone/project/child identity remains distinct.
+- [x] New project chat appears inside an expanded folder; failed creation preserves the draft. Standalone/project/child identity remains distinct.
 - [x] Add keyboard actions, selected-row focus retention, empty/error/loading states and search outside the first page.
 
 **Acceptance:** 1,000-session fixture with mixed projects/pins/settled rows remains
@@ -380,9 +380,9 @@ state. Unresolved decisions cannot disappear through settle.
 **Touch:** `ChatPage.tsx`, `SubagentsPanel.tsx`, `useSubagents.ts`, `lib/subagents.ts`,
 `apiTypes.ts`, `api_session.ts`, existing project/right-panel components.
 
-- [ ] Render parent/root and child attempts from authoritative snapshots/events with stable selection and bounded transcript paging.
+- [x] Render parent/root and child attempts from authoritative snapshots/events with stable selection and bounded transcript paging.
 - [ ] Add capability-gated inspect/Stop/Retry, result-copy and task/worktree navigation; show cancel-requested until terminal confirmation.
-- [ ] Keep main conversation visible, distinguish child failure from parent failure, and preserve input/attachments/scroll across detail navigation.
+- [x] Keep main conversation visible, distinguish child failure from parent failure, and preserve input/attachments/scroll across detail navigation.
 
 **Acceptance:** open child detail during a three-chat run; switch/reconnect/back;
 child selection and parent draft remain correct; stale cancel/retry responses do
@@ -394,9 +394,9 @@ useful reason.
 **Touch:** existing chat controllers, event bus, draft/recovery stores, sidebar and
 right-panel layout; avoid replacing the frontend state architecture.
 
-- [ ] Reconcile snapshot and live events using their declared cursors; cancel stale loads; expired journal/server epoch forces authoritative refresh.
-- [ ] Namespace retained local UI state by backend/profile. Preserve drafts/attachments on uncertain submission; never automatically resend a prompt.
-- [ ] Verify narrow overlays, keyboard/focus return, reduced motion, screen-reader labels, long titles/content and both themes.
+- [x] Reconcile snapshot and live events using their declared cursors; cancel stale loads; expired journal/server epoch forces authoritative refresh.
+- [x] Namespace retained local UI state by backend/profile. Preserve drafts/attachments on uncertain submission; never automatically resend a prompt.
+- [x] Verify narrow overlays, keyboard/focus return, reduced motion, screen-reader labels, long titles/content and both themes.
 
 **Acceptance:** refresh during tool/approval, stop while disconnected, reconnect
 after restart, and switching across three live chats converge within five seconds
@@ -518,7 +518,7 @@ keep checkboxes above open until acceptance is demonstrated.
 | --- | --- | --- | --- | --- | --- | --- |
 | P00 | Lead + baseline agent | Baseline recorded; final gates open | `73c5032`, `89616f95` | Baseline tests and risk reproductions recorded | Repeated browser samples recorded | External gateway timing and remaining create flow pending |
 | P01–P04 | Runtime agent + lead | P01/P02/P04 verified; P03 acceptance open | See checkpoints | 45 core/cache tests; 105 delegation/isolation tests | Inspector integration in progress | Completion waits for explicit parent turn; browser acceptance pending |
-| P05–P07 | App agent | P05 integrated; P06/P07 in progress | `dff9d0df`, `6409bba` | 405 frontend; 288 web; 33 sidebar tests pass | 1,000-session flow passes | Failed create, responsive themes and inspector acceptance pending |
+| P05–P07 | App agent + lead | P05/P07 verified; P06 navigation pending | `5311eab`, `061898b` and sidebar checkpoints | 426 frontend; 114 recent web/history; 33 sidebar tests pass | 1,000-session flow and 11 integrated production inspector checks pass | Task/worktree navigation remains open; references/copy are implemented |
 | P08–P09 | Reliability / lead | P08 verified; P09 in progress | `0357b35a`, `1805f6b`, `a7281b8` | 12,404 local tests pass; 52 worker/task tests pass | Replay and browser/CI agents running | Final performance and failure matrix pending; external services excluded |
 | P10 | Lead | Synthetic backup/migration checks pass; rollout pending | See checkpoints | 78 backup/lifecycle tests; mypy 129 pass | No package/release produced | Installed platforms and staging still pending |
 | E01–E05 | Unassigned | Backlog | — | — | — | Outside five-day core |
@@ -612,3 +612,11 @@ keep checkboxes above open until acceptance is demonstrated.
 - Integrated inspector source `5311eab` (agent `5b2c478`), preserving both chat-position restoration and the repaired virtualizer measurement owner during conflict resolution. Exact child capabilities, persistent request IDs, cursor history accumulation, worktree references and responsive focus handling are present; final inspector browser contribution is pending integration.
 - Root frontend lint/TypeScript/**426 tests pass**. Canonical `npm run build` passes, **239.53 KiB gzip / 600 KiB budget**. The actual Python-served canonical bundle passes **all 9** recovery checks: draft switch/refresh, failed send, late acknowledgement, concurrent tab conflict, thread/profile isolation, uploaded/missing/failed attachments. Daylight 390px and final screenshots inspected. Logs/screenshots: `/tmp/spark-upgrade-20261015/recovery-built-integrated/`.
 - Source/manifest/entry hashes and exact limits recorded in `docs/performance/app-upgrade-integrated-web-2026-10-15.json`. This is a web candidate, not installed-package or rollout evidence. Gateway and controlled performance agents continue in separate worktrees; no publishing performed.
+
+### Production inspector acceptance — 2026-10-15
+
+- Parent ran the inspector agent's final browser driver against root runtime source and the actual canonical bundle: **all 11 checks passed**, exit 0. A detached viewport was established and retained at **1,000→1,000 px**; a zero-to-zero scroll comparison was explicitly rejected by the fixture.
+- Covered exact child capabilities beside an unsupported live sibling, persistent Stop/Retry IDs after uncertain responses, late acknowledgements across chat switches, terminal confirmation, snapshot/live race, cursor page accumulation, real result copy and worktree references, reconnect, 390px focus trap/Escape/reduced motion, real backend epoch change with five-second convergence, and failed project creation preserving draft/attachment across switch/refresh. Mobile daylight and desktop dark screenshots inspected.
+- Reports/screenshots: `/tmp/spark-upgrade-20261015/inspector-built-integrated/`; driver from the app agent's worktree pending its browser-test commit. Subprocess `PYTHONPATH` selected root runtime; `SPARK_E2E_ASSET_DIR` selected root canonical assets. Synthetic child transport/control fixtures remain distinct from the real SDK/backend route tests.
+- P05/P07 implementation acceptance is verified. P06's Stop/Retry/copy/reference work passes, but its combined navigation checkbox stays open: displaying supplied references does not establish task/worktree navigation. Controlled performance and actual gateway delivery remain assigned.
+- Accepted and closed implementation issues **#131 P01**, **#132 P02**, **#134 P04**, **#138 P08** with checked issue bodies and parent evidence. This does not close release acceptance in P09/P10.
