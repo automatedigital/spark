@@ -4,9 +4,28 @@ from __future__ import annotations
 
 import json
 import os
+from functools import wraps
 from typing import Any
 
 from tools.registry import registry
+
+
+def _worker_tool(handler):
+    @wraps(handler)
+    def owned(*args, **kwargs):
+        from core import kanban_db as kb
+
+        try:
+            run_id = int(os.getenv("SPARK_KANBAN_RUN_ID", "0"))
+            with kb.worker_claim(
+                os.getenv("SPARK_KANBAN_TASK", ""),
+                os.getenv("SPARK_KANBAN_CLAIM_TOKEN", ""), run_id,
+            ):
+                return handler(*args, **kwargs)
+        except (kb.WorkerClaimError, ValueError) as error:
+            return json.dumps({"ok": False, "error": str(error)})
+
+    return owned
 
 
 def _session_context_metadata() -> dict[str, Any]:
@@ -53,6 +72,9 @@ def _session_context_metadata() -> dict[str, Any]:
 
 def _kanban_config() -> dict[str, Any]:
     try:
+        if os.getenv("SPARK_KANBAN_BOARD_POLICY"):
+            policy = json.loads(os.environ["SPARK_KANBAN_BOARD_POLICY"])
+            return policy if isinstance(policy, dict) else {}
         from spark_cli.config import load_config
 
         cfg = load_config().get("kanban", {})
@@ -72,6 +94,7 @@ def _kanban_available() -> bool:
     return bool(os.getenv("SPARK_KANBAN_TASK"))
 
 
+@_worker_tool
 def kanban_show(task_id: str | None = None, **kw: Any) -> str:
     from core import kanban_db as kb
 
@@ -84,6 +107,7 @@ def kanban_show(task_id: str | None = None, **kw: Any) -> str:
     return json.dumps({"ok": True, "task": detail}, default=str)
 
 
+@_worker_tool
 def kanban_heartbeat(note: str = "", **kw: Any) -> str:
     from core import kanban_db as kb
 
@@ -94,6 +118,7 @@ def kanban_heartbeat(note: str = "", **kw: Any) -> str:
     return json.dumps({"ok": True})
 
 
+@_worker_tool
 def kanban_complete(
     summary: str = "",
     metadata: dict[str, Any] | None = None,
@@ -108,7 +133,10 @@ def kanban_complete(
     row = kb.complete_task(
         tid,
         summary=summary,
-        metadata=metadata or {},
+        metadata={
+            "changed_files": [], "verification": [], "limitations": [],
+            **(metadata or {}), "verified": False,
+        },
         result=result,
         actor=meta.get("user_name") or meta.get("user_id") or "worker",
         origin_session_key=meta.get("session_key"),
@@ -119,6 +147,7 @@ def kanban_complete(
     return json.dumps({"ok": True, "task": row}, default=str)
 
 
+@_worker_tool
 def kanban_block(reason: str, **kw: Any) -> str:
     from core import kanban_db as kb
 
@@ -138,6 +167,7 @@ def kanban_block(reason: str, **kw: Any) -> str:
     return json.dumps({"ok": True, "task": row}, default=str)
 
 
+@_worker_tool
 def kanban_comment(task_id: str, body: str, author: str = "worker", **kw: Any) -> str:
     from core import kanban_db as kb
 
@@ -153,6 +183,7 @@ def kanban_comment(task_id: str, body: str, author: str = "worker", **kw: Any) -
     return json.dumps({"ok": True, "comment_id": cid})
 
 
+@_worker_tool
 def kanban_create_tool(
     title: str,
     assignee: str,
@@ -175,7 +206,7 @@ def kanban_create_tool(
         tenant=tenant or None,
         priority=priority,
         parent_ids=parents or [],
-        owner_profile=assignee,
+        owner_profile=os.getenv("SPARK_KANBAN_OWNER_PROFILE") or assignee,
         owner_platform=meta.get("platform"),
         owner_channel=meta.get("chat_id"),
         owner_thread_id=meta.get("thread_id"),
@@ -187,6 +218,7 @@ def kanban_create_tool(
     return json.dumps({"ok": True, "task": row}, default=str)
 
 
+@_worker_tool
 def kanban_link_tool(parent_id: str, child_id: str, **kw: Any) -> str:
     from core import kanban_db as kb
 
