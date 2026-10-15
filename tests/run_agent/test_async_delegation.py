@@ -16,7 +16,12 @@ from tools.delegate_tool import delegate_task
 
 @pytest.fixture
 def replay_runtime(monkeypatch):
-    from tools import delegate_tool
+    from tools import delegate_tool, interrupt
+
+    # Some parents have never entered run_conversation, so interrupt() targets
+    # this test's thread. Keep real interrupt behavior inside the replay without
+    # leaving cancellation flags on the next test's local shell operations.
+    monkeypatch.setattr(interrupt, "_interrupted_threads", set())
 
     monkeypatch.setattr("core.run_agent.get_tool_definitions", lambda **kw: [])
     monkeypatch.setattr("core.run_agent.check_toolset_requirements", lambda: {})

@@ -9157,8 +9157,9 @@ class GatewayRunner:
                 # A timeout can release the async handler while this worker is
                 # still live. Release cache ownership only when it really exits.
                 agent = agent_holder[0]
-                if agent is not None:
-                    with self._agent_cache_lock:
+                cache_lock = getattr(self, "_agent_cache_lock", None)
+                if agent is not None and cache_lock is not None:
+                    with cache_lock:
                         if getattr(agent, "_gateway_worker_owner", None) is worker_owner:
                             agent._gateway_worker_owner = None
 
