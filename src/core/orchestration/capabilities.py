@@ -18,7 +18,8 @@ def owned_live_child(parent: Any, run: dict[str, Any]) -> Any:
     else:
         children = list(getattr(parent, "_active_children", []) or [])
     return next((child for child in children
-                 if child_sid and getattr(child, "session_id", None) == child_sid
+                 if ((child_sid and getattr(child, "session_id", None) == child_sid)
+                     or (run.get("id") and getattr(child, "_spark_subagent_id", None) == run["id"]))
                  and callable(getattr(child, "interrupt", None))), None)
 
 

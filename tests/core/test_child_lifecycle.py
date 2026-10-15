@@ -169,3 +169,14 @@ def test_interrupt_capability_requires_callable_on_owned_live_child():
     parent._active_children[0].interrupt = lambda message: None
     assert owned_live_child(parent, run) is parent._active_children[0]
     assert owned_live_child(parent, {**run, "status": "cancelled"}) is None
+
+
+def test_live_child_ownership_survives_its_session_compression():
+    from core.orchestration.capabilities import owned_live_child
+
+    child = SimpleNamespace(session_id="compressed-child", _spark_subagent_id="owned-run",
+                            interrupt=lambda message: None)
+    parent = SimpleNamespace(_active_children=[child])
+    run = {"id": "owned-run", "child_session_id": "original-child", "status": "running"}
+    assert owned_live_child(parent, run) is child
+    assert owned_live_child(parent, {**run, "id": "another-run"}) is None
