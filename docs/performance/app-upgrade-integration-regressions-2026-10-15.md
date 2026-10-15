@@ -12,6 +12,8 @@ cache. Acquisition already checks for that cache and lock, but the new worker
 finally block accessed `_agent_cache_lock` unconditionally, masking the turn's
 result or original error. Cleanup now uses the same optional-lock condition.
 Fully initialized cached runners retain lock-protected owner-identity cleanup.
+The unchanged real Stop/ownership suite also passes **5 tests / 36.62s** after
+the guard (`cache-cleanup-stop-ownership.txt`).
 
 The reasoning representative fails before the repair while the live-shell and
 CLI representatives pass (one failed, two passed / 6.37s). After repair:
