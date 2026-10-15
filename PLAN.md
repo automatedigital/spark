@@ -337,7 +337,7 @@ of scope except invariant tests.
 
 - [x] Return a durable async handle and retain existing sync mode. Implement inspect/status and cooperative child cancellation with ownership validation.
 - [x] Bound concurrent children and shared resources per profile; record model, provider, permissions, budget and target directory at dispatch.
-- [ ] Deliver stored child result at a safe subsequent parent boundary with a deduplicated delivery identity. Support parent idle, busy, disconnected and stopped states.
+- [x] Deliver stored child result at a safe subsequent parent boundary with a deduplicated delivery identity. Support parent idle, busy, disconnected and stopped states.
 - [x] Reconcile startup after worker loss; never claim daemon-thread durability or blindly rerun uncertain work. Record heartbeat/progress separately from deadlines.
 - [x] Keep child restrictions; define parent stop cascade, partial batch cancellation and terminal acknowledgement. Failed child cannot complete parent.
 
@@ -628,3 +628,10 @@ keep checkboxes above open until acceptance is demonstrated.
 - Agreed P06 navigation contract: `GET /api/conversations/{sid}/subagents/{id}/navigation` returns schema 1, supported task `{id, run_id, title, board_slug}` or reason, and supported worktree `{project_slug, path, branch}` or reason. Task association comes only from the active profile's recorded `task_runs.execution.session_id` across the authorized parent compression family; ambiguous associations are refused.
 - `POST` the same path plus `/worktree` accepts no path/body input. It revalidates conversation ownership, current-profile worktree metadata and the Git checkout, then idempotently links a stable `subagent-<id>-<hash>` local-folder project. Only a matching existing symlink is reusable; no copy/setup/merge/cleanup. UI refreshes projects before existing global navigation; session/profile/generation fences prevent stale responses from navigating another chat.
 - A new isolated navigation agent implements this remaining P06 item. Heavy validation is coordinated around the performance agent's controlled A/B window; current canonical inspector/recovery evidence remains valid for the already integrated source.
+
+### Gateway delivery and Stop milestone — 2026-10-15
+
+- `f7f03b4` fixes both reproduced gateway defects. Command Stop supplies no replacement user message, so it cannot create inference from a reason string; idle Stop resolves only the same session's cached parent with owned live children. Busy/pending paths also cover those children and clear stale tracking timestamps.
+- Actual gateway/adapter replay plus command/race/shutdown neighbors: **48 passed**, exit 0, 132.67s. Additional direct fallback and foreign-chat idle Stop checks: **2 passed**, exit 0, 11.79s. Both former gateway xfail markers are removed. CI Ruff and mypy (**131 source files**) pass after fixing the newly integrated browser fixture's import order/nullable lookup.
+- P03 delivery is now evidenced through actual authorized gateway inbound handling, disconnected/reconstructed runners, real process loss and explicit resume, in addition to CLI/web runtime replay. A safe subsequent parent boundary means the **next explicit authorized parent input**: child completion does not invent inference or an external send. This reconciles the earlier ledger's wake-up caveat with ADR0013 and the declared capability `next_explicit_parent_turn`; autonomous idle-parent wake-up remains unimplemented and is not claimed.
+- P03 overall acceptance remains open for a focused audit of Stop during preparation and late cleanup versus a replacement owner. Source inspection found unfenced paths; a new isolated agent must establish deterministic regressions before changing them. Controlled A/B performance captures are active; other agents are holding heavy validation until the sample window completes.

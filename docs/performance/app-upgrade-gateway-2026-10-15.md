@@ -120,3 +120,20 @@ switch UI, actual interactive CLI command entry, installed macOS/Windows behavio
 autonomous idle-parent wake-up, complete P03/P09 acceptance or the full root suite.
 Existing runtime replay checks exercise CLI/web runtime modes and real web
 callbacks; they are not browser proof.
+
+## Parent integration follow-up
+
+Integrated original contribution in `69878d48`. Parent fix `f7f03b4` removes
+replacement text from command-driven interruption and resolves idle background
+children only through their owning session's cached parent. Both strict xfail
+markers are removed. Actual gateway replay and command/race/shutdown neighbors:
+**48 passed**, exit 0, 132.67s. Added direct fallback-command and foreign-chat
+idle Stop assertions: **2 passed**, exit 0, 11.79s. CI Ruff and mypy (131 source
+files) pass. These are ordinary regressions rather than expected failures now.
+
+Delivery remains the next explicit authorized parent input, with no autonomous
+inference/send on completion. Parent has separately verified the integrated
+canonical browser bundle. P03 remains open for a fresh ownership audit of Stop
+during pre-agent preparation and late cleanup of a replaced session owner; source
+inspection alone is not yet a reproduced failure. Performance/platform/release
+gates remain separate.
