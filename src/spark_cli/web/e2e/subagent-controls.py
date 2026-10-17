@@ -8,6 +8,7 @@ SPARK_E2E_BUILT_WEB=1 verifies an independently built bundle served by Python.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -24,6 +25,45 @@ from playwright.async_api import async_playwright, expect
 WEB = Path(__file__).resolve().parents[1]
 ROOT = WEB.parents[2]
 REPORTS = Path(os.environ.get("SPARK_E2E_REPORTS", "/tmp/spark-p06-p07-browser"))
+
+
+async def capture_asset(response):
+    item = {"url": response.url, "status": response.status,
+            "etag": response.headers.get("etag"),
+            "if_none_match": (await response.request.all_headers()).get("if-none-match")}
+    if response.status == 200:
+        body = await response.body()
+        assert body, item
+        item.update(bytes=len(body), sha256=hashlib.sha256(body).hexdigest())
+    return item
+
+
+async def verify_assets(responses, request):
+    """Require bytes for 200s and prove conditional revalidation for 304s."""
+    evidence = []
+    for item in await asyncio.gather(*responses):
+        evidence.append(item)
+        assert item["status"] in (200, 304), item
+        if item["status"] == 304 or item["etag"]:
+            validator = item["etag"]
+            assert validator, item
+            if item["status"] == 304:
+                assert item["if_none_match"] == validator, item
+            fresh = await request.get(item["url"])
+            assert fresh.status == 200, item
+            body = await fresh.body()
+            assert fresh.headers.get("etag") == validator, item
+            conditional = await request.get(item["url"], headers={"If-None-Match": validator})
+            assert conditional.status == 304 and await conditional.body() == b"", item
+            assert conditional.headers.get("etag") == validator, item
+            item["revalidation"] = {"etag": validator, "fresh_status": fresh.status,
+                                    "conditional_status": conditional.status}
+            assert body, item
+            digest = hashlib.sha256(body).hexdigest()
+            original = item if item["status"] == 200 else next((asset for asset in evidence[:-1] if asset["url"] == item["url"] and asset["status"] == 200), None)
+            assert original and original["sha256"] == digest, item
+            item.update(bytes=len(body), sha256=digest)
+    return evidence
 
 
 def fixture_server(port):
@@ -95,6 +135,7 @@ async def main():
     for name in ("failure.png", "failure-dom.txt"):
         (REPORTS / name).unlink(missing_ok=True)
     checks, browser_errors, asset_responses = [], [], []
+    observed_assets = []
     api_port, web_port = free_port(), free_port()
     api, web = f"http://127.0.0.1:{api_port}", f"http://127.0.0.1:{web_port}"
     if os.environ.get("SPARK_E2E_BUILT_WEB") == "1":
@@ -131,7 +172,7 @@ async def main():
             page = await context.new_page()
             page.set_default_timeout(10000)
             page.on("pageerror", lambda error: browser_errors.append(str(error)))
-            page.on("response", lambda response: asset_responses.append({"url": response.url.split("/assets/")[-1], "status": response.status}) if "/assets/" in response.url else None)
+            page.on("response", lambda response: observed_assets.append(asyncio.create_task(capture_asset(response))) if "/assets/" in response.url else None)
             await page.goto(web, wait_until="domcontentloaded")
             await page.screenshot(path=str(REPORTS / "initial.png"))
             (REPORTS / "initial-dom.txt").write_text(await page.locator("body").inner_text())
@@ -293,6 +334,9 @@ async def main():
             await select("bravo")
             await child_detail("bravo")
             release_retry.set()
+            # The delayed acknowledgement must be processed in the old owner
+            # before remounting alpha; route release alone is not completion.
+            await page.wait_for_function("Object.values(sessionStorage).some(value => value.includes('retry-alpha'))")
             await expect(composer).to_have_value("Unsent bravo")
             await expect(page.get_by_text("retry-alpha", exact=True).filter(visible=True)).to_have_count(0)
             await select("alpha")
@@ -452,7 +496,7 @@ async def main():
             await page.screenshot(path=str(REPORTS / "failed-project-create.png"))
             checks.append("project compose opens folder; failed creation preserves draft and attachment across chat switch and refresh")
             assert not browser_errors, browser_errors
-            assert all(asset["status"] == 200 for asset in asset_responses), asset_responses
+            asset_responses = await verify_assets(observed_assets, request)
             if web == api:
                 assert asset_responses, "No production assets were observed"
             await browser.close()
