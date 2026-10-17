@@ -348,7 +348,9 @@ stored results are delivered on the next explicit parent turn. The child
 inspector adds capability-gated controls, paged history, result copy and worktree
 references while preserving parent drafts and scroll position through switching
 and reconnects. Verified task links open their actual board; an explicit action
-opens an owned worktree as a project. Gateway approval ownership, final performance
-and package acceptance remain in progress in the plan.
+opens an owned worktree as a project. Gateway approval ownership and final browser
+flows pass. Local rollout/rollback and partial macOS native QA pass; continuing-owner
+performance acceptance and remaining platform checks stay open. The signed macOS
+DMG is not notarized because Apple requires an updated developer agreement.
 See the [rollout runbook](docs/development/app-upgrade-rollout.md) for backup,
 isolated enablement and rollback boundaries.

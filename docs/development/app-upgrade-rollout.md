@@ -5,6 +5,14 @@ This runbook covers the additive execution/sidebar/worker upgrade tracked in
 Keep all trials in a disposable `SPARK_HOME` until the recorded browser and
 platform gates pass.
 
+For native fixtures, resolve the installed app path to its canonical path before
+launching it with the isolated environment. Verify `/api/status.spark_home`
+matches the expected disposable home before any acceptance write. Native UI
+automation may automatically relaunch a quit/crashed app through Launch Services
+without that environment; verify quit through process/port inventory rather than
+requesting another UI state. The 2026-10-17 QA incident and cleanup are preserved
+in the [native evidence](../performance/app-upgrade-desktop-2026-10-17.md).
+
 ## Defaults and compatibility
 
 SessionDB upgrades schema 12 to 15 additively. Sidebar metadata initializes its

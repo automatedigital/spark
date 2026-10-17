@@ -27,13 +27,11 @@ Schema 12→15 migration is additive; config version is 29. The
 [rollout runbook](app-upgrade-rollout.md) covers consistent backups, isolated
 enablement and the post-backup loss inventory required before restoring old state.
 
-Current parent evidence includes 435 frontend tests, 147 backend navigation/core
-checks, type checking of 133 source files, and canonical served-bundle navigation
-(6 flows) and inspector (11 flows). Earlier runtime/gateway and draft-recovery
-evidence remains in the execution ledger. These counts are scoped checks, not a
-claim that the final combined suite or hosted CI has run on the release candidate.
-Signing/building, installed macOS QA, Windows QA, external staging and publishing require
-their own recorded outcomes.
+Consolidated parent evidence includes 12,456 local nonserial Python tests, 182
+earlier serial runtime tests, 448 frontend tests, clean static checks and nine
+canonical production recovery flows. Final dev/production inspector (11 flows)
+and navigation (six flows), multi-chat, sidebar, recovery and explicit legacy-pin
+import pass. These are local receipts; hosted CI is not inferred.
 
 P10 local functional rehearsal on `99be7b43` now records enabled and flags-off
 loopback source-app instances with identical served asset hashes, schema 15 and
@@ -43,5 +41,15 @@ restart without replay. The focused runtime/lifecycle/backup suite passes 99
 tests. See the [dated evidence](../performance/app-upgrade-isolated-rollout-2026-10-17.md).
 Actual old-source datastore migration/backup/restore was repeated; full earlier
 app/native compatibility remains unproven. Installed macOS and genuine Windows
-QA, exclusive performance acceptance, external rollout and publication remain
-separate pending gates. These drafts do not announce a release.
+QA, continuing-owner performance acceptance, external rollout and publication
+remain separate gates. The candidate production quiescence run passes and returns
+to the live-turn census; continuing-owner controls fail their observation wait
+before measurement and remain unverified.
+
+The standard macOS build produced Developer ID signed app/DMG artifacts. Packaged
+HTTP checks and native draft/child restoration, clean quit/relaunch and backend-loss
+recovery pass in an isolated installed copy. Apple notarization fails with HTTP 403
+because a developer agreement is missing/expired; Gatekeeper reports an unnotarized
+Developer ID. Real sleep/wake, full global Quick Ask focus and live-child native
+Stop/Retry remain untested. See [native evidence](../performance/app-upgrade-desktop-2026-10-17.md).
+These drafts do not announce a release.

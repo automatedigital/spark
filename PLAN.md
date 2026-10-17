@@ -4,6 +4,13 @@ Date: 2026-10-15
 
 Status: Core implementation consolidated on `feat/app-orchestration-upgrade`; remaining release gates are listed below.
 
+2026-10-17 close-out: **46/48 checklist items complete**. P00's full timing
+baseline and P10's full installed-platform gate remain unchecked. P09's broader
+continuing-owner memory acceptance remains explicitly unverified despite its
+completed implementation/browser checklist. See the dated performance/native
+reports; neither the Apple notarization failure nor invalid control attempts are
+counted as passing acceptance.
+
 Spark baseline: `0ed3654b` (`main` must be rechecked before execution).
 Delivery shape: five working days for the core slice, then independently scheduled extensions.
 
@@ -23,10 +30,16 @@ remain outside this delivery; additional diagnostic rounds are not planned.
 - Final consolidated functional checks pass: 12,456 local nonserial Python tests,
   448 frontend tests, clean static checks, canonical build and nine production
   recovery flows. Earlier serial runtime acceptance passes 182 tests.
-- Memory/performance release acceptance remains incomplete. The failed tree-fetch
-  browser attempt and unrun continuing-owner controls remain explicit limitations.
-- Native packages, installed-platform QA and rollout are unfinished; no release
-  or production deployment has occurred.
+- Final dev/production browser journeys, explicit legacy-pin import, empty/deleted
+  state and local enablement/rollback now pass. Their dated evidence is linked below.
+- The candidate production quiescence run passes: pending requests drain and the
+  strong turn census returns to the 150 live turns. Continuing-owner controls
+  still fail their observation precondition, so broader retention acceptance is
+  explicitly unverified; the bounded investigation has stopped.
+- Signed macOS app/DMG and partial installed-copy QA are complete. Apple rejects
+  notarization with HTTP 403 (developer agreement missing/expired). Real sleep/wake,
+  full Quick Ask focus/live-child native controls and Windows remain untested.
+  No release or production deployment has occurred.
 
 ## 1. Outcome and scope
 
@@ -312,7 +325,7 @@ Day 5. Ship a verified web slice independently and label desktop status separate
 ### P00 — Baseline, contracts and decisions (lead; 0.5 day)
 
 - [x] Record branch, SHA, dirty paths, configured test commands and baseline lint/type failures without fixing unrelated files.
-- [ ] Use temporary `SPARK_HOME`, synthetic sessions and no external sends. Capture current long-thread, three-chat, project-create, child-run, pending-decision and reconnect behavior.
+- [x] Use temporary `SPARK_HOME`, synthetic sessions and no external sends. Capture current long-thread, three-chat, project-create, child-run, pending-decision and reconnect behavior. (Original baseline and child/project supplement preserve successful and failing behavior; project creation is API/scope evidence and child detail is a persisted synthetic snapshot. Final browser/native acceptance adds current flows without relabelling them historical baseline measurements.)
 - [ ] Record repeated first-token latency (separate provider time), backend/gateway readiness, sidebar update/select latency, stream gaps, browser memory and bundle size.
 - [x] Write ADRs for execution identity/write ownership, async completion, cursor semantics, compatibility/migration and worktree lifecycle. Resolve the identified Kanban/profile risks.
 - [x] Publish contract fixtures/types and assign files before implementation agents start.
@@ -461,7 +474,7 @@ Record exact failures and exclusions rather than relabelling tests to pass.
 - [x] Enable in an isolated profile, then a staging/test instance. Record source SHA, served hashed assets, schema/config versions and selected feature flags. (Disposable loopback instance and enabled profile passed on `99be7b43`, independently rerun after integration at `e078b1f8`; exact hashed assets, schema 15/config 29 and flags recorded in `docs/performance/app-upgrade-isolated-rollout-2026-10-17.{md,json}`.)
 - [ ] Build via existing desktop scripts only after web gates. Smoke installed macOS quit/relaunch, sleep/wake, unavailable backend, Quick Ask handoff and child controls. Run equivalent Windows beta tests on Windows or leave that gate explicitly pending.
 - [x] Rollback: stop workers, disable new dispatch, preserve completed/uncertain attempts, and use the last schema-compatible app. Restore a pre-upgrade backup only with an explicit account of post-backup work that would be lost; do not drop new tables automatically. (Real worker drain/process loss, flags-off fresh-process rejection, completed/uncertain persistence and compatible source restart pass. Actual old-datastore backup restoration enumerates lost post-backup work; full earlier native app compatibility is not claimed.)
-- [ ] Update docs/issues/evidence and prepare release notes. Packaging, publishing and production rollout are separate execution steps; this planning change performs none of them.
+- [x] Update docs/issues/evidence and prepare release notes. Packaging, publishing and production rollout are separate execution steps. (Dated 2026-10-17 browser, performance, rollout/rollback and partial native evidence, issue updates and unreleased notes are recorded. Distribution is blocked on Apple's developer agreement; open acceptance limits remain explicit.)
 
 **Acceptance:** web release candidate plus platform-specific package evidence,
 rollback rehearsal and an explicit list of remaining extension/platform work.
