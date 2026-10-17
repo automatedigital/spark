@@ -2,8 +2,7 @@
 
 The approved upgrade improves parallel work, chat organization and recovery.
 Implementation acceptance and release gates are tracked separately in
-[PLAN.md](../../PLAN.md). Gateway approval ownership, final performance and
-installed-platform acceptance remain open.
+[PLAN.md](../../PLAN.md). Final performance and installed-platform acceptance remain open.
 
 - Background delegation returns durable child handles, supports inspection and
   cooperative cancellation, and delivers stored results once at the next
@@ -33,5 +32,16 @@ checks, type checking of 133 source files, and canonical served-bundle navigatio
 (6 flows) and inspector (11 flows). Earlier runtime/gateway and draft-recovery
 evidence remains in the execution ledger. These counts are scoped checks, not a
 claim that the final combined suite or hosted CI has run on the release candidate.
-Signing/building, installed macOS QA, Windows QA, staging and publishing require
+Signing/building, installed macOS QA, Windows QA, external staging and publishing require
 their own recorded outcomes.
+
+P10 local functional rehearsal on `99be7b43` now records enabled and flags-off
+loopback source-app instances with identical served asset hashes, schema 15 and
+config 29. Real async/worktree workers use a synthetic SDK boundary; completed
+and genuinely process-lost uncertain attempts survive disabled dispatch and
+restart without replay. The focused runtime/lifecycle/backup suite passes 99
+tests. See the [dated evidence](../performance/app-upgrade-isolated-rollout-2026-10-17.md).
+Actual old-source datastore migration/backup/restore was repeated; full earlier
+app/native compatibility remains unproven. Installed macOS and genuine Windows
+QA, exclusive performance acceptance, external rollout and publication remain
+separate pending gates. These drafts do not announce a release.

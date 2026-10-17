@@ -1,0 +1,78 @@
+{
+  "source_commit": "99be7b43e1de8caf7c7f90e48f67c241ce0396bd",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "python": "3.11.7 (main, Dec 15 2023, 12:09:56) [Clang 14.0.6 ]",
+  "spark_home": "/private/tmp/spark-p10-isolated-20261017-final/profile",
+  "local_test_instances": {
+    "enabled": {
+      "url": "http://127.0.0.1:53344",
+      "assets": {
+        "/assets/index-D4cG3MKs.js": "2996541b4ae0a364d4c0d18db46f2136667b5eddfd6bfca715bf9494048f1edf",
+        "/assets/vendor-react-Dc-lrgX9.js": "7c480806ff83eaf2da70a262072c78f68a8926fad563fa7bcb3a94bd15232c1c",
+        "/assets/index-B8JIJF7v.css": "d8c756b21c9761d519e5e7e6b294074d781fcbe12c25425b4e998fcd0cbade00"
+      },
+      "status_home_verified": true
+    },
+    "rollback": {
+      "url": "http://127.0.0.1:53387",
+      "assets": {
+        "/assets/index-D4cG3MKs.js": "2996541b4ae0a364d4c0d18db46f2136667b5eddfd6bfca715bf9494048f1edf",
+        "/assets/vendor-react-Dc-lrgX9.js": "7c480806ff83eaf2da70a262072c78f68a8926fad563fa7bcb3a94bd15232c1c",
+        "/assets/index-B8JIJF7v.css": "d8c756b21c9761d519e5e7e6b294074d781fcbe12c25425b4e998fcd0cbade00"
+      },
+      "status_home_verified": true
+    }
+  },
+  "served_assets_sha256": {
+    "/assets/index-D4cG3MKs.js": "2996541b4ae0a364d4c0d18db46f2136667b5eddfd6bfca715bf9494048f1edf",
+    "/assets/vendor-react-Dc-lrgX9.js": "7c480806ff83eaf2da70a262072c78f68a8926fad563fa7bcb3a94bd15232c1c",
+    "/assets/index-B8JIJF7v.css": "d8c756b21c9761d519e5e7e6b294074d781fcbe12c25425b4e998fcd0cbade00"
+  },
+  "schema_version": 15,
+  "config_version": 29,
+  "enabled_flags": {
+    "async_enabled": true,
+    "worktree_isolation": true
+  },
+  "rollback_flags": {
+    "async_enabled": false,
+    "worktree_isolation": false
+  },
+  "completed_handle": "subagent_424ae71ecd85",
+  "uncertain_handle": "subagent_3bb1d7e0324b",
+  "completed_transport_calls": 3,
+  "attempts": [
+    {
+      "id": "subagent_424ae71ecd85",
+      "state": "completed"
+    },
+    {
+      "id": "subagent_b47b59336a58",
+      "state": "completed"
+    },
+    {
+      "id": "subagent_a288c90770db",
+      "state": "completed"
+    },
+    {
+      "id": "subagent_3bb1d7e0324b",
+      "state": "uncertain"
+    }
+  ],
+  "checks": [
+    "real AIAgent dispatch and worker drain",
+    "two real isolated Git child worktrees preserve parent and dirty child work",
+    "actual process exit during synthetic SDK call",
+    "fresh reopen reconciles once to uncertain",
+    "disabled dispatch makes zero SDK calls",
+    "completed and uncertain attempts survive server restart without replay",
+    "loopback HTTP serves exact tracked hashed assets and isolated status home"
+  ],
+  "limits": [
+    "SDK boundary synthetic; no external provider or send",
+    "HTTP functional check, not browser or latency acceptance",
+    "current schema-compatible source app only; old datastore compatibility recorded separately",
+    "no installed macOS or Windows environment tested",
+    "no external staging, production, publishing or user-state writes"
+  ]
+}

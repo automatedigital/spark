@@ -115,3 +115,23 @@ establish native window, shortcut or real sleep/wake behavior.
 - Combined backup/lifecycle check on 2026-10-15: **78 passed**. No real user
   profile was migrated or restored. Installed-package, staging and production
   acceptance remain open in PLAN.md.
+
+## Completed local test-instance rehearsal — 2026-10-17
+
+[Functional evidence and exact commands](../performance/app-upgrade-isolated-rollout-2026-10-17.md)
+record isolated enablement, a disposable enabled loopback app, real workers with
+synthetic SDK transport, worker drain, real owner-process loss, disabled fresh
+process dispatch, preserved completed/uncertain attempts, and a flags-off source
+app restart serving the same hashed assets. Schema/config are 15/29. Change flags
+before starting a fresh process/conversation: the CLI runtime config can retain
+values loaded earlier. Do not treat writing the YAML alone as a live kill switch.
+
+Use the current verified schema-compatible source for the demonstrated app
+rollback. Earlier `0ed3654b` compatibility is limited to actual datastore modules;
+full earlier-app/native rollback is unproven. Fresh backup/restore evidence and
+its four-item post-backup loss inventory are linked from the functional report.
+The driver never restores over its current profile. No schema downgrade or
+receipt deletion is needed. Keep the uncertain attempt for explicit review.
+
+This satisfies a local staging/test instance, not external hosting or production.
+Browser/performance and installed-platform gates remain independently owned.
