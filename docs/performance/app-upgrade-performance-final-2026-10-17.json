@@ -1,0 +1,101 @@
+{
+  "schema": "spark.performance-final-bounded.v1",
+  "status": "blocked",
+  "source": "99be7b43e1de8caf7c7f90e48f67c241ce0396bd",
+  "node": "22.22.1",
+  "stoppingCondition": "One corrected candidate v4 plus original/current controls; no retries; all owned groups closed before offline analysis.",
+  "priorInvalidAttempts": {
+    "candidateNavigation": "ENOENT output parent; no process launched",
+    "originalControl": "30s token-text timeout before checkpoint0",
+    "candidateControl": "30s token-text timeout before checkpoint0",
+    "artifacts": "/tmp/spark-perf-final-20261017"
+  },
+  "attempts": [
+    {
+      "schema": "spark.performance-attribution.attempt.v1",
+      "source": "/Users/joe/.t3/worktrees/spark/t3-79600cfb",
+      "source-sha": "99be7b43e1de8caf7c7f90e48f67c241ce0396bd",
+      "probe": "thread",
+      "mode": "production",
+      "heap": true,
+      "output-dir": "/tmp/spark-perf-final-20261017/corrected-batch/candidate-navigation",
+      "prepare-only": false,
+      "startedAt": "2026-10-17T14:34:14.451Z",
+      "endedAt": "2026-10-17T14:34:56.146Z",
+      "exit": 0,
+      "signal": null,
+      "timedOut": false,
+      "node": "v22.22.1"
+    },
+    {
+      "schema": "spark.performance-attribution.attempt.v1",
+      "source": "/tmp/spark-panel-ownership-422f1487/original-e8d6713",
+      "source-sha": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
+      "probe": "thread",
+      "mode": "production",
+      "heap": true,
+      "output-dir": "/tmp/spark-perf-final-20261017/corrected-batch/original-control",
+      "prepare-only": false,
+      "startedAt": "2026-10-17T14:34:56.269Z",
+      "endedAt": "2026-10-17T14:35:37.691Z",
+      "exit": 1,
+      "signal": null,
+      "timedOut": false,
+      "node": "v22.22.1"
+    },
+    {
+      "schema": "spark.performance-attribution.attempt.v1",
+      "source": "/Users/joe/.t3/worktrees/spark/t3-79600cfb",
+      "source-sha": "99be7b43e1de8caf7c7f90e48f67c241ce0396bd",
+      "probe": "thread",
+      "mode": "production",
+      "heap": true,
+      "output-dir": "/tmp/spark-perf-final-20261017/corrected-batch/candidate-control",
+      "prepare-only": false,
+      "startedAt": "2026-10-17T14:35:37.865Z",
+      "endedAt": "2026-10-17T14:36:19.124Z",
+      "exit": 1,
+      "signal": null,
+      "timedOut": false,
+      "node": "v22.22.1"
+    }
+  ],
+  "quiescence": {
+    "status": "quiescent-sham-captured",
+    "waitedMs": 4845.898958000002,
+    "pendingBefore": 9,
+    "pendingAfter": 0,
+    "failures": [],
+    "pendingAtGc": [],
+    "newDuringSnapshot": [],
+    "sameIdentity": true,
+    "turnShapeCensus": [
+      175,
+      875,
+      150
+    ],
+    "liveTurns": 150,
+    "caveat": "Strong-path signature census, not dominator bytes. Broad current-ref union is untrusted. Array entry141 is hidden Hole, never an empty array. Owner signatures include null/templates; no owner count claim."
+  },
+  "controls": {
+    "status": "failed",
+    "failure": "Both corrected controls timeout 30000ms waiting for token text at checkpoint0; no GC samples or control heaps produced.",
+    "proof": "Synthetic stream POST and release POST both200. Failure state still mounts historical rows despite explicit prestream live-tail scroll. No producer-progress receipt proves token production. No app cause established.",
+    "repair": "No further repair or capture attempted. A future fixture repair must establish a settled live-tail view and producer progress without changing owner or navigation, preserving all assertions."
+  },
+  "p00": {
+    "existingEvidence": [
+      "app-upgrade-baseline-2026-10-15.md",
+      "app-upgrade-performance-attribution-2026-10-15.md"
+    ],
+    "behavior": "Baseline reports long-history3/4; three-chat, pending decision and web-backend reconnect pass; child snapshot/UI and project API supplement only, not wizard/composer or real delegation.",
+    "metrics": "Historical same-host repeated startup/render/select/stream/memory and search investigation retained; no reanalysis. Baseline bundle measured via temporary production output.",
+    "unavailable": [
+      "actual messaging-gateway readiness",
+      "live-provider/cache first-token latency",
+      "full browser RSS/transport gaps"
+    ],
+    "acceptance": "P00 checkboxes cannot be globally closed from this performance batch."
+  },
+  "releaseClaim": false
+}
