@@ -10,9 +10,11 @@ Delivery shape: five working days for the core slice, then independently schedul
 ### Current handover status
 
 The core runtime, persistence, sidebar, inspector, navigation and worktree changes
-are implemented. Consolidation is now limited to integrating reviewed fixes and
-one final practical validation pass. Diagnostic agents and further heap captures
-have been stopped at the user's request to avoid an open-ended investigation.
+are implemented. On 2026-10-17 the user requested completion of the remaining
+plan using subagents. Three bounded workstreams now cover final browser
+acceptance, the outstanding performance controls, and isolated rollout/rollback.
+The lead owns integration, the macOS build and native QA. Optional extensions
+remain outside this delivery; additional diagnostic rounds are not planned.
 
 - Integrated chat ownership separates actual navigation from acknowledged ID
   continuation, preserving drafts and buffered output while fencing stale scope
@@ -456,9 +458,9 @@ Record exact failures and exclusions rather than relabelling tests to pass.
 
 - [x] Keep new async execution/control paths disabled until core acceptance passes; document exact config keys/defaults in P00 and add migrations through `DEFAULT_CONFIG` when needed.
 - [x] Back up profile databases/config with a consistent SQLite backup, not a live file-only copy. Run additive migrations once and verify old conversations, tasks, drafts and skills remain accessible. (Disposable actual-old-source rehearsal; file-draft preservation here, browser drafts independently verified by production recovery.)
-- [ ] Enable in an isolated profile, then a staging/test instance. Record source SHA, served hashed assets, schema/config versions and selected feature flags.
+- [x] Enable in an isolated profile, then a staging/test instance. Record source SHA, served hashed assets, schema/config versions and selected feature flags. (Disposable loopback instance and enabled profile passed on `99be7b43`, independently rerun after integration at `e078b1f8`; exact hashed assets, schema 15/config 29 and flags recorded in `docs/performance/app-upgrade-isolated-rollout-2026-10-17.{md,json}`.)
 - [ ] Build via existing desktop scripts only after web gates. Smoke installed macOS quit/relaunch, sleep/wake, unavailable backend, Quick Ask handoff and child controls. Run equivalent Windows beta tests on Windows or leave that gate explicitly pending.
-- [ ] Rollback: stop workers, disable new dispatch, preserve completed/uncertain attempts, and use the last schema-compatible app. Restore a pre-upgrade backup only with an explicit account of post-backup work that would be lost; do not drop new tables automatically.
+- [x] Rollback: stop workers, disable new dispatch, preserve completed/uncertain attempts, and use the last schema-compatible app. Restore a pre-upgrade backup only with an explicit account of post-backup work that would be lost; do not drop new tables automatically. (Real worker drain/process loss, flags-off fresh-process rejection, completed/uncertain persistence and compatible source restart pass. Actual old-datastore backup restoration enumerates lost post-backup work; full earlier native app compatibility is not claimed.)
 - [ ] Update docs/issues/evidence and prepare release notes. Packaging, publishing and production rollout are separate execution steps; this planning change performs none of them.
 
 **Acceptance:** web release candidate plus platform-specific package evidence,
