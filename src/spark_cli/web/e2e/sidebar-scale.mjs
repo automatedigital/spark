@@ -180,7 +180,7 @@ db.close()
         }
       };
       // Old unscoped data must never silently import into the active profile.
-      localStorage.setItem("spark-pinned-sessions", '["scale-049"]');
+      localStorage.setItem("spark-pinned-sessions", '["scale-049","scale-048","missing-legacy-session",17,null]');
       localStorage.setItem(`spark-chat-expanded:v1:${encodeURIComponent(webBase)}:${scope}`, JSON.stringify(Array.from({ length: 10 }, (_, index) => `project-${index}`)));
     }, { webBase, scope });
     page = await context.newPage();
@@ -415,6 +415,62 @@ db.close()
     await page.getByRole("button", { name: "Load older chats", exact: true }).click();
     await waitRequest((request) => request.offset === previousMaxOffset + 50);
     metrics.checks.push("Inbox explicit next-page paging");
+
+    // Explicit migration must import only existing, never-edited metadata in
+    // this profile. Keep this functional flow after the timing observations.
+    const defaults = { pinned: false, settled: false, position: null, revision: 0 };
+    assert.deepEqual((await snapshot()).entries["scale-049"], defaults);
+    assert.equal((await (await fetch(`${apiBase}/api/sessions/scale-049`)).json()).message_count, 0);
+    const editedResponse = await fetch(`${apiBase}/api/sidebar/threads/scale-048`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expected_revision: 0, pinned: false, position: 48 }),
+    });
+    assert.equal(editedResponse.status, 200);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const importPins = page.getByRole("button", { name: "Import this browser’s old pins into this profile", exact: true });
+    await importPins.waitFor();
+    const beforeImport = await snapshot();
+    const importRequests = [];
+    const recordImport = (request) => {
+      if (request.method() === "PATCH" && new URL(request.url()).pathname.startsWith("/api/sidebar/threads/")) {
+        importRequests.push({ path: new URL(request.url()).pathname, body: request.postDataJSON() });
+      }
+    };
+    page.on("request", recordImport);
+    await importPins.click();
+    await importPins.waitFor({ state: "detached" });
+    page.off("request", recordImport);
+    assert.deepEqual(importRequests, [{ path: "/api/sidebar/threads/scale-049", body: { expected_revision: 0, pinned: true } }]);
+    const imported = await snapshot();
+    assert.equal(imported.entries["scale-049"].pinned, true);
+    assert.equal(imported.entries["scale-049"].revision, 1);
+    const unchangedBefore = Object.fromEntries(Object.entries(beforeImport.entries).filter(([id]) => id !== "scale-049"));
+    const unchangedAfter = Object.fromEntries(Object.entries(imported.entries).filter(([id]) => id !== "scale-049"));
+    assert.deepEqual(unchangedAfter, unchangedBefore, "Import preserves edited and unrelated metadata; missing/nonstring IDs create no entries");
+    const importMarker = `spark-sidebar-pin-import:v1:${encodeURIComponent(webBase)}:${scope}`;
+    assert.equal(await page.evaluate((key) => localStorage.getItem(key), importMarker), "v1");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const importedRow = page.getByRole("region", { name: "Pinned threads" }).getByRole("button", { name: /^Scale chat 049/ }).first();
+    await importedRow.waitFor();
+    assert.equal(await importPins.count(), 0);
+    assert.deepEqual((await snapshot()).entries, imported.entries);
+    await importedRow.click();
+    await page.getByTestId("chat-panel").getByText("Start a conversation", { exact: true }).waitFor();
+    assert.equal(await page.getByTestId("chat-panel").getAttribute("data-session-id"), "scale-049");
+    metrics.legacyPinImport = { eligible: "scale-049", edited: "scale-048", requests: importRequests, marker: importMarker, persistedAfterRefresh: true };
+    metrics.checks.push("explicit legacy pin import pins only revision-zero eligible ID; edited/missing/nonstring IDs skipped; scoped marker and refresh persistence", "empty session has default sidebar metadata and zero messages");
+
+    await page.getByRole("button", { name: "Threads", exact: true }).click();
+    const emptySearch = page.getByPlaceholder("Search projects and chats…");
+    const emptySearchResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/sessions/search" && url.searchParams.get("q") === "p09-no-matching-thread" && response.status() === 200;
+    });
+    await emptySearch.fill("p09-no-matching-thread");
+    await emptySearchResponse;
+    await page.getByText('No results for "p09-no-matching-thread"', { exact: true }).waitFor();
+    await emptySearch.fill("");
+    metrics.checks.push("empty thread search renders its no-results row and clears");
     // Same session identity in another real profile database must have separate
     // metadata and preference keys. No runtime profile-switching is simulated.
     secondHome = await mkdtemp(path.join(os.tmpdir(), "spark-sidebar-profile-"));
@@ -436,6 +492,8 @@ db.close()
     const otherPage = await context.newPage();
     await otherPage.goto(otherWeb, { waitUntil: "domcontentloaded" });
     await otherPage.getByRole("button", { name: /^Other profile thread,/ }).waitFor();
+    const otherImportMarker = `spark-sidebar-pin-import:v1:${encodeURIComponent(otherWeb)}:${otherSnapshot.preference_scope}`;
+    assert.equal(await otherPage.evaluate((key) => localStorage.getItem(key), otherImportMarker), null, "Import marker does not cross profile/backend scope");
     assert.equal((await (await fetch(`${otherApi}/api/sidebar/threads`)).json()).entries["scale-000"].pinned, false);
     assert.equal(await otherPage.getByRole("region", { name: "Pinned threads" }).count(), 0);
     assert.equal((await snapshot()).entries["scale-000"].pinned, true);
@@ -445,7 +503,7 @@ db.close()
     metrics.titleProbeRequests = titleProbeRequests;
     assert.equal(sessionRequests[0]?.limit, 50);
     assert.equal(sessionRequests[0]?.offset, 50);
-    assert.deepEqual(searchRequests, ["ancient needle"]);
+    assert.deepEqual(searchRequests, ["ancient needle", "p09-no-matching-thread"]);
     assert.ok(metrics.selectionMs < 100, `Selection took ${metrics.selectionMs}ms`);
     assert.ok(metrics.localSearchMs < 100, `Local search took ${metrics.localSearchMs}ms`);
     assert.ok(metrics.fullHistorySearchMs < 600, `Full-history search took ${metrics.fullHistorySearchMs}ms`);
