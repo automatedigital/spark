@@ -2629,7 +2629,11 @@ async def sse_events_bus(
 
     async def event_generator():
         try:
-            if after_sequence:
+            # Flush the subscription immediately, even before its first event.
+            yield ": connected\n\n"
+            # Zero is a valid cursor for a client that hydrated an empty journal.
+            # Legacy callers without an epoch still start with live events only.
+            if after_sequence or server_epoch is not None:
                 resume = web_state_journal.resume(
                     after_sequence,
                     projection_version=projection_version,
