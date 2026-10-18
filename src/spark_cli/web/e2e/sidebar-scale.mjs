@@ -378,6 +378,9 @@ db.close()
     // Use server acknowledgement; localStorage is no longer metadata authority.
     await row("000").click({ modifiers: ["Shift"] });
     await page.waitForFunction(async () => (await (await fetch("/api/sidebar/threads")).json()).entries["scale-000"].pinned);
+    // Persistence acknowledgement precedes SSE delivery and React commit.
+    // Wait for both real placements, not just the backend revision.
+    await page.waitForFunction(() => document.querySelectorAll('[data-sidebar-session-row="scale-000"]').length === 2);
     assert.equal(await page.locator('[data-sidebar-session-row="scale-000"]').count(), 2, "Pinned and project placements");
     const projectZero = page.getByRole("button", { name: "project-0", exact: true });
     await projectZero.click();
@@ -401,12 +404,16 @@ db.close()
     // Menu keyboard focus and a stale second-client edit must remain fenced.
     await page.getByTitle("Actions for Scale chat 000", { exact: true }).first().click();
     await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.activeElement?.getAttribute("title") === "Actions for Scale chat 000");
     assert.ok(await page.getByTitle("Actions for Scale chat 000", { exact: true }).first().evaluate((el) => document.activeElement === el));
     const entry = (await snapshot()).entries["scale-000"];
     const patch = (body) => fetch(`${apiBase}/api/sidebar/threads/scale-000`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const updateStarted = performance.now();
     assert.equal((await patch({ expected_revision: entry.revision, pinned: false })).status, 200);
-    await page.waitForFunction(() => [...document.querySelectorAll('[role="button"][aria-label^="Scale chat 000,"]')].every((el) => !el.getAttribute("aria-label").includes(", pinned")));
+    await page.waitForFunction(() => {
+      const rows = [...document.querySelectorAll('[role="button"][aria-label^="Scale chat 000,"]')];
+      return rows.length > 0 && rows.every((el) => !el.getAttribute("aria-label").includes(", pinned"));
+    });
     metrics.metadataUpdateMs = performance.now() - updateStarted;
     assert.equal((await patch({ expected_revision: entry.revision, settled: true })).status, 409);
     assert.equal((await snapshot()).entries["scale-000"].settled, false);
