@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -11,23 +11,26 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { api, type SubagentEvent, type SubagentRun, type SubagentStatus } from "@/lib/api";
+import { api, type ConversationSubagentResponse, type SubagentCapabilities, type ConversationSubagentMessagesResponse, type SubagentEvent, type SubagentRun, type SubagentStatus } from "@/lib/api";
 import {
+  mergeChildMessagePage,
   isSubagentRunning,
   sortSubagents,
   subagentDisplayName,
   subagentTimestamp,
   subagentVisual,
 } from "@/lib/subagents";
+import { beginChildCommand, childCommandKey, childControlSupport, readChildCommand, saveChildCommand, type ChildCommand } from "@/lib/subagentControls";
+import type { ChildEventPage } from "@/hooks/useSubagents";
+import { useSubagentNavigation } from "@/hooks/useSubagentNavigation";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { ReasoningBubble } from "@/components/chat/ReasoningBubble";
 import { StatusPill } from "@/components/chat/StatusPill";
 import { ToolCallBubble } from "@/components/chat/ToolCallBubble";
 
-// The v1 sub-agent inspector is read-only: it reuses the chat Markdown,
-// reasoning, tool, and status visuals, while PromptBar stays with parent chat
-// until the backend exposes child follow-up routing.
+// Parent composition stays in ChatPanel. Child actions use runtime capability
+// assertions and receipt IDs; HTTP acceptance never completes a child or parent.
 
 interface SubagentsPanelProps {
   subagents: SubagentRun[];
@@ -35,6 +38,10 @@ interface SubagentsPanelProps {
   loading: boolean;
   error: string | null;
   sessionId?: string | null;
+  capabilities?: SubagentCapabilities | null;
+  onReload?: () => Promise<void>;
+  onLoadDetail?: (id: string, limit?: number, afterId?: number) => Promise<ConversationSubagentResponse | undefined>;
+  eventPage?: ChildEventPage;
   onSelect: (id: string) => void;
   onCloseDetail: () => void;
 }
@@ -60,6 +67,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function statusLabel(status: SubagentStatus | null | undefined): string {
+  if (status === "stopping") return "cancel requested";
+  if (status === "uncertain") return "uncertain · review required";
+  if (status === "stale") return "status unavailable";
   if (status === "completed") return "done";
   if (status === "failed") return "failed";
   if (status === "cancelled" || status === "interrupted") return "stopped";
@@ -68,22 +78,22 @@ function statusLabel(status: SubagentStatus | null | undefined): string {
 }
 
 function statusClasses(status: SubagentStatus | null | undefined): string {
-  if (status === "completed") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-300";
-  if (status === "failed") return "border-red-400/25 bg-red-400/10 text-red-300";
+  if (status === "completed") return "border-emerald-400/25 bg-emerald-400/10 text-foreground";
+  if (status === "failed") return "border-red-400/25 bg-red-400/10 text-foreground";
   if (status === "cancelled" || status === "interrupted") {
-    return "border-amber-400/25 bg-amber-400/10 text-amber-300";
+    return "border-amber-400/25 bg-amber-400/10 text-foreground";
   }
   if (status === "queued" || status === "starting") {
-    return "border-sky-400/25 bg-sky-400/10 text-sky-300";
+    return "border-sky-400/25 bg-sky-400/10 text-foreground";
   }
   return "border-primary/20 bg-primary/10 text-primary";
 }
 
 function StatusIcon({ status }: { status: SubagentStatus | null | undefined }) {
   if (status === "completed") return <CheckCircle2 className="h-3.5 w-3.5" />;
-  if (status === "failed") return <AlertTriangle className="h-3.5 w-3.5" />;
+  if (status === "failed" || status === "uncertain" || status === "stale") return <AlertTriangle className="h-3.5 w-3.5" />;
   if (status === "cancelled" || status === "interrupted") return <CircleDashed className="h-3.5 w-3.5" />;
-  return <Loader2 className={cn("h-3.5 w-3.5", isSubagentRunning(status) && "animate-spin")} />;
+  return <Loader2 className={cn("h-3.5 w-3.5", isSubagentRunning(status) && "animate-spin motion-reduce:animate-none")} />;
 }
 
 function formatElapsed(run: SubagentRun, nowSeconds: number): string {
@@ -208,9 +218,11 @@ function SubagentRow({
   nowSeconds,
   onSelect,
   onKeyDown,
+  inspectReason,
 }: {
   run: SubagentRun;
   index: number;
+  inspectReason: string | null;
   selected: boolean;
   nowSeconds: number;
   onSelect: () => void;
@@ -222,7 +234,9 @@ function SubagentRow({
   return (
     <button
       type="button"
-      data-subagent-row
+      data-subagent-row={run.id}
+      disabled={Boolean(inspectReason)}
+      title={inspectReason ?? "Inspect child"}
       onClick={onSelect}
       onKeyDown={onKeyDown}
       aria-current={selected ? "true" : undefined}
@@ -236,7 +250,7 @@ function SubagentRow({
     >
       <span
         className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border text-[11px] font-semibold"
-        style={{ borderColor: visual.accent, background: visual.bg, color: visual.fg }}
+        style={{ borderColor: visual.accent, background: visual.bg, color: "var(--color-foreground)" }}
       >
         {glyph}
       </span>
@@ -267,16 +281,19 @@ function AggregateSummary({ subagents }: { subagents: SubagentRun[] }) {
     let completed = 0;
     let failed = 0;
     let stopped = 0;
+    let review = 0;
     for (const run of subagents) {
       if (run.status === "completed") completed += 1;
       else if (run.status === "failed") failed += 1;
+      else if (run.status === "uncertain" || run.status === "stale") review += 1;
       else if (run.status === "cancelled" || run.status === "interrupted") stopped += 1;
       else if (isSubagentRunning(run.status)) working += 1;
     }
-    return { working, completed, failed, stopped };
+    return { working, completed, failed, stopped, review };
   }, [subagents]);
 
   const parts = [
+    counts.review ? `${counts.review} need review` : null,
     counts.working ? `${counts.working} working` : null,
     counts.completed ? `${counts.completed} done` : null,
     counts.failed ? `${counts.failed} failed` : null,
@@ -326,15 +343,51 @@ function SubagentDetail({
   nowSeconds,
   sessionId,
   onClose,
+  runs,
+  capabilities,
+  onReload,
+  onLoadDetail,
+  eventPage,
 }: {
   run: SubagentRun;
   index: number;
   nowSeconds: number;
   sessionId?: string | null;
   onClose: () => void;
+  runs: SubagentRun[];
+  capabilities: SubagentCapabilities | null;
+  onReload?: () => Promise<void>;
+  onLoadDetail?: (id: string, limit?: number, afterId?: number) => Promise<ConversationSubagentResponse | undefined>;
+  eventPage?: ChildEventPage;
 }) {
   const [interrupting, setInterrupting] = useState(false);
   const [interruptError, setInterruptError] = useState<string | null>(null);
+  const interruptKey = childCommandKey(sessionId ?? "", run.id, "interrupt");
+  const retryKey = childCommandKey(sessionId ?? "", run.id, "retry");
+  const [stopCommand, setStopCommand] = useState<ChildCommand | null>(() => readChildCommand(interruptKey));
+  const [retryCommand, setRetryCommand] = useState<ChildCommand | null>(() => readChildCommand(retryKey));
+  const [retrying, setRetrying] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const navigation = useSubagentNavigation(sessionId, run.id);
+  const [historyLimit, setHistoryLimit] = useState(200);
+  const [paging, setPaging] = useState(false);
+  const [transcript, setTranscript] = useState<ConversationSubagentMessagesResponse | null>(null);
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 767px)").matches) backButton.current?.focus();
+  }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (!sessionId) return;
+    let stale = false;
+    const request = new AbortController();
+    void api.getConversationSubagentMessages(sessionId, run.id, false, historyLimit, request.signal).then((value) => {
+      if (!stale) { setTranscript((prev) => mergeChildMessagePage(prev, value)); setTranscriptError(null); }
+    }).catch(() => { if (!stale) setTranscriptError("Child transcript could not be loaded. Refresh to try again."); });
+    return () => { stale = true; request.abort(); };
+  }, [sessionId, run.id, run.status, run.updated_at, historyLimit]);
   const name = subagentDisplayName(run, index);
   const visual = subagentVisual(run.id);
   const glyph = firstString(run.short_name, name.slice(0, 1), visual.glyph) ?? "A";
@@ -343,26 +396,68 @@ function SubagentDetail({
     [run],
   );
   const streaming = isSubagentRunning(run.status);
-  const canInterrupt = Boolean(sessionId && streaming);
+  const stopSupport = childControlSupport("interrupt", run, runs, capabilities);
+  const retrySupport = childControlSupport("retry", run, runs, capabilities);
+  const stopping = streaming && (run.status === "stopping" || stopCommand?.state === "accepted");
+  const result = firstString(run.summary);
 
   const interrupt = async () => {
-    if (!sessionId || interrupting) return;
+    if (!sessionId || interrupting || !stopSupport.supported) return;
+    const command = beginChildCommand(interruptKey);
+    setStopCommand(command);
     setInterrupting(true);
     setInterruptError(null);
     try {
-      await api.interruptConversationSubagent(sessionId, run.id, "Stop this sub-agent.");
+      await api.interruptConversationSubagent(sessionId, run.id, "Stop this sub-agent.", command.requestId);
+      const accepted = { ...command, state: "accepted" as const };
+      saveChildCommand(interruptKey, accepted);
+      if (mounted.current) { setStopCommand(accepted); void onReload?.(); }
     } catch (err) {
-      setInterruptError(err instanceof Error ? err.message : "Could not stop this sub-agent.");
-    } finally {
-      setInterrupting(false);
-    }
+      if (mounted.current) setInterruptError(`Stop acceptance is unconfirmed. Check again with the same request ID. ${err instanceof Error ? err.message : ""}`);
+    } finally { if (mounted.current) setInterrupting(false); }
+  };
+  const retry = async () => {
+    if (!sessionId || retrying || !retrySupport.supported) return;
+    const command = beginChildCommand(retryKey);
+    setRetryCommand(command);
+    setRetrying(true);
+    setInterruptError(null);
+    try {
+      const response = await api.retryConversationSubagent(sessionId, run.id, command.requestId);
+      const accepted = { ...command, state: "accepted" as const, handle: response.handles[0]?.id };
+      saveChildCommand(retryKey, accepted);
+      if (mounted.current) { setRetryCommand(accepted); void onReload?.(); }
+    } catch (err) {
+      if (mounted.current) setInterruptError(`Retry acceptance is unconfirmed. Check again with the same request ID. ${err instanceof Error ? err.message : ""}`);
+    } finally { if (mounted.current) setRetrying(false); }
+  };
+  const loadOlderMessages = async () => {
+    if (!sessionId || paging || transcript?.next_before_id == null) return;
+    setPaging(true);
+    try {
+      const page = await api.getConversationSubagentMessages(sessionId, run.id, false, 200, undefined, transcript.next_before_id);
+      if (mounted.current) setTranscript((prev) => mergeChildMessagePage(prev, page, "earlier"));
+    } catch { if (mounted.current) setTranscriptError("Older child messages could not be loaded. Try again."); }
+    finally { if (mounted.current) setPaging(false); }
+  };
+  const loadMoreEvents = async () => {
+    if (paging || !eventPage?.hasMore || eventPage.afterId == null) return;
+    setPaging(true);
+    try { await onLoadDetail?.(run.id, 200, eventPage.afterId); }
+    finally { if (mounted.current) setPaging(false); }
+  };
+  const copyResult = async () => {
+    if (!result) return;
+    try { await navigator.clipboard.writeText(result); if (mounted.current) setCopied(true); }
+    catch { if (mounted.current) setInterruptError("Could not copy the result. Select and copy the text below."); }
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background/40">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background/40 [&_p]:[overflow-wrap:anywhere] [&_a]:[overflow-wrap:anywhere]">
       <div className="flex min-h-[64px] shrink-0 items-center gap-2.5 border-b border-border px-2.5 py-2">
         <button
           type="button"
+          ref={backButton}
           aria-label="Back to subagents"
           title="Back to subagents"
           onClick={onClose}
@@ -372,7 +467,7 @@ function SubagentDetail({
         </button>
         <span
           className="grid h-8 w-8 shrink-0 place-items-center rounded-md border text-[11px] font-semibold"
-          style={{ borderColor: visual.accent, background: visual.bg, color: visual.fg }}
+          style={{ borderColor: visual.accent, background: visual.bg, color: "var(--color-foreground)" }}
         >
           {glyph}
         </span>
@@ -385,7 +480,7 @@ function SubagentDetail({
             </span>
           </div>
           <div className="flex min-w-0 items-center gap-2">
-            <StatusPill streaming={streaming} label={streaming ? statusLabel(run.status) : statusLabel(run.status)} />
+            <StatusPill streaming={streaming} label={stopping ? "cancel requested" : statusLabel(run.status)} />
             {run.model && (
               <span className="min-w-0 truncate font-mono-ui text-[10px] text-muted-foreground/65">
                 {run.model}
@@ -393,18 +488,15 @@ function SubagentDetail({
             )}
           </div>
         </div>
-        {canInterrupt && (
-          <button
-            type="button"
-            aria-label="Stop subagent"
-            title="Stop subagent"
-            onClick={() => void interrupt()}
-            disabled={interrupting}
-            className="grid h-7 w-7 place-items-center rounded text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-50"
-          >
-            {interrupting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleDashed className="h-3.5 w-3.5" />}
-          </button>
-        )}
+        <button
+          type="button" aria-label="Stop subagent"
+          title={stopSupport.reason ?? "Request cancellation of this child only"}
+          onClick={() => void interrupt()}
+          disabled={interrupting || stopping || !stopSupport.supported}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded text-muted-foreground hover:bg-secondary disabled:opacity-50"
+        >
+          {interrupting ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <CircleDashed className="h-3.5 w-3.5" />}
+        </button>
         <button
           type="button"
           aria-label="Close subagent thread"
@@ -418,11 +510,63 @@ function SubagentDetail({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {interruptError && (
-          <div className="mb-3 rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-red-300">
+          <div className="mb-3 rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-xs text-foreground">
             {interruptError}
           </div>
         )}
+        <div className="mb-3 space-y-2 break-words text-xs" aria-live="polite">
+          <button type="button" onClick={() => void onReload?.()} className="rounded border px-2 py-1">Refresh child state</button>
+          {stopping && <p role="status">Cancel requested. Waiting for terminal confirmation.</p>}
+          {stopCommand?.state === "uncertain" && !stopping && streaming && (
+            <button type="button" disabled={interrupting || !stopSupport.supported} onClick={() => void interrupt()} className="rounded border px-2 py-1 disabled:opacity-50">Check Stop request</button>
+          )}
+          {!stopSupport.supported && streaming && <p>{stopSupport.reason}</p>}
+          <button type="button" onClick={() => void retry()} disabled={retrying || retryCommand?.state === "accepted" || !retrySupport.supported}
+            title={retrySupport.reason ?? "Start a new attempt; preserve this attempt"} className="rounded border px-2 py-1 disabled:opacity-50">
+            {retryCommand?.state === "accepted" ? "New attempt accepted" : retryCommand ? "Check retry request" : "Retry as new attempt"}
+          </button>
+          {!retrySupport.supported && <p className="text-muted-foreground">{retrySupport.reason}</p>}
+          {retryCommand?.handle && <p>New child: <code>{retryCommand.handle}</code></p>}
+          {run.execution_mode === "async" && <p className="text-muted-foreground">Background work runs in this server process. Results are delivered at the next explicit parent turn.</p>}
+          <dl className="space-y-1 text-muted-foreground">
+            {[["Parent thread", run.parent_session_id], ["Root run", run.root_run_id], ["Attempt", run.attempt_id], ["Child thread", run.child_session_id], ["Retry of", run.retry_of], ["Workspace", run.workspace_path], ["Worktree path", run.worktree?.path], ["Worktree branch", run.worktree?.branch], ["Worktree base commit", run.worktree?.base_commit], ["Worktree repository", run.worktree?.repository], ["Worktree setup", run.worktree?.setup_status]].map(([label, value]) => typeof value === "string" && value ? (
+              <div key={label}><dt className="inline font-medium">{label}: </dt><dd className="inline break-all font-mono-ui">{value}</dd></div>
+            ) : null)}
+          </dl>
+          <section aria-label="Child navigation" className="space-y-2 rounded border border-border p-2">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={navigation.busy || !navigation.navigation?.task.supported} onClick={() => void navigation.open("task")}
+                title={navigation.navigation?.task.reason ?? "Open the linked board task"} className="rounded border px-2 py-1 disabled:opacity-50">Open linked task</button>
+              <button type="button" disabled={navigation.busy || !navigation.navigation?.worktree.supported} onClick={() => void navigation.open("worktree")}
+                title={navigation.navigation?.worktree.reason ?? "Open the verified checkout as a project"} className="rounded border px-2 py-1 disabled:opacity-50">Open worktree</button>
+              <button type="button" disabled={navigation.busy} onClick={navigation.refresh} className="rounded border px-2 py-1 disabled:opacity-50">Refresh destinations</button>
+            </div>
+            {!navigation.navigation && !navigation.error && <p role="status">Checking navigation destinations in this profile…</p>}
+            {navigation.navigation?.task.reason && <p className="text-muted-foreground">{navigation.navigation.task.reason}</p>}
+            {navigation.navigation?.worktree.reason && <p className="text-muted-foreground">{navigation.navigation.worktree.reason}</p>}
+            {navigation.error && <p role="alert">{navigation.error}</p>}
+          </section>
+          {result && <div className="rounded border border-border p-2">
+            <button type="button" onClick={() => void copyResult()} className="mb-2 rounded border px-2 py-1">{copied ? "Result copied" : "Copy result"}</button>
+            <Markdown content={result} />
+          </div>}
+        </div>
+        {childControlSupport("inspect", run, runs, capabilities).reason && <p role="status" className="mb-3 text-xs text-muted-foreground">Showing the last loaded child state. {childControlSupport("inspect", run, runs, capabilities).reason}</p>}
         <TaskCard run={run} />
+        {transcriptError && <p role="status" className="mb-3 text-xs">{transcriptError}</p>}
+        {transcript && transcript.messages.length > 0 && <section aria-label="Child transcript" className="mb-3 space-y-2">
+          <h3 className="text-xs font-medium">Child transcript · {transcript.messages.length} of {transcript.total} messages</h3>
+          {transcript.has_earlier && <button type="button" disabled={paging || transcript.next_before_id == null} onClick={() => void loadOlderMessages()} className="rounded border px-2 py-1 disabled:opacity-50">Load older child messages</button>}
+          {transcript.messages.map((message, i) => <div key={message.id ?? message.message_index ?? i} className="break-words rounded border border-border p-2 text-xs">
+            <div className="mb-1 text-muted-foreground">{message.role}</div>
+            <Markdown content={typeof message.content === "string" ? message.content : JSON.stringify(message.content)} />
+          </div>)}
+        </section>}
+        {eventPage?.hasMore && <button type="button" disabled={paging || eventPage.afterId == null} onClick={() => void loadMoreEvents()} className="mb-3 rounded border px-2 py-1 text-xs disabled:opacity-50">Load more child events</button>}
+        {!eventPage && (events.length >= historyLimit || (transcript?.has_earlier === undefined && transcript && transcript.total > transcript.messages.length)) && <button type="button" className="mb-3 rounded border px-2 py-1 text-xs disabled:opacity-50" disabled={historyLimit >= 1000}
+          onClick={() => { const limit = Math.min(1000, historyLimit + 200); setHistoryLimit(limit); void onLoadDetail?.(run.id, limit); }}>
+          {historyLimit >= 1000 ? "History limit reached (1,000)" : "Load more child history"}
+        </button>}
 
         {events.length === 0 ? (
           <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground/60">
@@ -489,6 +633,7 @@ function sortEvents(events: SubagentEvent[]): SubagentEvent[] {
   return [...events].sort((a, b) => {
     const delta = subagentTimestamp(a) - subagentTimestamp(b);
     if (delta !== 0) return delta;
+    if (a.id != null && b.id != null && Number.isFinite(Number(a.id)) && Number.isFinite(Number(b.id))) return Number(a.id) - Number(b.id);
     return eventType(a).localeCompare(eventType(b));
   });
 }
@@ -499,6 +644,10 @@ export function SubagentsPanel({
   loading,
   error,
   sessionId,
+  capabilities = null,
+  onReload,
+  onLoadDetail,
+  eventPage,
   onSelect,
   onCloseDetail,
 }: SubagentsPanelProps) {
@@ -507,6 +656,8 @@ export function SubagentsPanel({
   const selectedIndex = sorted.findIndex((run) => run.id === selectedId);
   const selectedRun = selectedIndex >= 0 ? sorted[selectedIndex] : null;
   const hasRunning = sorted.some((run) => isSubagentRunning(run.status));
+  const inspectReason = sorted.length && sorted.every((run) => !childControlSupport("inspect", run, sorted, capabilities).supported)
+    ? childControlSupport("inspect", sorted[0], sorted, capabilities).reason : null;
 
   useEffect(() => {
     if (!hasRunning) return;
@@ -518,7 +669,7 @@ export function SubagentsPanel({
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
     const buttons = Array.from(
-      event.currentTarget.closest("[data-subagent-list]")?.querySelectorAll<HTMLButtonElement>("[data-subagent-row]") ?? [],
+      event.currentTarget.closest("[data-subagent-list]")?.querySelectorAll<HTMLButtonElement>("[data-subagent-row]:not(:disabled)") ?? [],
     );
     const index = buttons.indexOf(event.currentTarget);
     const next = event.key === "ArrowDown" ? buttons[index + 1] ?? buttons[0] : buttons[index - 1] ?? buttons[buttons.length - 1];
@@ -527,21 +678,36 @@ export function SubagentsPanel({
 
   if (selectedRun) {
     return (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {error && <p role="alert" className="px-3 py-2 text-xs">{error}</p>}
       <SubagentDetail
+        key={childCommandKey(sessionId ?? "", selectedRun.id, "interrupt")}
+        runs={subagents}
+        capabilities={capabilities}
+        onReload={onReload}
+        onLoadDetail={onLoadDetail}
+        eventPage={eventPage}
         run={selectedRun}
         index={selectedIndex}
         nowSeconds={nowSeconds}
         sessionId={sessionId}
         onClose={onCloseDetail}
       />
+      </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background/40">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background/40 [&_p]:[overflow-wrap:anywhere] [&_a]:[overflow-wrap:anywhere]">
+      {selectedId && <div className="space-y-1 px-3 py-2 text-xs text-muted-foreground">
+        <p>The selected child is not in the current snapshot.</p>
+        <button type="button" onClick={onCloseDetail} className="rounded border px-2 py-1">Back to parent chat</button>
+      </div>}
+      <div className="px-3 py-2"><button type="button" onClick={() => void onReload?.()} className="rounded border px-2 py-1 text-xs">Refresh child state</button></div>
       <AggregateSummary subagents={sorted} />
+      {inspectReason && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">{inspectReason}</p>}
       {error && (
-        <div className="border-b border-border px-3 py-2 text-[11px] leading-4 text-red-300">
+        <div className="border-b border-border px-3 py-2 text-[11px] leading-4 text-foreground">
           {error}
         </div>
       )}
@@ -552,6 +718,7 @@ export function SubagentsPanel({
             run={run}
             index={index}
             selected={run.id === selectedId}
+            inspectReason={childControlSupport("inspect", run, sorted, capabilities).reason}
             nowSeconds={nowSeconds}
             onSelect={() => onSelect(run.id)}
             onKeyDown={handleRowKeyDown}
@@ -559,7 +726,7 @@ export function SubagentsPanel({
         ))}
         {sorted.length === 0 && (
           <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Bot className="h-3.5 w-3.5" />}
             {loading ? "Loading subagents" : "No subagents for this thread yet."}
           </div>
         )}

@@ -130,6 +130,7 @@ class TestPlatformReconnectWatcher:
 
         assert Platform.TELEGRAM not in runner._failed_platforms
         assert Platform.TELEGRAM in runner.adapters
+        assert succeed_adapter._approval_authorizer == runner._is_user_authorized
 
     @pytest.mark.asyncio
     async def test_reconnect_nonretryable_removed_from_queue(self):

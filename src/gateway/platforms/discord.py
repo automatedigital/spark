@@ -2365,6 +2365,7 @@ class DiscordAdapter(BasePlatformAdapter):
         session_key: str,
         description: str = "dangerous command",
         metadata: dict | None = None,
+        *, action_id: str | None = None, source=None,
     ) -> SendResult:
         """
         Send a button-based exec approval prompt for a dangerous command.
@@ -2400,6 +2401,10 @@ class DiscordAdapter(BasePlatformAdapter):
             view = ExecApprovalView(
                 session_key=session_key,
                 allowed_user_ids=self._allowed_user_ids,
+                action_id=action_id,
+                authorizer=self.is_approval_authorized,
+                source=self.approval_source(chat_id, metadata, source),
+                channel_id=str(target_id),
             )
 
             msg = await channel.send(embed=embed, view=view)
@@ -2961,17 +2966,27 @@ if DISCORD_AVAILABLE:
         Only users in the allowed list can click.  Times out after 5 minutes.
         """
 
-        def __init__(self, session_key: str, allowed_user_ids: set):
+        def __init__(self, session_key: str, allowed_user_ids: set, *, action_id: str | None = None,
+                     authorizer=None, source=None, channel_id: str | None = None):
             super().__init__(timeout=300)  # 5-minute timeout
             self.session_key = session_key
+            self.action_id = action_id
             self.allowed_user_ids = allowed_user_ids
+            self.authorizer = authorizer
+            self.source = source
+            self.channel_id = channel_id
             self.resolved = False
 
         def _check_auth(self, interaction: discord.Interaction) -> bool:
             """Verify the user clicking is authorized."""
-            if not self.allowed_user_ids:
-                return True  # No allowlist = anyone can approve
-            return str(interaction.user.id) in self.allowed_user_ids
+            channel_id = str(getattr(interaction, "channel_id", "") or "")
+            if not self.authorizer or channel_id != self.channel_id:
+                return False
+            return self.authorizer(
+                self.source, str(getattr(interaction.user, "id", "") or ""),
+                self.source.chat_id if self.source else "",
+                self.source.thread_id if self.source else None,
+            )
 
         async def _resolve(
             self,
@@ -2995,6 +3010,17 @@ if DISCORD_AVAILABLE:
 
             self.resolved = True
 
+            count = 0
+            if isinstance(self.action_id, str) and self.action_id:
+                try:
+                    from tools.approval import resolve_gateway_approval
+                    count = resolve_gateway_approval(self.session_key, choice, action_id=self.action_id)
+                except Exception as exc:
+                    logger.error("Failed to resolve gateway approval from button: %s", exc)
+            if not count:
+                label = "Approval is no longer pending"
+                color = discord.Color.orange()
+
             # Update the embed with the decision
             embed = (
                 interaction.message.embeds[0] if interaction.message.embeds else None
@@ -3008,21 +3034,6 @@ if DISCORD_AVAILABLE:
                 child.disabled = True
 
             await interaction.response.edit_message(embed=embed, view=self)
-
-            # Unblock the waiting agent thread via the gateway approval queue
-            try:
-                from tools.approval import resolve_gateway_approval
-
-                count = resolve_gateway_approval(self.session_key, choice)
-                logger.info(
-                    "Discord button resolved %d approval(s) for session %s (choice=%s, user=%s)",
-                    count,
-                    self.session_key,
-                    choice,
-                    interaction.user.display_name,
-                )
-            except Exception as exc:
-                logger.error("Failed to resolve gateway approval from button: %s", exc)
 
         @discord.ui.button(label="Allow Once", style=discord.ButtonStyle.green)
         async def allow_once(

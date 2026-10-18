@@ -14,6 +14,7 @@ Key design decisions:
 - Session source tagging ('cli', 'telegram', 'discord', etc.) for filtering
 """
 
+import hashlib
 import json
 import logging
 import random
@@ -41,7 +42,7 @@ def _default_db_path() -> Path:
 # Use _default_db_path() for dynamic resolution.
 DEFAULT_DB_PATH = _default_db_path()
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 15
 
 _SUBAGENT_JSON_LIMIT = 24_000
 _SUBAGENT_TEXT_LIMIT = 16_000
@@ -745,6 +746,70 @@ class SessionDB:
                     """
                 )
                 cursor.execute("UPDATE schema_version SET version = 12")
+            if current_version < 13:
+                # Additive upgrade: old unkeyed history remains readable. No replay.
+                columns = {row[1] for row in cursor.execute("PRAGMA table_info(subagent_events)")}
+                if "event_id" not in columns:
+                    cursor.execute("ALTER TABLE subagent_events ADD COLUMN event_id TEXT")
+                cursor.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_subagent_event_identity "
+                    "ON subagent_events(subagent_id, event_id) WHERE event_id IS NOT NULL"
+                )
+                columns = {row[1] for row in cursor.execute("PRAGMA table_info(subagent_runs)")}
+                for name in ("root_run_id", "attempt_id", "parent_node_id", "node_id"):
+                    if name not in columns:
+                        cursor.execute(f"ALTER TABLE subagent_runs ADD COLUMN {name} TEXT")
+                if "projection_version" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE subagent_runs ADD COLUMN projection_version INTEGER NOT NULL DEFAULT 1"
+                    )
+                cursor.execute("UPDATE schema_version SET version = 13")
+            if current_version < 14:
+                cursor.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS runtime_command_receipts (
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        command_kind TEXT NOT NULL,
+                        request_id TEXT NOT NULL,
+                        payload_hash TEXT NOT NULL,
+                        acceptance_json TEXT NOT NULL,
+                        intent_json TEXT NOT NULL,
+                        sequence INTEGER NOT NULL,
+                        state TEXT NOT NULL DEFAULT 'accepted',
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY(session_id, command_kind, request_id)
+                    );
+                    """
+                )
+                cursor.execute("UPDATE schema_version SET version = 14")
+            if current_version < 15:
+                columns = {row[1] for row in cursor.execute("PRAGMA table_info(subagent_runs)")}
+                for name in ("execution_mode", "retry_of"):
+                    if name not in columns:
+                        cursor.execute(f"ALTER TABLE subagent_runs ADD COLUMN {name} TEXT")
+                cursor.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS runtime_child_jobs (
+                        id TEXT PRIMARY KEY REFERENCES subagent_runs(id) ON DELETE CASCADE,
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        request_id TEXT NOT NULL,
+                        command_kind TEXT NOT NULL DEFAULT 'subagent.dispatch',
+                        worker_token TEXT NOT NULL,
+                        owner_pid INTEGER NOT NULL,
+                        owner_start TEXT,
+                        task_json TEXT NOT NULL,
+                        state TEXT NOT NULL DEFAULT 'accepted',
+                        heartbeat_at REAL NOT NULL,
+                        result_json TEXT,
+                        delivery_id TEXT NOT NULL UNIQUE,
+                        delivered_message_id INTEGER
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_runtime_child_jobs_owner
+                        ON runtime_child_jobs(session_id, state);
+                    """
+                )
+                cursor.execute("UPDATE schema_version SET version = 15")
 
         # Unique title index — always ensure it exists (safe to run after migrations
         # since the title column is guaranteed to exist at this point)
@@ -1520,8 +1585,8 @@ class SessionDB:
                 data.setdefault(key, value)
         return data
 
-    def create_subagent_run(self, run: dict[str, Any]) -> None:
-        """Insert or update a bounded subagent run snapshot."""
+    def _write_subagent_run(self, conn: sqlite3.Connection, run: dict[str, Any]) -> None:
+        """Write a snapshot inside the owning lifecycle transaction."""
         now = time.time()
         payload = dict(run)
         payload.setdefault("started_at", now)
@@ -1531,65 +1596,165 @@ class SessionDB:
             return
         task_index = payload.get("task_index") or 0
 
-        def _do(conn):
-            conn.execute(
-                """INSERT INTO subagent_runs (
-                    id, parent_session_id, child_session_id, task_index, name, glyph,
-                    color, status, task, context_preview, model, provider,
-                    toolsets_json, started_at, last_event_at, ended_at,
-                    duration_seconds, exit_reason, summary, error, tokens_json,
-                    tool_trace_json, data_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    parent_session_id=COALESCE(excluded.parent_session_id, subagent_runs.parent_session_id),
-                    child_session_id=COALESCE(excluded.child_session_id, subagent_runs.child_session_id),
-                    task_index=excluded.task_index,
-                    name=COALESCE(excluded.name, subagent_runs.name),
-                    glyph=COALESCE(excluded.glyph, subagent_runs.glyph),
-                    color=COALESCE(excluded.color, subagent_runs.color),
-                    status=COALESCE(excluded.status, subagent_runs.status),
-                    task=COALESCE(excluded.task, subagent_runs.task),
-                    context_preview=COALESCE(excluded.context_preview, subagent_runs.context_preview),
-                    model=COALESCE(excluded.model, subagent_runs.model),
-                    provider=COALESCE(excluded.provider, subagent_runs.provider),
-                    toolsets_json=COALESCE(excluded.toolsets_json, subagent_runs.toolsets_json),
-                    last_event_at=excluded.last_event_at,
-                    ended_at=COALESCE(excluded.ended_at, subagent_runs.ended_at),
-                    duration_seconds=COALESCE(excluded.duration_seconds, subagent_runs.duration_seconds),
-                    exit_reason=COALESCE(excluded.exit_reason, subagent_runs.exit_reason),
-                    summary=COALESCE(excluded.summary, subagent_runs.summary),
-                    error=COALESCE(excluded.error, subagent_runs.error),
-                    tokens_json=COALESCE(excluded.tokens_json, subagent_runs.tokens_json),
-                    tool_trace_json=COALESCE(excluded.tool_trace_json, subagent_runs.tool_trace_json),
-                    data_json=COALESCE(excluded.data_json, subagent_runs.data_json)""",
-                (
-                    subagent_id,
-                    payload.get("parent_session_id"),
-                    payload.get("child_session_id"),
-                    task_index,
-                    payload.get("name") or payload.get("display_name") or f"Subagent {task_index + 1}",
-                    payload.get("glyph"),
-                    payload.get("color"),
-                    payload.get("status") or "created",
-                    _bounded_text(payload.get("task")),
-                    _bounded_text(payload.get("context_preview"), 2_000),
-                    payload.get("model"),
-                    payload.get("provider"),
-                    _bounded_json(payload.get("toolsets") or []),
-                    payload.get("started_at") or now,
-                    payload.get("last_event_at") or now,
-                    payload.get("ended_at"),
-                    payload.get("duration_seconds"),
-                    payload.get("exit_reason"),
-                    _bounded_text(payload.get("summary")),
-                    _bounded_text(payload.get("error")),
-                    _bounded_json(payload.get("tokens") or {"input": 0, "output": 0}),
-                    _bounded_json(payload.get("tool_trace") or []),
-                    _bounded_json(payload),
-                ),
-            )
+        conn.execute(
+            """INSERT INTO subagent_runs (
+                id, parent_session_id, child_session_id, task_index, name, glyph,
+                color, status, task, context_preview, model, provider,
+                toolsets_json, started_at, last_event_at, ended_at,
+                duration_seconds, exit_reason, summary, error, tokens_json,
+                tool_trace_json, data_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                parent_session_id=COALESCE(excluded.parent_session_id, subagent_runs.parent_session_id),
+                child_session_id=COALESCE(excluded.child_session_id, subagent_runs.child_session_id),
+                task_index=excluded.task_index,
+                name=COALESCE(excluded.name, subagent_runs.name),
+                glyph=COALESCE(excluded.glyph, subagent_runs.glyph),
+                color=COALESCE(excluded.color, subagent_runs.color),
+                status=COALESCE(excluded.status, subagent_runs.status),
+                task=COALESCE(excluded.task, subagent_runs.task),
+                context_preview=COALESCE(excluded.context_preview, subagent_runs.context_preview),
+                model=COALESCE(excluded.model, subagent_runs.model),
+                provider=COALESCE(excluded.provider, subagent_runs.provider),
+                toolsets_json=COALESCE(excluded.toolsets_json, subagent_runs.toolsets_json),
+                last_event_at=excluded.last_event_at,
+                ended_at=COALESCE(excluded.ended_at, subagent_runs.ended_at),
+                duration_seconds=COALESCE(excluded.duration_seconds, subagent_runs.duration_seconds),
+                exit_reason=COALESCE(excluded.exit_reason, subagent_runs.exit_reason),
+                summary=COALESCE(excluded.summary, subagent_runs.summary),
+                error=COALESCE(excluded.error, subagent_runs.error),
+                tokens_json=COALESCE(excluded.tokens_json, subagent_runs.tokens_json),
+                tool_trace_json=COALESCE(excluded.tool_trace_json, subagent_runs.tool_trace_json),
+                data_json=COALESCE(excluded.data_json, subagent_runs.data_json)""",
+            (
+                subagent_id,
+                payload.get("parent_session_id"),
+                payload.get("child_session_id"),
+                task_index,
+                payload.get("name") or payload.get("display_name") or f"Subagent {task_index + 1}",
+                payload.get("glyph"),
+                payload.get("color"),
+                payload.get("status") or "created",
+                _bounded_text(payload.get("task")),
+                _bounded_text(payload.get("context_preview"), 2_000),
+                payload.get("model"),
+                payload.get("provider"),
+                _bounded_json(payload.get("toolsets") or []),
+                payload.get("started_at") or now,
+                payload.get("last_event_at") or now,
+                payload.get("ended_at"),
+                payload.get("duration_seconds"),
+                payload.get("exit_reason"),
+                _bounded_text(payload.get("summary")),
+                _bounded_text(payload.get("error")),
+                _bounded_json(payload.get("tokens") or {"input": 0, "output": 0}),
+                _bounded_json(payload.get("tool_trace") or []),
+                _bounded_json(payload),
+            ),
+        )
+        conn.execute(
+            """UPDATE subagent_runs SET root_run_id=COALESCE(?, root_run_id),
+               attempt_id=COALESCE(?, attempt_id), parent_node_id=COALESCE(?, parent_node_id),
+               node_id=COALESCE(?, node_id), execution_mode=COALESCE(?, execution_mode),
+               retry_of=COALESCE(?, retry_of) WHERE id=?""",
+            tuple(payload.get(key) for key in ("root_run_id", "attempt_id", "parent_node_id", "node_id",
+                                               "execution_mode", "retry_of"))
+            + (subagent_id,),
+        )
 
-        self._execute_write(_do)
+    def create_subagent_run(self, run: dict[str, Any]) -> None:
+        """Legacy unkeyed snapshot API; canonical writers use commit_subagent_lifecycle."""
+        self._execute_write(lambda conn: self._write_subagent_run(conn, run))
+
+    def _commit_subagent_lifecycle_row(
+        self, conn: sqlite3.Connection, run: dict[str, Any], event: dict[str, Any]
+    ) -> dict[str, Any]:
+        subagent_id = str(run.get("id") or "")
+        event_id = str(event.get("event_id") or "")
+        if not subagent_id or not event_id or len(subagent_id) > 200 or len(event_id) > 200:
+            raise ValueError("Child lifecycle requires bounded id and event_id")
+        event_type = str(event.get("event") or "status")
+        if len(event_type) > 80:
+            raise ValueError("Child lifecycle event name is too long")
+        now = time.time()
+
+        existing = conn.execute(
+            "SELECT data_json FROM subagent_events WHERE subagent_id=? AND event_id=?",
+            (subagent_id, event_id),
+        ).fetchone()
+        row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
+        current = self._subagent_row_to_dict(row) if row else {}
+        if existing:
+            return {"created": False, "run": current,
+                    "event": self._decode_json_field(existing[0], {}), "session_event": None}
+        parent = current.get("parent_session_id") or run.get("parent_session_id")
+        if current and run.get("parent_session_id") not in (None, parent):
+            raise ValueError("Child lifecycle ownership cannot change")
+        job = conn.execute("SELECT * FROM runtime_child_jobs WHERE id=?", (subagent_id,)).fetchone()
+        if job and run.get("worker_token") != job["worker_token"]:
+            raise ValueError("Child worker no longer owns this attempt")
+        terminal = current.get("status") in {"completed", "failed", "interrupted", "cancelled", "uncertain"}
+        snapshot = current if terminal else {**current, **run, "parent_session_id": parent}
+        if current.get("status") == "stopping" and snapshot.get("status") not in {"completed", "failed", "interrupted", "cancelled", "uncertain"}:
+            snapshot["status"] = "stopping"
+        self._write_subagent_run(conn, snapshot)
+        row = conn.execute("SELECT * FROM subagent_runs WHERE id=?", (subagent_id,)).fetchone()
+        snapshot = self._subagent_row_to_dict(row)
+        committed = {**event, "projection_version": 1, "subagent_run": snapshot}
+        bounded = self._decode_json_field(_bounded_json(committed), {})
+        if bounded.get("_truncated"):
+            # Preserve identity/control fields when reducing oversized legacy
+            # payloads. A preview wrapper alone would destroy dedup identity.
+            keys = ("id", "parent_session_id", "child_session_id", "root_run_id",
+                    "attempt_id", "node_id", "parent_node_id", "status", "projection_version")
+            bounded = {"schema": "spark.subagent.lifecycle.v1",
+                       "event_id": event_id, "event": event_type,
+                       "type": f"subagent.{event_type}", "id": subagent_id,
+                       "run_id": subagent_id,
+                       "subagent_id": _bounded_text(event.get("subagent_id") or subagent_id, 200),
+                       "display_name": _bounded_text(snapshot.get("name"), 200),
+                       "task_index": snapshot.get("task_index", 0),
+                       "projection_version": 1,
+                       "subagent_run": {key: _bounded_text(snapshot.get(key), 200)
+                                            if isinstance(snapshot.get(key), str) else snapshot.get(key)
+                                            for key in keys},
+                       "payload": {"_truncated": True, "preview": bounded["preview"][:2000]}}
+        committed = bounded
+        conn.execute(
+            """INSERT INTO subagent_events (subagent_id, event_id, event_type, data_json, timestamp)
+               VALUES (?, ?, ?, ?, ?)""",
+            (subagent_id, event_id, event_type, _event_json(committed), now),
+        )
+        session_event = None
+        if parent:
+            session_event, _ = self._append_session_event_row(
+                conn, parent, f"subagent.{event_type}", committed,
+                f"subagent:{subagent_id}:{event_id}", now,
+            )
+        if job:
+            result = {key: snapshot.get(key) for key in ("id", "status", "summary", "error", "exit_reason", "model", "tokens")}
+            state = snapshot["status"]
+            conn.execute(
+                """UPDATE runtime_child_jobs SET state=?, heartbeat_at=?, result_json=?
+                   WHERE id=? AND worker_token=?""",
+                (state, now, _bounded_json(result) if state in
+                 {"completed", "failed", "interrupted", "cancelled", "uncertain"} else None,
+                 subagent_id, job["worker_token"]),
+            )
+        return {"created": True, "run": snapshot, "event": committed, "session_event": session_event}
+
+    def commit_subagent_lifecycle(
+        self, run: dict[str, Any], event: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Commit snapshot, bounded child event and session event before publication.
+
+        Keyed duplicates return the original event. Terminal state cannot regress.
+        Child lifecycle never changes root run/session completion.
+        """
+        result = self._execute_write(lambda conn: self._commit_subagent_lifecycle_row(conn, run, event))
+        if result["created"] and result["session_event"]:
+            self._publish_committed_events([result["session_event"]])
+        return result
 
     def update_subagent_run(self, subagent_id: str, updates: dict[str, Any]) -> None:
         """Update a subagent run snapshot."""
@@ -1610,6 +1775,199 @@ class SessionDB:
             return cursor.lastrowid
 
         return self._execute_write(_do)
+
+    @staticmethod
+    def _command_payload_hash(payload: dict[str, Any]) -> str:
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _command_receipt_dict(cls, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "session_id": row["session_id"], "command_kind": row["command_kind"],
+            "request_id": row["request_id"], "payload_hash": row["payload_hash"],
+            "acceptance": cls._decode_json_field(row["acceptance_json"], {}),
+            "intent": cls._decode_json_field(row["intent_json"], {}),
+            "sequence": row["sequence"], "state": row["state"],
+        }
+
+    def get_runtime_command(
+        self, session_id: str, command_kind: str, request_id: str, payload: dict[str, Any],
+        *, compression_family: bool = False,
+    ) -> dict[str, Any] | None:
+        """Look up a scoped receipt after the caller validates resource ownership."""
+        payload_hash = self._command_payload_hash(payload)
+        owners = self.resolve_compression_chain(session_id) if compression_family else [session_id]
+        with self._lock:
+            row = self._find_runtime_command_row(self._conn, owners, command_kind, request_id, payload_hash)
+        return self._command_receipt_dict(row) if row else None
+
+    @staticmethod
+    def _find_runtime_command_row(conn, owners, command_kind, request_id, payload_hash):
+        placeholders = ",".join("?" for _ in owners)
+        rows = conn.execute(
+            f"""SELECT * FROM runtime_command_receipts
+                WHERE session_id IN ({placeholders}) AND command_kind=? AND request_id=?
+                ORDER BY created_at, session_id""",
+            (*owners, command_kind, request_id),
+        ).fetchall()
+        if any(row["payload_hash"] != payload_hash for row in rows):
+            raise ValueError("request_id was already accepted with a different payload")
+        return rows[0] if rows else None
+
+    def accept_runtime_command(
+        self, session_id: str, command_kind: str, request_id: str,
+        payload: dict[str, Any], acceptance: dict[str, Any], intent: dict[str, Any],
+        *, children: list[dict[str, Any]] | None = None, max_children: int = 3,
+        compression_family: bool = False,
+    ) -> dict[str, Any]:
+        """Commit acceptance and dispatch intent before an external side effect.
+
+        Only the caller receiving created=True may dispatch. A retry returns the
+        original acceptance, including its committed cursor, even after restart.
+        Accepted work is never implicitly redispatched by this database API.
+        """
+        if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 200:
+            raise ValueError("request_id must be a non-empty string of at most 200 characters")
+        payload_hash = self._command_payload_hash(payload)
+        owners = self.resolve_compression_chain(session_id) if compression_family else [session_id]
+        now = time.time()
+
+        def _do(conn):
+            # Repeat the family lookup under BEGIN IMMEDIATE: a preflight read
+            # alone cannot fence concurrent retries from old and compressed IDs.
+            row = self._find_runtime_command_row(conn, owners, command_kind, request_id, payload_hash)
+            if row:
+                return {"created": False, **self._command_receipt_dict(row)}, []
+            child_events = []
+            if children:
+                active = conn.execute(
+                    """SELECT COUNT(*) FROM runtime_child_jobs WHERE state NOT IN
+                       ('completed', 'failed', 'interrupted', 'cancelled', 'uncertain')"""
+                ).fetchone()[0]
+                if active + len(children) > max_children:
+                    raise ValueError("Profile concurrent child limit reached")
+                for child in children:
+                    run = child["run"]
+                    if run.get("parent_session_id") != session_id:
+                        raise ValueError("Child reservation ownership mismatch")
+                    committed = self._commit_subagent_lifecycle_row(
+                        conn, run, {"event": "created", "event_id": f"{run['id']}:created"},
+                    )
+                    child_events.append(committed["session_event"])
+                    conn.execute(
+                        """INSERT INTO runtime_child_jobs
+                           (id, session_id, request_id, command_kind, worker_token, owner_pid, owner_start,
+                            task_json, heartbeat_at, delivery_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (run["id"], session_id, request_id, command_kind, run["worker_token"], child["owner_pid"],
+                         child.get("owner_start"), _event_json(child["task"]), now, f"child-result:{run['id']}"),
+                    )
+            event, _ = self._append_session_event_row(
+                conn, session_id, "runtime.command.accepted",
+                {"command_kind": command_kind, "request_id": request_id,
+                 "payload_hash": payload_hash, "accepted_ids": acceptance},
+                f"runtime.command:{command_kind}:{request_id}", now,
+            )
+            accepted = {**acceptance, "request_id": request_id, "committed_sequence": event["sequence"]}
+            conn.execute(
+                """INSERT INTO runtime_command_receipts
+                   (session_id, command_kind, request_id, payload_hash, acceptance_json,
+                    intent_json, sequence, state, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?)""",
+                (session_id, command_kind, request_id, payload_hash, _event_json(accepted),
+                 _event_json(intent), event["sequence"], now, now),
+            )
+            row = conn.execute(
+                """SELECT * FROM runtime_command_receipts
+                   WHERE session_id=? AND command_kind=? AND request_id=?""",
+                (session_id, command_kind, request_id),
+            ).fetchone()
+            return {"created": True, **self._command_receipt_dict(row)}, [*child_events, event]
+
+        result, events = self._execute_write(_do)
+        if events:
+            self._publish_committed_events(events)
+        return result
+
+    def mark_runtime_command(
+        self, session_id: str, command_kind: str, request_id: str, state: str
+    ) -> None:
+        """Record dispatch observation separately; never rewrite original acceptance."""
+        if state not in {"dispatched", "uncertain"}:
+            raise ValueError("Invalid runtime command state")
+        self._execute_write(lambda conn: conn.execute(
+            """UPDATE runtime_command_receipts SET state=?, updated_at=?
+               WHERE session_id=? AND command_kind=? AND request_id=?""",
+            (state, time.time(), session_id, command_kind, request_id),
+        ))
+
+    def list_async_child_jobs(
+        self, session_id: str | None = None, *, active_only: bool = False
+    ) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM runtime_child_jobs WHERE 1=1"
+                + (" AND session_id=?" if session_id else "")
+                + (" AND result_json IS NULL" if active_only else ""),
+                (session_id,) if session_id else (),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["task"] = self._decode_json_field(item.pop("task_json"), {})
+            item["result"] = self._decode_json_field(item.pop("result_json"), None)
+            result.append(item)
+        return result
+
+    def touch_async_child(self, subagent_id: str, worker_token: str) -> None:
+        self._execute_write(lambda conn: conn.execute(
+            """UPDATE runtime_child_jobs SET heartbeat_at=? WHERE id=? AND worker_token=?
+               AND result_json IS NULL""", (time.time(), subagent_id, worker_token),
+        ))
+
+    def deliver_async_child_results(self, session_id: str) -> list[dict[str, Any]]:
+        """Append completion messages once at a safe explicit parent turn boundary.
+
+        Message, session event and delivery acknowledgement commit together. This
+        never starts a parent turn; after loss the stored message is in history.
+        """
+        owners = self.resolve_compression_chain(session_id)
+        placeholders = ",".join("?" for _ in owners)
+        now = time.time()
+
+        def _do(conn):
+            rows = conn.execute(
+                f"""SELECT * FROM runtime_child_jobs WHERE session_id IN ({placeholders})
+                    AND result_json IS NOT NULL AND delivered_message_id IS NULL
+                    ORDER BY heartbeat_at, id LIMIT 50""", tuple(owners),
+            ).fetchall()
+            messages, events = [], []
+            for row in rows:
+                result = self._decode_json_field(row["result_json"], {})
+                content = (f"[SYSTEM: Delegated child {row['id']} finished ({row['state']}). "
+                           f"Delivery {row['delivery_id']}. Stored result:\n{_bounded_json(result, 18000)}]")
+                cursor = conn.execute(
+                    "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, 'user', ?, ?)",
+                    (session_id, content, now),
+                )
+                message = {"role": "user", "content": content, "message_id": cursor.lastrowid,
+                           "delivery_id": row["delivery_id"]}
+                event, _ = self._append_session_event_row(
+                    conn, session_id, "message.appended", message, row["delivery_id"], now,
+                )
+                conn.execute("UPDATE runtime_child_jobs SET delivered_message_id=? WHERE id=?",
+                             (cursor.lastrowid, row["id"]))
+                messages.append(message)
+                events.append(event)
+            if messages:
+                conn.execute("UPDATE sessions SET message_count=message_count+? WHERE id=?",
+                             (len(messages), session_id))
+            return messages, events
+
+        messages, events = self._execute_write(_do)
+        self._publish_committed_events(events)
+        return messages
 
     def get_subagent_run(self, subagent_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -1639,7 +1997,7 @@ class SessionDB:
         limit = max(1, min(int(limit or 500), 2000))
         with self._lock:
             rows = self._conn.execute(
-                """SELECT id, subagent_id, event_type, data_json, timestamp
+                """SELECT id, subagent_id, event_id, event_type, data_json, timestamp
                    FROM subagent_events
                    WHERE subagent_id = ?
                    ORDER BY timestamp, id
@@ -1652,6 +2010,37 @@ class SessionDB:
             item["data"] = self._decode_json_field(item.pop("data_json", None), {})
             events.append(item)
         return events
+
+    def get_subagent_event_page(
+        self, subagent_id: str, *, limit: int = 200, after_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Bound event payload reads and retain chronological cursor identity."""
+        limit = max(1, min(int(limit), 1000))
+        with self._lock:
+            params: list[Any] = [subagent_id]
+            cutoff = ""
+            if after_id is not None:
+                cursor = self._conn.execute(
+                    "SELECT timestamp, id FROM subagent_events WHERE subagent_id=? AND id=?",
+                    (subagent_id, after_id),
+                ).fetchone()
+                if cursor is None:
+                    raise ValueError("Child event cursor not found")
+                cutoff = "AND (timestamp > ? OR (timestamp = ? AND id > ?))"
+                params.extend((cursor["timestamp"], cursor["timestamp"], cursor["id"]))
+            rows = self._conn.execute(
+                f"""SELECT id, subagent_id, event_id, event_type, data_json, timestamp
+                    FROM subagent_events WHERE subagent_id=? {cutoff}
+                    ORDER BY timestamp, id LIMIT ?""", (*params, limit + 1),
+            ).fetchall()
+        more = len(rows) > limit
+        events = []
+        for row in rows[:limit]:
+            item = dict(row)
+            item["data"] = self._decode_json_field(item.pop("data_json", None), {})
+            events.append(item)
+        return {"events": events, "has_more_events": more,
+                "next_event_after_id": events[-1]["id"] if more and events else None}
 
     # =========================================================================
     # Message storage

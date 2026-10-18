@@ -48,6 +48,18 @@ export interface ChatStreamControllerTransition extends ChatStreamTransition {
   queuedEffects: readonly QueuedChatStreamEffect[];
 }
 
+/** A confirmed same-owner ID handoff is an alias change, not session recovery. */
+export function adoptChatStreamSession(
+  state: ChatStreamState,
+  sessionId: string,
+  aliases: readonly string[] = [],
+): ChatStreamControllerTransition {
+  return {
+    state: { ...state, activeSessionId: sessionId, sessionAliases: [...new Set([...state.sessionAliases, ...aliases, sessionId])] },
+    effects: [], queuedEffects: [], accepted: true,
+  };
+}
+
 function effectSessionId(effect: ChatStreamEffect, state: ChatStreamState): string | null {
   return effect.type === "load-history" ? effect.sessionId : state.activeSessionId;
 }

@@ -10,14 +10,16 @@ per-attempt runs, and append-only events for dashboards and notifiers.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
 import uuid
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from core.spark_constants import get_spark_home
 
@@ -53,6 +55,7 @@ RUN_OUTCOMES = frozenset(
         "spawn_failed",
         "gave_up",
         "reclaimed",
+        "uncertain",
     }
 )
 
@@ -150,6 +153,8 @@ _lock = threading.Lock()
 _initialized: dict[str, bool] = {}
 
 _TASK_COLUMN_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    ("claim_ttl_seconds", "INTEGER NOT NULL DEFAULT 3600"),
+    ("worker_started_at", "REAL"),
     ("owner_profile", "TEXT"),
     ("owner_platform", "TEXT"),
     ("owner_channel", "TEXT"),
@@ -161,8 +166,90 @@ _TASK_COLUMN_MIGRATIONS: tuple[tuple[str, str], ...] = (
 )
 
 
+class WorkerClaimError(ValueError):
+    """The worker no longer owns this task attempt (or omitted its fence)."""
+
+
+class WorkerFence(TypedDict):
+    claim_token: str
+    run_id: int
+
+
+_board_home: ContextVar[Path | None] = ContextVar("kanban_board_home", default=None)
+_worker_claim: ContextVar[tuple[str, str, int] | None] = ContextVar("kanban_worker_claim", default=None)
+
+
+@contextmanager
+def board_home(home: Path) -> Iterator[None]:
+    """Select a board without changing process-global profile configuration."""
+    token = _board_home.set(home)
+    try:
+        yield
+    finally:
+        _board_home.reset(token)
+
+
+@contextmanager
+def worker_claim(task_id: str, claim_token: str, run_id: int) -> Iterator[None]:
+    """Fence all board access made by one worker tool, including child-task writes."""
+    if not task_id or not claim_token or run_id <= 0:
+        raise WorkerClaimError("Worker task, claim token and run ID are required")
+    token = _worker_claim.set((task_id, claim_token, run_id))
+    try:
+        yield
+    finally:
+        _worker_claim.reset(token)
+
+
 def kanban_db_path() -> Path:
-    return get_spark_home() / "kanban.db"
+    home = _board_home.get()
+    if home is None and os.getenv("SPARK_KANBAN_TASK"):
+        raw = os.getenv("SPARK_KANBAN_BOARD_HOME", "")
+        if not raw or not Path(raw).is_absolute():
+            raise WorkerClaimError("Worker board home must be explicit and absolute")
+        home = Path(raw)
+    return (home if home is not None else get_spark_home()) / "kanban.db"
+
+
+def task_references_for_sessions(session_ids: Sequence[str]) -> list[dict[str, Any]]:
+    """Read active-profile board links without creating or repairing a board DB.
+
+    Deliberately ignore worker board-home overrides: dashboard navigation must
+    never follow an assignment into another profile's board. Legacy/unreadable
+    schemas have no verified references. Session names are never task identity.
+    """
+    path = get_spark_home() / "kanban.db"
+    if not session_ids or not path.is_file() or path.resolve().parent != get_spark_home().resolve():
+        return []
+    conn = None
+    try:
+        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        placeholders = ",".join("?" for _ in session_ids)
+        rows = conn.execute(
+            "SELECT t.id, t.title, t.board_slug, r.id AS run_id FROM task_runs r "
+            "JOIN tasks t ON t.id = r.task_id WHERE json_extract("
+            "CASE WHEN json_valid(r.metadata_json) THEN r.metadata_json ELSE '{}' END, "
+            "'$.execution.session_id') IN (" + placeholders + ") ORDER BY r.id DESC",
+            tuple(session_ids),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.DatabaseError:
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _require_claim(conn: sqlite3.Connection, task_id: str, token: str, run_id: int) -> None:
+    row = conn.execute(
+        "SELECT 1 FROM tasks t JOIN task_runs r ON r.id = t.current_run_id "
+        "WHERE t.id = ? AND t.status = 'running' AND t.claim_token = ? "
+        "AND t.current_run_id = ? AND r.task_id = t.id AND r.outcome = 'active'",
+        (task_id, token, run_id),
+    ).fetchone()
+    if not token or not row:
+        raise WorkerClaimError("Worker claim is missing, stale or belongs to another attempt")
 
 
 def _new_task_id() -> str:
@@ -226,7 +313,10 @@ def init_kanban_db() -> None:
 
 
 @contextmanager
-def _connect() -> Iterator[sqlite3.Connection]:
+def _connect(
+    *, write: bool = False, task_id: str | None = None,
+    claim_token: str | None = None, run_id: int | None = None,
+) -> Iterator[sqlite3.Connection]:
     init_kanban_db()
     path = str(kanban_db_path())
     conn = sqlite3.connect(path)
@@ -237,6 +327,22 @@ def _connect() -> Iterator[sqlite3.Connection]:
     # background dashboard polling self-heals instead of throwing forever.
     _ensure_schema(conn)
     try:
+        scoped = _worker_claim.get()
+        explicit = claim_token is not None or run_id is not None
+        if write or scoped or explicit:
+            # Acquire the write lock BEFORE checking ownership. A competing claim,
+            # admin transition or worker cannot invalidate the check before mutation.
+            conn.execute("BEGIN IMMEDIATE")
+        if explicit:
+            if not task_id or not claim_token or not run_id:
+                raise WorkerClaimError("Worker claim token and run ID must be supplied together")
+            _require_claim(conn, task_id, claim_token, run_id)
+        if scoped:
+            if task_id is not None and task_id != scoped[0]:
+                raise WorkerClaimError("Worker lifecycle writes must target its owned task")
+            _require_claim(conn, *scoped)
+        elif write and os.getenv("SPARK_KANBAN_TASK") and not explicit:
+            raise WorkerClaimError("Worker writes require an owned claim token and run ID")
         yield conn
         conn.commit()
     except Exception:
@@ -365,7 +471,7 @@ def create_task(
     skills_json = json.dumps(list(skills or []), ensure_ascii=False)
     now = _now()
 
-    with _connect() as conn:
+    with _connect(write=True) as conn:
         if idempotency_key:
             row = conn.execute(
                 "SELECT * FROM tasks WHERE idempotency_key = ?", (idempotency_key,)
@@ -471,7 +577,7 @@ def add_comment(
     origin_kind: str | None = None,
     internal_event: bool = False,
 ) -> int:
-    with _connect() as conn:
+    with _connect(write=True) as conn:
         task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not task:
             raise ValueError(f"Task not found: {task_id}")
@@ -522,7 +628,7 @@ def _would_create_cycle(conn: sqlite3.Connection, parent_id: str, child_id: str)
 def add_link(parent_id: str, child_id: str) -> None:
     if parent_id == child_id:
         raise ValueError("Cannot link task to itself")
-    with _connect() as conn:
+    with _connect(write=True) as conn:
         missing = [
             tid
             for tid in (parent_id, child_id)
@@ -549,7 +655,7 @@ def add_link(parent_id: str, child_id: str) -> None:
 
 
 def remove_link(parent_id: str, child_id: str) -> bool:
-    with _connect() as conn:
+    with _connect(write=True) as conn:
         cur = conn.execute(
             "DELETE FROM task_links WHERE parent_id = ? AND child_id = ?",
             (parent_id, child_id),
@@ -575,7 +681,7 @@ def patch_task(
     origin_kind: str | None = None,
     internal_event: bool = False,
 ) -> dict[str, Any] | None:
-    with _connect() as conn:
+    with _connect(write=True) as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             return None
@@ -677,7 +783,7 @@ def patch_task(
 
 
 def delete_task(task_id: str) -> bool:
-    with _connect() as conn:
+    with _connect(write=True) as conn:
         row = conn.execute("SELECT id, title, status FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             return False
@@ -692,6 +798,16 @@ def delete_task(task_id: str) -> bool:
         return True
 
 
+def _run_metadata(conn: sqlite3.Connection, run_id: int | None, updates: dict) -> str:
+    existing = conn.execute("SELECT metadata_json FROM task_runs WHERE id = ?", (run_id,)).fetchone()
+    metadata = json.loads(existing[0] or "{}") if existing else {}
+    execution = metadata.get("execution")
+    metadata.update(updates)
+    if execution is not None:
+        metadata["execution"] = execution
+    return json.dumps(metadata, ensure_ascii=False)
+
+
 def complete_task(
     task_id: str,
     *,
@@ -702,15 +818,17 @@ def complete_task(
     origin_session_key: str | None = None,
     origin_kind: str | None = None,
     internal_event: bool = False,
+    claim_token: str | None = None,
+    run_id: int | None = None,
 ) -> dict[str, Any] | None:
     """Finish worker execution and move the task to user review."""
     now = _now()
-    meta_json = json.dumps(metadata or {}, ensure_ascii=False)
-    with _connect() as conn:
+    with _connect(write=True, task_id=task_id, claim_token=claim_token, run_id=run_id) as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             return None
         run_id = row["current_run_id"]
+        meta_json = _run_metadata(conn, run_id, metadata or {})
         if run_id:
             conn.execute(
                 "UPDATE task_runs SET outcome = 'completed', ended_at = ?, "
@@ -765,7 +883,7 @@ def mark_task_done(
 ) -> dict[str, Any] | None:
     """Mark a reviewed task complete."""
     now = _now()
-    with _connect() as conn:
+    with _connect(write=True) as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             return None
@@ -822,17 +940,23 @@ def block_task(
     task_id: str,
     reason: str,
     *,
+    metadata: dict | None = None,
     actor: str | None = None,
     origin_session_key: str | None = None,
     origin_kind: str | None = None,
     internal_event: bool = False,
+    claim_token: str | None = None,
+    run_id: int | None = None,
 ) -> dict[str, Any] | None:
     now = _now()
-    with _connect() as conn:
+    with _connect(write=True, task_id=task_id, claim_token=claim_token, run_id=run_id) as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             return None
         run_id = row["current_run_id"]
+        if run_id and metadata is not None:
+            conn.execute("UPDATE task_runs SET metadata_json = ? WHERE id = ?",
+                         (_run_metadata(conn, run_id, metadata), run_id))
         if run_id:
             conn.execute(
                 "UPDATE task_runs SET outcome = 'blocked', ended_at = ?, error = ? "
@@ -872,7 +996,7 @@ def block_task(
 
 
 def unblock_task(task_id: str) -> dict[str, Any] | None:
-    with _connect() as conn:
+    with _connect(write=True) as conn:
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row or row["status"] != "blocked":
             return None
@@ -1065,11 +1189,18 @@ def claim_ready_task(
     token = uuid.uuid4().hex
     now = _now()
     expires = now + claim_ttl_seconds
-    with _connect() as conn:
+    with _connect(write=True) as conn:
+        if conn.execute(
+            "SELECT 1 FROM tasks candidate JOIN tasks active ON active.board_slug = candidate.board_slug "
+            "AND active.assignee = candidate.assignee AND active.status = 'running' "
+            "WHERE candidate.id = ?", (task_id,),
+        ).fetchone():
+            return None
         cur = conn.execute(
             "UPDATE tasks SET status = 'running', claim_token = ?, claim_expires_at = ?, "
-            "updated_at = ? WHERE id = ? AND status = 'ready'",
-            (token, expires, now, task_id),
+            "claim_ttl_seconds = ?, worker_started_at = NULL, updated_at = ? "
+            "WHERE id = ? AND status = 'ready' AND assignee = ?",
+            (token, expires, max(1, claim_ttl_seconds), now, task_id, profile),
         )
         if cur.rowcount != 1:
             return None
@@ -1092,131 +1223,120 @@ def claim_ready_task(
         return token, rid
 
 
-def set_worker_pid(task_id: str, pid: int) -> None:
-    with _connect() as conn:
+def set_worker_pid(
+    task_id: str, pid: int, *, claim_token: str | None = None, run_id: int | None = None,
+) -> None:
+    with _connect(write=True, task_id=task_id, claim_token=claim_token, run_id=run_id) as conn:
         conn.execute(
             "UPDATE tasks SET worker_pid = ?, updated_at = ? WHERE id = ?",
             (pid, _now(), task_id),
         )
-        _emit_event(conn, task_id=task_id, run_id=None, kind="spawned", payload={"pid": pid})
+        _emit_event(conn, task_id=task_id, run_id=run_id, kind="spawned", payload={"pid": pid})
 
 
-def record_spawn_failure(task_id: str, error: str, failure_limit: int) -> str:
-    """Increment spawn failures; may block task with gave_up. Returns outcome tag."""
+def record_worker_execution(
+    task_id: str, *, claim_token: str, run_id: int, execution: dict[str, Any],
+) -> None:
+    """Record known execution references in this board DB, not a cross-DB transaction."""
+    with _connect(write=True, task_id=task_id, claim_token=claim_token, run_id=run_id) as conn:
+        row = conn.execute("SELECT metadata_json FROM task_runs WHERE id = ?", (run_id,)).fetchone()
+        metadata = json.loads(row[0] or "{}")
+        metadata["execution"] = {**metadata.get("execution", {}), **execution}
+        conn.execute("UPDATE task_runs SET metadata_json = ? WHERE id = ?",
+                     (json.dumps(metadata), run_id))
+        conn.execute("UPDATE tasks SET worker_started_at = COALESCE(worker_started_at, ?), "
+                     "worker_pid = ?, updated_at = ? WHERE id = ?", (_now(), os.getpid(), _now(), task_id))
+        _emit_event(conn, task_id=task_id, run_id=run_id, kind="worker_execution", payload=execution)
+
+
+def record_spawn_failure(
+    task_id: str, error: str, failure_limit: int, *,
+    claim_token: str | None = None, run_id: int | None = None,
+) -> str:
+    """Only a known failure to spawn is retryable; accepted/uncertain work is not."""
     now = _now()
-    with _connect() as conn:
-        row = conn.execute(
-            "SELECT spawn_failures, assignee FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
+    with _connect(write=True, task_id=task_id, claim_token=claim_token, run_id=run_id) as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             return "missing"
+        if row["worker_started_at"] is not None or row["worker_pid"] is not None:
+            raise WorkerClaimError("Cannot retry a spawn after a worker may have started")
+        current_run = row["current_run_id"]
         n = int(row["spawn_failures"] or 0) + 1
+        gave_up = n >= failure_limit
         conn.execute(
-            "UPDATE tasks SET spawn_failures = ?, status = 'ready', current_run_id = NULL, "
-            "claim_token = NULL, claim_expires_at = NULL, worker_pid = NULL, updated_at = ? "
-            "WHERE id = ?",
-            (n, now, task_id),
+            "UPDATE task_runs SET outcome = 'spawn_failed', ended_at = ?, error = ? "
+            "WHERE id = ? AND outcome = 'active'", (now, error[:2000], current_run),
         )
-        _emit_event(
-            conn,
-            task_id=task_id,
-            run_id=None,
-            kind="spawn_failed",
-            payload={"error": error[:2000], "failures": n},
+        conn.execute(
+            "UPDATE tasks SET spawn_failures = ?, status = ?, current_run_id = NULL, "
+            "claim_token = NULL, claim_expires_at = NULL, worker_pid = NULL, updated_at = ? WHERE id = ?",
+            (n, "blocked" if gave_up else "ready", now, task_id),
         )
-        if n >= failure_limit:
-            conn.execute(
-                "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
-                (now, task_id),
-            )
-            _emit_event(
-                conn,
-                task_id=task_id,
-                run_id=None,
-                kind="gave_up",
-                payload={"failures": n, "error": error[:2000]},
-            )
-            return "gave_up"
-        return "retry"
+        payload = {"error": error[:2000], "failures": n, "safe_to_retry": not gave_up}
+        _emit_event(conn, task_id=task_id, run_id=current_run, kind="spawn_failed", payload=payload)
+        if gave_up:
+            _emit_event(conn, task_id=task_id, run_id=current_run, kind="gave_up", payload=payload)
+        return "gave_up" if gave_up else "retry"
 
 
-def heartbeat(task_id: str, note: str = "") -> None:
-    with _connect() as conn:
-        row = conn.execute(
-            "SELECT current_run_id FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
-        rid = row["current_run_id"] if row else None
-        _emit_event(conn, task_id=task_id, run_id=rid, kind="heartbeat", payload={"note": note})
+def heartbeat(
+    task_id: str, note: str = "", *, claim_token: str | None = None, run_id: int | None = None,
+) -> None:
+    with _connect(write=True, task_id=task_id, claim_token=claim_token, run_id=run_id) as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not row:
+            return
+        # Admin liveness annotations remain supported, but only a fenced worker renews a lease.
+        if claim_token is not None or _worker_claim.get() is not None:
+            conn.execute("UPDATE tasks SET claim_expires_at = ?, updated_at = ? WHERE id = ?",
+                         (_now() + max(1, int(row["claim_ttl_seconds"])), _now(), task_id))
+        _emit_event(conn, task_id=task_id, run_id=row["current_run_id"], kind="heartbeat",
+                    payload={"note": note, "worker_claimed": claim_token is not None or _worker_claim.get() is not None})
 
 
 def reclaim_stale_running(
-    *,
-    claim_ttl_seconds: int,
-    check_pid: bool = True,
+    *, claim_ttl_seconds: int, check_pid: bool = True,
 ) -> list[str]:
-    """Return list of task ids reclaimed (ready)."""
-    import os as _os
+    """Quarantine lost/uncertain attempts for review. Never auto-rerun uncertain effects.
 
+    A live PID is only corroboration, not process identity. A fresh owned lease plus
+    recorded startup is the liveness contract. Expired, missing and dead workers
+    retain their attempt history and require an explicit human retry.
+    """
     now = _now()
-    reclaimed: list[str] = []
-    with _connect() as conn:
-        rows = conn.execute(
-            "SELECT id, current_run_id, claim_expires_at, worker_pid FROM tasks WHERE status = 'running'"
-        ).fetchall()
-
-        for r in rows:
-            tid = r["id"]
-            run_id = r["current_run_id"]
-            claim_at = r["claim_expires_at"]
-            expired = claim_at is not None and float(claim_at) < now
-
-            dead_pid = False
-            pid_alive = False
-            if r["worker_pid"]:
-                if check_pid:
-                    try:
-                        _os.kill(int(r["worker_pid"]), 0)
-                        pid_alive = True
-                    except OSError:
-                        dead_pid = True
-                else:
-                    pid_alive = True
-
-            missing_claim_ttl = claim_at is None
-            stale_no_claim = missing_claim_ttl and not pid_alive
-            if expired or dead_pid or stale_no_claim:
-                if dead_pid:
-                    run_outcome, run_error = "crashed", "pid dead"
-                elif expired:
-                    run_outcome, run_error = "reclaimed", "claim expired"
-                else:
-                    run_outcome, run_error = "reclaimed", "missing claim TTL (no live worker)"
-                if run_id:
-                    conn.execute(
-                        "UPDATE task_runs SET outcome = ?, ended_at = ?, error = ? "
-                        "WHERE id = ? AND outcome = 'active'",
-                        (
-                            run_outcome,
-                            now,
-                            run_error,
-                            run_id,
-                        ),
-                    )
-                conn.execute(
-                    "UPDATE tasks SET status = 'ready', current_run_id = NULL, "
-                    "claim_token = NULL, claim_expires_at = NULL, worker_pid = NULL, "
-                    "updated_at = ? WHERE id = ?",
-                    (now, tid),
-                )
-                _emit_event(
-                    conn,
-                    task_id=tid,
-                    run_id=run_id,
-                    kind="reclaimed",
-                    payload={"stale": True},
-                )
-                reclaimed.append(tid)
-    return reclaimed
+    reconciled: list[str] = []
+    with _connect(write=True) as conn:
+        rows = conn.execute("SELECT * FROM tasks WHERE status = 'running'").fetchall()
+        for row in rows:
+            expiry = row["claim_expires_at"]
+            if expiry is not None and float(expiry) >= now:
+                continue
+            pid = row["worker_pid"]
+            state = "missing" if not pid else "ambiguous"
+            if pid and check_pid:
+                try:
+                    os.kill(int(pid), 0)
+                except ProcessLookupError:
+                    state = "dead"
+                except (OSError, ValueError, OverflowError):
+                    state = "ambiguous"
+            reason = f"Worker {state}; lease expired or absent; side effects require review"
+            run_id = row["current_run_id"]
+            conn.execute(
+                "UPDATE task_runs SET outcome = ?, ended_at = ?, error = ? WHERE id = ? AND outcome = 'active'",
+                ("crashed" if state == "dead" else "uncertain", now, reason, run_id),
+            )
+            conn.execute(
+                "UPDATE tasks SET status = 'blocked', current_run_id = NULL, claim_token = NULL, "
+                "claim_expires_at = NULL, worker_pid = NULL, result = ?, updated_at = ? WHERE id = ?",
+                (reason, now, row["id"]),
+            )
+            _emit_event(conn, task_id=row["id"], run_id=run_id, kind="reclaimed",
+                        payload={"worker_state": state, "safe_to_retry": False, "reason": reason,
+                                 "worker_started_at": row["worker_started_at"], "worker_pid": pid})
+            reconciled.append(row["id"])
+    return reconciled
 
 
 def list_ready_for_dispatch(board_slug: str = "default") -> list[dict[str, Any]]:

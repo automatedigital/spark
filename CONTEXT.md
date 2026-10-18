@@ -4,6 +4,12 @@ Canonical language for the Spark Agent project. This file is a glossary, not a
 spec — it defines terms, not implementations. When code or conversation drifts
 from these definitions, that drift is a bug in one or the other.
 
+Development rules live in [AGENTS.md](AGENTS.md); implementation ownership is in
+[STRUCTURE.md](STRUCTURE.md). [PLAN.md](PLAN.md) tracks the approved upgrade and
+its acceptance evidence.
+Terms marked **planned** below establish vocabulary without claiming those
+contracts or controls are already implemented.
+
 ## Terms
 
 ### Dream
@@ -29,9 +35,12 @@ Auto-memory is cheap, runs on every session, and is the default "gets smarter ov
 time" behavior. It does **not** invoke Dream.
 
 ### Holographic memory
-The always-on local memory store (`~/.spark/memories/`), full-text searchable.
+The always-on local memory store under the active Spark home (`memories/`),
+full-text searchable.
 Distinct from optional memory **provider plugins** (Mem0, Honcho, Hindsight, …),
-which swap the backend but keep the same abstraction.
+which supply an optional external backend through the same abstraction. The
+memory manager retains the built-in provider and permits at most one external
+provider; configuring a plugin does not remove the built-in provider.
 
 ### SOUL.md
 The persistent agent identity/preferences file loaded into every normal
@@ -85,12 +94,101 @@ A trackable work artifact that belongs near the active thread or project. Tasks
 should appear contextually, especially in the Chat project panel, and expand only
 when the user needs more detail.
 
+Durable board tasks are owned by Kanban (`kanban.db`), including dependencies,
+claims, review and task-run history. A task can span multiple execution attempts;
+it is not the same as one conversation turn or an agent's temporary todo item.
+
+### Panel owner
+The lifetime of one mounted chat view. Navigating to another thread retires that
+owner; an acknowledged session-ID continuation may preserve it and its buffered
+stream. A fork creates a new owner. Request generations and backend/profile/
+credential epochs prevent late responses from adopting or updating another view.
+This UI lifetime is distinct from a durable agent run or child execution.
+
+### Run
+A single user-visible execution turn within a Thread. The upgrade plan maps this
+to the existing web `turn_id`; a unified cross-surface contract is **planned**.
+Only authoritative root execution completion finishes a Run. Completion of one
+tool or child agent does not finish the parent Run.
+
+### Attempt
+One execution try within a Run, distinct from a retryable HTTP request or a
+Kanban task-run record. Explicit retries retain the earlier outcome. The unified
+Run/Attempt relationship is **planned**; do not infer it from existing field names.
+
+### Execution node *(planned)*
+An app-owned unit of root work, tool execution, child agent or pending decision,
+with explicit parent/root relationships. Provider-native IDs are correlation
+references rather than Spark identity. This vocabulary guides the upgrade and
+does not imply an execution-graph service already exists.
+
+### Pending decision
+A request for approval or user input with its own identity and respondability.
+Waiting for a decision differs from disconnected or failed execution. Persisted
+requests must be reconciled with a live responder after restart before an answer
+can be accepted.
+
 ### Subagent
 A delegated child agent spawned from a parent thread. A subagent has its own
 child thread/transcript, but should remain visually attached to the parent thread:
 show subagents in the same right-side project/task sidebar pattern, and let users
 open a subagent thread in that sidebar while the main parent chat stays visible in
 the center.
+
+Spark supports synchronous single/batch delegation and opt-in asynchronous
+delegation with durable handles, command receipts and cooperative cancellation.
+Async workers are process-local: proven process loss becomes uncertain, with no
+automatic rerun. Stored results enter the next explicit parent turn once; they
+do not wake an idle parent automatically. End-to-end acceptance remains tracked
+in PLAN.md. A child transcript is not an independent top-level task request.
+Preserve restricted child tools and permission scope.
+
+The inspector resolves task destinations from the active profile's recorded
+execution links across the parent compression family. It opens the actual task
+board, and refuses ambiguous or unavailable associations. Opening an isolated
+worktree as a project is an explicit action that verifies the owned checkout and
+creates an idempotent local-folder link. Navigation does not transfer ownership
+of the child execution or switch profiles.
+
+### Worktree isolation
+A separate Git checkout/branch rooted at a recorded commit for a coding child.
+It does not include the parent's uncommitted changes. It is distinct from isolated
+conversation context or a container/remote terminal backend. Requested isolation
+must report unsupported configurations rather than silently sharing files.
+Delegated worktrees are opt-in and profile-scoped. Useful changes and uncertain
+ownership prevent cleanup; cleanup never merges work automatically.
+
+### Inbox and attention
+The existing navigation surface for conversations that need attention or have
+background outcomes. Attention is derived from structured execution/decision
+state, distinct from unread text. A completion cannot conceal an unresolved
+decision.
+
+### Settled thread
+A thread parked outside active work without deleting its transcript or stopping
+execution. Distinct from a completed Run, resolved decision, archived skill or
+finished Task. Server-owned settlement/order and revision-checked Undo are
+implemented. Live work and pending decisions prevent settlement; snooze and
+automatic settlement are follow-on scope.
+
+### Provider capability
+An explicit, versioned statement of supported runtime behavior, including an
+unsupported reason. The child-control snapshot describes exercised local
+inspection, interruption and retry support. It is not a promise of native
+provider resume. Model availability, authentication and actual lifecycle support
+are separate facts.
+
+### Context handoff *(planned)*
+An explicit, source-linked context artifact for a fork or provider transition at
+a stable execution boundary. It preserves lineage and coverage. It never means
+silently rewriting a conversation's cached system prompt or historical messages.
+
+### Projection and replay cursor
+A projection is a derived view of confirmed state. Spark has durable per-session
+events/checkpoints in `state.db` and a separate bounded web delivery journal.
+The journal uses a process epoch and sequence; its cursor is not interchangeable
+with a session event sequence. Expired cursors or a server restart require a new
+authoritative snapshot, not automatic re-execution of a prompt.
 
 ### Toolset
 A named bundle of tools (`_SPARK_CORE_TOOLS` and others in `toolsets.py`) that

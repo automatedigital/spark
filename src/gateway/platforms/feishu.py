@@ -1069,8 +1069,8 @@ class FeishuAdapter(BasePlatformAdapter):
         self._media_batch_state = FeishuBatchState()
         self._pending_media_batches = self._media_batch_state.events
         self._pending_media_batch_tasks = self._media_batch_state.tasks
-        # Exec approval button state (approval_id → {session_key, message_id, chat_id})
-        self._approval_state: dict[int, dict[str, str]] = {}
+        # Exec approval button state includes the original entry's action_id.
+        self._approval_state: dict[int | str, dict[str, Any]] = {}
         self._approval_counter = itertools.count(1)
         self._load_seen_message_ids()
 
@@ -1424,6 +1424,7 @@ class FeishuAdapter(BasePlatformAdapter):
         self, chat_id: str, command: str, session_key: str,
         description: str = "dangerous command",
         metadata: dict[str, Any] | None = None,
+        *, action_id: str | None = None, source=None,
     ) -> SendResult:
         """Send an interactive card with approval buttons.
 
@@ -1435,7 +1436,7 @@ class FeishuAdapter(BasePlatformAdapter):
             return SendResult(success=False, error="Not connected")
 
         try:
-            approval_id = next(self._approval_counter)
+            approval_id = action_id or next(self._approval_counter)
             cmd_preview = command[:3000] + "..." if len(command) > 3000 else command
 
             def _btn(label: str, action_name: str, btn_type: str = "default") -> dict:
@@ -1482,8 +1483,10 @@ class FeishuAdapter(BasePlatformAdapter):
             if result.success:
                 self._approval_state[approval_id] = {
                     "session_key": session_key,
+                    "action_id": action_id or "",
                     "message_id": result.message_id or "",
                     "chat_id": chat_id,
+                    "source": self.approval_source(chat_id, metadata, source),
                 }
             return result
         except Exception as exc:
@@ -1496,12 +1499,12 @@ class FeishuAdapter(BasePlatformAdapter):
         """Replace the approval card with a resolved status card."""
         if not self._client or not message_id:
             return
-        icon = "❌" if choice == "deny" else "✅"
+        icon = "⏱" if choice == "expired" else "❌" if choice == "deny" else "✅"
         card = {
             "config": {"wide_screen_mode": True},
             "header": {
                 "title": {"content": f"{icon} {label}", "tag": "plain_text"},
-                "template": "red" if choice == "deny" else "green",
+                "template": "orange" if choice == "expired" else "red" if choice == "deny" else "green",
             },
             "elements": [
                 {
@@ -1934,9 +1937,6 @@ class FeishuAdapter(BasePlatformAdapter):
         """Route Feishu interactive card button clicks as synthetic COMMAND events."""
         event = getattr(data, "event", None)
         token = str(getattr(event, "token", "") or "")
-        if token and self._is_card_action_duplicate(token):
-            logger.debug("[Feishu] Dropping duplicate card action token: %s", token)
-            return
 
         context = getattr(event, "context", None)
         chat_id = str(getattr(context, "open_chat_id", "") or "")
@@ -1954,10 +1954,25 @@ class FeishuAdapter(BasePlatformAdapter):
         spark_action = action_value.get("spark_action") if isinstance(action_value, dict) else None
         if spark_action:
             approval_id = action_value.get("approval_id")
-            state = self._approval_state.pop(approval_id, None)
+            state = self._approval_state.get(approval_id)
             if not state:
                 logger.debug("[Feishu] Approval %s already resolved or unknown", approval_id)
                 return
+
+            source = state.get("source")
+            sender_id = SimpleNamespace(open_id=open_id, user_id=getattr(operator, "user_id", None))
+            # Card callbacks identify the concrete message, not its thread.
+            if not state.get("message_id") or str(getattr(context, "open_message_id", "") or "") != state["message_id"]:
+                return
+            if not self.is_approval_authorized(
+                source, open_id, chat_id, source.thread_id if source else None,
+            ):
+                return
+            if source.chat_type != "dm" and not self._allow_group_message(sender_id, chat_id):
+                return
+            if token and self._is_card_action_duplicate(token):
+                return
+            self._approval_state.pop(approval_id, None)
 
             choice_map = {
                 "approve_once": "once",
@@ -1976,25 +1991,29 @@ class FeishuAdapter(BasePlatformAdapter):
             label = label_map.get(choice, "Resolved")
 
             # Resolve sender name for the status card
-            sender_id = SimpleNamespace(open_id=open_id, user_id=None, union_id=None)
+            sender_id.union_id = None
             sender_profile = await self._resolve_sender_profile(sender_id)
             user_name = sender_profile.get("user_name") or open_id
 
-            # Resolve the approval — unblocks the agent thread
-            try:
-                from tools.approval import resolve_gateway_approval
-                count = resolve_gateway_approval(state["session_key"], choice)
-                logger.info(
-                    "Feishu button resolved %d approval(s) for session %s (choice=%s, user=%s)",
-                    count, state["session_key"], choice, user_name,
-                )
-            except Exception as exc:
-                logger.error("Failed to resolve gateway approval from Feishu button: %s", exc)
+            count = 0
+            entry_id = state.get("action_id")
+            if entry_id:
+                try:
+                    from tools.approval import resolve_gateway_approval
+                    count = resolve_gateway_approval(state["session_key"], choice, action_id=entry_id)
+                except Exception as exc:
+                    logger.error("Failed to resolve gateway approval from Feishu button: %s", exc)
+            if not count:
+                label = "Approval is no longer pending"
+                choice = "expired"
 
             # Update the card to show the decision
             await self._update_approval_card(state.get("message_id", ""), label, user_name, choice)
             return
 
+        if token and self._is_card_action_duplicate(token):
+            logger.debug("[Feishu] Dropping duplicate card action token: %s", token)
+            return
         synthetic_text = f"/card {action_tag}"
         if action_value:
             try:

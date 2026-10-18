@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "packet": "P06 remaining task/worktree navigation",
+  "tested_source_parent": "be03cf6dcc711ed19f579605a097d60fa3a2f5e5",
+  "source_files_sha256": {
+    "src/core/kanban_db.py": "25e20fac5696930f86bb7f9dc02609ac27cea76a5396af240c211adff6a7cb83",
+    "src/spark_cli/subagent_navigation.py": "5ec14324a54880f28907dc35513ffeb3b5a857a3b42754331fc0653e3c9f0cd5",
+    "src/spark_cli/web/e2e/subagent-navigation.py": "0f8183470ebe1bd0deafba44e33469ccb23f0a191888c04cf252a231dc3d341e",
+    "src/spark_cli/web/src/App.tsx": "f183cb747504f2bd7f61737610eda1fcc791d72d88aba7576473d2596f406cce",
+    "src/spark_cli/web/src/components/chat/SubagentsPanel.tsx": "5b0b691f6243a2e9a4edc31487ac27412b641568823fbbd6da15e39b5bbc8700",
+    "src/spark_cli/web/src/hooks/useSubagentNavigation.ts": "d1b7863f0feb5c042c98549311d0569901447e14fc66053a52d1d350f2e5c27b",
+    "src/spark_cli/web/src/lib/apiTypes.ts": "23481a4d08cf0c2647ed079e78b1558db83f720b2baaef8cbe5afce7eec2c6fe",
+    "src/spark_cli/web/src/lib/api_session.ts": "d1ecd1bdfbedd23e6dfbcab98140ee942e2d8356c3f1c508da6ae0310814d7a6",
+    "src/spark_cli/web/src/lib/globalNavigation.test.ts": "136fa6d92c0e9e1a3a8a0f6e001892a2db377298dcaa20e011fd563dbf9c586f",
+    "src/spark_cli/web/src/lib/globalNavigation.ts": "da249ca6c4d06ac11234ed14650927c2a4b5ee4a83e2edfa2c0dc4e44aa2f74d",
+    "src/spark_cli/web/src/lib/sessionStore.tsx": "f32a44b2dc9b557acab0172d54a13e2a8c7410382bccbb28716fecb812406402",
+    "src/spark_cli/web/src/lib/subagentNavigation.test.ts": "1efd1eb7e48f5cf52589959a18419f03a2fed55d5705f9dd815e2b83f244f489",
+    "src/spark_cli/web/src/lib/subagentNavigation.ts": "909ed80ed9231c6f263f0dd7e92e4e110a0d849d22dbb7e6fc163eb8fc678374",
+    "src/spark_cli/web/src/pages/KanbanPage.tsx": "b8939962d8dd21420855c591228477097fd431a98160c6a8f4c04829b1cc4c0d",
+    "src/spark_cli/web_server.py": "37be27f716b6d12bcc48bcf7a8c9d920105054667b80beaa7223f85969113a67",
+    "tests/spark_cli/test_subagent_navigation.py": "05ddafe6839d7ec7d89a6c5126e746294ed46fb93ee084da7271a5821fa42de0"
+  },
+  "scope": "Profile-local owned-child destinations, explicit worktree project registration, actual task board deep links, initiating selection/profile fences. No runtime execution graph.",
+  "api": {
+    "GET /api/conversations/{session_id}/subagents/{subagent_id}/navigation": {
+      "schema_version": 1,
+      "ownership": "Existing dashboard auth and full parent compression-family membership; 404 for missing/unowned child.",
+      "task": "supported/reason and actual id, run_id, title, board_slug only for a unique existing task in the active profile kanban.db whose task_runs.metadata_json.execution.session_id matches the parent compression family.",
+      "worktree": "supported/reason and verified project_slug, path, branch. Snapshot refs must match active-profile worktree metadata, expected checkout root, branch, registered Git worktree, common repository storage and recorded base commit.",
+      "read_only": "No board creation/schema repair. Ignore assigned worker board-home overrides; refuse foreign board symlinks. Missing/legacy/corrupt/ambiguous references are unavailable."
+    },
+    "POST /api/conversations/{session_id}/subagents/{subagent_id}/navigation/worktree": {
+      "request": "Explicit user action; no caller path or options accepted. Revalidates ownership, metadata and real checkout.",
+      "success": {
+        "ok": true,
+        "subagent_id": "owned-child-id",
+        "project_slug": "stable subagent ID/path digest slug"
+      },
+      "receipt": "Atomic local-folder workspace symlink is idempotent after lost acknowledgement. Reuse only an existing matching symlink; reject directory, foreign or broken-link collision.",
+      "errors": "404 missing/unowned; 409 unavailable checkout/reference/collision.",
+      "preservation": "No copy, setup, git init, commit, merge, deletion, cleanup, worker interruption, provider call or model send."
+    }
+  },
+  "frontend": {
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "vitest_passed": 435,
+    "vitest_files": 76,
+    "commands": [
+      "npm run lint",
+      "npm test",
+      "npx tsc -b"
+    ],
+    "navigation": "GET only on detail verification; clicks freshly verify task or POST worktree. Publish and require project slug in refreshed project list before navigating. Fence awaited responses by mounted generation, selected parent and backend/profile scope.",
+    "task_route": "Existing KanbanPage lazily registered as task deep-link destination only; opens actual task board_slug, no new primary navigation section.",
+    "reload_fix": "Consume live global targets in mounted owners so a later reload cannot resurrect an old project target."
+  },
+  "backend": {
+    "focused_passed": 17,
+    "regression_passed": 147,
+    "runtime_boundary_passed": 13,
+    "regression_command": "python -m pytest tests/spark_cli/test_subagent_navigation.py tests/spark_cli/test_web_server_events.py tests/core/test_kanban_db.py tests/tools/test_subagent_worktree.py -q -n 2 -m 'not integration'",
+    "boundary_command": "python -m pytest tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 2 -m 'not integration'",
+    "focused_checks": [
+      "real P08 record_worker_execution and full compression-family task lookup",
+      "deleted task/no fabricated task parsing",
+      "ambiguous-task refusal",
+      "foreign-profile/worker-board override/symlink isolation",
+      "absent board GET does not create kanban.db",
+      "legacy/corrupt optional board read does not repair schema or change file bytes",
+      "actual Git checkout symlink and repeat acknowledgement inode identity",
+      "dirty parent and active child files/branch/base/metadata preserved",
+      "directory/foreign/broken symlink collisions remain untouched",
+      "missing checkout/metadata, mismatched snapshot/path/branch and invalid metadata refuse import",
+      "unowned/unknown/foreign child 404",
+      "remote dashboard auth and no query-token POST bypass",
+      "caller-supplied path/init options do not change verified destination"
+    ],
+    "ruff_changed_modules_and_new_tests_exit": 0,
+    "mypy_two_changed_modules_exit": 0,
+    "full_ruff": {
+      "exit": 1,
+      "findings": 300,
+      "new_findings": 0,
+      "baseline_web_server_findings": 32,
+      "current_web_server_findings": 32,
+      "note": "All findings occur in unchanged source or existing web_server E402 imports; HEAD web_server separately checked. No baseline cleanup."
+    }
+  },
+  "build": {
+    "command": "npx tsc -b && npx vite build --outDir /tmp/spark-p06-navigation-build --emptyOutDir",
+    "exit": 0,
+    "bundle_check": "Existing check-bundle-budget.mjs, temporary copy with only distDir pointed at external build; exit 0",
+    "initial_js_gzip_kib": 240.49,
+    "budget_kib": 600,
+    "manifest_sha256": "c8a2adf0354a2446602a6ca5bbb0e77dc66f554031b489d216ffa4aa058fec7d",
+    "canonical_bundle_changed": false
+  },
+  "browser": {
+    "navigation_source": {
+      "exit": 0,
+      "report_path": "/tmp/spark-p06-navigation-source/report.json",
+      "passed": 6,
+      "checks": [
+        "real task_runs execution link opens the exact board task; returning retains parent draft, ready attachment and child selection",
+        "late task lookup after a chat switch cannot navigate the newly selected thread",
+        "collision disables navigation with a reason; explicit POST rejects collision and unowned child without altering the workspace",
+        "lost worktree acknowledgement retries the same symlink and opens actual checkout files; dirty parent, child files, branch and active ownership are retained",
+        "late worktree acceptance after chat switch cannot change the active thread/project",
+        "deleted task and removed checkout fail honestly on fresh activation, then disable after refresh; draft/attachment/child selection survive browser reload without replay"
+      ],
+      "page_errors": [],
+      "built_web": false
+    },
+    "navigation_built": {
+      "exit": 0,
+      "report_path": "/tmp/spark-p06-navigation-built/report.json",
+      "passed": 6,
+      "checks": [
+        "real task_runs execution link opens the exact board task; returning retains parent draft, ready attachment and child selection",
+        "late task lookup after a chat switch cannot navigate the newly selected thread",
+        "collision disables navigation with a reason; explicit POST rejects collision and unowned child without altering the workspace",
+        "lost worktree acknowledgement retries the same symlink and opens actual checkout files; dirty parent, child files, branch and active ownership are retained",
+        "late worktree acceptance after chat switch cannot change the active thread/project",
+        "deleted task and removed checkout fail honestly on fresh activation, then disable after refresh; draft/attachment/child selection survive browser reload without replay"
+      ],
+      "page_errors": [],
+      "built_web": true
+    },
+    "existing_inspector_source": {
+      "exit": 0,
+      "report_path": "/tmp/spark-p06-inspector-source/report.json",
+      "passed": 11,
+      "checks": [
+        "real runtime capability disables unsupported Stop with reason",
+        "three live chat switches retain selection/draft/attachment and detached scroll (1000.0 -> 1000.0px)",
+        "exact per-child capabilities permit the owned child beside an unsupported live sibling; transport receipts reuse Stop/Retry IDs after uncertain responses; Stop waits for real terminal SSE; retry retains earlier attempt",
+        "late Stop and Retry acknowledgements stay with their initiating child across chat switches",
+        "committed child result arriving during an older HTTP snapshot survives reconciliation; child failure leaves parent streaming",
+        "cursor event pages append and older message pages prepend without losing existing history; actual worktree refs render",
+        "real completed snapshot renders result, child transcript and app-owned parent/root/attempt references; result copies",
+        "offline/reconnect keeps loaded event/message pages, child selection and parent draft without resubmission",
+        "390px daylight overlay fits, traps keyboard focus, Escape returns focus, reduced motion enabled",
+        "real backend restart changes epoch; selected child and draft survive, parent stops streaming within 5s, no prompt/control is replayed",
+        "project compose opens folder; failed creation preserves draft and attachment across chat switch and refresh"
+      ],
+      "page_errors": [],
+      "built_web": false
+    },
+    "existing_inspector_built": {
+      "exit": 0,
+      "report_path": "/tmp/spark-p06-inspector-built/report.json",
+      "passed": 11,
+      "checks": [
+        "real runtime capability disables unsupported Stop with reason",
+        "three live chat switches retain selection/draft/attachment and detached scroll (1000.0 -> 1000.0px)",
+        "exact per-child capabilities permit the owned child beside an unsupported live sibling; transport receipts reuse Stop/Retry IDs after uncertain responses; Stop waits for real terminal SSE; retry retains earlier attempt",
+        "late Stop and Retry acknowledgements stay with their initiating child across chat switches",
+        "committed child result arriving during an older HTTP snapshot survives reconciliation; child failure leaves parent streaming",
+        "cursor event pages append and older message pages prepend without losing existing history; actual worktree refs render",
+        "real completed snapshot renders result, child transcript and app-owned parent/root/attempt references; result copies",
+        "offline/reconnect keeps loaded event/message pages, child selection and parent draft without resubmission",
+        "390px daylight overlay fits, traps keyboard focus, Escape returns focus, reduced motion enabled",
+        "real backend restart changes epoch; selected child and draft survive, parent stops streaming within 5s, no prompt/control is replayed",
+        "project compose opens folder; failed creation preserves draft and attachment across chat switch and refresh"
+      ],
+      "page_errors": [],
+      "built_web": true
+    },
+    "commands": [
+      "SPARK_E2E_REPORTS=/tmp/spark-p06-navigation-source python src/spark_cli/web/e2e/subagent-navigation.py",
+      "SPARK_E2E_BUILT_WEB=1 SPARK_E2E_ASSET_DIR=/tmp/spark-p06-navigation-build SPARK_E2E_REPORTS=/tmp/spark-p06-navigation-built python src/spark_cli/web/e2e/subagent-navigation.py",
+      "SPARK_E2E_REPORTS=/tmp/spark-p06-inspector-source python src/spark_cli/web/e2e/subagent-controls.py",
+      "SPARK_E2E_BUILT_WEB=1 SPARK_E2E_ASSET_DIR=/tmp/spark-p06-navigation-build SPARK_E2E_REPORTS=/tmp/spark-p06-inspector-built python src/spark_cli/web/e2e/subagent-controls.py"
+    ]
+  },
+  "resolved_during_validation": [
+    "Existing task global target routed to chat without a consumer; fixed lazy existing board destination and actual board_slug.",
+    "Existing live project global target survived after returning to parent and reopened worktree compose on reload; fixed consumption in mounted owner.",
+    "Initial browser fixture exact row selector did not include accessible timestamp/status; corrected selector and wait for restored child detail."
+  ],
+  "environment": {
+    "python": "Activated /Users/joe/Developer/github/spark/.venv; PYTHONPATH=<this checkout>/src",
+    "node": "22; npm ci from nested web/package-lock.json; no lockfile changes",
+    "state": "Temporary SPARK_HOME only; local synthetic SQLite/Git. No real user profile/provider/send used."
+  },
+  "limitations": [
+    "Parent must integrate source and regenerate/verify its canonical production candidate before updating PLAN checkbox.",
+    "No controlled performance measurements claimed for this validation interval.",
+    "No actual provider worker execution or cross-profile browser switching; profile isolation is backend/command-fence tested.",
+    "No installed macOS/Windows package, deployment, release or PR evidence.",
+    "Optional boards with missing/legacy/unreadable/ambiguous execution references remain unavailable; no invented association or automatic profile switch."
+  ]
+}

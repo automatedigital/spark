@@ -1,0 +1,4232 @@
+{
+  "schema": "spark.p09.browser-observation.v1",
+  "baseCommit": "b432e028a55868fa043d6620ebddc8c791d0f571",
+  "branch": "fix/p09-browser-observation",
+  "status": "audit-complete-original-missing-trace-failure-unexplained",
+  "p09Complete": false,
+  "runtime": {
+    "node": "v22.22.1",
+    "nodeExecutable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+    "python": "/Users/joe/Developer/github/spark/.venv/bin/python",
+    "pythonPath": "/Users/joe/.t3/worktrees/spark/t3-7c7e9547/src",
+    "browser": "147.0.7727.15",
+    "state": "temporary SPARK_HOME only"
+  },
+  "originalFailures": {
+    "sidebar": [
+      {
+        "attempt": 1,
+        "selectionMs": 125.19999998807907,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 125.19999998807907ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "attempt": 2,
+        "selectionMs": 166,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 166ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "attempt": 3,
+        "selectionMs": 124.80000001192093,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 124.80000001192093ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      }
+    ],
+    "matrixError": "Error: dark:2000:1440 stream probe did not produce nonzero rendered updates and events\n    at validateCaseResult (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:691:11)\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:787:17)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:857:9",
+    "matrixFailedCase": {
+      "fixtureRows": 2000,
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 1038.47,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 263.5,
+        "loadEventEnd": 265.39999997615814,
+        "duration": 265.39999997615814
+      },
+      "history": {
+        "pagesLoaded": 39,
+        "attempts": 39,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 43,
+        "requests": [
+          {
+            "at": 49134.981042,
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "at": 49213.101334,
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "at": 49635.979125,
+            "limit": 50,
+            "beforeId": "2501"
+          },
+          {
+            "at": 49828.576375,
+            "limit": 50,
+            "beforeId": "2451"
+          },
+          {
+            "at": 49911.387959,
+            "limit": 50,
+            "beforeId": "2401"
+          },
+          {
+            "at": 50005.903167,
+            "limit": 50,
+            "beforeId": "2351"
+          },
+          {
+            "at": 50080.56125,
+            "limit": 50,
+            "beforeId": "2301"
+          },
+          {
+            "at": 50261.219084,
+            "limit": 50,
+            "beforeId": "2251"
+          },
+          {
+            "at": 50404.758792,
+            "limit": 50,
+            "beforeId": "2201"
+          },
+          {
+            "at": 50773.755709,
+            "limit": 50,
+            "beforeId": "2151"
+          },
+          {
+            "at": 51047.511542,
+            "limit": 50,
+            "beforeId": "2101"
+          },
+          {
+            "at": 51198.716417,
+            "limit": 50,
+            "beforeId": "2051"
+          },
+          {
+            "at": 51294.304,
+            "limit": 50,
+            "beforeId": "2001"
+          },
+          {
+            "at": 51446.710709,
+            "limit": 50,
+            "beforeId": "1951"
+          },
+          {
+            "at": 51829.89125,
+            "limit": 50,
+            "beforeId": "1901"
+          },
+          {
+            "at": 51974.824167,
+            "limit": 50,
+            "beforeId": "1851"
+          },
+          {
+            "at": 52147.203917,
+            "limit": 50,
+            "beforeId": "1801"
+          },
+          {
+            "at": 52237.27125,
+            "limit": 50,
+            "beforeId": "1751"
+          },
+          {
+            "at": 52346.344584,
+            "limit": 50,
+            "beforeId": "1701"
+          },
+          {
+            "at": 52503.450334,
+            "limit": 50,
+            "beforeId": "1651"
+          },
+          {
+            "at": 52811.176959,
+            "limit": 50,
+            "beforeId": "1601"
+          },
+          {
+            "at": 52928.538459,
+            "limit": 50,
+            "beforeId": "1551"
+          },
+          {
+            "at": 53013.029417,
+            "limit": 50,
+            "beforeId": "1501"
+          },
+          {
+            "at": 53132.39,
+            "limit": 50,
+            "beforeId": "1451"
+          },
+          {
+            "at": 53259.24625,
+            "limit": 50,
+            "beforeId": "1401"
+          },
+          {
+            "at": 53380.575167,
+            "limit": 50,
+            "beforeId": "1351"
+          },
+          {
+            "at": 53525.018542,
+            "limit": 50,
+            "beforeId": "1301"
+          },
+          {
+            "at": 53801.265417,
+            "limit": 50,
+            "beforeId": "1251"
+          },
+          {
+            "at": 53931.339209,
+            "limit": 50,
+            "beforeId": "1201"
+          },
+          {
+            "at": 54008.108125,
+            "limit": 50,
+            "beforeId": "1151"
+          },
+          {
+            "at": 54122.823084,
+            "limit": 50,
+            "beforeId": "1101"
+          },
+          {
+            "at": 54204.104625,
+            "limit": 50,
+            "beforeId": "1051"
+          },
+          {
+            "at": 54338.009,
+            "limit": 50,
+            "beforeId": "1001"
+          },
+          {
+            "at": 54552.196334,
+            "limit": 50,
+            "beforeId": "951"
+          },
+          {
+            "at": 54806.783875,
+            "limit": 50,
+            "beforeId": "901"
+          },
+          {
+            "at": 54931.789834,
+            "limit": 50,
+            "beforeId": "851"
+          },
+          {
+            "at": 55018.146584,
+            "limit": 50,
+            "beforeId": "801"
+          },
+          {
+            "at": 55145.846209,
+            "limit": 50,
+            "beforeId": "751"
+          },
+          {
+            "at": 55270.975,
+            "limit": 50,
+            "beforeId": "701"
+          },
+          {
+            "at": 55378.338875,
+            "limit": 50,
+            "beforeId": "651"
+          },
+          {
+            "at": 55576.367042,
+            "limit": 50,
+            "beforeId": "601"
+          },
+          {
+            "at": 57826.275,
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "at": 57944.8915,
+            "limit": 50,
+            "beforeId": null
+          }
+        ],
+        "mountedRows": 24
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 216,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 41,
+        "observedTargets": 2545,
+        "callbacks": 70,
+        "callbackEntries": 1320
+      },
+      "performance": {
+        "Timestamp": 419945.480181,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 14674,
+        "LayoutObjects": 28234,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 28830,
+        "Resources": 61,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 4e-06,
+        "ScriptDuration": 0.000927,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.000939,
+        "TaskOtherDuration": 8e-06,
+        "ThreadTime": 0.000963,
+        "ProcessTime": 9.229908,
+        "JSHeapUsedSize": 53641384,
+        "JSHeapTotalSize": 120684544,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 419936.95858,
+        "NavigationStart": 419936.695077
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "turn:user:db:1925",
+          "top": 34,
+          "scrollTop": 93275
+        },
+        "after": {
+          "id": "turn:user:db:1925",
+          "top": 34,
+          "scrollTop": 93275
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [],
+        "firstVisibleTokenMs": null,
+        "syntheticInitialDelayMs": 60,
+        "firstVisibleMinusSyntheticDelayMs": null,
+        "maxVisibleUpdateGapMs": null,
+        "updateCount": 0,
+        "elapsedMs": null,
+        "updatesPerSecond": null,
+        "expectedTokenCount": null,
+        "finalVisibleTokenCount": 0,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 5,
+          "eventPayloadBytes": 5087,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 32,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "/tmp/spark-upgrade-20261015/final-browser-node22/matrix/run-01/screenshots/dark/2000-w1440.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    "parentDualSelection": {
+      "selectionMs": 101,
+      "selectionDomMs": 69.39999997615814,
+      "localSearchMs": 34.80000001192093,
+      "fullHistorySearchMs": 292.9000000357628,
+      "error": "AssertionError [ERR_ASSERTION]: Selection took 101ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:434:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:469:1"
+    }
+  },
+  "proofPair": {
+    "originalAssertionsPreserved": true,
+    "streamGate": {
+      "suite": "longthread",
+      "repeat": 1,
+      "attempts": [
+        {
+          "attempt": 1,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/baseline-capture.mjs",
+            "--repeat",
+            "1",
+            "--case",
+            "dark:2000:1440",
+            "--output-dir",
+            "/tmp/spark-upgrade-20261015/browser-observation/proof-stream/attempt-01"
+          ],
+          "directory": "/tmp/spark-upgrade-20261015/browser-observation/proof-stream/attempt-01",
+          "timeoutMs": 240000,
+          "elapsedMs": 15841,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        }
+      ]
+    },
+    "sidebarGate": {
+      "suite": "sidebar",
+      "repeat": 1,
+      "attempts": [
+        {
+          "attempt": 1,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/sidebar-scale.mjs"
+          ],
+          "directory": "/tmp/spark-upgrade-20261015/browser-observation/proof-sidebar/attempt-01",
+          "timeoutMs": 240000,
+          "elapsedMs": 11971,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        }
+      ]
+    },
+    "streamCase": {
+      "fixtureRows": 2000,
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "firstRenderMs": 1134.58,
+      "navigationTiming": {
+        "type": "navigate",
+        "startTime": 0,
+        "domContentLoadedEventEnd": 690.7999999523163,
+        "loadEventEnd": 695.0999999642372,
+        "duration": 695.0999999642372
+      },
+      "history": {
+        "pagesLoaded": 39,
+        "attempts": 39,
+        "sameUrlReloads": 0,
+        "fullyLoaded": true,
+        "requestCount": 43,
+        "requests": [
+          {
+            "at": 6917.505375,
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "at": 6960.303041,
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "at": 7244.223458,
+            "limit": 50,
+            "beforeId": "2501"
+          },
+          {
+            "at": 7302.262125,
+            "limit": 50,
+            "beforeId": "2451"
+          },
+          {
+            "at": 7388.336625,
+            "limit": 50,
+            "beforeId": "2401"
+          },
+          {
+            "at": 7485.041625,
+            "limit": 50,
+            "beforeId": "2351"
+          },
+          {
+            "at": 7570.728541,
+            "limit": 50,
+            "beforeId": "2301"
+          },
+          {
+            "at": 7642.56025,
+            "limit": 50,
+            "beforeId": "2251"
+          },
+          {
+            "at": 7722.513333,
+            "limit": 50,
+            "beforeId": "2201"
+          },
+          {
+            "at": 7796.336708,
+            "limit": 50,
+            "beforeId": "2151"
+          },
+          {
+            "at": 7878.422,
+            "limit": 50,
+            "beforeId": "2101"
+          },
+          {
+            "at": 7983.583125,
+            "limit": 50,
+            "beforeId": "2051"
+          },
+          {
+            "at": 8212.25425,
+            "limit": 50,
+            "beforeId": "2001"
+          },
+          {
+            "at": 8289.461291,
+            "limit": 50,
+            "beforeId": "1951"
+          },
+          {
+            "at": 8367.434583,
+            "limit": 50,
+            "beforeId": "1901"
+          },
+          {
+            "at": 8441.264541,
+            "limit": 50,
+            "beforeId": "1851"
+          },
+          {
+            "at": 8522.668458,
+            "limit": 50,
+            "beforeId": "1801"
+          },
+          {
+            "at": 8607.90075,
+            "limit": 50,
+            "beforeId": "1751"
+          },
+          {
+            "at": 8678.605583,
+            "limit": 50,
+            "beforeId": "1701"
+          },
+          {
+            "at": 8753.396541,
+            "limit": 50,
+            "beforeId": "1651"
+          },
+          {
+            "at": 8826.582208,
+            "limit": 50,
+            "beforeId": "1601"
+          },
+          {
+            "at": 8908.914041,
+            "limit": 50,
+            "beforeId": "1551"
+          },
+          {
+            "at": 9071.849583,
+            "limit": 50,
+            "beforeId": "1501"
+          },
+          {
+            "at": 9243.496666,
+            "limit": 50,
+            "beforeId": "1451"
+          },
+          {
+            "at": 9312.255875,
+            "limit": 50,
+            "beforeId": "1401"
+          },
+          {
+            "at": 9390.621625,
+            "limit": 50,
+            "beforeId": "1351"
+          },
+          {
+            "at": 9477.548291,
+            "limit": 50,
+            "beforeId": "1301"
+          },
+          {
+            "at": 9563.933958,
+            "limit": 50,
+            "beforeId": "1251"
+          },
+          {
+            "at": 9670.51925,
+            "limit": 50,
+            "beforeId": "1201"
+          },
+          {
+            "at": 9748.217291,
+            "limit": 50,
+            "beforeId": "1151"
+          },
+          {
+            "at": 9826.295458,
+            "limit": 50,
+            "beforeId": "1101"
+          },
+          {
+            "at": 9910.684125,
+            "limit": 50,
+            "beforeId": "1051"
+          },
+          {
+            "at": 10000.561875,
+            "limit": 50,
+            "beforeId": "1001"
+          },
+          {
+            "at": 10227.852125,
+            "limit": 50,
+            "beforeId": "951"
+          },
+          {
+            "at": 10338.364958,
+            "limit": 50,
+            "beforeId": "901"
+          },
+          {
+            "at": 10410.732958,
+            "limit": 50,
+            "beforeId": "851"
+          },
+          {
+            "at": 10474.604916,
+            "limit": 50,
+            "beforeId": "801"
+          },
+          {
+            "at": 10570.82425,
+            "limit": 50,
+            "beforeId": "751"
+          },
+          {
+            "at": 10698.89675,
+            "limit": 50,
+            "beforeId": "701"
+          },
+          {
+            "at": 10799.724041,
+            "limit": 50,
+            "beforeId": "651"
+          },
+          {
+            "at": 10868.533791,
+            "limit": 50,
+            "beforeId": "601"
+          },
+          {
+            "at": 12707.147833,
+            "limit": 50,
+            "beforeId": null
+          },
+          {
+            "at": 12822.847416,
+            "limit": 50,
+            "beforeId": null
+          }
+        ],
+        "mountedRows": 14
+      },
+      "efficiency": {
+        "version": "1.0",
+        "eventPayloads": 0,
+        "eventPayloadBytes": 0,
+        "reconnects": 0,
+        "httpPolls": 0,
+        "reactCommits": 208,
+        "streamRecoveryActions": 0
+      },
+      "resizeObserver": {
+        "constructed": 41,
+        "observedTargets": 2576,
+        "callbacks": 62,
+        "callbackEntries": 1206
+      },
+      "performance": {
+        "Timestamp": 420479.424424,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 2,
+        "JSEventListeners": 8233,
+        "LayoutObjects": 17698,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 18164,
+        "Resources": 56,
+        "ContextLifecycleStateObservers": 6,
+        "V8PerContextDatas": 2,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 2,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 0,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0,
+        "DevToolsCommandDuration": 4e-06,
+        "ScriptDuration": 0.001021,
+        "V8CompileDuration": 0,
+        "TaskDuration": 0.001037,
+        "TaskOtherDuration": 1.2e-05,
+        "ThreadTime": 0.001059,
+        "ProcessTime": 5.937483,
+        "JSHeapUsedSize": 40253304,
+        "JSHeapTotalSize": 108625920,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 420473.790354,
+        "NavigationStart": 420473.0996
+      },
+      "scrollDrift": {
+        "before": {
+          "id": "turn:user:db:1443",
+          "top": 90.5,
+          "scrollTop": 60376
+        },
+        "after": {
+          "id": "turn:user:db:1443",
+          "top": 90.5,
+          "scrollTop": 60376
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "stream": {
+        "samples": [
+          {
+            "at": 700.4000000357628,
+            "visibleTokens": 2,
+            "visibleChars": 48,
+            "streaming": "false"
+          },
+          {
+            "at": 814,
+            "visibleTokens": 4,
+            "visibleChars": 96,
+            "streaming": "true"
+          },
+          {
+            "at": 1025.4000000357628,
+            "visibleTokens": 7,
+            "visibleChars": 168,
+            "streaming": "true"
+          },
+          {
+            "at": 1161.300000011921,
+            "visibleTokens": 9,
+            "visibleChars": 216,
+            "streaming": "true"
+          },
+          {
+            "at": 1290.6000000238419,
+            "visibleTokens": 11,
+            "visibleChars": 266,
+            "streaming": "true"
+          },
+          {
+            "at": 1426.300000011921,
+            "visibleTokens": 13,
+            "visibleChars": 316,
+            "streaming": "true"
+          },
+          {
+            "at": 1575.5,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "true"
+          }
+        ],
+        "observationDiagnostic": {
+          "freshSamples": [
+            {
+              "at": 700.1999999880791,
+              "visibleTokens": 2,
+              "visibleChars": 48,
+              "streaming": "false"
+            },
+            {
+              "at": 814,
+              "visibleTokens": 4,
+              "visibleChars": 96,
+              "streaming": "true"
+            },
+            {
+              "at": 1025.4000000357628,
+              "visibleTokens": 7,
+              "visibleChars": 168,
+              "streaming": "true"
+            },
+            {
+              "at": 1161.300000011921,
+              "visibleTokens": 9,
+              "visibleChars": 216,
+              "streaming": "true"
+            },
+            {
+              "at": 1290.6000000238419,
+              "visibleTokens": 11,
+              "visibleChars": 266,
+              "streaming": "true"
+            },
+            {
+              "at": 1426.300000011921,
+              "visibleTokens": 13,
+              "visibleChars": 316,
+              "streaming": "true"
+            },
+            {
+              "at": 1575.5,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "identity": [
+            {
+              "at": 700.1999999880791,
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "currentConnected": true,
+              "currentSession": "baseline_thread_stream_2000_dark_1440",
+              "panelReplaced": false,
+              "visibleTokens": 2
+            },
+            {
+              "at": 814,
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "currentConnected": true,
+              "currentSession": "baseline_thread_stream_2000_dark_1440",
+              "panelReplaced": false,
+              "visibleTokens": 4
+            },
+            {
+              "at": 1025.4000000357628,
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "currentConnected": true,
+              "currentSession": "baseline_thread_stream_2000_dark_1440",
+              "panelReplaced": false,
+              "visibleTokens": 7
+            },
+            {
+              "at": 1161.300000011921,
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "currentConnected": true,
+              "currentSession": "baseline_thread_stream_2000_dark_1440",
+              "panelReplaced": false,
+              "visibleTokens": 9
+            },
+            {
+              "at": 1290.6000000238419,
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "currentConnected": true,
+              "currentSession": "baseline_thread_stream_2000_dark_1440",
+              "panelReplaced": false,
+              "visibleTokens": 11
+            },
+            {
+              "at": 1426.300000011921,
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "currentConnected": true,
+              "currentSession": "baseline_thread_stream_2000_dark_1440",
+              "panelReplaced": false,
+              "visibleTokens": 13
+            },
+            {
+              "at": 1575.5,
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "currentConnected": true,
+              "currentSession": "baseline_thread_stream_2000_dark_1440",
+              "panelReplaced": false,
+              "visibleTokens": 16
+            }
+          ],
+          "timeOrigin": 1792091817069,
+          "traceTimeOrigin": 1792091817069,
+          "streamNavigations": [],
+          "archived": null
+        },
+        "startedAt": 517.8000000119209,
+        "firstVisibleTokenMs": 182.60000002384186,
+        "syntheticInitialDelayMs": 60,
+        "firstVisibleMinusSyntheticDelayMs": 122.60000002384186,
+        "maxVisibleUpdateGapMs": 211.4000000357628,
+        "updateCount": 7,
+        "elapsedMs": 1057.699999988079,
+        "updatesPerSecond": 6.618133686375053,
+        "expectedTokenCount": 16,
+        "finalVisibleTokenCount": 16,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 19,
+          "eventPayloadBytes": 13684,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 30,
+          "streamRecoveryActions": 0
+        }
+      },
+      "screenshot": "/tmp/spark-upgrade-20261015/browser-observation/proof-stream/attempt-01/run-01/screenshots/dark/2000-w1440.png",
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    },
+    "sidebar": {
+      "selectionMs": 71.59999996423721,
+      "selectionObservation": {
+        "expectedSession": "scale-000",
+        "initialSession": null,
+        "committedAt": 1149.5,
+        "startedAt": 1101.7000000476837,
+        "commitMs": 47.799999952316284
+      },
+      "localSearchMs": 17.599999964237213,
+      "fullHistorySearchMs": 279.60000002384186,
+      "sidebarUpdateMs": 35.5,
+      "checks": [
+        "Inbox semantic selection/local/full-history search",
+        "legacy pins do not cross profile boundary",
+        "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+        "SSE insertion scroll anchor and nonselected unread marker",
+        "server pin; duplicate placements; collapse/expand; drag to project",
+        "virtualized ArrowDown moves keyboard focus to the next row",
+        "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+        "Inbox explicit next-page paging",
+        "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+      ],
+      "correctnessFailures": []
+    }
+  },
+  "decisions": {
+    "selection": "Authorize browser-time same data-session-id commit for selectionMs; preserve original duration as selectionLegacyObservedMs; threshold stays strictly <100ms.",
+    "stream": "No stale-node or document-replacement cause proved. Authoritative fixed-panel samples unchanged. Dual fresh-panel samples and archived pre-navigation samples remain diagnostics only. Missing trace or changed document explicitly fails."
+  },
+  "precisionLimitations": [
+    "DOM identity commit is not painted-frame or completed-history timing.",
+    "Different metric definitions cannot establish a P00 speedup or explain every historical failure.",
+    "MutationObserver and host scheduling overhead remains.",
+    "Rendered updates can coalesce synthetic events; efficiency event totals are not per-token delivery proof.",
+    "60ms producer delay unchanged; remaining timing combines HTTP, backend, SSE and render.",
+    "Dev synthetic captures do not prove external providers, production assets or installed packages.",
+    "Final passing captures do not prove a cause for the previous missing trace, and do not exercise the new missing-trace/document-change error branches."
+  ],
+  "artifacts": [
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/results.json",
+      "sha256": "5fe56435d24cc96a01083157d7186c0134e526216a9ba9db8a96b833a1d9009a"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/matrix/run-01/failure.json",
+      "sha256": "c44f3ca3eeb831cdf5de08a071917be23f4921b7c9036be8a729bc1544c01115"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/selection-observation-diagnostic/failure.json",
+      "sha256": "2442fd4e71795d568f457a45d65ed9ea57468b5ec87e6f311df1c4dd6116c69b"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/proof-stream/gate.json",
+      "sha256": "d7d36cdb5b977219de7ef2f28c6f0e8c0f59c887a83c6a20b1cb2d62bc23b883"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/proof-stream/attempt-01/run-01/baseline-b432e028.json",
+      "sha256": "88d04b79b8d0dbc37cd7fe0cfd97ad0c31d2dfb0cd16c8da080f475ae90c478e"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/proof-sidebar/gate.json",
+      "sha256": "927a1a9783d829c82a5951cb06c0e1ba65f37eb617f1cd895d1dcc2ea8ffabce"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/proof-sidebar/attempt-01/report.json",
+      "sha256": "19a7c9bf667f2e982d77e26f7eba68752feb937759c601ccbf185dddb69a619a"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/proof-source/baseline-capture.mjs",
+      "sha256": "5ce30514c1d849115d842567f9570484bb20832d080ba17eab40769cfd34e68c"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/proof-source/sidebar-scale.mjs",
+      "sha256": "1da13c09bed6b19a567ce4f091cd86a110602b3e4441824e595c0b4be7e417b0"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-01/failure.json",
+      "sha256": "343be844582bb3f8c389b6bd0d1536941401de50a45390d019c4daf1d43f37a0"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-02/failure.json",
+      "sha256": "c1b32cc022526c0234b834c8f681edb71884a051e267169108447044cbcc5f08"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-03/failure.json",
+      "sha256": "286eddd124a72b7416f6a0d3a5573851cd4b9471eeb285abd293c3a7f5ce8d3c"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/results.json",
+      "sha256": "6546ed6c1894839efa181a23b507cd168af2d2c1ff0a2088bee07503208d8fc4"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/source-before.json",
+      "sha256": "cda31dfd5117ebb2eb5ac74fd83bb2f1fe6ef4906f2f29f50bd3c3986ec13be1"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/source-after.json",
+      "sha256": "cda31dfd5117ebb2eb5ac74fd83bb2f1fe6ef4906f2f29f50bd3c3986ec13be1"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar/gate.json",
+      "sha256": "f733b80e552b5a7afdcf7e0847a2954f2e6f18af79f0f5375eeebdcd2f02acd2"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/gate.json",
+      "sha256": "c86eac54a1f8f75fa3d9e6fc8a7221f0d6229f1e3a2d656506a401f4e302b025"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar3.log",
+      "sha256": "d70fed2cb931870675443377bc1f7e606d4789579528a34b0d76cba84249f947"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k3.log",
+      "sha256": "3d2c077a1a6ea9cf68b26d05e96113d0292d4f365e91d11b4c474f47177dcd7f"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/full18.log",
+      "sha256": "485ddcf010e6eebb7d761af5aa863e6d7b80cde21628507c75b98fec95c092da"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/matrix/run-01/baseline-b432e028.json",
+      "sha256": "5a619d8f3dd89aae88c7f799fce2fb15f647f20fab5f1b482dfb194278fd5dc2"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar/attempt-01/report.json",
+      "sha256": "840ce8e19bf08651ef5abe2596d3543b0e9e14009c4716a957eebaa1940e87d0"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar/attempt-02/report.json",
+      "sha256": "87af73c71fe22c55a90ab993fac29fcad449aa21f0cc485f4ac81aef169f0808"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar/attempt-03/report.json",
+      "sha256": "d0938ab79208eaa807dd9bb35fa21277cfba594e9b2406a127e46a680be64ed8"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-01/run-01/baseline-b432e028.json",
+      "sha256": "93470139ab12828794e46e63b9287f1b119b465f57e8a943eaeaed3c2e9975c0"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-02/run-01/baseline-b432e028.json",
+      "sha256": "b335878b99594eac8c95bb4ca91397784b7a3ee001a239fd7944ca736e8a73b2"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-03/run-01/baseline-b432e028.json",
+      "sha256": "758b41142e9431af6b754caf2fe0a6c22955fe75fd2954958f0d51122751950c"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/matrix/run-01/screenshots/dark/2000-w1440.png",
+      "sha256": "cb21bc2dccb14083993abe101644af4bae5ab60f28ffc35344c9110d2a34d2e1"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/browser-observation/final/matrix/run-01/screenshots/light/2000-w768.png",
+      "sha256": "166af5b1652b6c30f5106da4c1d079a5037695408f8f323135fddd5e36a0dd06"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-01/failure.png",
+      "sha256": "e181dbf3b7436aee8234af762f94772301ff59af45dcef0918e8ca8d7f9d60c2"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-02/failure.png",
+      "sha256": "e181dbf3b7436aee8234af762f94772301ff59af45dcef0918e8ca8d7f9d60c2"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-03/failure.png",
+      "sha256": "e181dbf3b7436aee8234af762f94772301ff59af45dcef0918e8ca8d7f9d60c2"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/matrix-18.log",
+      "sha256": "7a4f626792b579acfc3f4c229d2bc7779abd02e17357b30aeb217327a17c98bd"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar-3.log",
+      "sha256": "2ac2e18704ed47487397446312b5cf225b5ea13644f54f25042b74be5aa6fb50"
+    },
+    {
+      "path": "/tmp/spark-upgrade-20261015/final-browser-node22/matrix/run-01/screenshots/dark/2000-w1440.png",
+      "sha256": "9d9060a3416e8051ebbbbadd8a9cff40661883779a7ce26f291f0d964041115c"
+    }
+  ],
+  "finalValidation": {
+    "fixedSerialBatch": [
+      {
+        "suite": "sidebar3",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/browser-gates.mjs",
+          "--suite",
+          "sidebar",
+          "--repeat",
+          "3",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar"
+        ],
+        "exit": 0,
+        "timedOut": false,
+        "elapsedSeconds": 36.83,
+        "enclosingTimeoutSeconds": 800
+      },
+      {
+        "suite": "targeted2k3",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/browser-gates.mjs",
+          "--suite",
+          "longthread",
+          "--repeat",
+          "3",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k"
+        ],
+        "exit": 0,
+        "timedOut": false,
+        "elapsedSeconds": 46.95,
+        "enclosingTimeoutSeconds": 800
+      },
+      {
+        "suite": "full18",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/baseline-capture.mjs",
+          "--repeat",
+          "1",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/browser-observation/final/matrix"
+        ],
+        "exit": 0,
+        "timedOut": false,
+        "elapsedSeconds": 120.27,
+        "enclosingTimeoutSeconds": 360
+      }
+    ],
+    "sourceFrozen": true,
+    "sourceBefore": {
+      "src/spark_cli/web/e2e/sidebar-scale.mjs": "9181fe6e7310cfe2211e9e473b5648df1cc986ad92d8f5b927597318a22ece0f",
+      "src/spark_cli/web/e2e/baseline-capture.mjs": "8897c3e1b0c93f23700da0d76361f5999431a9d4da99b467f2c34c8ef9f0f5a7",
+      "docs/performance/app-upgrade-browser-observation-2026-10-15.md": "8bb3f913533ebc8114f0fa955b9d763e20620b0dba79be8efd0397dfd4c0e9ab",
+      "docs/performance/app-upgrade-browser-observation-2026-10-15.json": "943dd85996482356d15e2f54a8944f4611e16e29485d0e8a54a568f584400674"
+    },
+    "sourceAfter": {
+      "src/spark_cli/web/e2e/sidebar-scale.mjs": "9181fe6e7310cfe2211e9e473b5648df1cc986ad92d8f5b927597318a22ece0f",
+      "src/spark_cli/web/e2e/baseline-capture.mjs": "8897c3e1b0c93f23700da0d76361f5999431a9d4da99b467f2c34c8ef9f0f5a7",
+      "docs/performance/app-upgrade-browser-observation-2026-10-15.md": "8bb3f913533ebc8114f0fa955b9d763e20620b0dba79be8efd0397dfd4c0e9ab",
+      "docs/performance/app-upgrade-browser-observation-2026-10-15.json": "943dd85996482356d15e2f54a8944f4611e16e29485d0e8a54a568f584400674"
+    },
+    "sidebarGate": {
+      "suite": "sidebar",
+      "repeat": 3,
+      "attempts": [
+        {
+          "attempt": 1,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/sidebar-scale.mjs"
+          ],
+          "directory": "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar/attempt-01",
+          "timeoutMs": 240000,
+          "elapsedMs": 12795,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        },
+        {
+          "attempt": 2,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/sidebar-scale.mjs"
+          ],
+          "directory": "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar/attempt-02",
+          "timeoutMs": 240000,
+          "elapsedMs": 11818,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        },
+        {
+          "attempt": 3,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/sidebar-scale.mjs"
+          ],
+          "directory": "/tmp/spark-upgrade-20261015/browser-observation/final/sidebar/attempt-03",
+          "timeoutMs": 240000,
+          "elapsedMs": 12169,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        }
+      ]
+    },
+    "sidebar": [
+      {
+        "attempt": "attempt-01",
+        "selectionMs": 57.30000001192093,
+        "selectionLegacyObservedMs": 91.60000002384186,
+        "selectionObservation": {
+          "expectedSession": "scale-000",
+          "initialSession": null,
+          "committedAt": 1158.699999988079,
+          "startedAt": 1101.3999999761581,
+          "definition": "inline-click-to-session-dom-commit",
+          "legacyObservationTailMs": 34.30000001192093
+        },
+        "localSearchMs": 75.69999998807907,
+        "fullHistorySearchMs": 286.39999997615814,
+        "sidebarUpdateMs": 17.899999976158142,
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+          "SSE insertion scroll anchor and nonselected unread marker",
+          "server pin; duplicate placements; collapse/expand; drag to project",
+          "virtualized ArrowDown moves keyboard focus to the next row",
+          "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+          "Inbox explicit next-page paging",
+          "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+        ],
+        "correctnessFailures": []
+      },
+      {
+        "attempt": "attempt-02",
+        "selectionMs": 47.30000001192093,
+        "selectionLegacyObservedMs": 70.30000001192093,
+        "selectionObservation": {
+          "expectedSession": "scale-000",
+          "initialSession": null,
+          "committedAt": 1152.8999999761581,
+          "startedAt": 1105.5999999642372,
+          "definition": "inline-click-to-session-dom-commit",
+          "legacyObservationTailMs": 23
+        },
+        "localSearchMs": 42.80000001192093,
+        "fullHistorySearchMs": 281,
+        "sidebarUpdateMs": 35.5,
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+          "SSE insertion scroll anchor and nonselected unread marker",
+          "server pin; duplicate placements; collapse/expand; drag to project",
+          "virtualized ArrowDown moves keyboard focus to the next row",
+          "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+          "Inbox explicit next-page paging",
+          "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+        ],
+        "correctnessFailures": []
+      },
+      {
+        "attempt": "attempt-03",
+        "selectionMs": 49.5,
+        "selectionLegacyObservedMs": 75.69999998807907,
+        "selectionObservation": {
+          "expectedSession": "scale-000",
+          "initialSession": null,
+          "committedAt": 1150.1000000238419,
+          "startedAt": 1100.6000000238419,
+          "definition": "inline-click-to-session-dom-commit",
+          "legacyObservationTailMs": 26.19999998807907
+        },
+        "localSearchMs": 78.19999998807907,
+        "fullHistorySearchMs": 281.0999999642372,
+        "sidebarUpdateMs": 33.80000001192093,
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+          "SSE insertion scroll anchor and nonselected unread marker",
+          "server pin; duplicate placements; collapse/expand; drag to project",
+          "virtualized ArrowDown moves keyboard focus to the next row",
+          "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+          "Inbox explicit next-page paging",
+          "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+        ],
+        "correctnessFailures": []
+      }
+    ],
+    "targeted2kGate": {
+      "suite": "longthread",
+      "repeat": 3,
+      "attempts": [
+        {
+          "attempt": 1,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/baseline-capture.mjs",
+            "--repeat",
+            "1",
+            "--case",
+            "dark:2000:1440",
+            "--output-dir",
+            "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-01"
+          ],
+          "directory": "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-01",
+          "timeoutMs": 240000,
+          "elapsedMs": 15833,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        },
+        {
+          "attempt": 2,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/baseline-capture.mjs",
+            "--repeat",
+            "1",
+            "--case",
+            "dark:2000:1440",
+            "--output-dir",
+            "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-02"
+          ],
+          "directory": "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-02",
+          "timeoutMs": 240000,
+          "elapsedMs": 15662,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        },
+        {
+          "attempt": 3,
+          "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "args": [
+            "e2e/baseline-capture.mjs",
+            "--repeat",
+            "1",
+            "--case",
+            "dark:2000:1440",
+            "--output-dir",
+            "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-03"
+          ],
+          "directory": "/tmp/spark-upgrade-20261015/browser-observation/final/targeted2k/attempt-03",
+          "timeoutMs": 240000,
+          "elapsedMs": 15360,
+          "timedOut": false,
+          "exit": 0,
+          "signal": null
+        }
+      ]
+    },
+    "targeted2k": [
+      {
+        "theme": "dark",
+        "rows": 2000,
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "deviceScaleFactor": 1
+        },
+        "firstRenderMs": 1316.87,
+        "history": {
+          "pagesLoaded": 39,
+          "attempts": 39,
+          "sameUrlReloads": 0,
+          "fullyLoaded": true,
+          "mountedRows": 14
+        },
+        "scrollDrift": {
+          "before": {
+            "id": "turn:user:db:555",
+            "top": 56.25,
+            "scrollTop": 500
+          },
+          "after": {
+            "id": "turn:user:db:555",
+            "top": 56.25,
+            "scrollTop": 500
+          },
+          "sameRow": true,
+          "driftPx": 0
+        },
+        "stream": {
+          "startedAt": 431.9000000357628,
+          "firstVisibleTokenMs": 204.5999999642372,
+          "syntheticInitialDelayMs": 60,
+          "firstVisibleMinusSyntheticDelayMs": 144.5999999642372,
+          "maxVisibleUpdateGapMs": 234.5,
+          "updateCount": 7,
+          "elapsedMs": 1073.3999999761581,
+          "updatesPerSecond": 6.5213340787735055,
+          "expectedTokenCount": 16,
+          "finalVisibleTokenCount": 16,
+          "efficiency": {
+            "version": "1.0",
+            "eventPayloads": 19,
+            "eventPayloadBytes": 13667,
+            "reconnects": 0,
+            "httpPolls": 0,
+            "reactCommits": 37,
+            "streamRecoveryActions": 0
+          }
+        },
+        "authoritativeSamples": [
+          {
+            "at": 636.5,
+            "visibleTokens": 2,
+            "visibleChars": 48,
+            "streaming": "false"
+          },
+          {
+            "at": 750.2000000476837,
+            "visibleTokens": 4,
+            "visibleChars": 96,
+            "streaming": "true"
+          },
+          {
+            "at": 911.6000000238419,
+            "visibleTokens": 6,
+            "visibleChars": 144,
+            "streaming": "true"
+          },
+          {
+            "at": 1051.2000000476837,
+            "visibleTokens": 9,
+            "visibleChars": 216,
+            "streaming": "true"
+          },
+          {
+            "at": 1285.7000000476837,
+            "visibleTokens": 12,
+            "visibleChars": 291,
+            "streaming": "true"
+          },
+          {
+            "at": 1436.800000011921,
+            "visibleTokens": 15,
+            "visibleChars": 366,
+            "streaming": "true"
+          },
+          {
+            "at": 1505.300000011921,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "true"
+          }
+        ],
+        "fixedFreshTokenProgressionMatches": true,
+        "allIdentitySamplesOriginalConnected": true,
+        "errors": {
+          "page": [],
+          "console": []
+        },
+        "observationDiagnostic": {
+          "tracePresent": true,
+          "timeOrigin": 1792092576687.4,
+          "traceTimeOrigin": 1792092576687.4,
+          "nodeState": {
+            "originalConnected": true,
+            "currentIsOriginal": true,
+            "originalSession": "baseline_thread_stream_2000_dark_1440",
+            "currentSession": "baseline_thread_stream_2000_dark_1440"
+          },
+          "streamNavigations": [],
+          "archived": null,
+          "identitySampleCount": 7,
+          "allIdentitySamplesOriginalConnected": true,
+          "diagnosticFreshUpdateCount": 7,
+          "diagnosticFreshFinalVisibleTokenCount": 16,
+          "diagnosticFreshTokenProgression": [
+            2,
+            4,
+            6,
+            9,
+            12,
+            15,
+            16
+          ],
+          "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+        }
+      },
+      {
+        "theme": "dark",
+        "rows": 2000,
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "deviceScaleFactor": 1
+        },
+        "firstRenderMs": 1343.69,
+        "history": {
+          "pagesLoaded": 39,
+          "attempts": 39,
+          "sameUrlReloads": 0,
+          "fullyLoaded": true,
+          "mountedRows": 25
+        },
+        "scrollDrift": {
+          "before": {
+            "id": "turn:user:db:1441",
+            "top": 61,
+            "scrollTop": 61319
+          },
+          "after": {
+            "id": "turn:user:db:1441",
+            "top": 61,
+            "scrollTop": 61319
+          },
+          "sameRow": true,
+          "driftPx": 0
+        },
+        "stream": {
+          "startedAt": 528.1999999880791,
+          "firstVisibleTokenMs": 164.39999997615814,
+          "syntheticInitialDelayMs": 60,
+          "firstVisibleMinusSyntheticDelayMs": 104.39999997615814,
+          "maxVisibleUpdateGapMs": 188.4000000357628,
+          "updateCount": 7,
+          "elapsedMs": 1058.300000011921,
+          "updatesPerSecond": 6.6143815552500715,
+          "expectedTokenCount": 16,
+          "finalVisibleTokenCount": 16,
+          "efficiency": {
+            "version": "1.0",
+            "eventPayloads": 19,
+            "eventPayloadBytes": 13684,
+            "reconnects": 0,
+            "httpPolls": 0,
+            "reactCommits": 33,
+            "streamRecoveryActions": 0
+          }
+        },
+        "authoritativeSamples": [
+          {
+            "at": 692.5999999642372,
+            "visibleTokens": 2,
+            "visibleChars": 48,
+            "streaming": "false"
+          },
+          {
+            "at": 881,
+            "visibleTokens": 5,
+            "visibleChars": 120,
+            "streaming": "true"
+          },
+          {
+            "at": 1050.8999999761581,
+            "visibleTokens": 7,
+            "visibleChars": 168,
+            "streaming": "true"
+          },
+          {
+            "at": 1232.0999999642372,
+            "visibleTokens": 10,
+            "visibleChars": 241,
+            "streaming": "true"
+          },
+          {
+            "at": 1370.2999999523163,
+            "visibleTokens": 12,
+            "visibleChars": 291,
+            "streaming": "true"
+          },
+          {
+            "at": 1512.199999988079,
+            "visibleTokens": 15,
+            "visibleChars": 366,
+            "streaming": "true"
+          },
+          {
+            "at": 1586.5,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "true"
+          }
+        ],
+        "fixedFreshTokenProgressionMatches": true,
+        "allIdentitySamplesOriginalConnected": true,
+        "errors": {
+          "page": [],
+          "console": []
+        },
+        "observationDiagnostic": {
+          "tracePresent": true,
+          "timeOrigin": 1792092592251.7,
+          "traceTimeOrigin": 1792092592251.7,
+          "nodeState": {
+            "originalConnected": true,
+            "currentIsOriginal": true,
+            "originalSession": "baseline_thread_stream_2000_dark_1440",
+            "currentSession": "baseline_thread_stream_2000_dark_1440"
+          },
+          "streamNavigations": [],
+          "archived": null,
+          "identitySampleCount": 7,
+          "allIdentitySamplesOriginalConnected": true,
+          "diagnosticFreshUpdateCount": 7,
+          "diagnosticFreshFinalVisibleTokenCount": 16,
+          "diagnosticFreshTokenProgression": [
+            2,
+            5,
+            7,
+            10,
+            12,
+            15,
+            16
+          ],
+          "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+        }
+      },
+      {
+        "theme": "dark",
+        "rows": 2000,
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "deviceScaleFactor": 1
+        },
+        "firstRenderMs": 1292.82,
+        "history": {
+          "pagesLoaded": 39,
+          "attempts": 39,
+          "sameUrlReloads": 0,
+          "fullyLoaded": true,
+          "mountedRows": 24
+        },
+        "scrollDrift": {
+          "before": {
+            "id": "turn:user:db:1563",
+            "top": 5.75,
+            "scrollTop": 69089
+          },
+          "after": {
+            "id": "turn:user:db:1563",
+            "top": 5.75,
+            "scrollTop": 69089
+          },
+          "sameRow": true,
+          "driftPx": 0
+        },
+        "stream": {
+          "startedAt": 445.30000001192093,
+          "firstVisibleTokenMs": 211.69999998807907,
+          "syntheticInitialDelayMs": 60,
+          "firstVisibleMinusSyntheticDelayMs": 151.69999998807907,
+          "maxVisibleUpdateGapMs": 145.69999998807907,
+          "updateCount": 8,
+          "elapsedMs": 1063.199999988079,
+          "updatesPerSecond": 7.524454477134781,
+          "expectedTokenCount": 16,
+          "finalVisibleTokenCount": 16,
+          "efficiency": {
+            "version": "1.0",
+            "eventPayloads": 19,
+            "eventPayloadBytes": 13659,
+            "reconnects": 0,
+            "httpPolls": 0,
+            "reactCommits": 37,
+            "streamRecoveryActions": 0
+          }
+        },
+        "authoritativeSamples": [
+          {
+            "at": 657,
+            "visibleTokens": 2,
+            "visibleChars": 48,
+            "streaming": "false"
+          },
+          {
+            "at": 776.4000000357628,
+            "visibleTokens": 4,
+            "visibleChars": 96,
+            "streaming": "true"
+          },
+          {
+            "at": 902.5,
+            "visibleTokens": 6,
+            "visibleChars": 144,
+            "streaming": "true"
+          },
+          {
+            "at": 992,
+            "visibleTokens": 8,
+            "visibleChars": 192,
+            "streaming": "true"
+          },
+          {
+            "at": 1135,
+            "visibleTokens": 10,
+            "visibleChars": 241,
+            "streaming": "true"
+          },
+          {
+            "at": 1279.9000000357628,
+            "visibleTokens": 12,
+            "visibleChars": 291,
+            "streaming": "true"
+          },
+          {
+            "at": 1425.6000000238419,
+            "visibleTokens": 14,
+            "visibleChars": 341,
+            "streaming": "true"
+          },
+          {
+            "at": 1508.5,
+            "visibleTokens": 16,
+            "visibleChars": 0,
+            "streaming": "true"
+          }
+        ],
+        "fixedFreshTokenProgressionMatches": true,
+        "allIdentitySamplesOriginalConnected": true,
+        "errors": {
+          "page": [],
+          "console": []
+        },
+        "observationDiagnostic": {
+          "tracePresent": true,
+          "timeOrigin": 1792092607727.4,
+          "traceTimeOrigin": 1792092607727.4,
+          "nodeState": {
+            "originalConnected": true,
+            "currentIsOriginal": true,
+            "originalSession": "baseline_thread_stream_2000_dark_1440",
+            "currentSession": "baseline_thread_stream_2000_dark_1440"
+          },
+          "streamNavigations": [],
+          "archived": null,
+          "identitySampleCount": 8,
+          "allIdentitySamplesOriginalConnected": true,
+          "diagnosticFreshUpdateCount": 8,
+          "diagnosticFreshFinalVisibleTokenCount": 16,
+          "diagnosticFreshTokenProgression": [
+            2,
+            4,
+            6,
+            8,
+            10,
+            12,
+            14,
+            16
+          ],
+          "maxFixedFreshTimestampDifferenceMs": 0.09999996423721313
+        }
+      }
+    ],
+    "matrix": {
+      "summary": {
+        "caseCount": 18,
+        "streamUpdateCount": 140,
+        "pageErrorCount": 0,
+        "consoleErrorCount": 0
+      },
+      "source": {
+        "commit": "b432e028",
+        "branch": "fix/p09-browser-observation",
+        "browser": "147.0.7727.15",
+        "node": "v22.22.1",
+        "nodeExecutable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node"
+      },
+      "cases": [
+        {
+          "theme": "dark",
+          "rows": 50,
+          "viewport": {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 1278.7,
+          "history": {
+            "pagesLoaded": 0,
+            "attempts": 0,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 14
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:5",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:5",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 585.8999999761581,
+            "firstVisibleTokenMs": 168.19999998807907,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 108.19999998807907,
+            "maxVisibleUpdateGapMs": 146,
+            "updateCount": 8,
+            "elapsedMs": 1040.9000000357628,
+            "updatesPerSecond": 7.6856566430254,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13436,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 32,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 754.0999999642372,
+              "visibleTokens": 2,
+              "visibleChars": 44,
+              "streaming": "false"
+            },
+            {
+              "at": 900.0999999642372,
+              "visibleTokens": 4,
+              "visibleChars": 88,
+              "streaming": "true"
+            },
+            {
+              "at": 1023.0999999642372,
+              "visibleTokens": 6,
+              "visibleChars": 132,
+              "streaming": "true"
+            },
+            {
+              "at": 1152.300000011921,
+              "visibleTokens": 8,
+              "visibleChars": 176,
+              "streaming": "true"
+            },
+            {
+              "at": 1286.8999999761581,
+              "visibleTokens": 10,
+              "visibleChars": 221,
+              "streaming": "true"
+            },
+            {
+              "at": 1378.800000011921,
+              "visibleTokens": 12,
+              "visibleChars": 267,
+              "streaming": "true"
+            },
+            {
+              "at": 1520.5,
+              "visibleTokens": 14,
+              "visibleChars": 313,
+              "streaming": "true"
+            },
+            {
+              "at": 1626.800000011921,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092620851.7,
+            "traceTimeOrigin": 1792092620851.7,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_50_dark_1440",
+              "currentSession": "baseline_thread_stream_50_dark_1440"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              12,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.09999996423721313
+          }
+        },
+        {
+          "theme": "dark",
+          "rows": 50,
+          "viewport": {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 511.66,
+          "history": {
+            "pagesLoaded": 0,
+            "attempts": 0,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 14
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:5",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:5",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 421.30000001192093,
+            "firstVisibleTokenMs": 176.19999998807907,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 116.19999998807907,
+            "maxVisibleUpdateGapMs": 172.89999997615814,
+            "updateCount": 8,
+            "elapsedMs": 1067.199999988079,
+            "updatesPerSecond": 7.496251874146704,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13410,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 36,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 597.5,
+              "visibleTokens": 2,
+              "visibleChars": 44,
+              "streaming": "false"
+            },
+            {
+              "at": 732.8999999761581,
+              "visibleTokens": 4,
+              "visibleChars": 88,
+              "streaming": "true"
+            },
+            {
+              "at": 879.1000000238419,
+              "visibleTokens": 6,
+              "visibleChars": 132,
+              "streaming": "true"
+            },
+            {
+              "at": 977.3999999761581,
+              "visibleTokens": 8,
+              "visibleChars": 176,
+              "streaming": "true"
+            },
+            {
+              "at": 1115.300000011921,
+              "visibleTokens": 10,
+              "visibleChars": 221,
+              "streaming": "true"
+            },
+            {
+              "at": 1288.199999988079,
+              "visibleTokens": 13,
+              "visibleChars": 290,
+              "streaming": "true"
+            },
+            {
+              "at": 1429.6000000238419,
+              "visibleTokens": 15,
+              "visibleChars": 336,
+              "streaming": "true"
+            },
+            {
+              "at": 1488.5,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092625982.9,
+            "traceTimeOrigin": 1792092625982.9,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_50_dark_1024",
+              "currentSession": "baseline_thread_stream_50_dark_1024"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              13,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+          }
+        },
+        {
+          "theme": "dark",
+          "rows": 50,
+          "viewport": {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 558.05,
+          "history": {
+            "pagesLoaded": 0,
+            "attempts": 0,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 15
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:3",
+              "top": -30.5,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:3",
+              "top": -30.5,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 439.5999999642372,
+            "firstVisibleTokenMs": 186,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 126,
+            "maxVisibleUpdateGapMs": 150,
+            "updateCount": 8,
+            "elapsedMs": 1062.800000011921,
+            "updatesPerSecond": 7.527286413163594,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13308,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 42,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 625.5999999642372,
+              "visibleTokens": 2,
+              "visibleChars": 42,
+              "streaming": "false"
+            },
+            {
+              "at": 759.6999999880791,
+              "visibleTokens": 4,
+              "visibleChars": 84,
+              "streaming": "true"
+            },
+            {
+              "at": 889,
+              "visibleTokens": 6,
+              "visibleChars": 126,
+              "streaming": "true"
+            },
+            {
+              "at": 996.3000000119209,
+              "visibleTokens": 8,
+              "visibleChars": 168,
+              "streaming": "true"
+            },
+            {
+              "at": 1139.300000011921,
+              "visibleTokens": 10,
+              "visibleChars": 211,
+              "streaming": "true"
+            },
+            {
+              "at": 1253.699999988079,
+              "visibleTokens": 12,
+              "visibleChars": 255,
+              "streaming": "true"
+            },
+            {
+              "at": 1403.699999988079,
+              "visibleTokens": 14,
+              "visibleChars": 299,
+              "streaming": "true"
+            },
+            {
+              "at": 1502.3999999761581,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092630743.2,
+            "traceTimeOrigin": 1792092630743.2,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_50_dark_768",
+              "currentSession": "baseline_thread_stream_50_dark_768"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              12,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+          }
+        },
+        {
+          "theme": "dark",
+          "rows": 500,
+          "viewport": {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 661.64,
+          "history": {
+            "pagesLoaded": 9,
+            "attempts": 9,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 25
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:251",
+              "top": 60.75,
+              "scrollTop": 14884
+            },
+            "after": {
+              "id": "turn:user:db:251",
+              "top": 60.75,
+              "scrollTop": 14884
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 450,
+            "firstVisibleTokenMs": 203.10000002384186,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 143.10000002384186,
+            "maxVisibleUpdateGapMs": 174,
+            "updateCount": 7,
+            "elapsedMs": 1061.5,
+            "updatesPerSecond": 6.594441827602449,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13570,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 35,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 653.1000000238419,
+              "visibleTokens": 2,
+              "visibleChars": 46,
+              "streaming": "false"
+            },
+            {
+              "at": 758.3999999761581,
+              "visibleTokens": 4,
+              "visibleChars": 92,
+              "streaming": "true"
+            },
+            {
+              "at": 907.3000000119209,
+              "visibleTokens": 6,
+              "visibleChars": 138,
+              "streaming": "true"
+            },
+            {
+              "at": 1076.3999999761581,
+              "visibleTokens": 9,
+              "visibleChars": 207,
+              "streaming": "true"
+            },
+            {
+              "at": 1250.3999999761581,
+              "visibleTokens": 12,
+              "visibleChars": 279,
+              "streaming": "true"
+            },
+            {
+              "at": 1385.5,
+              "visibleTokens": 14,
+              "visibleChars": 327,
+              "streaming": "true"
+            },
+            {
+              "at": 1511.5,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092636542.4,
+            "traceTimeOrigin": 1792092636542.4,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_500_dark_1440",
+              "currentSession": "baseline_thread_stream_500_dark_1440"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 7,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 7,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              9,
+              12,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+          }
+        },
+        {
+          "theme": "dark",
+          "rows": 500,
+          "viewport": {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 646.1,
+          "history": {
+            "pagesLoaded": 9,
+            "attempts": 9,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 13
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:55",
+              "top": 101.75,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:55",
+              "top": 101.75,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 451.89999997615814,
+            "firstVisibleTokenMs": 186.60000002384186,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 126.60000002384186,
+            "maxVisibleUpdateGapMs": 170.19999998807907,
+            "updateCount": 8,
+            "elapsedMs": 1058.699999988079,
+            "updatesPerSecond": 7.556437139973628,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13582,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 37,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 638.5,
+              "visibleTokens": 2,
+              "visibleChars": 46,
+              "streaming": "true"
+            },
+            {
+              "at": 767.1999999880791,
+              "visibleTokens": 4,
+              "visibleChars": 92,
+              "streaming": "true"
+            },
+            {
+              "at": 881.0999999642372,
+              "visibleTokens": 6,
+              "visibleChars": 138,
+              "streaming": "true"
+            },
+            {
+              "at": 1006.5999999642372,
+              "visibleTokens": 8,
+              "visibleChars": 184,
+              "streaming": "true"
+            },
+            {
+              "at": 1137.8999999761581,
+              "visibleTokens": 10,
+              "visibleChars": 231,
+              "streaming": "true"
+            },
+            {
+              "at": 1308.0999999642372,
+              "visibleTokens": 13,
+              "visibleChars": 303,
+              "streaming": "true"
+            },
+            {
+              "at": 1452.300000011921,
+              "visibleTokens": 15,
+              "visibleChars": 351,
+              "streaming": "true"
+            },
+            {
+              "at": 1510.5999999642372,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092642182.8,
+            "traceTimeOrigin": 1792092642182.8,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_500_dark_1024",
+              "currentSession": "baseline_thread_stream_500_dark_1024"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              13,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+          }
+        },
+        {
+          "theme": "dark",
+          "rows": 500,
+          "viewport": {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 615.17,
+          "history": {
+            "pagesLoaded": 9,
+            "attempts": 9,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 24
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:457",
+              "top": 3,
+              "scrollTop": 31639
+            },
+            "after": {
+              "id": "turn:user:db:457",
+              "top": 3,
+              "scrollTop": 31639
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 402.5999999642372,
+            "firstVisibleTokenMs": 190,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 130,
+            "maxVisibleUpdateGapMs": 145.89999997615814,
+            "updateCount": 8,
+            "elapsedMs": 1061.1000000238419,
+            "updatesPerSecond": 7.539345961568419,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13461,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 39,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 592.5999999642372,
+              "visibleTokens": 2,
+              "visibleChars": 44,
+              "streaming": "false"
+            },
+            {
+              "at": 699.5,
+              "visibleTokens": 4,
+              "visibleChars": 88,
+              "streaming": "true"
+            },
+            {
+              "at": 845.3999999761581,
+              "visibleTokens": 6,
+              "visibleChars": 132,
+              "streaming": "true"
+            },
+            {
+              "at": 959.2999999523163,
+              "visibleTokens": 8,
+              "visibleChars": 176,
+              "streaming": "true"
+            },
+            {
+              "at": 1099.699999988079,
+              "visibleTokens": 10,
+              "visibleChars": 221,
+              "streaming": "true"
+            },
+            {
+              "at": 1218.5,
+              "visibleTokens": 12,
+              "visibleChars": 267,
+              "streaming": "true"
+            },
+            {
+              "at": 1343.699999988079,
+              "visibleTokens": 14,
+              "visibleChars": 313,
+              "streaming": "true"
+            },
+            {
+              "at": 1463.699999988079,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092647757.2,
+            "traceTimeOrigin": 1792092647757.2,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_500_dark_768",
+              "currentSession": "baseline_thread_stream_500_dark_768"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              12,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+          }
+        },
+        {
+          "theme": "dark",
+          "rows": 2000,
+          "viewport": {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 499.59,
+          "history": {
+            "pagesLoaded": 39,
+            "attempts": 39,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 14
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:555",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:555",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 496.0999999642372,
+            "firstVisibleTokenMs": 208.60000002384186,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 148.60000002384186,
+            "maxVisibleUpdateGapMs": 168.30000001192093,
+            "updateCount": 8,
+            "elapsedMs": 1079.4000000357628,
+            "updatesPerSecond": 7.411524921006988,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13717,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 39,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 704.6999999880791,
+              "visibleTokens": 2,
+              "visibleChars": 48,
+              "streaming": "false"
+            },
+            {
+              "at": 849.5999999642372,
+              "visibleTokens": 4,
+              "visibleChars": 96,
+              "streaming": "true"
+            },
+            {
+              "at": 969.2999999523163,
+              "visibleTokens": 6,
+              "visibleChars": 144,
+              "streaming": "true"
+            },
+            {
+              "at": 1093.199999988079,
+              "visibleTokens": 8,
+              "visibleChars": 192,
+              "streaming": "true"
+            },
+            {
+              "at": 1261.5,
+              "visibleTokens": 11,
+              "visibleChars": 266,
+              "streaming": "true"
+            },
+            {
+              "at": 1390.199999988079,
+              "visibleTokens": 13,
+              "visibleChars": 316,
+              "streaming": "true"
+            },
+            {
+              "at": 1527,
+              "visibleTokens": 15,
+              "visibleChars": 366,
+              "streaming": "true"
+            },
+            {
+              "at": 1575.5,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092655409.8,
+            "traceTimeOrigin": 1792092655409.8,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_2000_dark_1440",
+              "currentSession": "baseline_thread_stream_2000_dark_1440"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              11,
+              13,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.0
+          }
+        },
+        {
+          "theme": "dark",
+          "rows": 2000,
+          "viewport": {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 693.59,
+          "history": {
+            "pagesLoaded": 39,
+            "attempts": 39,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 13
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:555",
+              "top": 101.75,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:555",
+              "top": 101.75,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 429.2999999523163,
+            "firstVisibleTokenMs": 208.10000002384186,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 148.10000002384186,
+            "maxVisibleUpdateGapMs": 161.19999998807907,
+            "updateCount": 8,
+            "elapsedMs": 1076.5,
+            "updatesPerSecond": 7.431490942870413,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13709,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 39,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 637.3999999761581,
+              "visibleTokens": 2,
+              "visibleChars": 48,
+              "streaming": "false"
+            },
+            {
+              "at": 747.0999999642372,
+              "visibleTokens": 4,
+              "visibleChars": 96,
+              "streaming": "true"
+            },
+            {
+              "at": 866.6999999880791,
+              "visibleTokens": 6,
+              "visibleChars": 144,
+              "streaming": "true"
+            },
+            {
+              "at": 1027.8999999761581,
+              "visibleTokens": 8,
+              "visibleChars": 192,
+              "streaming": "true"
+            },
+            {
+              "at": 1130.7999999523163,
+              "visibleTokens": 10,
+              "visibleChars": 241,
+              "streaming": "true"
+            },
+            {
+              "at": 1270.7999999523163,
+              "visibleTokens": 12,
+              "visibleChars": 291,
+              "streaming": "true"
+            },
+            {
+              "at": 1386.3999999761581,
+              "visibleTokens": 14,
+              "visibleChars": 341,
+              "streaming": "true"
+            },
+            {
+              "at": 1505.7999999523163,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092663436.3,
+            "traceTimeOrigin": 1792092663436.3,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_2000_dark_1024",
+              "currentSession": "baseline_thread_stream_2000_dark_1024"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              12,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.09999996423721313
+          }
+        },
+        {
+          "theme": "dark",
+          "rows": 2000,
+          "viewport": {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 575.2,
+          "history": {
+            "pagesLoaded": 39,
+            "attempts": 39,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 24
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:2105",
+              "top": 25.75,
+              "scrollTop": 107769
+            },
+            "after": {
+              "id": "turn:user:db:2105",
+              "top": 25.75,
+              "scrollTop": 107769
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 529.6999999880791,
+            "firstVisibleTokenMs": 196.60000002384186,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 136.60000002384186,
+            "maxVisibleUpdateGapMs": 177.80000001192093,
+            "updateCount": 8,
+            "elapsedMs": 1085.4000000357628,
+            "updatesPerSecond": 7.370554633993374,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13593,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 43,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 726.3000000119209,
+              "visibleTokens": 2,
+              "visibleChars": 46,
+              "streaming": "false"
+            },
+            {
+              "at": 858.1999999880791,
+              "visibleTokens": 4,
+              "visibleChars": 92,
+              "streaming": "true"
+            },
+            {
+              "at": 984.5,
+              "visibleTokens": 6,
+              "visibleChars": 138,
+              "streaming": "true"
+            },
+            {
+              "at": 1142.699999988079,
+              "visibleTokens": 8,
+              "visibleChars": 184,
+              "streaming": "true"
+            },
+            {
+              "at": 1234.6000000238419,
+              "visibleTokens": 10,
+              "visibleChars": 231,
+              "streaming": "true"
+            },
+            {
+              "at": 1356.5,
+              "visibleTokens": 12,
+              "visibleChars": 279,
+              "streaming": "true"
+            },
+            {
+              "at": 1534.300000011921,
+              "visibleTokens": 15,
+              "visibleChars": 351,
+              "streaming": "true"
+            },
+            {
+              "at": 1615.1000000238419,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092671272,
+            "traceTimeOrigin": 1792092671272,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_2000_dark_768",
+              "currentSession": "baseline_thread_stream_2000_dark_768"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              12,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.0
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 50,
+          "viewport": {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 594.91,
+          "history": {
+            "pagesLoaded": 0,
+            "attempts": 0,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 17
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:5",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:5",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 565.1000000238419,
+            "firstVisibleTokenMs": 230.60000002384186,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 170.60000002384186,
+            "maxVisibleUpdateGapMs": 142.19999998807907,
+            "updateCount": 8,
+            "elapsedMs": 1107.1000000238419,
+            "updatesPerSecond": 7.226086170921974,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13589,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 37,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 795.7000000476837,
+              "visibleTokens": 2,
+              "visibleChars": 46,
+              "streaming": "false"
+            },
+            {
+              "at": 915.9000000357628,
+              "visibleTokens": 4,
+              "visibleChars": 92,
+              "streaming": "true"
+            },
+            {
+              "at": 1049.1000000238419,
+              "visibleTokens": 6,
+              "visibleChars": 138,
+              "streaming": "true"
+            },
+            {
+              "at": 1178.7000000476837,
+              "visibleTokens": 8,
+              "visibleChars": 184,
+              "streaming": "true"
+            },
+            {
+              "at": 1315.9000000357628,
+              "visibleTokens": 10,
+              "visibleChars": 231,
+              "streaming": "true"
+            },
+            {
+              "at": 1457.300000011921,
+              "visibleTokens": 12,
+              "visibleChars": 279,
+              "streaming": "true"
+            },
+            {
+              "at": 1599.5,
+              "visibleTokens": 15,
+              "visibleChars": 351,
+              "streaming": "true"
+            },
+            {
+              "at": 1672.2000000476837,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092676975.7,
+            "traceTimeOrigin": 1792092676975.7,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_50_light_1440",
+              "currentSession": "baseline_thread_stream_50_light_1440"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              12,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.0
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 50,
+          "viewport": {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 611.57,
+          "history": {
+            "pagesLoaded": 0,
+            "attempts": 0,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 14
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:5",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:5",
+              "top": 56.25,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 415.5,
+            "firstVisibleTokenMs": 196,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 136,
+            "maxVisibleUpdateGapMs": 175.4000000357628,
+            "updateCount": 8,
+            "elapsedMs": 1075.8999999761581,
+            "updatesPerSecond": 7.435635282254188,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13597,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 37,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 611.5,
+              "visibleTokens": 2,
+              "visibleChars": 46,
+              "streaming": "true"
+            },
+            {
+              "at": 777.3000000119209,
+              "visibleTokens": 4,
+              "visibleChars": 92,
+              "streaming": "true"
+            },
+            {
+              "at": 900.3999999761581,
+              "visibleTokens": 6,
+              "visibleChars": 138,
+              "streaming": "true"
+            },
+            {
+              "at": 995.3000000119209,
+              "visibleTokens": 8,
+              "visibleChars": 184,
+              "streaming": "true"
+            },
+            {
+              "at": 1132.5999999642372,
+              "visibleTokens": 10,
+              "visibleChars": 231,
+              "streaming": "true"
+            },
+            {
+              "at": 1308,
+              "visibleTokens": 13,
+              "visibleChars": 303,
+              "streaming": "true"
+            },
+            {
+              "at": 1448.300000011921,
+              "visibleTokens": 15,
+              "visibleChars": 351,
+              "streaming": "true"
+            },
+            {
+              "at": 1491.3999999761581,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092682323.2,
+            "traceTimeOrigin": 1792092682323.2,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_50_light_1024",
+              "currentSession": "baseline_thread_stream_50_light_1024"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              13,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.0
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 50,
+          "viewport": {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 607.49,
+          "history": {
+            "pagesLoaded": 0,
+            "attempts": 0,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 15
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:3",
+              "top": -30.5,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:3",
+              "top": -30.5,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 454.89999997615814,
+            "firstVisibleTokenMs": 219.9000000357628,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 159.9000000357628,
+            "maxVisibleUpdateGapMs": 145.9000000357628,
+            "updateCount": 8,
+            "elapsedMs": 1076.5,
+            "updatesPerSecond": 7.431490942870413,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13471,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 43,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 674.8000000119209,
+              "visibleTokens": 2,
+              "visibleChars": 44,
+              "streaming": "true"
+            },
+            {
+              "at": 805.0999999642372,
+              "visibleTokens": 4,
+              "visibleChars": 88,
+              "streaming": "true"
+            },
+            {
+              "at": 899.5,
+              "visibleTokens": 6,
+              "visibleChars": 132,
+              "streaming": "true"
+            },
+            {
+              "at": 1028.300000011921,
+              "visibleTokens": 8,
+              "visibleChars": 176,
+              "streaming": "true"
+            },
+            {
+              "at": 1160.3999999761581,
+              "visibleTokens": 10,
+              "visibleChars": 221,
+              "streaming": "true"
+            },
+            {
+              "at": 1306.300000011921,
+              "visibleTokens": 12,
+              "visibleChars": 267,
+              "streaming": "true"
+            },
+            {
+              "at": 1429.300000011921,
+              "visibleTokens": 14,
+              "visibleChars": 313,
+              "streaming": "true"
+            },
+            {
+              "at": 1531.3999999761581,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092687221.4,
+            "traceTimeOrigin": 1792092687221.4,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_50_light_768",
+              "currentSession": "baseline_thread_stream_50_light_768"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              12,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.09999996423721313
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 500,
+          "viewport": {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 654.41,
+          "history": {
+            "pagesLoaded": 9,
+            "attempts": 9,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 24
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:309",
+              "top": 140,
+              "scrollTop": 18693
+            },
+            "after": {
+              "id": "turn:user:db:309",
+              "top": 140,
+              "scrollTop": 18693
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 499.89999997615814,
+            "firstVisibleTokenMs": 200.4000000357628,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 140.4000000357628,
+            "maxVisibleUpdateGapMs": 181.89999997615814,
+            "updateCount": 7,
+            "elapsedMs": 1051.9000000357628,
+            "updatesPerSecond": 6.654624964123978,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13732,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 27,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 700.3000000119209,
+              "visibleTokens": 2,
+              "visibleChars": 48,
+              "streaming": "false"
+            },
+            {
+              "at": 846.3000000119209,
+              "visibleTokens": 5,
+              "visibleChars": 120,
+              "streaming": "true"
+            },
+            {
+              "at": 1010.0999999642372,
+              "visibleTokens": 7,
+              "visibleChars": 168,
+              "streaming": "true"
+            },
+            {
+              "at": 1137.5999999642372,
+              "visibleTokens": 9,
+              "visibleChars": 216,
+              "streaming": "true"
+            },
+            {
+              "at": 1268.199999988079,
+              "visibleTokens": 11,
+              "visibleChars": 266,
+              "streaming": "true"
+            },
+            {
+              "at": 1450.0999999642372,
+              "visibleTokens": 14,
+              "visibleChars": 341,
+              "streaming": "true"
+            },
+            {
+              "at": 1551.800000011921,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092693052.3,
+            "traceTimeOrigin": 1792092693052.3,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_500_light_1440",
+              "currentSession": "baseline_thread_stream_500_light_1440"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 7,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 7,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              5,
+              7,
+              9,
+              11,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 500,
+          "viewport": {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 651.58,
+          "history": {
+            "pagesLoaded": 9,
+            "attempts": 9,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 25
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:271",
+              "top": -53.75,
+              "scrollTop": 17031
+            },
+            "after": {
+              "id": "turn:user:db:271",
+              "top": -53.75,
+              "scrollTop": 17031
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 433.89999997615814,
+            "firstVisibleTokenMs": 185.4000000357628,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 125.40000003576279,
+            "maxVisibleUpdateGapMs": 171.80000001192093,
+            "updateCount": 8,
+            "elapsedMs": 1079.9000000357628,
+            "updatesPerSecond": 7.408093341730777,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13721,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 35,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 619.3000000119209,
+              "visibleTokens": 2,
+              "visibleChars": 48,
+              "streaming": "true"
+            },
+            {
+              "at": 782.3999999761581,
+              "visibleTokens": 4,
+              "visibleChars": 96,
+              "streaming": "true"
+            },
+            {
+              "at": 870.8999999761581,
+              "visibleTokens": 6,
+              "visibleChars": 144,
+              "streaming": "true"
+            },
+            {
+              "at": 1006.0999999642372,
+              "visibleTokens": 8,
+              "visibleChars": 192,
+              "streaming": "true"
+            },
+            {
+              "at": 1177.8999999761581,
+              "visibleTokens": 11,
+              "visibleChars": 266,
+              "streaming": "true"
+            },
+            {
+              "at": 1323.0999999642372,
+              "visibleTokens": 13,
+              "visibleChars": 316,
+              "streaming": "true"
+            },
+            {
+              "at": 1474.0999999642372,
+              "visibleTokens": 15,
+              "visibleChars": 366,
+              "streaming": "true"
+            },
+            {
+              "at": 1513.800000011921,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092698791.5,
+            "traceTimeOrigin": 1792092698791.5,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_500_light_1024",
+              "currentSession": "baseline_thread_stream_500_light_1024"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              11,
+              13,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.0
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 500,
+          "viewport": {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 701.94,
+          "history": {
+            "pagesLoaded": 9,
+            "attempts": 9,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 23
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:417",
+              "top": 107,
+              "scrollTop": 28513
+            },
+            "after": {
+              "id": "turn:user:db:417",
+              "top": 107,
+              "scrollTop": 28513
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 454.19999998807907,
+            "firstVisibleTokenMs": 180.19999998807907,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 120.19999998807907,
+            "maxVisibleUpdateGapMs": 177.5,
+            "updateCount": 7,
+            "elapsedMs": 1074.5999999642372,
+            "updatesPerSecond": 6.514051740399181,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13587,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 41,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 634.3999999761581,
+              "visibleTokens": 2,
+              "visibleChars": 46,
+              "streaming": "true"
+            },
+            {
+              "at": 787.1999999880791,
+              "visibleTokens": 4,
+              "visibleChars": 92,
+              "streaming": "true"
+            },
+            {
+              "at": 933.1999999880791,
+              "visibleTokens": 7,
+              "visibleChars": 161,
+              "streaming": "true"
+            },
+            {
+              "at": 1095.2999999523163,
+              "visibleTokens": 9,
+              "visibleChars": 207,
+              "streaming": "true"
+            },
+            {
+              "at": 1264.5999999642372,
+              "visibleTokens": 12,
+              "visibleChars": 279,
+              "streaming": "true"
+            },
+            {
+              "at": 1442.0999999642372,
+              "visibleTokens": 14,
+              "visibleChars": 327,
+              "streaming": "true"
+            },
+            {
+              "at": 1528.7999999523163,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092704493.9,
+            "traceTimeOrigin": 1792092704493.9,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_500_light_768",
+              "currentSession": "baseline_thread_stream_500_light_768"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 7,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 7,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              7,
+              9,
+              12,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.0
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 2000,
+          "viewport": {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 665.82,
+          "history": {
+            "pagesLoaded": 39,
+            "attempts": 39,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 25
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:1591",
+              "top": 63.5,
+              "scrollTop": 70795
+            },
+            "after": {
+              "id": "turn:user:db:1591",
+              "top": 63.5,
+              "scrollTop": 70795
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 603.1000000238419,
+            "firstVisibleTokenMs": 260,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 200,
+            "maxVisibleUpdateGapMs": 226.60000002384186,
+            "updateCount": 7,
+            "elapsedMs": 1103.3999999761581,
+            "updatesPerSecond": 6.344027551342445,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13820,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 38,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 863.1000000238419,
+              "visibleTokens": 3,
+              "visibleChars": 75,
+              "streaming": "true"
+            },
+            {
+              "at": 1025.300000011921,
+              "visibleTokens": 5,
+              "visibleChars": 125,
+              "streaming": "true"
+            },
+            {
+              "at": 1158.4000000357628,
+              "visibleTokens": 7,
+              "visibleChars": 175,
+              "streaming": "true"
+            },
+            {
+              "at": 1289.4000000357628,
+              "visibleTokens": 9,
+              "visibleChars": 225,
+              "streaming": "true"
+            },
+            {
+              "at": 1424.699999988079,
+              "visibleTokens": 12,
+              "visibleChars": 303,
+              "streaming": "true"
+            },
+            {
+              "at": 1651.300000011921,
+              "visibleTokens": 15,
+              "visibleChars": 381,
+              "streaming": "true"
+            },
+            {
+              "at": 1706.5,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092712588.8,
+            "traceTimeOrigin": 1792092712588.8,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_2000_light_1440",
+              "currentSession": "baseline_thread_stream_2000_light_1440"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 7,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 7,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              3,
+              5,
+              7,
+              9,
+              12,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 2000,
+          "viewport": {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 538.68,
+          "history": {
+            "pagesLoaded": 39,
+            "attempts": 39,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 13
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:555",
+              "top": 101.75,
+              "scrollTop": 500
+            },
+            "after": {
+              "id": "turn:user:db:555",
+              "top": 101.75,
+              "scrollTop": 500
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 444.10000002384186,
+            "firstVisibleTokenMs": 182.80000001192093,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 122.80000001192093,
+            "maxVisibleUpdateGapMs": 162.80000001192093,
+            "updateCount": 8,
+            "elapsedMs": 1071.199999988079,
+            "updatesPerSecond": 7.468259895527473,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13835,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 40,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 626.9000000357628,
+              "visibleTokens": 2,
+              "visibleChars": 50,
+              "streaming": "true"
+            },
+            {
+              "at": 789.7000000476837,
+              "visibleTokens": 4,
+              "visibleChars": 100,
+              "streaming": "true"
+            },
+            {
+              "at": 877.4000000357628,
+              "visibleTokens": 6,
+              "visibleChars": 150,
+              "streaming": "true"
+            },
+            {
+              "at": 1005,
+              "visibleTokens": 8,
+              "visibleChars": 200,
+              "streaming": "true"
+            },
+            {
+              "at": 1166.9000000357628,
+              "visibleTokens": 10,
+              "visibleChars": 251,
+              "streaming": "true"
+            },
+            {
+              "at": 1269.7000000476837,
+              "visibleTokens": 12,
+              "visibleChars": 303,
+              "streaming": "true"
+            },
+            {
+              "at": 1407.300000011921,
+              "visibleTokens": 14,
+              "visibleChars": 355,
+              "streaming": "true"
+            },
+            {
+              "at": 1515.300000011921,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092720575.5,
+            "traceTimeOrigin": 1792092720575.5,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_2000_light_1024",
+              "currentSession": "baseline_thread_stream_2000_light_1024"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              10,
+              12,
+              14,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.10000002384185791
+          }
+        },
+        {
+          "theme": "light",
+          "rows": 2000,
+          "viewport": {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          "firstRenderMs": 514.18,
+          "history": {
+            "pagesLoaded": 39,
+            "attempts": 39,
+            "sameUrlReloads": 0,
+            "fullyLoaded": true,
+            "mountedRows": 13
+          },
+          "scrollDrift": {
+            "before": {
+              "id": "turn:user:db:2143",
+              "top": -18.75,
+              "scrollTop": 110330
+            },
+            "after": {
+              "id": "turn:user:db:2143",
+              "top": -18.75,
+              "scrollTop": 110330
+            },
+            "sameRow": true,
+            "driftPx": 0
+          },
+          "stream": {
+            "startedAt": 489,
+            "firstVisibleTokenMs": 198.30000001192093,
+            "syntheticInitialDelayMs": 60,
+            "firstVisibleMinusSyntheticDelayMs": 138.30000001192093,
+            "maxVisibleUpdateGapMs": 178.89999997615814,
+            "updateCount": 8,
+            "elapsedMs": 1081.3999999761581,
+            "updatesPerSecond": 7.397817643958182,
+            "expectedTokenCount": 16,
+            "finalVisibleTokenCount": 16,
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 19,
+              "eventPayloadBytes": 13703,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 42,
+              "streamRecoveryActions": 0
+            }
+          },
+          "authoritativeSamples": [
+            {
+              "at": 687.3000000119209,
+              "visibleTokens": 2,
+              "visibleChars": 48,
+              "streaming": "true"
+            },
+            {
+              "at": 797,
+              "visibleTokens": 4,
+              "visibleChars": 96,
+              "streaming": "true"
+            },
+            {
+              "at": 943.5999999642372,
+              "visibleTokens": 6,
+              "visibleChars": 144,
+              "streaming": "true"
+            },
+            {
+              "at": 1084.0999999642372,
+              "visibleTokens": 8,
+              "visibleChars": 192,
+              "streaming": "true"
+            },
+            {
+              "at": 1229.5,
+              "visibleTokens": 11,
+              "visibleChars": 266,
+              "streaming": "true"
+            },
+            {
+              "at": 1408.3999999761581,
+              "visibleTokens": 13,
+              "visibleChars": 316,
+              "streaming": "true"
+            },
+            {
+              "at": 1528.699999988079,
+              "visibleTokens": 15,
+              "visibleChars": 366,
+              "streaming": "true"
+            },
+            {
+              "at": 1570.3999999761581,
+              "visibleTokens": 16,
+              "visibleChars": 0,
+              "streaming": "true"
+            }
+          ],
+          "fixedFreshTokenProgressionMatches": true,
+          "allIdentitySamplesOriginalConnected": true,
+          "errors": {
+            "page": [],
+            "console": []
+          },
+          "observationDiagnostic": {
+            "tracePresent": true,
+            "timeOrigin": 1792092728023.5,
+            "traceTimeOrigin": 1792092728023.5,
+            "nodeState": {
+              "originalConnected": true,
+              "currentIsOriginal": true,
+              "originalSession": "baseline_thread_stream_2000_light_768",
+              "currentSession": "baseline_thread_stream_2000_light_768"
+            },
+            "streamNavigations": [],
+            "archived": null,
+            "identitySampleCount": 8,
+            "allIdentitySamplesOriginalConnected": true,
+            "diagnosticFreshUpdateCount": 8,
+            "diagnosticFreshFinalVisibleTokenCount": 16,
+            "diagnosticFreshTokenProgression": [
+              2,
+              4,
+              6,
+              8,
+              11,
+              13,
+              15,
+              16
+            ],
+            "maxFixedFreshTimestampDifferenceMs": 0.0
+          }
+        }
+      ]
+    },
+    "originalAssertions": {
+      "selectionBudgetMsStrictLessThan": 100,
+      "localSearchBudgetMsStrictLessThan": 100,
+      "fullHistorySearchBudgetMsStrictLessThan": 600,
+      "streamTokenCount": 16,
+      "syntheticTokenDelayMs": 60,
+      "positiveRenderedUpdatesElapsedAndEvents": true,
+      "fixedPanelSamplesRemainAuthoritative": true,
+      "noArchiveOrFreshSampleFallback": true,
+      "noAddedRetriesWaitsOrProducerChanges": true
+    },
+    "newMissingTraceAndChangedDocumentFailureBranches": "Source reviewed; no forced-reload negative test claimed",
+    "visualReview": [
+      "matrix/run-01/screenshots/dark/2000-w1440.png",
+      "matrix/run-01/screenshots/light/2000-w768.png"
+    ],
+    "checks": {
+      "nodeSyntaxBothScripts": "exit 0 immediately before fixed batch",
+      "gitDiffCheck": "exit 0",
+      "appSourceTests": "not rerun; no app source changed"
+    },
+    "processGroups": "All owned captures closed before offline report completion; final pgrep matched only inventory shell"
+  },
+  "sourceProvenance": {
+    "measuredBaseCommit": "b432e028a55868fa043d6620ebddc8c791d0f571",
+    "measuredAppSourceGitTree": "5915f1d69916a3c3d4d9498ab9b56512345250ab",
+    "appSourcePath": "src/spark_cli/web/src",
+    "isolatedAppSourceDiffFromBase": [],
+    "rootAtOfflineInspection": "481da654288db397e8573d5af77fe53cb2da3783",
+    "rootAppSourceDiffFromMeasuredBase": [],
+    "backendSource": "Isolated b432e028 source via PYTHONPATH; later root-only commits not measured",
+    "scriptHashesDuringFinalBatch": {
+      "src/spark_cli/web/e2e/sidebar-scale.mjs": "9181fe6e7310cfe2211e9e473b5648df1cc986ad92d8f5b927597318a22ece0f",
+      "src/spark_cli/web/e2e/baseline-capture.mjs": "8897c3e1b0c93f23700da0d76361f5999431a9d4da99b467f2c34c8ef9f0f5a7"
+    }
+  }
+}

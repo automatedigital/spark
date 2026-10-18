@@ -96,6 +96,8 @@ from spark_cli.providers_routes import (
     _truncate_str,
     register_providers_routes,
 )
+from spark_cli.sidebar_routes import get_sidebar_settle_guard
+from spark_cli.sidebar_routes import router as sidebar_router
 from spark_cli.web_runtime import (
     _SESSION_TOKEN,
     _desktop_app_version,
@@ -1967,6 +1969,8 @@ async def _lifespan(_app: FastAPI):
     global _web_event_loop
     _web_event_loop = asyncio.get_running_loop()
     ensure_dashboard_token_file()
+    from core.orchestration.delegation import reconcile_profile_children
+    await _run_blocking(reconcile_profile_children)
     loop_lag_task = asyncio.create_task(_monitor_web_loop_lag())
     # Warm the update cache in the background so /api/status has it immediately
     warmup_functions: tuple[Callable[[], Any], ...] = (
@@ -2459,7 +2463,8 @@ def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[s
         payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
     )
     legacy_run = cast(
-        dict[str, Any], payload.get("run") if isinstance(payload.get("run"), dict) else {}
+        dict[str, Any], payload.get("subagent_run") if isinstance(payload.get("subagent_run"), dict)
+        else payload.get("run") if isinstance(payload.get("run"), dict) else {}
     )
     subagent_id = (
         payload.get("id")
@@ -2513,6 +2518,8 @@ def _subagent_run_from_event(session_id: str, payload: dict[str, Any]) -> dict[s
         "exit_reason": event_payload.get("exit_reason") or legacy_run.get("exit_reason"),
         "tokens": event_payload.get("tokens") or legacy_run.get("tokens"),
     }
+    for key in ("root_run_id", "attempt_id", "parent_node_id", "node_id"):
+        run[key] = legacy_run.get(key) or payload.get(key) or event_payload.get(key)
     if event_payload.get("status"):
         run["status"] = event_payload.get("status")
     if event_name in {"completed", "failed", "interrupted"}:
@@ -2533,19 +2540,25 @@ def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]
         event_payload = payload["data"]
     run_snapshot = None
     run = _subagent_run_from_event(session_id, payload)
+    if run is None:
+        raise ValueError("Subagent lifecycle lacks a child identity")
     if run:
         try:
             from core.spark_state import SessionDB
 
             db = SessionDB()
             try:
-                db.create_subagent_run(run)
-                db.append_subagent_event(run["id"], event_name, payload)
-                run_snapshot = db.get_subagent_run(run["id"])
+                # Legacy/fake transports receive an identity once at this boundary.
+                payload.setdefault("event_id", uuid.uuid4().hex)
+                committed = db.commit_subagent_lifecycle(run, payload)
+                if not committed["created"]:
+                    return
+                run_snapshot = committed["run"]
             finally:
                 db.close()
         except Exception:
-            _log.debug("subagent lifecycle persistence failed", exc_info=True)
+            _log.exception("subagent lifecycle persistence failed")
+            raise
 
     run_data = run_snapshot or run or {}
     subagent_id = run_data.get("id") if run_data else payload.get("subagent_id")
@@ -2559,6 +2572,7 @@ def _persist_and_publish_subagent_event(session_id: str, payload: dict[str, Any]
     )
     event = {
         "type": event_name,
+        "event_id": payload.get("event_id"),
         "run_id": subagent_id,
         "subagent_id": subagent_id,
         "status": run_data.get("status") if run_data else None,
@@ -4746,6 +4760,7 @@ class ConversationMessage(BaseModel):
 
 class ConversationInterrupt(BaseModel):
     message: str | None = None
+    request_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class ConversationModelBody(BaseModel):
@@ -5907,6 +5922,9 @@ def _run_web_agent_turn(
     if context_items:
         user_message = _build_context_augmented_message(agent.session_id, user_message, context_items)
 
+    _, active_turn = _get_web_turn(agent.session_id)
+    agent._root_run_id = active_turn.turn_id if active_turn else None
+
     _refresh_web_agent_for_computer_use(agent, user_message)
 
     user_message = _inject_brief_if_present(agent.session_id, user_message)
@@ -5921,6 +5939,7 @@ def _run_web_agent_turn(
         _maybe_capture_codex_usage_limit(agent, result)
         return result
     finally:
+        agent._root_run_id = None
         reset_current_session_key(tok)
 
 
@@ -7317,6 +7336,8 @@ async def list_conversation_subagents(session_id: str, limit: int = 50):
     limit = max(1, min(int(limit or 50), 200))
     db = SessionDB()
     try:
+        from core.orchestration.delegation import reconcile_lost_children
+        reconcile_lost_children(db)
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -7333,11 +7354,31 @@ async def list_conversation_subagents(session_id: str, limit: int = 50):
         db.close()
 
 
+@app.get("/api/conversations/{session_id}/subagents/capabilities")
+async def get_conversation_subagent_capabilities(session_id: str):
+    from core.orchestration.capabilities import child_capabilities
+    from core.spark_state import SessionDB
+    from spark_cli.config import load_config
+
+    db = SessionDB()
+    try:
+        from core.orchestration.delegation import reconcile_lost_children
+        reconcile_lost_children(db)
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        _, parent = _get_web_agent_for_turn(sid)
+        return child_capabilities(parent, db.list_subagent_runs(sid), load_config().get("delegation", {}))
+    finally:
+        db.close()
+
+
 @app.get("/api/conversations/{session_id}/subagents/{subagent_id}")
 async def get_conversation_subagent(
     session_id: str,
     subagent_id: str,
     event_limit: int = 200,
+    event_after_id: int | None = None,
 ):
     """Return one subagent run plus a bounded ordered event history."""
     from core.spark_state import SessionDB
@@ -7345,6 +7386,8 @@ async def get_conversation_subagent(
     event_limit = max(1, min(int(event_limit or 200), 1000))
     db = SessionDB()
     try:
+        from core.orchestration.delegation import reconcile_lost_children
+        reconcile_lost_children(db)
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -7353,7 +7396,11 @@ async def get_conversation_subagent(
         run = db.get_subagent_run(subagent_id)
         if not run or run.get("parent_session_id") not in allowed_session_ids:
             raise HTTPException(status_code=404, detail="Subagent not found")
-        events = db.get_subagent_events(subagent_id, limit=event_limit)
+        try:
+            page = db.get_subagent_event_page(subagent_id, limit=event_limit, after_id=event_after_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        events = page["events"]
         run = {**run, "events": events, "transcript": events}
         return _sanitize_web_chat_value({
             "session_id": latest_sid or sid,
@@ -7361,7 +7408,49 @@ async def get_conversation_subagent(
             "subagent": run,
             "events": events,
             "event_limit": event_limit,
+            "has_more_events": page["has_more_events"],
+            "next_event_after_id": page["next_event_after_id"],
         })
+    finally:
+        db.close()
+
+
+def _owned_child_navigation(db, session_id: str, subagent_id: str):
+    sid = db.resolve_session_id(session_id)
+    if not sid:
+        raise HTTPException(status_code=404, detail="Session not found")
+    family = db.resolve_compression_chain(sid)
+    run = db.get_subagent_run(subagent_id)
+    if not run or run.get("parent_session_id") not in family:
+        raise HTTPException(status_code=404, detail="Subagent not found")
+    return run, family
+
+
+@app.get("/api/conversations/{session_id}/subagents/{subagent_id}/navigation")
+def get_conversation_subagent_navigation(session_id: str, subagent_id: str):
+    from core.spark_state import SessionDB
+    from spark_cli.subagent_navigation import navigation_destinations
+
+    db = SessionDB()
+    try:
+        run, family = _owned_child_navigation(db, session_id, subagent_id)
+        return navigation_destinations(run, family)
+    finally:
+        db.close()
+
+
+@app.post("/api/conversations/{session_id}/subagents/{subagent_id}/navigation/worktree")
+def open_conversation_subagent_worktree(session_id: str, subagent_id: str):
+    from core.spark_state import SessionDB
+    from spark_cli.subagent_navigation import NavigationUnavailable, open_worktree_project
+
+    db = SessionDB()
+    try:
+        run, _ = _owned_child_navigation(db, session_id, subagent_id)
+        try:
+            return open_worktree_project(run)
+        except NavigationUnavailable as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     finally:
         db.close()
 
@@ -7372,6 +7461,7 @@ async def get_conversation_subagent_messages(
     subagent_id: str,
     limit: int = 200,
     include_tool_results: bool = False,
+    before_id: int | None = None,
 ):
     """Return bounded child-session messages for a subagent transcript view."""
     from core.spark_state import SessionDB
@@ -7398,6 +7488,8 @@ async def get_conversation_subagent_messages(
                 "messages": [],
                 "total": 0,
                 "limit": limit,
+                "has_earlier": False,
+                "next_before_id": None,
             }
         if not db.get_session(str(child_session_id)):
             return {
@@ -7408,17 +7500,17 @@ async def get_conversation_subagent_messages(
                 "messages": [],
                 "total": 0,
                 "limit": limit,
+                "has_earlier": False,
+                "next_before_id": None,
             }
 
-        all_messages = db.get_messages(str(child_session_id))
-        total = len(all_messages)
-        offset = max(0, total - limit)
+        page = db.get_web_message_page(str(child_session_id), limit=limit, before_id=before_id,
+                                       include_tool_results=include_tool_results)
+        total = page["total"]
+        offset = page["page_start_index"] or 0
         messages = [
-            {
-                **_message_for_history_response(msg, include_tool_results=include_tool_results),
-                "message_index": offset + idx,
-            }
-            for idx, msg in enumerate(all_messages[offset:])
+            _message_for_history_response(msg, include_tool_results=include_tool_results)
+            for msg in page["messages"]
         ]
         return {
             "session_id": latest_sid or sid,
@@ -7430,7 +7522,41 @@ async def get_conversation_subagent_messages(
             "limit": limit,
             "offset": offset,
             "include_tool_results": include_tool_results,
+            "has_earlier": page["has_earlier"],
+            "next_before_id": page["next_before_id"],
         }
+    finally:
+        db.close()
+
+
+class SubagentRetryRequest(BaseModel):
+    request_id: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/conversations/{session_id}/subagents/{subagent_id}/retry")
+async def retry_conversation_subagent(session_id: str, subagent_id: str, body: SubagentRetryRequest):
+    from core.orchestration.delegation import retry_async_child
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        run = db.get_subagent_run(subagent_id)
+        if not run or run.get("parent_session_id") not in db.resolve_compression_chain(sid):
+            raise HTTPException(status_code=404, detail="Subagent not found")
+        try:
+            receipt = db.get_runtime_command(run["parent_session_id"], "subagent.retry", body.request_id,
+                                             {"retry_of": subagent_id})
+            if receipt:
+                return receipt["acceptance"]
+            _, parent = _get_web_agent_for_turn(sid)
+            if parent is None:
+                raise HTTPException(status_code=409, detail="No owned parent runtime is available")
+            return await _run_blocking(retry_async_child, parent, subagent_id, body.request_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     finally:
         db.close()
 
@@ -7441,7 +7567,8 @@ async def interrupt_conversation_subagent(
     subagent_id: str,
     body: ConversationInterrupt,
 ):
-    """Interrupt one live child agent when it is still tracked by the parent turn."""
+    """Accept a scoped cancellation once; child acknowledgement remains authoritative."""
+    from core.orchestration.capabilities import owned_live_child
     from core.spark_state import SessionDB
 
     db = SessionDB()
@@ -7454,64 +7581,54 @@ async def interrupt_conversation_subagent(
         run = db.get_subagent_run(subagent_id)
         if not run or run.get("parent_session_id") not in allowed_session_ids:
             raise HTTPException(status_code=404, detail="Subagent not found")
+        # Scope follows the child's original owning session across compression.
+        owner = run["parent_session_id"]
+        command_payload = {"subagent_id": subagent_id, "message": body.message}
+        request_id = body.request_id or uuid.uuid4().hex
+        try:
+            receipt = db.get_runtime_command(owner, "subagent.interrupt", request_id, command_payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if receipt:
+            return receipt["acceptance"]
+
+        agent_session_id, parent_agent = _get_web_agent_for_turn(session_id)
+        target_child = owned_live_child(parent_agent, run)
+        if target_child is None:
+            raise HTTPException(status_code=409, detail="No live owned child is available")
+        acceptance = {
+            "ok": True, "session_id": agent_session_id or latest_sid or sid,
+            "subagent_id": subagent_id, "child_session_id": run.get("child_session_id"),
+            "status": "stopping",
+        }
+        try:
+            receipt = db.accept_runtime_command(
+                owner, "subagent.interrupt", request_id, command_payload, acceptance,
+                {"subagent_id": subagent_id, "action": "interrupt", "message": body.message},
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if not receipt["created"]:
+            return receipt["acceptance"]
+        try:
+            target_child.interrupt(body.message)
+            db.mark_runtime_command(owner, "subagent.interrupt", request_id, "dispatched")
+        except Exception as exc:
+            db.mark_runtime_command(owner, "subagent.interrupt", request_id, "uncertain")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        payload = {
+            "schema": "spark.subagent.lifecycle.v1", "event_id": f"interrupt:{request_id}",
+            "type": "subagent.status", "event": "status", "id": subagent_id,
+            "run_id": subagent_id, "subagent_id": subagent_id,
+            "child_session_id": run.get("child_session_id"),
+            "task_index": run.get("task_index") or 0,
+            "payload": {"parent_session_id": owner, "status": "stopping", "preview": "Interrupt requested"},
+            "subagent_run": {**run, "status": "stopping"},
+        }
+        _persist_and_publish_subagent_event(latest_sid or sid, payload)
+        return receipt["acceptance"]
     finally:
         db.close()
-
-    agent_session_id, parent_agent = _get_web_agent_for_turn(session_id)
-    if not parent_agent:
-        raise HTTPException(
-            status_code=409,
-            detail="Subagent interrupt is only available while the parent turn is active.",
-        )
-
-    child_session_id = run.get("child_session_id")
-    active_children = list(getattr(parent_agent, "_active_children", []) or [])
-    target_child = None
-    for child in active_children:
-        if child_session_id and getattr(child, "session_id", None) == child_session_id:
-            target_child = child
-            break
-    if target_child is None:
-        raise HTTPException(
-            status_code=409,
-            detail="Subagent is not running in the active parent turn; interrupt the parent conversation instead.",
-        )
-
-    try:
-        target_child.interrupt(body.message)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    status = "stopping"
-    payload = {
-        "schema": "spark.subagent.lifecycle.v1",
-        "type": "subagent.status",
-        "event": "status",
-        "id": subagent_id,
-        "run_id": subagent_id,
-        "subagent_id": subagent_id,
-        "child_session_id": child_session_id,
-        "task_index": run.get("task_index") or 0,
-        "task_number": int(run.get("task_index") or 0) + 1,
-        "task_count": run.get("task_count") or 1,
-        "display_name": run.get("name"),
-        "goal_preview": run.get("task"),
-        "payload": {
-            "parent_session_id": run.get("parent_session_id"),
-            "child_session_id": child_session_id,
-            "status": status,
-            "preview": "Interrupt requested",
-        },
-        "subagent_run": {**run, "status": status},
-    }
-    _persist_and_publish_subagent_event(latest_sid or sid, payload)
-    return {
-        "ok": True,
-        "session_id": agent_session_id or latest_sid or sid,
-        "subagent_id": subagent_id,
-        "child_session_id": child_session_id,
-        "status": status,
-    }
 
 
 @app.post("/api/conversations/{session_id}/messages")
@@ -8921,6 +9038,35 @@ async def list_workspace_conversations(slug: str, limit: int = 30, offset: int =
         db.close()
     return {"sessions": sessions, "total": total, "limit": limit, "offset": offset}
 
+
+def _sidebar_settle_block_reason(session_id: str) -> str | None:
+    """Read live ownership without opening SQLite inside the metadata write.
+
+    Durable decision/child/compression checks run in the metadata transaction.
+    This guard closes the live-registry gap before the next persisted projection.
+    """
+    candidates = set(_web_turn_candidate_keys(session_id, resolve=False))
+    with _with_web_turn_lock():
+        for key, turn in _web_active_turns.items():
+            aliases = {key, turn.active_agent_session_id, *turn.session_aliases}
+            if candidates.intersection(aliases):
+                return "Wait for live work to finish before settling this thread"
+    for key, agent in list(_web_agents.items()):
+        if key not in candidates:
+            continue
+        lock = getattr(agent, "_active_children_lock", None)
+        if lock is not None:
+            with lock:
+                children = list(getattr(agent, "_active_children", []) or [])
+        else:
+            children = list(getattr(agent, "_active_children", []) or [])
+        if children:
+            return "Wait for delegated work to finish before settling this thread"
+    return None
+
+
+app.include_router(sidebar_router)
+app.dependency_overrides[get_sidebar_settle_guard] = lambda: _sidebar_settle_block_reason
 
 mount_spa(app)
 

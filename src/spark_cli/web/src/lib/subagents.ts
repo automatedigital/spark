@@ -1,6 +1,27 @@
-import type { ChatSubagentEventData, SubagentEvent, SubagentRun, SubagentStatus } from "@/lib/api";
+import type { ChatSubagentEventData, ConversationSubagentMessagesResponse, SubagentEvent, SubagentRun, SubagentStatus } from "@/lib/api";
 
-const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "interrupted"]);
+/** Keep earlier pages when a live/terminal refresh replaces the latest page. */
+export function mergeChildMessagePage(
+  current: ConversationSubagentMessagesResponse | null,
+  incoming: ConversationSubagentMessagesResponse,
+  direction: "latest" | "earlier" = "latest",
+): ConversationSubagentMessagesResponse {
+  if (!current || current.subagent_id !== incoming.subagent_id || current.child_session_id !== incoming.child_session_id) return incoming;
+  const key = (message: ConversationSubagentMessagesResponse["messages"][number]) => message.id != null
+    ? `id:${message.id}` : message.message_index != null ? `index:${message.message_index}` : `${message.role}:${message.content}`;
+  const byId = new Map(current.messages.map((message) => [key(message), message]));
+  for (const message of incoming.messages) byId.set(key(message), message);
+  const position = (message: ConversationSubagentMessagesResponse["messages"][number]) => message.message_index ?? Number(message.id);
+  const messages = Array.from(byId.values()).sort((a, b) => position(a) - position(b));
+  const retainedEarlier = direction === "latest" && current.messages.length > 0 && incoming.messages.length > 0
+    && position(current.messages[0]) < position(incoming.messages[0]);
+  return {
+    ...incoming, messages,
+    ...(retainedEarlier ? { has_earlier: current.has_earlier, next_before_id: current.next_before_id, offset: current.offset } : {}),
+  };
+}
+
+const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "interrupted", "uncertain"]);
 const STATUS_RANK: Record<string, number> = {
   queued: 1,
   starting: 2,
@@ -152,7 +173,7 @@ function normalizeEvent(event: SubagentEvent, fallbackType: string): SubagentEve
 }
 
 function eventKey(event: SubagentEvent): string {
-  const id = firstString(event.id, event.tool_call_id);
+  const id = firstString(event.event_id, asRecord(event.data)?.event_id, event.id, event.tool_call_id);
   if (id) return `id:${id}`;
   return [
     subagentTimestamp(event),
@@ -172,6 +193,7 @@ function mergeEvents(current: SubagentEvent[] = [], incoming: SubagentEvent[] = 
   return Array.from(byKey.values()).sort((a, b) => {
     const delta = subagentTimestamp(a) - subagentTimestamp(b);
     if (delta !== 0) return delta;
+    if (a.id != null && b.id != null && Number.isFinite(Number(a.id)) && Number.isFinite(Number(b.id))) return Number(a.id) - Number(b.id);
     return eventKey(a).localeCompare(eventKey(b));
   });
 }
@@ -223,6 +245,7 @@ function chooseStatus(
   const incomingTerminal = TERMINAL_STATUSES.has(incoming.status);
   if (existingTerminal && !incomingTerminal) return existing.status;
   if (incomingTerminal && !existingTerminal) return incoming.status;
+  if (existing.status === "stopping" && !incomingTerminal) return "stopping";
 
   const existingUpdatedAt = existing.updated_at ?? existing.ended_at ?? existing.started_at ?? 0;
   const incomingTime = incomingUpdatedAt ?? 0;
@@ -255,6 +278,19 @@ export function mergeSubagentSnapshot(current: SubagentRun[], snapshot: Subagent
 
 export function replaceSubagentSnapshot(snapshot: SubagentRun[]): SubagentRun[] {
   return mergeSubagentSnapshot([], snapshot);
+}
+
+/** Replace membership/status from the server, keep loaded history for retained
+ * children, then replay only events received during this request. */
+export function reconcileSubagentSnapshot(
+  current: SubagentRun[], snapshot: SubagentRun[],
+  during: Array<{ topic: string; data: ChatSubagentEventData }>,
+): SubagentRun[] {
+  const rows = replaceSubagentSnapshot(snapshot).map((run) => ({
+    ...run,
+    events: mergeEvents(current.find((old) => old.id === run.id)?.events, run.events),
+  }));
+  return mergeSubagentLiveEvents(rows, during);
 }
 
 function eventFromLiveData(topic: string, data: ChatSubagentEventData): SubagentEvent | null {

@@ -316,6 +316,7 @@ class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentConte
         pass_session_id: bool = False,
         persist_session: bool = True,
         working_dir: str | None = None,
+        blocked_tool_names: frozenset[str] | None = None,
     ):
         """
         Initialize the AI Agent.
@@ -782,12 +783,17 @@ class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentConte
                 print(f"🔄 Fallback chain ({len(self._fallback_chain)} providers): " +
                       " → ".join(f"{f['model']} ({f['provider']})" for f in self._fallback_chain))
 
+        self._blocked_tool_names = frozenset(blocked_tool_names or ())
         # Get available tools with filtering
         self.tools = get_tool_definitions(
             enabled_toolsets=enabled_toolsets,
             disabled_toolsets=disabled_toolsets,
             quiet_mode=self.quiet_mode,
         )
+
+        if self._blocked_tool_names:
+            self.tools = [tool for tool in self.tools
+                          if tool.get("function", {}).get("name") not in self._blocked_tool_names]
 
         # Show tool configuration and store valid tool names for validation
         self.valid_tool_names = set()
@@ -863,6 +869,11 @@ class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentConte
 
         # SQLite session store (optional -- provided by CLI or gateway)
         self._session_db = session_db
+        if session_db is not None:
+            from core.spark_state import SessionDB
+            if isinstance(session_db, SessionDB):
+                from core.orchestration.delegation import reconcile_lost_children
+                reconcile_lost_children(session_db)
         self._parent_session_id = parent_session_id
         self._last_flushed_db_idx = 0  # tracks DB-write cursor to prevent duplicate writes
         self._typed_compression_applied = False
@@ -1176,6 +1187,12 @@ class AIAgent(_AgentMemoryMixin, _TurnLoopMixin, _AgentSessionMixin, _AgentConte
                 if _tname:
                     self.valid_tool_names.add(_tname)
                     self._context_engine_tool_names.add(_tname)
+
+        if self._blocked_tool_names:
+            self.tools = [tool for tool in self.tools
+                          if tool.get("function", {}).get("name") not in self._blocked_tool_names]
+            self.valid_tool_names.difference_update(self._blocked_tool_names)
+            self._context_engine_tool_names.difference_update(self._blocked_tool_names)
 
         # Freeze the ordered model-visible surface after all profile/plugin
         # contributions and before the first model call.  Any later mutation is

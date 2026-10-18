@@ -11,6 +11,7 @@ import {
   type ComposerPlan,
 } from "@/lib/chatComposerController";
 import type { ChatTurnState } from "@/lib/chatTurnState";
+import { isChatPanelScopeCurrent, type ChatPanelOwner, type OwnedSessionAdoption, type PanelRequest } from "@/lib/chatPanelOwnership";
 
 export interface ComposerApi {
   postConversation: (
@@ -117,11 +118,8 @@ export interface UseChatComposerActionsOptions {
   setStatusLabel: Dispatch<SetStateAction<string | null>>;
   setError: Dispatch<SetStateAction<string | null>>;
   createMessageId: () => string;
-  onSessionCreated?: (
-    id: string,
-    initialMessage?: string,
-    meta?: { source?: string | null; projectSlug?: string | null },
-  ) => void;
+  owner: ChatPanelOwner;
+  onSessionAdopt: (request: OwnedSessionAdoption) => boolean;
   onPrepareSend?: (optimisticMessageCount: number) => void;
   captureDraftSubmission?: () => () => boolean;
   scopeId?: string | null;
@@ -157,7 +155,8 @@ export function useChatComposerActions({
   setStatusLabel,
   setError,
   createMessageId,
-  onSessionCreated,
+  owner,
+  onSessionAdopt,
   onPrepareSend,
   captureDraftSubmission,
   scopeId,
@@ -176,8 +175,8 @@ export function useChatComposerActions({
   const submissions = useRef(new Set<number>());
   const currentRequest = useCallback(() => {
     const generation = scopeGeneration.current.generation;
-    return () => mounted.current && scopeGeneration.current.generation === generation;
-  }, []);
+    return () => mounted.current && owner.isCurrent() && isChatPanelScopeCurrent(owner) && scopeGeneration.current.generation === generation;
+  }, [owner]);
   const setTurn = useCallback((next: ChatTurnState) => {
     turnStateRef.current = next;
     setTurnState(next);
@@ -220,10 +219,13 @@ export function useChatComposerActions({
   const updateSessionFromResponse = useCallback((
     plan: AcceptedComposerPlan,
     result: unknown,
+    request: PanelRequest,
   ) => {
     if (plan.action !== "send" || !result || typeof result !== "object") return;
     const response = result as { session_id?: unknown; source?: unknown };
     if (typeof response.session_id !== "string" || !response.session_id) return;
+
+    if (!onSessionAdopt({ ...request, nextID: response.session_id, reason: "send-continuation" })) return;
 
     const previousSessionId = activeSessionRef.current ?? activeSessionId;
     rememberActiveSessionAliases(previousSessionId, response.session_id);
@@ -231,20 +233,7 @@ export function useChatComposerActions({
       activeSessionRef.current = response.session_id;
       setActiveSessionId(response.session_id);
     }
-    if (plan.target?.kind === "new" || response.session_id !== plan.target?.sessionId) {
-      const effect = plan.effects[0];
-      onSessionCreated?.(
-        response.session_id,
-        effect && "message" in effect ? effect.message : undefined,
-        effect?.type === "start-workspace-conversation"
-          ? {
-              source: typeof response.source === "string" ? response.source : null,
-              projectSlug: effect.workspaceSlug,
-            }
-          : undefined,
-      );
-    }
-  }, [activeSessionId, activeSessionRef, onSessionCreated, rememberActiveSessionAliases, setActiveSessionId]);
+  }, [activeSessionId, activeSessionRef, onSessionAdopt, rememberActiveSessionAliases, setActiveSessionId]);
 
   const executePlan = useCallback(async (
     plan: ComposerPlan,
@@ -256,13 +245,15 @@ export function useChatComposerActions({
     const effect = plan.effects[0];
     if (!effect) return true;
     const isCurrent = currentRequest();
+    const request = plan.action === "send" ? owner.beginRequest() : null;
+    if (!isCurrent() || (plan.action === "send" && !request)) return false;
     try {
       const result = await executeComposerEffect(effect, runner());
       if (result && typeof result === "object" && "ok" in result && result.ok === false) throw new Error("Submission was not accepted.");
       if (plan.action === "send" && (!result || typeof result !== "object" || !("ok" in result) || result.ok !== true || !("session_id" in result) || typeof result.session_id !== "string" || !result.session_id)) {
         throw new Error("Could not confirm submission. Your draft is kept; check the thread before retrying.");
       }
-      if (isCurrent()) updateSessionFromResponse(plan, result);
+      if (isCurrent() && request) updateSessionFromResponse(plan, result, request);
       return true;
     } catch (error) {
       if (options.rollbackOnError && isCurrent()) {
@@ -274,9 +265,10 @@ export function useChatComposerActions({
       }
       return false;
     }
-  }, [applyIntents, currentRequest, runner, setChatMessages, setError, setStatusLabel, setTurn, updateSessionFromResponse]);
+  }, [applyIntents, currentRequest, owner, runner, setChatMessages, setError, setStatusLabel, setTurn, updateSessionFromResponse]);
 
   const sendMessage = useCallback(async () => {
+    if (!owner.isCurrent()) return;
     const generation = scopeGeneration.current.generation;
     if (submissions.current.has(generation)) return;
     const isCurrent = currentRequest();
@@ -318,9 +310,11 @@ export function useChatComposerActions({
     } finally {
       submissions.current.delete(generation);
     }
-  }, [applyIntents, captureDraftSubmission, createMessageId, currentRequest, executePlan, input, onPrepareSend, resyncTurnState, runner, setError, setInput, setChatMessages, setStatusLabel, state, workspaceSlug]);
+  }, [applyIntents, captureDraftSubmission, createMessageId, currentRequest, executePlan, input, onPrepareSend, owner, resyncTurnState, runner, setError, setInput, setChatMessages, setStatusLabel, state, workspaceSlug]);
 
   const stop = useCallback(async () => {
+    const isCurrent = currentRequest();
+    if (!isCurrent()) return;
     const previousState = state();
     const plan = planComposerAction(previousState, { action: "stop" });
     if (!plan.accepted) return;
@@ -328,10 +322,11 @@ export function useChatComposerActions({
     try {
       await executeComposerEffect(plan.effects[0]!, runner());
     } catch {
+      if (!isCurrent()) return;
       setStatusLabel("Stop requested; waiting for backend state…");
       void resyncTurnState();
     }
-  }, [applyIntents, resyncTurnState, runner, setStatusLabel, state]);
+  }, [applyIntents, currentRequest, resyncTurnState, runner, setStatusLabel, state]);
 
   const retryMessage = useCallback(async (messageIndex: number, edited?: string) => {
     const previousState = state();

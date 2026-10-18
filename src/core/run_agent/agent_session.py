@@ -449,7 +449,10 @@ class _AgentSessionMixin:
                 self._active_children.clear()
             for child in children:
                 try:
-                    child.close()
+                    if getattr(child, "_spark_async_child", False) is True:
+                        child.interrupt("Parent agent closed")
+                    else:
+                        child.close()
                 except Exception:
                     logger.debug("Ignoring error in close()", exc_info=True)
         except Exception:

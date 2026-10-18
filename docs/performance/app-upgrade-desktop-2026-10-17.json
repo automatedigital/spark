@@ -1,0 +1,230 @@
+{
+  "application_base": "99be7b43e1de8caf7c7f90e48f67c241ce0396bd",
+  "build_started_at_commit": "f048473c",
+  "build_exit": 1,
+  "notarization_error": "HTTP 403: required developer agreement missing or expired",
+  "codesign": "valid deep/strict",
+  "gatekeeper": "rejected: Unnotarized Developer ID",
+  "stapled": false,
+  "native_shell_version": "1.3.41",
+  "backend_version": "1.3.8",
+  "config_version": 29,
+  "node": "v22.22.1",
+  "installed_test_copy": "/private/tmp/spark-desktop-qa-20261017/Applications/Spark.app",
+  "verified_spark_home": "/private/tmp/spark-desktop-qa-20261017/profile",
+  "prepare": {
+    "base_url": "http://127.0.0.1:9119",
+    "checks": [
+      {
+        "name": "frontend.root",
+        "ok": true,
+        "seconds": 0.0079
+      },
+      {
+        "name": "backend.status",
+        "ok": true,
+        "seconds": 0.0044
+      },
+      {
+        "name": "workspace.list",
+        "ok": true,
+        "seconds": 0.0027
+      },
+      {
+        "name": "workspace.create",
+        "ok": true,
+        "seconds": 0.0022,
+        "template": "scratch"
+      },
+      {
+        "name": "file.write.resume-marker.txt",
+        "ok": true,
+        "seconds": 0.003
+      },
+      {
+        "name": "file.read.resume-marker.txt",
+        "ok": true,
+        "seconds": 0.0018
+      },
+      {
+        "command_family": "posix-shell",
+        "name": "terminal.start",
+        "ok": true,
+        "seconds": 0.0086
+      },
+      {
+        "marker": "terminal-output.txt",
+        "name": "terminal.native",
+        "ok": true,
+        "seconds": 0.0
+      },
+      {
+        "name": "preview.start",
+        "ok": true,
+        "seconds": 0.0063
+      },
+      {
+        "name": "preview.stop",
+        "ok": true,
+        "seconds": 0.0024
+      },
+      {
+        "name": "chat.first_token",
+        "ok": true,
+        "seconds": 0.1489,
+        "sequence": 4,
+        "session_id": "desktop-acceptance-1792247907433"
+      },
+      {
+        "name": "chat.sse_resume",
+        "ok": true,
+        "seconds": 0.0028
+      },
+      {
+        "name": "chat.web_state_hydration",
+        "ok": true,
+        "seconds": 0.0085
+      },
+      {
+        "name": "chat.tool_events",
+        "ok": true,
+        "seconds": 0.0,
+        "topics": [
+          "chat.tool_end",
+          "chat.tool_start",
+          "chat.turn_done"
+        ]
+      }
+    ],
+    "phase": "prepare",
+    "platform": "macos"
+  },
+  "resume": {
+    "base_url": "http://127.0.0.1:9119",
+    "checks": [
+      {
+        "name": "frontend.root",
+        "ok": true,
+        "seconds": 0.0069
+      },
+      {
+        "name": "backend.status",
+        "ok": true,
+        "seconds": 0.0037
+      },
+      {
+        "name": "workspace.list",
+        "ok": true,
+        "seconds": 0.0021
+      },
+      {
+        "name": "file.resume",
+        "ok": true,
+        "seconds": 0.0022
+      }
+    ],
+    "phase": "resume",
+    "platform": "macos"
+  },
+  "resume_after_backend_loss": {
+    "base_url": "http://127.0.0.1:9119",
+    "checks": [
+      {
+        "name": "frontend.root",
+        "ok": true,
+        "seconds": 0.0071
+      },
+      {
+        "name": "backend.status",
+        "ok": true,
+        "seconds": 0.0038
+      },
+      {
+        "name": "workspace.list",
+        "ok": true,
+        "seconds": 0.0022
+      },
+      {
+        "name": "file.resume",
+        "ok": true,
+        "seconds": 0.002
+      }
+    ],
+    "phase": "resume",
+    "platform": "macos"
+  },
+  "limits": [
+    "not notarized; Apple agreement blocks distribution",
+    "real sleep/wake untested",
+    "Windows untested",
+    "native live-child Stop/Retry untested; completed child capability gating observed",
+    "global Quick Ask focus/hide not independently proved",
+    "continuing-owner performance control remains unverified"
+  ],
+  "wrong_profile_harness_incident": {
+    "test_project_recovered_to": "/tmp/spark-desktop-qa-20261017/recovered-wrong-profile-test-project",
+    "original_test_project_absent": true,
+    "no_provider_prompt_submitted": true,
+    "retained_instead_of_deleted": true
+  },
+  "receipts": {
+    "/tmp/spark-desktop-build-20261017.log": {
+      "sha256": "0efecfbc07ded3b1046a24f777c2f4050c5c30aa1b4927a5efdacdf55b800527",
+      "bytes": 72970
+    },
+    "/tmp/spark-desktop-codesign-20261017.log": {
+      "sha256": "e1451ba1d8de2810f188d188ff989b6a13b439c41699673dcce7308060440df2",
+      "bytes": 185
+    },
+    "/tmp/spark-desktop-gatekeeper-20261017.log": {
+      "sha256": "3050c001c0d5596bc2c9163051cd3d35b9662b597078739b289505d37bf4d81e",
+      "bytes": 181
+    },
+    "/tmp/spark-desktop-stapler-20261017.log": {
+      "sha256": "a1e9b049d1b8592eab9698f7b12b6bf032199274abd4fec62d77eda1b8b8b7b4",
+      "bytes": 158
+    },
+    "/tmp/spark-desktop-qa-20261017/launch-1.log": {
+      "sha256": "2096f14c562f0b134c65e0b994e4998142bd6277f1b9082bb56a7987da1ff34a",
+      "bytes": 2392
+    },
+    "/tmp/spark-desktop-qa-20261017/launch-2.log": {
+      "sha256": "aa5f8dbf48ffa201d48acb4e1590fdf0031d8b0b4a84fb6f5217194744560efc",
+      "bytes": 605
+    },
+    "/tmp/spark-desktop-qa-20261017/launch-3.log": {
+      "sha256": "573a984e34cfae5e928368f4f17c44bf1eeacf46dec7365c298b13106fa8bf78",
+      "bytes": 605
+    },
+    "/tmp/spark-desktop-qa-20261017/launch-4.log": {
+      "sha256": "bef8b73808f34f5adf639579da570357a3d8f40627bbeb8fa59a8b18766bd394",
+      "bytes": 605
+    },
+    "/tmp/spark-desktop-qa-20261017/prepare-error.log": {
+      "sha256": "cf6268410ccce5d3d06f064b51220e9dbd756e58e89f5e770bc88a26249b2201",
+      "bytes": 2387
+    },
+    "/tmp/spark-desktop-qa-20261017/prepare-isolated.json": {
+      "sha256": "f7043a771af9ea5bb9db5dc849686caea237372b58882111e0d499bc88a30984",
+      "bytes": 1645
+    },
+    "/tmp/spark-desktop-qa-20261017/resume-isolated.json": {
+      "sha256": "9f6bed434baa85c448aabfebf60cef96c06806b5b00179de38805121cd4a39e0",
+      "bytes": 448
+    },
+    "/tmp/spark-desktop-qa-20261017/resume-after-loss.json": {
+      "sha256": "562a182467d4436e59a91ed9b95ed2cdd1a52c6b23aee6ff8761621b950a83fd",
+      "bytes": 447
+    },
+    "src/spark_cli/web/src-tauri/target/release/bundle/dmg/Spark.dmg": {
+      "sha256": "10287bfb9b0366960b85bc103cda1502ff3c7bac01f704d66c3a23859c057ab0",
+      "bytes": 49903540
+    },
+    "src/spark_cli/web/src-tauri/target/release/bundle/macos/Spark.app/Contents/MacOS/spark": {
+      "sha256": "c4fb335ad4f289a2e018c1737f2bcbe090637dc61cca27630540db140d2db065",
+      "bytes": 11339104
+    }
+  },
+  "owned_app_closed": true,
+  "port_9119_closed": true
+}

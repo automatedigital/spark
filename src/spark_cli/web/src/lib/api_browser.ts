@@ -64,9 +64,10 @@ export const browserApi = {
         body: JSON.stringify({ dark }),
       },
     ),
-  streamBrowserTabs: (slug: string) =>
+  streamBrowserTabs: (slug: string, signal?: AbortSignal) =>
     fetchJSON<{ slug: string; tabs: StreamBrowserTab[] }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/tabs`,
+      { signal },
     ),
   streamBrowserTabAction: (
     slug: string,
@@ -87,9 +88,10 @@ export const browserApi = {
     ),
 
   /** Whether the user currently holds control (take-over) of the session. */
-  streamBrowserTakeoverState: (slug: string) =>
+  streamBrowserTakeoverState: (slug: string, signal?: AbortSignal) =>
     fetchJSON<{ slug: string; paused: boolean; ts: number }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/takeover`,
+      { signal },
     ),
 
   /** Grab (true) or release (false) control of the shared session. */
@@ -132,9 +134,10 @@ export const browserApi = {
     ),
 
   /** Captured console/network/exception entries from the previewed page. */
-  streamBrowserConsole: (slug: string, sinceSeq = 0) =>
+  streamBrowserConsole: (slug: string, sinceSeq = 0, signal?: AbortSignal) =>
     fetchJSON<{ slug: string; entries: StreamBrowserConsoleEntry[] }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/stream/console?since_seq=${sinceSeq}`,
+      { signal },
     ),
 
   /** Auto-detected local dev servers owned by this workspace. */

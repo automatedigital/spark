@@ -10,9 +10,15 @@ import type {
   SessionInfo,
   SessionMessagesResponse,
   SessionSearchResponse,
+  SubagentNavigation,
+  SubagentWorktreeProject,
 } from "./apiTypes";
 
 export const sessionApi = {
+  getSubagentNavigation: (sessionId: string, childId: string, signal?: AbortSignal) =>
+    fetchJSON<SubagentNavigation>(`/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childId)}/navigation`, { signal }),
+  openSubagentWorktree: (sessionId: string, childId: string) =>
+    fetchJSON<SubagentWorktreeProject>(`/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childId)}/navigation/worktree`, { method: "POST" }),
   getSessions: (limit = 20, offset = 0, source?: string) => {
     const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (source) qs.set("source", source);

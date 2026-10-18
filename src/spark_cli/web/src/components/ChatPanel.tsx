@@ -94,6 +94,7 @@ import { useChatComposerActions } from "@/hooks/useChatComposerActions";
 import { useChatStreamController } from "@/hooks/useChatStreamController";
 import type { ChatStreamSnapshot } from "@/lib/chatStreamReducer";
 import { useChatDraft } from "@/hooks/useChatDraft";
+import { isChatPanelScopeCurrent, type ChatPanelOwner, type ChatPanelOwnership, type OwnedSessionAdoption } from "@/lib/chatPanelOwnership";
 import { DraftStatus } from "@/components/chat/DraftStatus";
 
 let _msgId = 0;
@@ -110,14 +111,12 @@ const chatWordWrapFromConfig = (config: Record<string, unknown>): boolean => {
 };
 
 interface ChatPanelProps {
+  owner: ChatPanelOwner;
+  scrollBookmarks: ChatPanelOwnership;
+  onSessionAdopt: (request: OwnedSessionAdoption) => boolean;
   sessionId: string | null;
   onClose?: () => void;
   onBack?: () => void;
-  onSessionCreated?: (
-    id: string,
-    initialMessage?: string,
-    meta?: { source?: string | null; projectSlug?: string | null },
-  ) => void;
   onSessionUpdated?: (id: string) => void;
   sessionTitle?: string | null;
   initialMessage?: string;
@@ -135,10 +134,12 @@ type AssistantMsg = Extract<ChatMessage, { role: "assistant" }>;
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
 export function ChatPanel({
+  owner,
+  scrollBookmarks,
+  onSessionAdopt,
   sessionId,
   onClose,
   onBack,
-  onSessionCreated,
   onSessionUpdated,
   initialMessage,
   workspaceSlug,
@@ -180,6 +181,8 @@ export function ChatPanel({
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollViewportTopRef = useRef<number | null>(null);
+  const pendingThreadScroll = useRef<{ sessionId: string; top: number; anchorId: string | null; offset: number } | null>(null);
+  const restoringThreadScroll = useRef(false);
 
   useLayoutEffect(() => {
     const element = scrollContainerRef.current;
@@ -212,7 +215,8 @@ export function ChatPanel({
     finalizeAssistantRef,
     syncLiveAssistantSnapshotRef,
     appendRecoveredStaleTurnNoteRef,
-    onSessionCreated: (id) => onSessionCreated?.(id),
+    owner,
+    onSessionAdopt,
     onSessionUpdated,
   });
   const {
@@ -261,6 +265,28 @@ export function ChatPanel({
   const followStreamRef = useRef(true);
   const scrollStateRef = useRef(initialChatScrollState());
   const prependRestoreGenerationRef = useRef(0);
+  const prependFramesRef = useRef(new Set<number>());
+  const schedulePrependFrame = useCallback((callback: () => void) => {
+    const frame = requestAnimationFrame(() => {
+      prependFramesRef.current.delete(frame);
+      if (owner.isCurrent()) callback();
+    });
+    prependFramesRef.current.add(frame);
+  }, [owner]);
+  useEffect(() => {
+    const frames = prependFramesRef.current;
+    return () => {
+      prependRestoreGenerationRef.current += 1;
+      frames.forEach(cancelAnimationFrame);
+      frames.clear();
+      onSessionResetRef.current = null;
+      flushPendingStreamRef.current = null;
+      finalizeAssistantRef.current = null;
+      syncLiveAssistantSnapshotRef.current = null;
+      appendRecoveredStaleTurnNoteRef.current = null;
+      resyncTurnStateRef.current = null;
+    };
+  }, []);
   const [detachedFromBottom, setDetachedFromBottom] = useState(false);
 
   const handleStreamResync = useCallback((request: { reason: string; allowIdle: boolean }) => {
@@ -313,6 +339,8 @@ export function ChatPanel({
   });
   const syncStreamMessages = streamController.syncMessages;
   const applyStreamSnapshot = streamController.applySnapshot;
+  const adoptStreamSession = streamController.adoptSession;
+  const isCurrentStreamState = streamController.isCurrentState;
 
   const bridgeStreamSnapshot = useCallback((snapshot: ChatStreamSnapshot) => {
     streamController.applySnapshot(snapshot);
@@ -335,6 +363,15 @@ export function ChatPanel({
     });
   };
 
+  const adoptOwnedSession = useCallback((request: OwnedSessionAdoption) => {
+    if (!onSessionAdopt(request)) return false;
+    if (request.reason === "send-continuation") {
+      rememberActiveSessionAliases(request.previousID, request.nextID);
+      adoptStreamSession(request.nextID, [...activeSessionAliasesRef.current]);
+    }
+    return true;
+  }, [activeSessionAliasesRef, adoptStreamSession, onSessionAdopt, rememberActiveSessionAliases]);
+
   const composerActions = useChatComposerActions({
     input,
     contextItems,
@@ -355,7 +392,8 @@ export function ChatPanel({
     setStatusLabel,
     setError,
     createMessageId: nid,
-    onSessionCreated,
+    owner,
+    onSessionAdopt: adoptOwnedSession,
     onPrepareSend: (optimisticMessageCount) => {
       followStreamRef.current = true;
       streamTextCharsRef.current = 0;
@@ -524,12 +562,14 @@ export function ChatPanel({
     recoverySignalBudgetRef.current = initialRecoverySignalBudget();
     prevCountRef.current = 0;
     lastAutoScrollAtRef.current = 0;
-    scrollStateRef.current = reduceChatScrollState(initialChatScrollState(initialTranscript.length), {
-      type: "jump-to-bottom",
-      itemCount: initialTranscript.length,
-    });
-    setDetachedFromBottom(false);
-    followStreamRef.current = true;
+    const savedScroll = resetSessionId ? scrollBookmarks.readBookmark(owner.scope, resetSessionId) : null;
+    pendingThreadScroll.current = savedScroll && resetSessionId ? { ...savedScroll, sessionId: resetSessionId } : null;
+    restoringThreadScroll.current = Boolean(savedScroll);
+    scrollStateRef.current = savedScroll
+      ? { mode: "detached", lastItemCount: initialTranscript.length, anchorId: savedScroll.anchorId }
+      : reduceChatScrollState(initialChatScrollState(initialTranscript.length), { type: "jump-to-bottom", itemCount: initialTranscript.length });
+    setDetachedFromBottom(Boolean(savedScroll));
+    followStreamRef.current = !savedScroll;
     setEditingUser(null);
     setDiagnosticsOpen(false);
     setConversationDiagnostics(null);
@@ -563,6 +603,9 @@ export function ChatPanel({
 
   useEffect(() => {
     const streamState = streamController.state;
+    // Earlier effects can synchronously commit a newer reducer snapshot.
+    // Never publish this render's superseded identity/status back to the panel.
+    if (!isCurrentStreamState(streamState)) return;
     streamTextCharsRef.current = Math.max(streamTextCharsRef.current, streamState.streamTextChars);
     activeTurnSessionIdRef.current = streamState.activeTurnSessionId;
 
@@ -629,6 +672,7 @@ export function ChatPanel({
     setStreaming,
     setTurnState,
     streamController.state,
+    isCurrentStreamState,
     streamTextCharsRef,
     activeSessionRef,
     activeTurnSessionIdRef,
@@ -652,6 +696,7 @@ export function ChatPanel({
   });
 
   const refreshTurnSurfaces = useCallback(async () => {
+    if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner)) return;
     const generation = ++turnSurfaceRefreshGenerationRef.current;
     const sid = activeSessionRef.current;
     if (!sid) {
@@ -665,11 +710,11 @@ export function ChatPanel({
       api.getConversationPlan(sid),
       api.getConversationPendingActions(sid),
     ]);
-    if (activeSessionRef.current !== sid || generation !== turnSurfaceRefreshGenerationRef.current) return;
+    if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner) || activeSessionRef.current !== sid || generation !== turnSurfaceRefreshGenerationRef.current) return;
     if (outcomeResult.status === "fulfilled") setTurnOutcomes(outcomeResult.value.outcomes);
     if (planResult.status === "fulfilled") setConversationPlan(planResult.value.plan);
     if (actionsResult.status === "fulfilled") setPendingActions(actionsResult.value.actions);
-  }, [activeSessionRef]);
+  }, [activeSessionRef, owner]);
 
   useEffect(() => {
     void refreshTurnSurfaces();
@@ -864,8 +909,12 @@ export function ChatPanel({
       sessionId: sid,
       choice,
       busy: approvalBusy || approvalBusyRef.current,
+      actionId,
     });
-    if (!submission) return;
+    if (!submission) {
+      if (!actionId?.trim()) setError("This approval is no longer pending.");
+      return;
+    }
     approvalBusyRef.current = true;
     setApprovalBusy(true);
     try {
@@ -873,7 +922,7 @@ export function ChatPanel({
         submission.sessionId,
         submission.payload.choice,
         submission.payload.resolve_all,
-        actionId,
+        submission.payload.action_id,
       );
       await refreshTurnSurfaces();
     } catch (err) {
@@ -908,6 +957,7 @@ export function ChatPanel({
   }, []);
 
   const copyAssistant = useCallback((msg: AssistantMsg) => {
+    if (!isChatPanelScopeCurrent(owner)) return;
     if (!msg.liveOmittedChars) {
       void navigator.clipboard.writeText(msg.content);
       return;
@@ -916,10 +966,10 @@ export function ChatPanel({
       renderedId: msg.id,
       visibleFallback: msg.content,
       loadMessages: loadExactMessages,
-      writeText: (content) => navigator.clipboard.writeText(content),
+      writeText: (content) => isChatPanelScopeCurrent(owner) ? navigator.clipboard.writeText(content) : Promise.resolve(),
     })
-      .catch(() => navigator.clipboard.writeText(msg.content));
-  }, [loadExactMessages]);
+      .catch(() => { if (isChatPanelScopeCurrent(owner)) void navigator.clipboard.writeText(msg.content); });
+  }, [loadExactMessages, owner]);
 
   const uploadFiles = useCallback((files: File[]) => uploadDraftFiles(files, setContextItems,
     (file) => workspaceSlug ? api.uploadWorkspaceFiles(workspaceSlug, [file], "files") : api.uploadChatFiles([file])),
@@ -937,6 +987,7 @@ export function ChatPanel({
     if (!sid || !toolId) return null;
     const resp = await api.getSessionToolResult(sid, toolId);
     const content = resp.content ?? "";
+    if (!owner.isCurrent()) return content;
     setChatMessages((prev) =>
       prev.map((m) =>
         m.role === "tool" && m.toolId === toolId
@@ -945,7 +996,7 @@ export function ChatPanel({
       ),
     );
     return content;
-  }, [activeSessionRef, setChatMessages]);
+  }, [activeSessionRef, owner, setChatMessages]);
 
   const removeContextItem = useCallback((id: string) => {
     setContextItems((prev) => prev.filter((i) => i.id !== id));
@@ -989,13 +1040,16 @@ export function ChatPanel({
   }, [contextItems, setContextItems, workspaceSlug, updateContextMode]);
 
   const handlePromoteToBrief = useCallback((msg: AssistantMsg) => {
-    if (!activeSessionId) return;
-    void fetchExactAssistant(msg).then((text) => briefApi.get(activeSessionId).then((r) => {
+    if (!activeSessionId || !isChatPanelScopeCurrent(owner)) return;
+    void fetchExactAssistant(msg).then(async (text) => {
+      if (!isChatPanelScopeCurrent(owner)) return;
+      const r = await briefApi.get(activeSessionId);
+      if (!isChatPanelScopeCurrent(owner)) return;
       const current = r.text.trim();
       const appended = current ? `${current}\n\n${text}` : text;
       return briefApi.set(activeSessionId, appended);
-    })).catch(() => {});
-  }, [activeSessionId, fetchExactAssistant]);
+    }).catch(() => {});
+  }, [activeSessionId, fetchExactAssistant, owner]);
 
   // In-session search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1105,6 +1159,10 @@ export function ChatPanel({
   useEffect(() => {
     if (!searchMatches.length) return;
     const idx = turnIndexForMessageIndex(searchMatches[searchMatchIdx % searchMatches.length]);
+    // Explicit search navigation supersedes an in-flight saved-position restore.
+    prependRestoreGenerationRef.current += 1;
+    pendingThreadScroll.current = null;
+    restoringThreadScroll.current = false;
     virtualizer.scrollToIndex(idx, { align: "center", behavior: safeMode ? "instant" : "smooth" });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchMatchIdx, searchMatches, safeMode, turnIndexForMessageIndex]);
@@ -1190,30 +1248,29 @@ export function ChatPanel({
     return Math.max(54, 54 + answerEstimate + (turn.workItems.length || turn.subagents.length ? expandedWorkEstimate : 0));
   }, [timelineTurns]);
 
+  const getTurnKey = useCallback((index: number) => timelineTurns[index]?.id ?? index, [timelineTurns]);
   const virtualizer = useVirtualizer({
     count: timelineTurns.length,
     getScrollElement: () => scrollContainerRef.current,
-    getItemKey: (index) => timelineTurns[index]?.id ?? index,
+    getItemKey: getTurnKey,
     estimateSize: estimateRowSize,
     overscan: safeMode ? 4 : 10,
     gap: 12,
   });
-  const virtualOrderRef = useRef<{ sessionId: string | null; firstId: string | null; count: number }>({ sessionId: null, firstId: null, count: 0 });
+  const measuredSessionRef = useRef<string | null>(null);
+  const timelineTurnsRef = useRef(timelineTurns);
+  timelineTurnsRef.current = timelineTurns;
 
   useLayoutEffect(() => {
-    const firstId = timelineTurns[0]?.id ?? null;
-    const previous = virtualOrderRef.current;
-    virtualOrderRef.current = { sessionId: activeSessionId, firstId, count: timelineTurns.length };
-    if (
-      (previous.sessionId != null && previous.sessionId !== activeSessionId) ||
-      (previous.firstId && firstId !== previous.firstId && timelineTurns.length > previous.count)
-    ) {
-      // A prepend moves stable keyed DOM rows to new virtual indexes. Reset the
-      // index measurement cache before the anchor-restoration loop remeasures
-      // mounted rows, otherwise stale starts can temporarily overlap rows.
+    const previous = measuredSessionRef.current;
+    measuredSessionRef.current = activeSessionId;
+    if (previous != null && previous !== activeSessionId) {
+      // Sizes belong to stable turn keys, so prepending must retain them. The
+      // changed getTurnKey rebuilds index positions without discarding sizes.
+      // Only a different session needs an entirely fresh measurement cache.
       virtualizer.measure();
     }
-  }, [activeSessionId, timelineTurns, virtualizer]);
+  }, [activeSessionId, virtualizer]);
 
   const rowResizeObserverRef = useRef<ResizeObserver | null>(null);
   const rowResizeRafRef = useRef<number | null>(null);
@@ -1221,19 +1278,25 @@ export function ChatPanel({
   const measureRowElement = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     rowResizeObserverRef.current?.observe(el);
-    virtualizer.measureElement(el);
-  }, [virtualizer]);
+    // ResizeObserver supplies initial and subsequent sizes in the next frame.
+    // Measuring in a React ref can synchronously mount another estimated range
+    // and recurse through commitAttachRef until React's update-depth limit.
+    return () => rowResizeObserverRef.current?.unobserve(el);
+  }, []);
 
   useEffect(() => {
     const root = messageListRef.current;
     if (!root || typeof ResizeObserver === "undefined") return;
+    const pendingRows = new Set<HTMLDivElement>();
+    let anchorRaf: number | null = null;
     const measureRenderedRows = (entries?: ResizeObserverEntry[]) => {
-      if (rowResizeRafRef.current !== null) cancelAnimationFrame(rowResizeRafRef.current);
       const rows = entries?.length
         ? entries
             .map((entry) => entry.target)
             .filter((target): target is HTMLDivElement => target instanceof HTMLDivElement)
         : Array.from(root.querySelectorAll<HTMLDivElement>("[data-index]"));
+      rows.forEach((row) => pendingRows.add(row));
+      if (rowResizeRafRef.current !== null) return;
       rowResizeRafRef.current = requestAnimationFrame(() => {
         rowResizeRafRef.current = null;
         const scrollEl = scrollContainerRef.current;
@@ -1243,7 +1306,15 @@ export function ChatPanel({
               .find((row) => row.dataset.rowId === anchorId)
               ?.getBoundingClientRect().top ?? null
           : null;
-        rows.forEach((row) => measureRowElement(row));
+        // Use one observer/measurement owner. Calling measureElement here would
+        // install the virtualizer's second observer with synchronous updates.
+        for (const row of pendingRows) {
+          const index = Number(row.dataset.index);
+          if (row.isConnected && row.dataset.rowId === virtualizer.options.getItemKey(index)) {
+            virtualizer.resizeItem(index, row.getBoundingClientRect().height);
+          }
+        }
+        pendingRows.clear();
         // While a bottom jump is in flight (session open / jump pill), row
         // measurement grows scrollHeight after the initial scrollToIndex —
         // re-clamp so the view never lands short of the latest message.
@@ -1251,7 +1322,9 @@ export function ChatPanel({
           scrollEl.scrollTop = scrollEl.scrollHeight;
         }
         if (anchorBefore != null && scrollEl && anchorId) {
-          requestAnimationFrame(() => {
+          if (anchorRaf !== null) cancelAnimationFrame(anchorRaf);
+          anchorRaf = requestAnimationFrame(() => {
+            anchorRaf = null;
             const anchorAfter = Array.from(root.querySelectorAll<HTMLDivElement>("[data-row-id]"))
               .find((row) => row.dataset.rowId === anchorId)
               ?.getBoundingClientRect().top;
@@ -1270,6 +1343,7 @@ export function ChatPanel({
     measureRenderedRows();
     return () => {
       observer.disconnect();
+      if (anchorRaf !== null) cancelAnimationFrame(anchorRaf);
       if (rowResizeObserverRef.current === observer) {
         rowResizeObserverRef.current = null;
       }
@@ -1278,13 +1352,13 @@ export function ChatPanel({
         rowResizeRafRef.current = null;
       }
     };
-  }, [measureRowElement, timelineTurns]);
+  }, [timelineTurns, virtualizer]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     const updateFollowState = () => {
-      if (loadingHistory || scrollStateRef.current.mode === "jumping-to-bottom") return;
+      if (!owner.isCurrent() || loadingHistory || restoringThreadScroll.current || activeSessionRef.current !== activeSessionId || scrollStateRef.current.mode === "jumping-to-bottom") return;
       const firstVisibleIndex = virtualizer.getVirtualItems()[0]?.index;
       scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
         type: "user-scroll",
@@ -1296,6 +1370,14 @@ export function ChatPanel({
         anchorId: firstVisibleIndex == null ? null : timelineTurns[firstVisibleIndex]?.id ?? null,
       });
       followStreamRef.current = scrollStateRef.current.mode === "following";
+      if (activeSessionId) {
+        if (followStreamRef.current) scrollBookmarks.saveBookmark(owner.scope, activeSessionId, null);
+        else {
+          const viewport = el.getBoundingClientRect();
+          const anchor = Array.from(el.querySelectorAll<HTMLElement>("[data-row-id]")).find((row) => row.getBoundingClientRect().bottom > viewport.top);
+          scrollBookmarks.saveBookmark(owner.scope, activeSessionId, { top: el.scrollTop, anchorId: anchor?.dataset.rowId ?? null, offset: anchor ? anchor.getBoundingClientRect().top - viewport.top : 0 });
+        }
+      }
       setDetachedFromBottom(
         scrollStateRef.current.mode === "detached" ||
         scrollStateRef.current.mode === "pending-new-message",
@@ -1304,7 +1386,30 @@ export function ChatPanel({
     updateFollowState();
     el.addEventListener("scroll", updateFollowState, { passive: true });
     return () => el.removeEventListener("scroll", updateFollowState);
-  }, [activeSessionId, loadingHistory, timelineTurns, virtualizer]);
+  }, [activeSessionId, activeSessionRef, loadingHistory, owner, scrollBookmarks, timelineTurns, virtualizer]);
+
+  useEffect(() => {
+    const saved = pendingThreadScroll.current;
+    if (!saved || saved.sessionId !== activeSessionId || loadingHistory || !timelineTurnsRef.current.length) return;
+    const restoreGeneration = prependRestoreGenerationRef.current;
+    let frame = 0, remaining = 30;
+    const restore = () => {
+      frame = requestAnimationFrame(() => {
+        if (restoreGeneration !== prependRestoreGenerationRef.current) return;
+        const element = scrollContainerRef.current;
+        if (!element) return;
+        const index = timelineTurnsRef.current.findIndex((turn) => turn.id === saved.anchorId);
+        const anchor = saved.anchorId ? element.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(saved.anchorId)}"]`) : null;
+        if (anchor) element.scrollTop += anchor.getBoundingClientRect().top - element.getBoundingClientRect().top - saved.offset;
+        else if (index >= 0) virtualizer.scrollToIndex(index, { align: "start", behavior: "instant" });
+        else element.scrollTop = saved.top;
+        if (--remaining > 0) restore();
+        else { pendingThreadScroll.current = null; restoringThreadScroll.current = false; }
+      });
+    };
+    restore();
+    return () => cancelAnimationFrame(frame);
+  }, [activeSessionId, loadingHistory, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
@@ -1416,8 +1521,10 @@ export function ChatPanel({
       followStreamRef.current = false;
       setDetachedFromBottom(true);
       const restoreGeneration = ++prependRestoreGenerationRef.current;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      schedulePrependFrame(() => {
+        if (restoreGeneration !== prependRestoreGenerationRef.current) return;
+        schedulePrependFrame(() => {
+          if (restoreGeneration !== prependRestoreGenerationRef.current) return;
           const target = scrollContainerRef.current;
           if (!target) return;
           // Preserve the viewport immediately from the list's total-height
@@ -1441,7 +1548,7 @@ export function ChatPanel({
           }
           let remainingFrames = 240;
           let stableFrames = 0;
-          const restoreAnchor = () => requestAnimationFrame(() => {
+          const restoreAnchor = () => schedulePrependFrame(() => {
             if (restoreGeneration !== prependRestoreGenerationRef.current) return;
             const currentTarget = scrollContainerRef.current;
             const anchorId = pendingPrepend.anchorId;
@@ -1564,7 +1671,7 @@ export function ChatPanel({
         autoScrollRafRef.current = null;
       }
     };
-  }, [activeSessionId, chatMessages, prependScrollAnchorRef, runBottomClamp, safeMode, streaming, streamingAssistantVisibleChars, timelineTurns, virtualizer]);
+  }, [activeSessionId, chatMessages, prependScrollAnchorRef, runBottomClamp, safeMode, schedulePrependFrame, streaming, streamingAssistantVisibleChars, timelineTurns, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const visibleStartIndex = virtualItems[0]?.index ?? 0;
@@ -1625,6 +1732,7 @@ export function ChatPanel({
   return (
     <div
       data-testid="chat-panel"
+      data-panel-owner={owner.ownerToken}
       data-session-id={activeSessionId ?? ""}
       data-turn-state={turnState}
       data-streaming={streaming ? "true" : "false"}
@@ -2038,7 +2146,18 @@ export function ChatPanel({
         busyActionIds={busyActionIds}
         onApprovalChoice={(action, choice) => runPendingAction(
           action,
-          () => api.submitConversationApproval(activeSessionId ?? action.session_id, choice, false, action.action_id),
+          async () => {
+            const submission = approvalSubmission({
+              sessionId: activeSessionId ?? action.session_id,
+              choice,
+              busy: false,
+              actionId: action.action_id,
+            });
+            if (!submission) throw new Error("This approval is no longer pending.");
+            return api.submitConversationApproval(
+              submission.sessionId, choice, false, submission.payload.action_id,
+            );
+          },
         )}
         onSubmitInput={(action, response) => runPendingAction(
           action,

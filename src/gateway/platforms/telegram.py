@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -181,8 +182,8 @@ class TelegramAdapter(BasePlatformAdapter):
         self._dm_topics_config: list[dict[str, Any]] = self.config.extra.get("dm_topics", [])
         # Interactive model picker state per chat
         self._model_picker_state: dict[str, dict] = {}
-        # Approval button state: message_id → session_key
-        self._approval_state: dict[int, str] = {}
+        # Approval button state: opaque entry ID → session and decision identity.
+        self._approval_state: dict[str, dict[str, Any]] = {}
 
     def _fallback_ips(self) -> list[str]:
         """Return validated fallback IPs from config (populated by _apply_env_overrides)."""
@@ -1237,6 +1238,7 @@ class TelegramAdapter(BasePlatformAdapter):
         self, chat_id: str, command: str, session_key: str,
         description: str = "dangerous command",
         metadata: dict[str, Any] | None = None,
+        *, action_id: str | None = None, source=None,
     ) -> SendResult:
         """Send an inline-keyboard approval prompt with interactive buttons.
 
@@ -1254,13 +1256,9 @@ class TelegramAdapter(BasePlatformAdapter):
                 f"Reason: {description}"
             )
 
-            # We'll use the message_id as part of callback_data to look up session_key
-            # Send a placeholder first, then update — or use a counter.
-            # Simpler: use a monotonic counter to generate short IDs.
-            import itertools
-            if not hasattr(self, "_approval_counter"):
-                self._approval_counter = itertools.count(1)
-            approval_id = next(self._approval_counter)
+            # Opaque entry identities also prevent local counter reuse after
+            # adapter reconstruction from retargeting an old message to new work.
+            approval_id = action_id or uuid.uuid4().hex
 
             keyboard = InlineKeyboardMarkup([
                 [
@@ -1284,7 +1282,10 @@ class TelegramAdapter(BasePlatformAdapter):
             msg = await self._bot.send_message(**kwargs)
 
             # Store session_key keyed by approval_id for the callback handler
-            self._approval_state[approval_id] = session_key
+            self._approval_state[approval_id] = {
+                "session_key": session_key, "action_id": action_id,
+                "source": self.approval_source(chat_id, metadata, source),
+            }
 
             return SendResult(success=True, message_id=str(msg.message_id))
         except Exception as e:
@@ -1606,25 +1607,45 @@ class TelegramAdapter(BasePlatformAdapter):
             parts = data.split(":", 2)
             if len(parts) == 3:
                 choice = parts[1]  # once, session, always, deny
-                try:
-                    approval_id = int(parts[2])
-                except (ValueError, IndexError):
+                approval_id = parts[2]
+                if not approval_id:
                     await query.answer(text="Invalid approval data.")
                     return
 
                 # Only authorized users may click approval buttons.
-                caller_id = str(getattr(query.from_user, "id", ""))
-                allowed_csv = os.getenv("TELEGRAM_ALLOWED_USERS", "").strip()
-                if allowed_csv:
-                    allowed_ids = {uid.strip() for uid in allowed_csv.split(",") if uid.strip()}
-                    if "*" not in allowed_ids and caller_id not in allowed_ids:
-                        await query.answer(text="⛔ You are not authorized to approve commands.")
-                        return
-
-                session_key = self._approval_state.pop(approval_id, None)
-                if not session_key:
+                caller_id = str(getattr(query.from_user, "id", "") or "")
+                state = self._approval_state.get(approval_id)
+                if not state:
                     await query.answer(text="This approval has already been resolved.")
                     return
+                message = getattr(query, "message", None)
+                source = state.get("source") if isinstance(state, dict) else None
+                direct_topic_id = self._telegram_id_to_str(
+                    getattr(getattr(message, "direct_messages_topic", None), "topic_id", None),
+                )
+                thread_id = self._telegram_id_to_str(getattr(message, "message_thread_id", None))
+                # Match _build_message_event: private direct topics take
+                # precedence; forum/group threads use message_thread_id.
+                if source and source.chat_type == "dm" and direct_topic_id:
+                    thread_id = direct_topic_id
+                if not self.is_approval_authorized(
+                    source,
+                    caller_id, str(getattr(message, "chat_id", "") or ""),
+                    thread_id, direct_topic_id,
+                ):
+                    await query.answer(text="⛔ You are not authorized to approve commands.")
+                    return
+                self._approval_state.pop(approval_id, None)
+
+                count = 0
+                session_key = state.get("session_key", "") if isinstance(state, dict) else ""
+                entry_id = state.get("action_id") if isinstance(state, dict) else None
+                if session_key and isinstance(entry_id, str) and entry_id:
+                    try:
+                        from tools.approval import resolve_gateway_approval
+                        count = resolve_gateway_approval(session_key, choice, action_id=entry_id)
+                    except Exception as exc:
+                        logger.error("Failed to resolve gateway approval from Telegram button: %s", exc)
 
                 # Map choice to human-readable label
                 label_map = {
@@ -1635,13 +1656,15 @@ class TelegramAdapter(BasePlatformAdapter):
                 }
                 user_display = getattr(query.from_user, "first_name", "User")
                 label = label_map.get(choice, "Resolved")
+                if not count:
+                    label = "This approval is no longer pending."
 
                 await query.answer(text=label)
 
                 # Edit message to show decision, remove buttons
                 try:
                     await query.edit_message_text(
-                        text=f"{label} by {user_display}",
+                        text=f"{label} by {user_display}" if count else label,
                         parse_mode=ParseMode.MARKDOWN,
                         reply_markup=None,
                     )
@@ -1649,16 +1672,6 @@ class TelegramAdapter(BasePlatformAdapter):
                     # non-fatal if edit fails
                     logger.debug("Ignored exception in _handle_callback_query", exc_info=True)
 
-                # Resolve the approval — unblocks the agent thread
-                try:
-                    from tools.approval import resolve_gateway_approval
-                    count = resolve_gateway_approval(session_key, choice)
-                    logger.info(
-                        "Telegram button resolved %d approval(s) for session %s (choice=%s, user=%s)",
-                        count, session_key, choice, user_display,
-                    )
-                except Exception as exc:
-                    logger.error("Failed to resolve gateway approval from Telegram button: %s", exc)
             return
 
         # --- Update prompt callbacks ---

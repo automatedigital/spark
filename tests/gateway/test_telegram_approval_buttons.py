@@ -48,12 +48,19 @@ _ensure_telegram_mock()
 
 from gateway.platforms.telegram import TelegramAdapter
 from gateway.config import Platform, PlatformConfig
+from tests.fixtures.app_upgrade.gateway.authorization import bind_approval_policy
+
+
+@pytest.fixture(autouse=True)
+def approval_policy(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_ALLOW_ALL_USERS", "true")
 
 
 def _make_adapter():
     """Create a TelegramAdapter with mocked internals."""
     config = PlatformConfig(enabled=True, token="test-token")
     adapter = TelegramAdapter(config)
+    bind_approval_policy(adapter)
     adapter._bot = AsyncMock()
     adapter._app = MagicMock()
     return adapter
@@ -101,12 +108,16 @@ class TestTelegramExecApproval:
             chat_id="12345",
             command="echo test",
             session_key="my-session-key",
+            action_id="entry-a",
         )
 
         # The approval_id should map to the session_key
         assert len(adapter._approval_state) == 1
         approval_id = list(adapter._approval_state.keys())[0]
-        assert adapter._approval_state[approval_id] == "my-session-key"
+        assert approval_id == "entry-a"
+        assert adapter._approval_state[approval_id]["session_key"] == "my-session-key"
+        assert adapter._approval_state[approval_id]["action_id"] == "entry-a"
+        assert adapter._approval_state[approval_id]["source"].chat_id == "12345"
 
     @pytest.mark.asyncio
     async def test_sends_in_thread(self):
@@ -162,11 +173,12 @@ class TestTelegramApprovalCallback:
     async def test_resolves_approval_on_click(self):
         adapter = _make_adapter()
         # Set up approval state
-        adapter._approval_state[1] = "agent:main:telegram:group:12345:99"
+        adapter._approval_state["entry-a"] = {"session_key": "agent:main:telegram:group:12345:99", "action_id": "entry-a"}
+        adapter._approval_state["entry-a"]["source"] = adapter.build_source(chat_id="12345", chat_type="group")
 
         # Mock callback query
         query = AsyncMock()
-        query.data = "ea:once:1"
+        query.data = "ea:once:entry-a"
         query.message = MagicMock()
         query.message.chat_id = 12345
         query.from_user = MagicMock()
@@ -181,20 +193,21 @@ class TestTelegramApprovalCallback:
         with patch("tools.approval.resolve_gateway_approval", return_value=1) as mock_resolve:
             await adapter._handle_callback_query(update, context)
 
-        mock_resolve.assert_called_once_with("agent:main:telegram:group:12345:99", "once")
+        mock_resolve.assert_called_once_with("agent:main:telegram:group:12345:99", "once", action_id="entry-a")
         query.answer.assert_called_once()
         query.edit_message_text.assert_called_once()
 
         # State should be cleaned up
-        assert 1 not in adapter._approval_state
+        assert "entry-a" not in adapter._approval_state
 
     @pytest.mark.asyncio
     async def test_deny_button(self):
         adapter = _make_adapter()
-        adapter._approval_state[2] = "some-session"
+        adapter._approval_state["entry-deny"] = {"session_key": "some-session", "action_id": "entry-deny"}
+        adapter._approval_state["entry-deny"]["source"] = adapter.build_source(chat_id="12345", chat_type="group")
 
         query = AsyncMock()
-        query.data = "ea:deny:2"
+        query.data = "ea:deny:entry-deny"
         query.message = MagicMock()
         query.message.chat_id = 12345
         query.from_user = MagicMock()
@@ -209,7 +222,7 @@ class TestTelegramApprovalCallback:
         with patch("tools.approval.resolve_gateway_approval", return_value=1) as mock_resolve:
             await adapter._handle_callback_query(update, context)
 
-        mock_resolve.assert_called_once_with("some-session", "deny")
+        mock_resolve.assert_called_once_with("some-session", "deny", action_id="entry-deny")
         edit_kwargs = query.edit_message_text.call_args[1]
         assert "Denied" in edit_kwargs["text"]
 

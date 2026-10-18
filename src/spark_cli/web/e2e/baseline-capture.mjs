@@ -6,6 +6,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright";
+import { parseArgs } from "node:util";
+
+const { values: options } = parseArgs({ options: {
+  repeat: { type: "string", default: process.env.SPARK_E2E_REPEAT || "1" },
+  "output-dir": { type: "string", default: process.env.SPARK_E2E_OUTPUT_DIR },
+  case: { type: "string", default: process.env.SPARK_E2E_BASELINE_CASE },
+} });
+const repeat = Number(options.repeat);
+if (!Number.isInteger(repeat) || repeat < 1 || repeat > 10) throw new Error("--repeat must be 1..10");
+if (repeat > 1 && !options["output-dir"]) throw new Error("--repeat requires --output-dir");
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "../../..");
@@ -290,7 +300,7 @@ async function loadEarlierMessages(page, { sessionId, title }) {
         const url = new URL(candidate.url());
         return url.pathname.endsWith(`/api/sessions/${sessionId}/messages`)
           && Boolean(url.searchParams.get("before_id"));
-      }, { timeout: 15_000 }).then((candidate) => ({ type: "response", response: candidate }));
+      }, { timeout: 15_000 }).then((candidate) => ({ type: "response", response: candidate }), (error) => ({ type: "timeout", error: String(error) }));
       let timeoutId;
       const timeout = new Promise((resolve) => {
         timeoutId = setTimeout(() => resolve({ type: "timeout" }), 15_000);
@@ -460,10 +470,45 @@ async function measureStream(page, apiBase, marker) {
   await createEmptyStreamSession(apiBase, sessionId, title);
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForChatSession(page, sessionId, title);
+  const streamNavigations = [];
+  const onStreamNavigation = (frame) => {
+    if (frame === page.mainFrame()) streamNavigations.push({ url: frame.url(), at: performance.now() });
+  };
+  page.on("framenavigated", onStreamNavigation);
   await page.evaluate(({ sampleMarker, expectedTokens }) => {
     const panel = document.querySelector('[data-testid="chat-panel"]');
     const samples = [];
     if (!panel) throw new Error("Chat panel missing for stream instrumentation");
+    // A diagnostic comparison only: authoritative samples still come from the
+    // original fixed-panel observer. Never use this series to rescue a failure.
+    const freshSamples = [];
+    const identity = [];
+    let previousPanel = panel;
+    let freshLastVisibleTokens = 0;
+    const freshCapture = () => {
+      const current = document.querySelector('[data-testid="chat-panel"]');
+      const text = current?.textContent ?? "";
+      let visibleTokens = 0;
+      for (let index = 1; index <= expectedTokens; index += 1) {
+        if (text.includes(`${sampleMarker} token ${index}.`)) visibleTokens += 1;
+      }
+      if (current !== previousPanel || visibleTokens > freshLastVisibleTokens) {
+        identity.push({ at: performance.now(), originalConnected: panel.isConnected,
+          currentIsOriginal: current === panel, currentConnected: current?.isConnected ?? false,
+          currentSession: current?.getAttribute("data-session-id") ?? null,
+          panelReplaced: current !== previousPanel, visibleTokens });
+      }
+      previousPanel = current;
+      if (visibleTokens <= freshLastVisibleTokens) return;
+      freshLastVisibleTokens = visibleTokens;
+      freshSamples.push({ at: performance.now(), visibleTokens,
+        visibleChars: Number(current.getAttribute("data-stream-visible-chars") || 0),
+        streaming: current.getAttribute("data-streaming") });
+    };
+    const freshObserver = new MutationObserver(freshCapture);
+    freshObserver.observe(document.body, { attributes: true,
+      attributeFilter: ["data-stream-visible-chars", "data-streaming", "data-session-id"],
+      childList: true, characterData: true, subtree: true });
     let lastVisibleTokens = 0;
     const capture = () => {
       const text = panel.textContent ?? "";
@@ -494,9 +539,30 @@ async function measureStream(page, apiBase, marker) {
       samples,
       observer,
       capture,
+      freshCapture,
+      freshObserver,
+      freshSamples,
+      identity,
+      nodeState: () => ({
+        originalConnected: panel.isConnected,
+        currentIsOriginal: document.querySelector('[data-testid="chat-panel"]') === panel,
+        originalSession: panel.getAttribute("data-session-id"),
+        currentSession: document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") ?? null,
+      }),
       marker: sampleMarker,
       expectedTokens,
+      timeOrigin: performance.timeOrigin,
     };
+    sessionStorage.removeItem("spark-stream-observation-archive");
+    window.addEventListener("pagehide", () => {
+      capture(); freshCapture();
+      const trace = window.__sparkStreamTrace;
+      sessionStorage.setItem("spark-stream-observation-archive", JSON.stringify({
+        timeOrigin: trace.timeOrigin, startedAt: trace.startedAt, expectedTokens,
+        samples, freshSamples, identity, originalConnected: panel.isConnected,
+        currentIsOriginal: document.querySelector('[data-testid="chat-panel"]') === panel,
+      }));
+    }, { once: true });
   }, { sampleMarker: marker, expectedTokens: streamTokenCount });
   await createStreamProbe(apiBase, sessionId, title, marker);
   await page.waitForFunction(({ sampleMarker, expectedTokens }) => {
@@ -505,10 +571,13 @@ async function measureStream(page, apiBase, marker) {
   }, { sampleMarker: marker, expectedTokens: streamTokenCount }, { timeout: 15_000 });
   await waitForTurnIdle(apiBase, sessionId);
   await page.waitForTimeout(150);
-  return page.evaluate(() => {
+  page.off("framenavigated", onStreamNavigation);
+  return page.evaluate((streamNavigations) => {
     const trace = window.__sparkStreamTrace;
     trace?.capture();
     trace?.observer.disconnect();
+    trace?.freshCapture();
+    trace?.freshObserver.disconnect();
     const samples = trace?.samples ?? [];
     const last = samples.at(-1)?.at ?? null;
     const elapsedMs = last == null || trace?.startedAt == null
@@ -517,6 +586,16 @@ async function measureStream(page, apiBase, marker) {
     const efficiency = window.__sparkWebEfficiency?.snapshot?.() ?? null;
     return {
       samples,
+      observationDiagnostic: { freshSamples: trace?.freshSamples, identity: trace?.identity,
+        tracePresent: Boolean(trace),
+        nodeState: trace?.nodeState(),
+        timeOrigin: performance.timeOrigin, traceTimeOrigin: trace?.timeOrigin,
+        streamNavigations, archived: JSON.parse(sessionStorage.getItem("spark-stream-observation-archive") || "null") },
+      startedAt: trace?.startedAt,
+      firstVisibleTokenMs: samples.length ? samples[0].at - trace.startedAt : null,
+      syntheticInitialDelayMs: 60,
+      firstVisibleMinusSyntheticDelayMs: samples.length ? samples[0].at - trace.startedAt - 60 : null,
+      maxVisibleUpdateGapMs: samples.length > 1 ? Math.max(...samples.slice(1).map((sample, index) => sample.at - samples[index].at)) : null,
       updateCount: samples.length,
       elapsedMs,
       updatesPerSecond: elapsedMs && elapsedMs > 0 ? samples.length / (elapsedMs / 1000) : null,
@@ -524,7 +603,7 @@ async function measureStream(page, apiBase, marker) {
       finalVisibleTokenCount: samples.at(-1)?.visibleTokens ?? 0,
       efficiency,
     };
-  });
+  }, streamNavigations);
 }
 
 async function captureCase({ browser, apiBase, webBase, screenshotRoot, size, viewport, theme }) {
@@ -537,16 +616,21 @@ async function captureCase({ browser, apiBase, webBase, screenshotRoot, size, vi
   await context.addInitScript(createBrowserInitScript(), { theme: theme.id });
   const page = await context.newPage();
   const historyRequests = [];
+  const historyResponses = [];
   const pageErrors = [];
   const consoleErrors = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.pathname.endsWith(`/api/sessions/${sessionId}/messages`)) {
       historyRequests.push({
+        at: performance.now(),
         limit: Number(url.searchParams.get("limit") || 0),
         beforeId: url.searchParams.get("before_id"),
       });
     }
+  });
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname.endsWith(`/api/sessions/${sessionId}/messages`)) historyResponses.push({ url: response.url(), status: response.status(), at: performance.now() });
   });
   page.on("pageerror", (error) => pageErrors.push(String(error)));
   page.on("console", (message) => {
@@ -606,9 +690,34 @@ async function captureCase({ browser, apiBase, webBase, screenshotRoot, size, vi
       performance: browserPerformance,
       scrollDrift,
       stream,
-      screenshot: screenshotRelativePath,
+      screenshot: options["output-dir"] ? screenshotPath : screenshotRelativePath,
       errors: { page: pageErrors, console: consoleErrors },
     };
+  } catch (error) {
+    const diagnostic = {
+      error: error.stack, historyRequests, historyResponses, pageErrors, consoleErrors,
+      url: page.url(),
+      state: await page.evaluate(() => ({
+        session: document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id"),
+        buttons: [...document.querySelectorAll("button")].filter((el) => /Load earlier|Loading/.test(el.textContent)).map((el) => ({ text: el.textContent, disabled: el.disabled })),
+        mountedRows: [...document.querySelectorAll("[data-row-id]")].map((el) => el.getAttribute("data-row-id")),
+        streamObservation: {
+          timeOrigin: performance.timeOrigin,
+          tracePresent: Boolean(window.__sparkStreamTrace),
+          traceTimeOrigin: window.__sparkStreamTrace?.timeOrigin,
+          samples: window.__sparkStreamTrace?.samples,
+          freshSamples: window.__sparkStreamTrace?.freshSamples,
+          identity: window.__sparkStreamTrace?.identity,
+          nodeState: window.__sparkStreamTrace?.nodeState(),
+          archived: JSON.parse(sessionStorage.getItem("spark-stream-observation-archive") || "null"),
+        },
+      })).catch(() => null),
+    };
+    await mkdir(screenshotRoot, { recursive: true });
+    const stem = `${theme.name}-${size}-w${viewport}-failure`;
+    await writeFile(path.join(screenshotRoot, `${stem}.json`), JSON.stringify(diagnostic, null, 2));
+    await page.screenshot({ path: path.join(screenshotRoot, `${stem}.png`) }).catch(() => {});
+    throw error;
   } finally {
     await context.close();
   }
@@ -648,6 +757,13 @@ async function validateCaseResult(result, stagedScreenshotRoot) {
     || !Number.isFinite(result.scrollDrift.driftPx)) {
     throw new Error(`${label} did not record a stable scroll-drift sample: ${JSON.stringify(result.scrollDrift)}`);
   }
+  const observation = result.stream.observationDiagnostic;
+  if (!observation.tracePresent) {
+    throw new Error(`${label} stream observation trace missing from current document; capture invalid (navigation/pagehide diagnostics retained, archived samples are not substituted)`);
+  }
+  if (observation.timeOrigin !== observation.traceTimeOrigin || observation.streamNavigations.length > 0) {
+    throw new Error(`${label} stream document changed during capture; continuity measurement invalid`);
+  }
   if (result.stream.updateCount <= 0
     || !Number.isFinite(result.stream.elapsedMs)
     || result.stream.elapsedMs <= 0
@@ -681,22 +797,28 @@ async function publishOutputs(stagedScreenshotRoot, stagedReportPath, reportName
   await rename(nextReports, reportsRoot);
 }
 
-async function run() {
-  const caseFilter = parseCaseFilter(process.env.SPARK_E2E_BASELINE_CASE);
+async function run(iteration) {
+  const caseFilter = parseCaseFilter(options.case);
   const apiPort = await freePort();
   const webPort = await freePort();
   const sparkHome = await mkdtemp(path.join(os.tmpdir(), "spark-thread-baseline-"));
-  const stagedOutputRoot = await mkdtemp(path.join(os.tmpdir(), "spark-thread-baseline-output-"));
+  const stagedOutputRoot = options["output-dir"]
+    ? path.resolve(options["output-dir"], `run-${String(iteration).padStart(2, "0")}`)
+    : await mkdtemp(path.join(os.tmpdir(), "spark-thread-baseline-output-"));
+  await mkdir(stagedOutputRoot, { recursive: true });
+  const cases = [];
+  let backendReadyMs;
   const stagedScreenshotRoot = path.join(stagedOutputRoot, "screenshots");
   const stagedBuildRoot = path.join(stagedOutputRoot, "web-build");
   await writeFile(
     path.join(sparkHome, "config.yaml"),
-    "model:\n  default: test-model\n  provider: ollama\n  base_url: http://localhost:11434/v1\n",
+    "model:\n  default: test-model\n  provider: ollama\n  base_url: http://127.0.0.1:1/v1\n",
   );
   seedFixtures(sparkHome);
 
   const apiBase = `http://127.0.0.1:${apiPort}`;
   const webBase = `http://127.0.0.1:${webPort}`;
+  const backendStartedAt = performance.now();
   const backend = startProcess(
     pythonBin,
     [
@@ -722,11 +844,11 @@ async function run() {
 
   let browser;
   try {
-    buildTemporaryWeb(stagedBuildRoot);
     await waitFor(`${apiBase}/api/status`);
+    backendReadyMs = performance.now() - backendStartedAt;
+    buildTemporaryWeb(stagedBuildRoot);
     await waitFor(webBase);
     browser = await chromium.launch({ headless: true });
-    const cases = [];
     for (const theme of themes) {
       for (const size of fixtureSizes) {
         for (const viewport of viewports) {
@@ -742,8 +864,8 @@ async function run() {
             viewport,
             theme,
           });
-          await validateCaseResult(result, stagedScreenshotRoot);
           cases.push(result);
+          await validateCaseResult(result, stagedScreenshotRoot);
         }
       }
     }
@@ -761,11 +883,16 @@ async function run() {
     const report = {
       schema: "spark.web.baseline.v1",
       capturedAt: new Date().toISOString(),
+      backendReadyMs,
+      mode: "dev",
+      iteration,
+      caseFilter: options.case ?? null,
       source: {
         commit,
         branch: spawnSync("git", ["branch", "--show-current"], { cwd: repoRoot, encoding: "utf8" }).stdout.trim(),
         browser: await browser.version(),
         node: process.version,
+        nodeExecutable: process.execPath,
       },
       fixtureSizes,
       viewports: viewports.map((width) => ({ width, height: viewportHeight, deviceScaleFactor: 1 })),
@@ -784,13 +911,16 @@ async function run() {
       ],
     };
     await writeFile(stagedReportPath, `${JSON.stringify(report, null, 2)}\n`);
-    if (caseFilter) {
-      process.stdout.write(`Validated ${cases.length} filtered baseline case(s); canonical outputs unchanged.\n`);
+    if (caseFilter || options["output-dir"]) {
+      process.stdout.write(`Validated ${cases.length} baseline case(s); report: ${stagedReportPath}; canonical outputs unchanged.\n`);
     } else {
       await publishOutputs(stagedScreenshotRoot, stagedReportPath, reportName);
       process.stdout.write(`Wrote ${path.relative(repoRoot, path.join(reportsRoot, reportName))}\n`);
     }
   } catch (error) {
+    await writeFile(path.join(stagedOutputRoot, "failure.json"), JSON.stringify({ iteration, error: error.stack, backendReadyMs, cases }, null, 2));
+    await writeFile(path.join(stagedOutputRoot, "backend.log"), backend.logs.join(""));
+    await writeFile(path.join(stagedOutputRoot, "vite.log"), vite.logs.join(""));
     console.error("\n--- baseline backend logs ---\n", backend.logs.join("").slice(-12_000));
     console.error("\n--- baseline vite logs ---\n", vite.logs.join("").slice(-12_000));
     throw error;
@@ -799,11 +929,14 @@ async function run() {
     await stopProcess(vite);
     await stopProcess(backend);
     if (!process.env.SPARK_E2E_KEEP_HOME) await rm(sparkHome, { recursive: true, force: true });
-    await rm(stagedOutputRoot, { recursive: true, force: true });
+    if (!options["output-dir"] && !process.env.SPARK_E2E_KEEP_OUTPUT) await rm(stagedOutputRoot, { recursive: true, force: true });
+    else process.stdout.write(`Retained evidence: ${stagedOutputRoot}\n`);
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+let failed = false;
+for (let iteration = 1; iteration <= repeat; iteration += 1) {
+  try { await run(iteration); }
+  catch (error) { console.error(error); failed = true; }
+}
+process.exitCode = failed ? 1 : 0;

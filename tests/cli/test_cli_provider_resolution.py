@@ -37,6 +37,15 @@ def _restore_cli_and_tool_modules():
     finally:
         _reset_modules(prefixes)
         sys.modules.update(original_modules)
+        # Importing a temporary core.cli also replaces core.cli on its parent
+        # package. Restoring only sys.modules leaves `import core.cli as cli`
+        # pointing at a different module than `from core.cli import SparkCLI`.
+        core = sys.modules.get("core")
+        if core is not None:
+            if "core.cli" in original_modules:
+                core.cli = original_modules["core.cli"]
+            else:
+                core.__dict__.pop("cli", None)
 
 
 def _install_prompt_toolkit_stubs():

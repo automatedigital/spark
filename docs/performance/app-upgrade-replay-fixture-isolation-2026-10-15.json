@@ -1,0 +1,204 @@
+{
+  "schema": "spark.app-upgrade.replay-fixture-isolation.v1",
+  "date": "2026-10-15",
+  "base_commit": "a45a6e4b67059dc5489baa5c905c7e44093ce538",
+  "scope": [
+    "tests/gateway/test_async_delegation_delivery.py",
+    "tests/run_agent/test_orchestration_replay.py",
+    "tests/run_agent/test_async_delegation.py"
+  ],
+  "source_sha256": {
+    "tests/gateway/test_async_delegation_delivery.py": "7a020c66082a84e33a1c63dc433a61feca4816389142fb22167cf517babdce20",
+    "tests/run_agent/test_orchestration_replay.py": "6b5912e9d53baf4565899cbc3efb000ae3053fdd8467eaa885f329cc0bd14a46",
+    "tests/run_agent/test_async_delegation.py": "85fa68c3510f285e15d443084ad2b73989ced25a8bcb89f6224e734f9d377b5c"
+  },
+  "application_source_changed": false,
+  "global_interrupt_registry_replaced": false,
+  "domain_methods_newly_mocked": false,
+  "external_provider_calls": 0,
+  "external_messages": 0,
+  "final_validation_outer_spark_home": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/collection-home",
+  "all_executing_tests_use_autouse_temporary_profile": true,
+  "all_owned_test_commands_exited": true,
+  "commands": [
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/config-before.txt",
+      "sha256": "82d77317e26c20ad81e4c639e967e0855d764cf07607d6d6f0fdee3135fd8fa9",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nPYTHONPATH=\"$PWD/src\" python -m pytest -q -n 0 -m 'not integration and not network' tests/cli/test_cli_init.py::TestMaxTurnsResolution::test_default_max_turns_is_integer 'tests/run_agent/test_orchestration_replay.py::test_two_http_children_finish_in_either_order_while_real_root_stays_busy[False-order0]'",
+      "exit_code": 1,
+      "result": "1 failed, 1 passed in 11.77s"
+    },
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/interrupt-before.txt",
+      "sha256": "0e5e84c13c8e549aa28198149f1bf800cf397558db59bb2147cfe65a7e9296be",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nPYTHONPATH=\"$PWD/src:/tmp/spark-upgrade-replay-fixture-isolation-20261015\" python -m pytest -q -n 0 -p interrupt_trace -m 'not integration and not network' tests/gateway/test_async_delegation_delivery.py::test_gateway_stop_of_idle_parent_cancels_its_background_children tests/tools/test_file_tools_live.py::TestLocalEnvironmentExecute::test_echo_exact_output",
+      "exit_code": 0,
+      "result": "2 passed in 12.73s; main-thread echo does not reuse gateway worker"
+    },
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/mixed-interrupt-before.txt",
+      "sha256": "2c12c249f9528c35192e1f385a5dcb1966af481e6ab666e6613ac30f857d8e67",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nPYTHONPATH=\"$PWD/src:/tmp/spark-upgrade-replay-fixture-isolation-20261015\" python -m pytest -q -n 0 -p interrupt_trace -m 'not integration and not network' tests/cli/ tests/gateway/test_async_delegation_delivery.py tests/run_agent/test_async_delegation.py::test_cancel_one_child_preserves_sibling_and_duplicate_acceptance tests/tools/test_file_tools_live.py::TestLocalEnvironmentExecute::test_echo_exact_output",
+      "exit_code": 3,
+      "result": "collection aborted: Spark CLI interpreted pytest -p interrupt_trace as a profile; no tests ran in 2.61s"
+    },
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/mixed-interrupt-before-env-plugin.txt",
+      "sha256": "d78592c891e54d1590ec185fd9243e14690f4aab0bede59cadfc17f913fafae2",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nPYTHONPATH=\"$PWD/src:/tmp/spark-upgrade-replay-fixture-isolation-20261015\" PYTEST_PLUGINS=interrupt_trace python -m pytest -q -n 0 -m 'not integration and not network' tests/cli/ tests/gateway/test_async_delegation_delivery.py tests/run_agent/test_async_delegation.py::test_cancel_one_child_preserves_sibling_and_duplicate_acceptance tests/tools/test_file_tools_live.py::TestLocalEnvironmentExecute::test_echo_exact_output",
+      "exit_code": 0,
+      "result": "471 passed, 1 warning in 142.51s"
+    },
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/full-collection-pair-before.txt",
+      "sha256": "a41a12a6a1bcf61ce768dcdfdbf9bf72e55660d7187bdf62b32c32f6aee044cb",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nPYTHONPATH=\"$PWD/src:/tmp/spark-upgrade-replay-fixture-isolation-20261015\" PYTEST_PLUGINS=interrupt_trace python -m pytest tests/ -q -n 0 -m 'not integration and not network' -k 'test_cancel_one_child_preserves_sibling_and_duplicate_acceptance or test_echo_exact_output'",
+      "exit_code": 0,
+      "result": "2 passed, 15 skipped, 12793 deselected, 1 warning in 30.41s; only two tests executed"
+    },
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/worker-reuse-before.txt",
+      "sha256": "6908e4bc45322c96c6af75c4a3458a473874fa1c6a18a8da1183e7d2a26696f1",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nPYTHONPATH=\"$PWD/src:/tmp/spark-upgrade-replay-fixture-isolation-20261015\" PYTEST_PLUGINS=worker_probe python -m pytest -q -n 0 -m 'not integration and not network' tests/gateway/test_async_delegation_delivery.py::test_gateway_stop_of_idle_parent_cancels_its_background_children",
+      "exit_code": 1,
+      "result": "1 passed, 1 warning, 1 teardown error in 11.60s; real same-worker echo returned 130"
+    },
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/repros-after.txt",
+      "sha256": "a403d8a6c55ea23f0e242e544951275f7cc2eef1d72a31224136c95c9efb6e4f",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nSPARK_HOME=/tmp/spark-upgrade-replay-fixture-isolation-20261015/collection-home PYTHONPATH=\"$PWD/src:/tmp/spark-upgrade-replay-fixture-isolation-20261015\" PYTEST_PLUGINS=worker_probe python -m pytest -q -n 0 -m 'not integration and not network' tests/cli/test_cli_init.py::TestMaxTurnsResolution::test_default_max_turns_is_integer tests/gateway/test_async_delegation_delivery.py::test_gateway_stop_of_idle_parent_cancels_its_background_children 'tests/run_agent/test_orchestration_replay.py::test_two_http_children_finish_in_either_order_while_real_root_stays_busy[False-order0]' tests/run_agent/test_async_delegation.py::test_cancel_one_child_preserves_sibling_and_duplicate_acceptance tests/tools/test_file_tools_live.py::TestLocalEnvironmentExecute::test_echo_exact_output",
+      "exit_code": 0,
+      "result": "5 passed in 13.75s; post-finalizer same-worker echo returned 0"
+    },
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/combined-after.txt",
+      "sha256": "459d07b1b46543eb1acd79e9c2490d83a15d2ad898b1aedeef5ab7a772e744c9",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nSPARK_HOME=/tmp/spark-upgrade-replay-fixture-isolation-20261015/collection-home PYTHONPATH=\"$PWD/src\" python -m pytest -q -n 0 -m 'not integration and not network' tests/cli/ tests/gateway/test_async_delegation_delivery.py tests/run_agent/test_orchestration_replay.py tests/run_agent/test_async_delegation.py tests/tools/test_file_sync_perf.py::TestLocalPerf tests/tools/test_file_tools_live.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_model_tools_lazy_imports.py tests/test_minimal_startup.py",
+      "exit_code": 0,
+      "result": "574 passed, 2 warnings in 203.22s (0:03:23)"
+    },
+    {
+      "log": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/ruff-ci.txt",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+      "exit_code": 0,
+      "result": "All checks passed!"
+    }
+  ],
+  "worker_reuse": {
+    "before": {
+      "thread": 6194507776,
+      "result": {
+        "output": "\n[Command interrupted]",
+        "returncode": 130
+      },
+      "parent_threads": [
+        6194507776
+      ],
+      "same_worker": true
+    },
+    "after": {
+      "thread": 6132690944,
+      "result": {
+        "output": "fixture-cleanup\n",
+        "returncode": 0
+      },
+      "parent_threads": [
+        6132690944
+      ],
+      "same_worker": true
+    }
+  },
+  "trace_findings": {
+    "gateway_finalizer_sets_interrupt_on_completed_parent_worker": true,
+    "retained_interrupt_module_alias_observed": false,
+    "main_thread_broad_failure_schedule_reproduced": false
+  },
+  "original_broad_result": {
+    "failed": 62,
+    "passed": 12559,
+    "skipped": 151,
+    "seconds": 555.54,
+    "log": "/tmp/spark-upgrade-20261015/full-local-pytest-caller-policy.txt",
+    "sha256": "cd1a5f03d8f43bf97968a731cc1e763a949e9e850818bc8a0346fbee0ef8c82b"
+  },
+  "broad_acceptance": "pending root full suite after integration; not rerun in this worktree",
+  "raw_artifacts": [
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/combined-after.txt",
+      "sha256": "459d07b1b46543eb1acd79e9c2490d83a15d2ad898b1aedeef5ab7a772e744c9"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/config-before.txt",
+      "sha256": "82d77317e26c20ad81e4c639e967e0855d764cf07607d6d6f0fdee3135fd8fa9"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/full-collection-pair-before.txt",
+      "sha256": "a41a12a6a1bcf61ce768dcdfdbf9bf72e55660d7187bdf62b32c32f6aee044cb"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/full-collection-pair-trace.jsonl",
+      "sha256": "9749b5beb1256546c341d436e53a60d10c92fa69d31d9a09be90021847621db3"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/gateway-idle-trace.jsonl",
+      "sha256": "126aadc55f5cb113c0715b5b1061ff086469c944df71baae04352044a1d10d87"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/interrupt-before.txt",
+      "sha256": "0e5e84c13c8e549aa28198149f1bf800cf397558db59bb2147cfe65a7e9296be"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/interrupt-trace.jsonl",
+      "sha256": "9749b5beb1256546c341d436e53a60d10c92fa69d31d9a09be90021847621db3"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/interrupt_trace.py",
+      "sha256": "789699be057cc7239c14464ab4776ff3200e70c1aad67292ea90fe2063a29375"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/mixed-cli-gateway-trace.jsonl",
+      "sha256": "0332a999b0bc0afc1e84d1ca9af72736159508db2c58319f74a20d0c7ac2bd40"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/mixed-interrupt-before-env-plugin.txt",
+      "sha256": "d78592c891e54d1590ec185fd9243e14690f4aab0bede59cadfc17f913fafae2"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/mixed-interrupt-before.txt",
+      "sha256": "2c12c249f9528c35192e1f385a5dcb1966af481e6ab666e6613ac30f857d8e67"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/repros-after.txt",
+      "sha256": "a403d8a6c55ea23f0e242e544951275f7cc2eef1d72a31224136c95c9efb6e4f"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/ruff-ci.txt",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/worker-probe-after.json",
+      "sha256": "ba8a7c652d89c11192fe8120e91ac6cd291d140cb3d59662e7061964d7441000"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/worker-probe-before.json",
+      "sha256": "8fac4c61e07e7749ceb1108807f56f2acdf2ca8d617dd66cad154ab114e856cd"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/worker-probe-result.json",
+      "sha256": "ba8a7c652d89c11192fe8120e91ac6cd291d140cb3d59662e7061964d7441000"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/worker-reuse-before.txt",
+      "sha256": "6908e4bc45322c96c6af75c4a3458a473874fa1c6a18a8da1183e7d2a26696f1"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/worker_probe.py",
+      "sha256": "6993f9371245e28179aaf82a16e01df3cc41e60bb67973ba24d394945ed9f752"
+    },
+    {
+      "path": "/tmp/spark-upgrade-replay-fixture-isolation-20261015/write_evidence.py",
+      "sha256": "94e85bb7273ab25bf5fa3b6d45efad0e86147b71f2dfd0667ad9a9a3b8c6f199"
+    }
+  ]
+}

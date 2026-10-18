@@ -12,6 +12,16 @@ export const GLOBAL_NAV_TARGET_KEY = "spark-global-nav-target";
 export const GLOBAL_NAV_EVENT = "spark-global-nav";
 type GlobalNavTargetFor<T extends GlobalNavTarget["type"]> = Extract<GlobalNavTarget, { type: T }>;
 
+export function pageForGlobalNavTarget(target: GlobalNavTarget) {
+  switch (target.type) {
+    case "file": return "files";
+    case "task": return "kanban";
+    case "scheduled-task": return "cron";
+    case "skill": return "skills";
+    default: return "chat";
+  }
+}
+
 export function setGlobalNavTarget(target: GlobalNavTarget): void {
   localStorage.setItem(GLOBAL_NAV_TARGET_KEY, JSON.stringify(target));
   window.dispatchEvent(new CustomEvent<GlobalNavTarget>(GLOBAL_NAV_EVENT, { detail: target }));

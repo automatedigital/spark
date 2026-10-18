@@ -280,7 +280,7 @@ async def test_stop_hard_kills_running_agent():
     result = await runner._handle_message(stop_event)
 
     # Agent must have been interrupted
-    fake_agent.interrupt.assert_called_once_with("Stop requested")
+    fake_agent.interrupt.assert_called_once_with()
 
     # Session must be unlocked
     assert session_key not in runner._running_agents, (
@@ -290,6 +290,25 @@ async def test_stop_hard_kills_running_agent():
     # Must return a confirmation
     assert result is not None
     assert "stopped" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_normal_stop_dispatch_does_not_supply_replacement_user_input():
+    """The fallback command path follows the same no-inference Stop policy."""
+    runner = _make_runner()
+    event = _make_event(text="/stop")
+    key = runner._session_key_for_source(event.source)
+    runner.session_store.get_or_create_session.return_value.session_key = key
+    parent = MagicMock()
+    runner._running_agents[key] = parent
+    runner._running_agents_ts[key] = 1.0
+
+    result = await runner._handle_stop_command(event)
+
+    parent.interrupt.assert_called_once_with()
+    assert key not in runner._running_agents
+    assert key not in runner._running_agents_ts
+    assert "Stopped" in result
 
 
 # ------------------------------------------------------------------

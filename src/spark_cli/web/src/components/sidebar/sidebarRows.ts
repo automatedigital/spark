@@ -1,4 +1,6 @@
 import type { SessionInfo, WorkspaceProject } from "@/lib/api";
+import { isEffectivelySettled, orderSidebarSessions, type SidebarEntries } from "@/lib/sidebarOrganization";
+import type { SidebarAttention } from "@/lib/api_sidebar";
 import { slugFromSource } from "@/lib/sessionStore";
 
 export type SidebarRow =
@@ -10,6 +12,7 @@ export type SidebarRow =
   | { key: "projects:empty"; kind: "projects-empty" }
   | { key: "search:empty"; kind: "search-empty"; query: string }
   | { key: "chats:header"; kind: "chats-header" }
+  | { key: "settled:header"; kind: "settled-header" }
   | { key: "chats:empty"; kind: "chats-empty" }
   | { key: "sessions:loading"; kind: "loading" }
   | { key: "sessions:more"; kind: "load-more" }
@@ -18,12 +21,14 @@ export type SidebarRow =
       key: string;
       kind: "session";
       session: SessionInfo;
-      placement: "pinned" | "project" | "chats";
+      placement: "pinned" | "project" | "chats" | "settled";
       indent: boolean;
       pinned: boolean;
     };
 
 export interface BuildSidebarRowsOptions {
+  metadata?: SidebarEntries;
+  attention?: Record<string, SidebarAttention>;
   projects: WorkspaceProject[];
   sessions: SessionInfo[];
   pinnedIds: Set<string>;
@@ -58,7 +63,7 @@ export function sortSessionsNewestFirst(sessions: SessionInfo[]): SessionInfo[] 
 export function buildSidebarRows(options: BuildSidebarRowsOptions): SidebarRow[] {
   const {
     projects,
-    sessions,
+    sessions: allSessions,
     pinnedIds,
     expandedProjects,
     collapsedSections,
@@ -70,6 +75,10 @@ export function buildSidebarRows(options: BuildSidebarRowsOptions): SidebarRow[]
     loadError,
     dragging,
   } = options;
+  const metadata = options.metadata ?? {};
+  const attention = options.attention ?? {};
+  const settled = orderSidebarSessions(allSessions.filter((s) => isEffectivelySettled(s, metadata, attention[s.id])), metadata);
+  const sessions = orderSidebarSessions(allSessions.filter((s) => !isEffectivelySettled(s, metadata, attention[s.id])), metadata);
   const rows: SidebarRow[] = [{ key: "pinned:header", kind: "pinned-header" }];
   const pinned = sessions.filter((session) => pinnedIds.has(session.id));
   if (pinned.length === 0) {
@@ -99,7 +108,7 @@ export function buildSidebarRows(options: BuildSidebarRowsOptions): SidebarRow[]
     bySlug.set(slug, projectSessions);
   });
 
-  if (!collapsedSections.has("sessions")) {
+  if (!collapsedSections.has("sessions") || sessions.some((s) => attention[s.id]?.pending_decision)) {
     projects.forEach((project) => {
       const projectSessions = bySlug.get(project.slug) ?? [];
       rows.push({
@@ -108,7 +117,7 @@ export function buildSidebarRows(options: BuildSidebarRowsOptions): SidebarRow[]
         project,
         sessionCount: projectSessions.length,
       });
-      if (expandedProjects.has(project.slug) || searchResultsActive) {
+      if (expandedProjects.has(project.slug) || searchResultsActive || projectSessions.some((s) => attention[s.id]?.pending_decision)) {
         if (projectSessions.length === 0) {
           rows.push({
             key: `project-empty:${project.slug}` as const,
@@ -137,7 +146,7 @@ export function buildSidebarRows(options: BuildSidebarRowsOptions): SidebarRow[]
 
   if (ungrouped.length > 0 || dragging) {
     rows.push({ key: "chats:header", kind: "chats-header" });
-    if (!collapsedSections.has("chats")) {
+    if (!collapsedSections.has("chats") || ungrouped.some((s) => attention[s.id]?.pending_decision)) {
       if (ungrouped.length === 0) {
         rows.push({ key: "chats:empty", kind: "chats-empty" });
       } else {
@@ -153,6 +162,12 @@ export function buildSidebarRows(options: BuildSidebarRowsOptions): SidebarRow[]
     }
   }
 
+  if (settled.length > 0) {
+    rows.push({ key: "settled:header", kind: "settled-header" });
+    if (!collapsedSections.has("settled") || searchResultsActive) settled.forEach((session) => rows.push({
+      key: `settled:${session.id}`, kind: "session", session, placement: "settled", indent: false, pinned: pinnedIds.has(session.id),
+    }));
+  }
   if (!searchResultsActive) {
     if (loadError) rows.push({ key: "sessions:error", kind: "load-error", message: loadError });
     if (loadingMore) rows.push({ key: "sessions:loading", kind: "loading" });
@@ -163,6 +178,7 @@ export function buildSidebarRows(options: BuildSidebarRowsOptions): SidebarRow[]
 
 export function estimateSidebarRowHeight(row: SidebarRow): number {
   switch (row.kind) {
+    case "settled-header":
     case "pinned-header":
     case "projects-header":
     case "chats-header":

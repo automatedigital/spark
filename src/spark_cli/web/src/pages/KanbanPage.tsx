@@ -128,6 +128,7 @@ export default function KanbanPage() {
   const [tenant] = useState("");
   const [assignee] = useState("");
   const [board, setBoard] = useState<KanbanBoardResponse | null>(null);
+  const [boardSlug, setBoardSlug] = useState(DEFAULT_BOARD);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -150,23 +151,25 @@ export default function KanbanPage() {
   const [uploadingNew, setUploadingNew] = useState(false);
   const taskFileInputRef = useRef<HTMLInputElement>(null);
   const newFileInputRef = useRef<HTMLInputElement>(null);
+  const boardRequest = useRef(0);
 
   const loadBoard = useCallback(async () => {
+    const request = ++boardRequest.current;
     setErr(null);
     try {
       const b = await api.getKanbanBoard({
-        board: DEFAULT_BOARD,
+        board: boardSlug,
         tenant: tenant || null,
         assignee: assignee || null,
         q: search || null,
       });
-      setBoard(b);
+      if (request === boardRequest.current) setBoard(b);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      if (request === boardRequest.current) setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (request === boardRequest.current) setLoading(false);
     }
-  }, [tenant, assignee, search]);
+  }, [boardSlug, tenant, assignee, search]);
 
   const loadBoardRef = useRef(loadBoard);
   const selectedIdRef = useRef(selectedId);
@@ -221,6 +224,7 @@ export default function KanbanPage() {
     setSelectedId(id);
     try {
       const d = await api.getKanbanTask(id);
+      setBoardSlug(d.board_slug || DEFAULT_BOARD);
       setDetail(d);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -233,7 +237,10 @@ export default function KanbanPage() {
 
     const handler = (event: Event) => {
       const target = (event as CustomEvent<GlobalNavTarget>).detail;
-      if (target?.type === "task") void openTask(target.id);
+      if (target?.type === "task") {
+        takeGlobalNavTarget("task");
+        void openTask(target.id);
+      }
     };
     window.addEventListener(GLOBAL_NAV_EVENT, handler);
     return () => window.removeEventListener(GLOBAL_NAV_EVENT, handler);
@@ -305,7 +312,7 @@ export default function KanbanPage() {
       const selectedProject = workspaceProjects.find((p) => p.slug === newWorkspaceSlug);
       await api.createKanbanTask({
         title: newTitle.trim(),
-        board: DEFAULT_BOARD,
+        board: boardSlug,
         body: newBody,
         assignee: newAssignee.trim() || null,
         tenant: newTenant.trim() || null,
@@ -338,7 +345,7 @@ export default function KanbanPage() {
     try {
       await api.createKanbanTask({
         title: `Copy of ${detail.title}`,
-        board: DEFAULT_BOARD,
+        board: boardSlug,
         body: detail.body ?? "",
         assignee: detail.assignee,
         tenant: detail.tenant,
@@ -712,6 +719,7 @@ export default function KanbanPage() {
           <div className="flex-1 overflow-y-auto p-4 text-sm space-y-4">
             <div className="opacity-80 text-xs">
               <div>ID: {detail.id}</div>
+              <div>Board: {detail.board_slug || DEFAULT_BOARD}</div>
               <div>Status: {colLabel(detail.status)}</div>
               <div>Worker: {String(detail.assignee ?? "—")}</div>
               <div>Priority: {String(detail.priority ?? 0)}</div>

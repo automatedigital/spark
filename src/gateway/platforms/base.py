@@ -817,6 +817,7 @@ class BasePlatformAdapter(ABC):
         # Chats where typing indicator is paused (e.g. during approval waits).
         # _keep_typing skips send_typing when the chat_id is in this set.
         self._typing_paused: set = set()
+        self._approval_authorizer: Callable[[SessionSource], bool] | None = None
 
     @property
     def has_fatal_error(self) -> bool:
@@ -933,6 +934,38 @@ class BasePlatformAdapter(ABC):
     def set_busy_session_handler(self, handler: Callable[[MessageEvent, str], Awaitable[bool]] | None) -> None:
         """Set an optional handler for messages arriving during active sessions."""
         self._busy_session_handler = handler
+
+    def set_approval_authorizer(self, authorizer: Callable[[SessionSource], bool]) -> None:
+        """Reuse the runner's inbound caller policy for interactive decisions."""
+        self._approval_authorizer = authorizer
+
+    def approval_source(self, chat_id: str, metadata: dict | None, source: SessionSource | None) -> SessionSource:
+        """Retain trusted prompt routing, including group and thread context."""
+        from dataclasses import replace
+
+        if source is not None:
+            return replace(source, thread_id=(metadata or {}).get("thread_id") or source.thread_id)
+        return self.build_source(
+            chat_id=chat_id, chat_type="group",
+            thread_id=(metadata or {}).get("thread_id"),
+        )
+
+    def is_approval_authorized(
+        self, source: SessionSource | None, user_id: str, chat_id: str,
+        thread_id: str | None = None, direct_messages_topic_id: str | None = None,
+    ) -> bool:
+        """Authorize before consuming state; absent caller/routing/policy fails closed."""
+        from dataclasses import replace
+
+        if not source or not user_id or not chat_id or not self._approval_authorizer:
+            return False
+        if source.platform != self.platform or str(source.chat_id) != str(chat_id):
+            return False
+        if source.thread_id and str(source.thread_id) != str(thread_id or ""):
+            return False
+        if source.direct_messages_topic_id and str(source.direct_messages_topic_id) != str(direct_messages_topic_id or ""):
+            return False
+        return self._approval_authorizer(replace(source, user_id=user_id, user_id_alt=None))
 
     def set_session_store(self, session_store: Any) -> None:
         """

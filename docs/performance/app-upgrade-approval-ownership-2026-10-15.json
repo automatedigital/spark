@@ -1,0 +1,435 @@
+{
+  "schema": "spark.approval-ownership-evidence.v1",
+  "date": "2026-10-15",
+  "packets": [
+    "P03",
+    "P09"
+  ],
+  "base_commit": "3097f32b",
+  "root_window_clear_utc": "18:57",
+  "validation_status": "telegram_private_topic_followup_focused_passed_root_acceptance_pending",
+  "sequential_parent_followup": {
+    "base_commit": "873573b0",
+    "parent_finding": "Ordinary next parent registration cancels earlier legitimate background child authorization",
+    "production_source_modified": true,
+    "status": "31_focused_passed_all_commands_exited_before_any_broad_neighbor_batch",
+    "repair": "Keep all live generations in weak session owner sets; revoke active overlapped owner only on registration; whole-session Stop revokes all generations; bound callback identity gates enqueue and pending submission",
+    "weak_owner_index_gc": {
+      "sessions": 16,
+      "generations_per_session": 3,
+      "contexts_released": 48,
+      "expected_remaining_session_entries": 0,
+      "observed_remaining_session_entries": 0,
+      "result": "passed; all 48 weak owner references released after contexts dropped and GC"
+    },
+    "checks": [
+      {
+        "id": "sequential_before_test_assumption",
+        "command": "PYTHONPATH=$PWD/src python -m pytest 'tests/gateway/test_approval_ownership.py::test_async_child_guards_survive_sequential_parent_turns_and_deliver_once[continue]' -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "1 failed in 11.69s",
+        "reason": "Overstrict fixture assumption that sequential roots must reuse the same AIAgent; corrected to track both actual agents sharing the durable session",
+        "production_source": "unchanged 873573b0"
+      },
+      {
+        "id": "sequential_before_intended_proof",
+        "command": "PYTHONPATH=$PWD/src python -m pytest 'tests/gateway/test_approval_ownership.py::test_async_child_guards_survive_sequential_parent_turns_and_deliver_once[continue]' -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "1 failed in 11.35s",
+        "reason": "Earlier child safe guard cancelled after next ordinary parent turn; latest child safe guard approved",
+        "production_source": "unchanged 873573b0"
+      },
+      {
+        "id": "sequential_focused",
+        "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+        "result": "31 passed in 105.11s",
+        "durations_seconds": {
+          "sequential_continue": 20.82,
+          "sequential_stop": 20.74,
+          "earlier_child_with_active_next_turn_responder": 10.62
+        }
+      },
+      {
+        "id": "followup_lint_initial",
+        "command": "ruff check src/tools/approval.py tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py",
+        "result": "exit 1; one I001 import-order violation in tests/gateway/test_approval_ownership.py"
+      },
+      {
+        "id": "followup_import_fix",
+        "command": "ruff check tests/gateway/test_approval_ownership.py --fix",
+        "result": "Found 1 error (1 fixed, 0 remaining)."
+      },
+      {
+        "id": "followup_lint_final",
+        "command": "ruff check src/tools/approval.py tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "followup_whitespace",
+        "command": "git diff --check",
+        "result": "exit 0"
+      }
+    ]
+  },
+  "environment": {
+    "venv": "/Users/joe/Developer/github/spark/.venv",
+    "pythonpath": "$PWD/src",
+    "spark_home": "Fresh mktemp directory before collection; tests also isolate each profile",
+    "integration": false,
+    "pytest_workers": 0,
+    "performance_claim": false
+  },
+  "independent_before": {
+    "test": "/tmp/spark-gateway-ownership-review/test_approval_overlap.py",
+    "output": "/tmp/spark-gateway-ownership-review/repro-output.txt",
+    "result": "1 passed in 11.21s; assertions establish the bug",
+    "production_modified": false,
+    "replacement_after_old_exit": {
+      "callback_present": false,
+      "blocking_approval": false,
+      "approved": false,
+      "message": "BLOCKED: Command denied by user. Do NOT retry this command."
+    }
+  },
+  "checks": [
+    {
+      "id": "initial_ownership",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "18 passed in 44.13s",
+      "phase": "interim source, superseded by lifetime repair"
+    },
+    {
+      "id": "parent_review_regression",
+      "command": "PYTHONPATH=$PWD/src python -m pytest 'tests/gateway/test_approval_ownership.py::test_async_child_guard_after_normal_parent_completion[normal]' -q -n 0 -m 'not integration' --tb=short",
+      "result": "1 failed in 7.25s",
+      "reason": "Confirmed interim repair cancelled safe async-child guards after normal parent completion"
+    },
+    {
+      "id": "lifetime_repair",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "24 passed in 64.82s"
+    },
+    {
+      "id": "initial_mixed_neighbors",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval.py tests/tools/test_command_guards.py tests/tools/test_yolo_mode.py tests/tools/test_delegate.py tests/tools/test_delegate_toolset_scope.py tests/tools/test_code_execution.py tests/cli/test_cli_approval_ui.py tests/gateway/test_approve_deny_commands.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_stop_ownership.py tests/gateway/test_session_race_guard.py tests/gateway/test_async_delegation_delivery.py tests/gateway/test_agent_cache.py tests/gateway/test_restart_drain.py tests/gateway/test_session_reset_notify.py tests/gateway/test_transcript_offset.py tests/gateway/test_gateway_inactivity_timeout.py tests/gateway/test_flush_memory_stale_guard.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "9 failed, 459 passed in 307.53s",
+      "reason": "CLI collection populated CLI_CONFIG with defaults; real delegate loader returned Async execution is disabled"
+    },
+    {
+      "id": "baseline_order_reproduction",
+      "setup": "baseline_dir=$(mktemp -d /tmp/spark-approval-base.XXXXXX)\ngit archive 3097f32b src | tar -x -C \"$baseline_dir\"\nvalidation_home=$(mktemp -d /tmp/spark-approval-base-home.XXXXXX)",
+      "command": "SPARK_HOME=\"$validation_home\" PYTHONPATH=\"$baseline_dir/src\" python -m pytest tests/cli/test_cli_approval_ui.py 'tests/gateway/test_async_delegation_delivery.py::test_gateway_busy_chat_switch_idle_then_explicit_delivery_once[order0]' -q -n 0 -m 'not integration' --tb=short --durations=3",
+      "result": "1 failed, 5 passed in 11.44s",
+      "production_source": "archived unchanged 3097f32b"
+    },
+    {
+      "id": "mixed_fixture_repair",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/cli/test_cli_approval_ui.py 'tests/gateway/test_async_delegation_delivery.py::test_gateway_busy_chat_switch_idle_then_explicit_delivery_once[order0]' tests/gateway/test_approval_ownership.py::test_async_child_guard_after_normal_parent_completion -q -n 0 -m 'not integration' --tb=short --durations=5",
+      "result": "9 passed in 44.75s"
+    },
+    {
+      "id": "tools_cli_platform_neighbors",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval.py tests/tools/test_command_guards.py tests/tools/test_yolo_mode.py tests/tools/test_delegate.py tests/tools/test_delegate_toolset_scope.py tests/tools/test_code_execution.py tests/cli/test_cli_approval_ui.py tests/gateway/test_approve_deny_commands.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_slack_approval_buttons.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "376 passed in 132.78s",
+      "phase": "lifetime repair, before final session-only binding compatibility adjustment"
+    },
+    {
+      "id": "gateway_runtime_neighbors",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_stop_ownership.py tests/gateway/test_async_delegation_delivery.py tests/gateway/test_agent_cache.py tests/gateway/test_session_race_guard.py tests/gateway/test_restart_drain.py tests/gateway/test_session_reset_notify.py tests/gateway/test_transcript_offset.py tests/gateway/test_gateway_inactivity_timeout.py tests/gateway/test_flush_memory_stale_guard.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "result": "92 passed in 213.01s",
+      "phase": "lifetime repair, before final session-only binding compatibility adjustment"
+    },
+    {
+      "id": "focused_web",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/spark_cli/test_web_server_events.py -k 'approval or requested_input' -q -n 0 -m 'not integration' --tb=short --durations=5",
+      "result": "6 passed, 105 deselected in 3.00s"
+    },
+    {
+      "id": "final_approval_web",
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py tests/tools/test_approval.py tests/tools/test_command_guards.py tests/tools/test_yolo_mode.py tests/gateway/test_approve_deny_commands.py tests/spark_cli/test_web_server_events.py -k 'not requested_input or requested_input' -q -n 0 -m 'not integration' --tb=short --durations=8",
+      "selection_note": "The -k expression is a tautology and selected every test in the listed files",
+      "result": "312 passed in 113.35s; includes all 25 new ownership/lifetime/compatibility cases"
+    },
+    {
+      "id": "tests_lint",
+      "command": "ruff check tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py tests/gateway/test_async_delegation_delivery.py",
+      "result": "All checks passed!"
+    },
+    {
+      "id": "ci_selected_source_lint",
+      "command": "ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+      "result": "All checks passed!"
+    },
+    {
+      "id": "manifest",
+      "command": "PYTHONPATH=$PWD/src python scripts/generate_tool_manifest.py --check",
+      "result": "Tool manifest valid: 70 tools across 28 isolated modules; 4 optional guards"
+    },
+    {
+      "id": "full_source_lint",
+      "command": "ruff check src/ --output-format concise",
+      "result": "exit 1; 299 baseline violations; 15 in touched source"
+    },
+    {
+      "id": "baseline_gateway_lint",
+      "command": "git show 3097f32b:src/gateway/run.py | ruff check --stdin-filename src/gateway/run.py - --output-format concise",
+      "result": "exit 1; 14 baseline E402/E702 violations match touched gateway source"
+    },
+    {
+      "id": "baseline_delegate_lint",
+      "command": "git show 3097f32b:src/tools/delegate_tool.py | ruff check --stdin-filename src/tools/delegate_tool.py - --output-format concise",
+      "result": "exit 1; one baseline E402 violation matches touched delegate source"
+    },
+    {
+      "id": "whitespace",
+      "command": "git diff --check",
+      "result": "exit 0"
+    }
+  ],
+  "limits": [
+    "No dangerous command executed; safe pwd guards have no shell effect",
+    "Local RPC regression runs harmless Python with synthetic dispatch to real guard",
+    "No live messaging network/authentication or remote sandbox",
+    "No browser, build, install, push, PR or release command; focused Node22 Web helper test recorded separately",
+    "Root owns canonical mypy, CI, full suite and P03/P09 acceptance",
+    "Already-running hooks and callback sends remain cooperative"
+  ],
+  "transport_identity_followup": {
+    "base_commit": "d044b79a",
+    "scope": [
+      "src/tools/approval.py",
+      "narrow gateway notification forwarding",
+      "Slack/Telegram/Discord/Feishu approval send/click paths",
+      "Web submission helper and both ChatPanel button paths",
+      "focused tests and this evidence"
+    ],
+    "baseline": {
+      "command": "PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_approval_button_ownership.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+      "result": "1 failed in 6.12s",
+      "production_source": "unchanged d044b79a",
+      "assertion": "A's stale button resolved B's different command",
+      "proof": {
+        "old_prompt_label": "✅ Approved once by synthetic owner",
+        "replacement_decision": {
+          "approved": true,
+          "description": "world/other-writable permissions",
+          "message": null,
+          "user_approved": true
+        },
+        "replacement_still_waiting": false
+      },
+      "boundary": "Real runner/AIAgent/guard and actual Slack sender/click methods; local Telegram-source fixture bridges notification arguments; local SDK sends and synthetic HTTP only; Internet sockets forbidden; no dangerous command execution",
+      "reported_before_broad_neighbors": true
+    },
+    "repair": "UUID per-entry action identity forwarded by actual gateway; exact-ID resolution for all four transports before UI decision labels; explicit empty/unknown IDs never use FIFO; owner lifetimes unchanged; both Web button paths reject missing IDs while backend legacy API remains current-queue",
+    "checks": [
+      {
+        "id": "transport_focused",
+        "command": "PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_approval_button_ownership.py tests/gateway/test_approval_button_ids.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py -q -n 0 -m 'not integration' --tb=short --durations=6",
+        "result": "58 passed in 11.84s"
+      },
+      {
+        "id": "node_version",
+        "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node --version",
+        "result": "v22.22.1"
+      },
+      {
+        "id": "web_helper",
+        "setup": "frontend_check_dir=$(mktemp -d /tmp/spark-approval-web.XXXXXX)\ncat > \"$frontend_check_dir/vitest.config.mjs\" <<'EOF'\nexport default {\n  root: '/Users/joe/.t3/worktrees/spark/t3-8fdb9cde/src/spark_cli/web',\n  cacheDir: process.env.SPARK_APPROVAL_TEST_CACHE,\n  resolve: { alias: { vitest: '/Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/vitest/dist/index.js' } },\n  test: { environment: 'node', include: ['src/lib/chatApproval.test.ts'] },\n};\nEOF",
+        "command": "SPARK_APPROVAL_TEST_CACHE=\"$frontend_check_dir/cache\" /Users/joe/.nvm/versions/node/v22.22.1/bin/node /Users/joe/Developer/github/spark/src/spark_cli/web/node_modules/vitest/vitest.mjs run --config \"$frontend_check_dir/vitest.config.mjs\"",
+        "result": "5 passed; Vitest duration 362ms; existing dependencies reused without installation"
+      },
+      {
+        "id": "approval_web_lifetime_neighbors",
+        "command": "PYTHONPATH=$PWD/src python -m pytest tests/tools/test_approval_ownership.py tests/gateway/test_approval_ownership.py tests/tools/test_approval.py tests/tools/test_command_guards.py tests/tools/test_yolo_mode.py tests/gateway/test_approve_deny_commands.py tests/spark_cli/test_web_server_events.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+        "result": "322 passed in 149.39s",
+        "estimate_reported_before_start": "roughly 3 minutes"
+      },
+      {
+        "id": "runtime_guards",
+        "command": "PYTHONPATH=$PWD/src python -m pytest tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "13 passed in 9.84s"
+      },
+      {
+        "id": "new_test_imports",
+        "command": "ruff check tests/gateway/test_approval_button_ownership.py tests/gateway/test_approval_button_ids.py --fix",
+        "result": "Found 1 error (1 fixed, 0 remaining)."
+      },
+      {
+        "id": "test_lint",
+        "command": "ruff check tests/gateway/test_approval_button_ownership.py tests/gateway/test_approval_button_ids.py tests/tools/test_approval_ownership.py",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "source_lint",
+        "command": "ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "manifest",
+        "command": "PYTHONPATH=$PWD/src python scripts/generate_tool_manifest.py --check",
+        "result": "Tool manifest valid: 70 tools across 28 isolated modules; 4 optional guards"
+      },
+      {
+        "id": "whitespace",
+        "command": "git diff --check",
+        "result": "exit 0"
+      }
+    ],
+    "all_validation_commands_exited": true,
+    "planned_more_broad_batches": false,
+    "limits": [
+      "No live messaging network/authentication, external provider calls, external sends or dangerous command execution",
+      "Discord application adapter/view code tested with optional-SDK UI shim; other platform SDK I/O local",
+      "No dependency installs, repository config/lockfile/bundle changes, browser, build, push, PR or release",
+      "Root owns canonical frontend lint/type/build/browser and final integration"
+    ]
+  },
+  "caller_authorization_followup": {
+    "base_commit": "9741a7d1",
+    "parent_integration": "Root reports prior three commits integrated as e8c50260; root cleanup/fixture follow-ups remain root-owned and were not overwritten in this worktree.",
+    "scope": [
+      "shared BasePlatformAdapter approval authorizer and trusted prompt routing",
+      "GatewayRunner initial/reconnect policy binding and notification source forwarding",
+      "Slack/Telegram/Discord/Feishu approval caller checks",
+      "focused gateway fixtures/tests and evidence; no Web/tool/owner-lifetime changes"
+    ],
+    "findings": [
+      "Feishu card callbacks bypassed gateway and group authorization",
+      "Slack/Telegram/Discord permitted any button caller when platform allowlist empty, even when global gateway allowlist rejected them"
+    ],
+    "python_environment": "source /Users/joe/Developer/github/spark/.venv/bin/activate; fresh mktemp /tmp/spark-approval-auth-* SPARK_HOME before each pytest process; PYTHONPATH=$PWD/src; serial -n 0; not integration",
+    "baseline_checks": [
+      {
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "5 failed in 0.28s",
+        "details": "Four intended unauthorized-resolution assertions; Telegram local mock ParseMode was None from import order. Corrected local fixture only, before production changes."
+      },
+      {
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "5 failed in 0.23s",
+        "details": "All five intended assertions: four global-allowlist adapter bypasses and Feishu excluded group caller resolving card. Unchanged production 9741a7d1."
+      }
+    ],
+    "repair": "Initial/reconnect adapters receive the existing bound GatewayRunner._is_user_authorized callback. Button responses supply the actual clicker in a copy of the trusted prompt SessionSource; require platform/chat/thread or concrete card-message routing, caller and installed policy before consuming state. Feishu additionally reuses _allow_group_message before consuming approval/dedup state or fetching display names. Legacy text commands, backend APIs, decision IDs and execution owner lifetimes unchanged.",
+    "coverage": [
+      "all four choices and unauthorized-then-authorized retry",
+      "platform/global membership, exclusions, wildcard, per-platform allow-all, global allow-all, global allow-all with existing restrictive lists, default deny and pairing",
+      "missing caller/chat/source/policy, wrong chat/platform and retry",
+      "thread destinations and Telegram direct-message topic",
+      "Feishu open/disabled/allowlist/admin_only/blacklist, per-group blacklist override, admin retry, DM vs group, unauthorized dedup untouched",
+      "actual startup and reconnect attach the inbound policy",
+      "real runner/AIAgent/guard plus real Slack sender/click stale and delayed notification regressions; reusable Telegram-source fixture explicitly translates only platform at its local Slack bridge"
+    ],
+    "checks": [
+      {
+        "id": "initial_policy_focused",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py -q -n 0 -m 'not integration' --tb=short --durations=3",
+        "result": "17 passed in 0.90s; before matrix expansion"
+      },
+      {
+        "id": "expanded_matrix",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py -q -n 0 -m 'not integration' --tb=short --durations=5",
+        "result": "156 passed in 1.39s; before four per-group-choice cases"
+      },
+      {
+        "id": "gateway_focused",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/gateway/test_approval_button_ownership.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py -q -n 0 -m 'not integration' --tb=short --durations=5",
+        "result": "162 passed in 12.15s; before final dedup ordering/installation assertions"
+      },
+      {
+        "id": "test_lint_initial",
+        "command": "ruff check tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/fixtures/app_upgrade/gateway/authorization.py tests/gateway/test_approval_button_ownership.py --fix",
+        "result": "One import order issue fixed; three E731 lambda-assignment violations remained. Replaced lambda assignments with local functions; final lint passes."
+      },
+      {
+        "id": "test_lint",
+        "command": "ruff check tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/fixtures/app_upgrade/gateway/authorization.py tests/gateway/test_approval_button_ownership.py",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "source_lint",
+        "command": "ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+        "result": "All checks passed!"
+      },
+      {
+        "id": "initial_bounded_neighbors",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/gateway/test_approval_button_ownership.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_unauthorized_dm_behavior.py tests/gateway/test_internal_event_bypass_pairing.py tests/gateway/test_pairing.py tests/gateway/test_feishu.py tests/gateway/test_slack.py tests/gateway/test_discord_send.py tests/gateway/test_platform_reconnect.py tests/gateway/test_runner_startup_failures.py tests/gateway/test_approve_deny_commands.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py -q -n 0 -m 'not integration' --tb=short --durations=8",
+        "result": "3 failed, 488 passed, 17 warnings in 25.93s",
+        "failed": [
+          "tests/gateway/test_feishu.py::TestAdapterBehavior::test_add_ack_reaction_uses_ok_emoji",
+          "tests/gateway/test_feishu.py::TestSenderNameResolution::test_expired_cache_triggers_new_api_call",
+          "tests/gateway/test_feishu.py::TestSenderNameResolution::test_fetches_and_caches_name_from_api"
+        ],
+        "details": "Existing Feishu optional-SDK MagicMock in collection makes _HAS_LARK_OAPI True without installed SDK; reaction request fields are mocks and contact.v3 import is absent. No approval/authentication assertion failed."
+      },
+      {
+        "id": "unchanged_feishu_baseline",
+        "setup": "baseline_auth_dir=$(mktemp -d /tmp/spark-approval-auth-baseline-sdk.XXXXXX)\ngit show 9741a7d1:src/gateway/platforms/feishu.py > \"$baseline_auth_dir/feishu.py\"\ncat > \"$baseline_auth_dir/baseline_approval_sdk.py\" <<'EOF'\nfrom pathlib import Path\n\ndef pytest_collection_modifyitems():\n    import gateway.platforms.feishu as module\n    baseline = Path(__file__).with_name('feishu.py')\n    exec(compile(baseline.read_text(), str(baseline), 'exec'), module.__dict__)\nEOF",
+        "command": "SPARK_HOME=\"$validation_home\" PYTHONPATH=\"$baseline_auth_dir:$PWD/src\" python -m pytest -p baseline_approval_sdk tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_feishu.py -k 'test_add_ack_reaction_uses_ok_emoji or test_expired_cache_triggers_new_api_call or test_fetches_and_caches_name_from_api' -q -n 0 -m 'not integration' --tb=short",
+        "result": "3 failed, 119 deselected in 0.28s",
+        "details": "Same three assertions reproduced on original Feishu source from 9741a7d1, injected only into temporary test process after collection; repository production files untouched by proof."
+      },
+      {
+        "id": "final_bounded_neighbors",
+        "command": "python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_approval_button_ids.py tests/gateway/test_approval_button_ownership.py tests/gateway/test_slack_approval_buttons.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_feishu_approval_buttons.py tests/gateway/test_unauthorized_dm_behavior.py tests/gateway/test_internal_event_bypass_pairing.py tests/gateway/test_pairing.py tests/gateway/test_feishu.py tests/gateway/test_slack.py tests/gateway/test_discord_send.py tests/gateway/test_platform_reconnect.py tests/gateway/test_runner_startup_failures.py tests/gateway/test_approve_deny_commands.py tests/run_agent/test_caching_golden.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py --deselect tests/gateway/test_feishu.py::TestAdapterBehavior::test_add_ack_reaction_uses_ok_emoji --deselect tests/gateway/test_feishu.py::TestSenderNameResolution::test_expired_cache_triggers_new_api_call --deselect tests/gateway/test_feishu.py::TestSenderNameResolution::test_fetches_and_caches_name_from_api -q -n 0 -m 'not integration' --tb=short --durations=8",
+        "result": "488 passed, 3 deselected, 17 warnings in 26.11s",
+        "details": "Final source includes authorization-before-Feishu-dedup ordering and startup/reconnect hook assertions. Existing AsyncMock/deprecation warnings retained."
+      },
+      {
+        "id": "whitespace",
+        "command": "git diff --check",
+        "result": "exit 0"
+      }
+    ],
+    "limits": [
+      "Synthetic SDK I/O and local HTTP boundaries only; no external sends, provider calls or command execution",
+      "Discord application view uses local optional-SDK UI shim; no live messaging/SDK compatibility claim",
+      "No installs, browser/build, Web/ChatPanel edits, tool/owner-lifetime changes, push or history rewrite",
+      "Root owns canonical full-suite/integration/final acceptance; unrelated baseline SDK fixture failures retained"
+    ],
+    "all_heavy_commands_exited": true,
+    "planned_more_heavy_commands": false
+  },
+  "telegram_private_topic_followup": {
+    "base_commit": "6a88765b",
+    "finding": "Independent v4 review found callback route check passed only raw message_thread_id although actual inbound builder uses direct_messages_topic.topic_id as thread_id in private chats. No additional policy bypass or execution-lifetime defect found.",
+    "scope": [
+      "src/gateway/platforms/telegram.py callback normalization",
+      "tests/gateway/test_approval_button_authorization.py actual inbound-builder route regression",
+      "existing approval ownership evidence"
+    ],
+    "reproduction": {
+      "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nvalidation_home=$(mktemp -d /tmp/spark-approval-topic-before.XXXXXX)\nSPARK_HOME=\"$validation_home\" PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_approval_button_authorization.py -k telegram_approval_routes_from_inbound_builder -q -n 0 -m 'not integration' --tb=short --durations=3",
+      "result": "8 failed, 8 passed, 103 deselected in 0.63s",
+      "production_source": "unchanged 6a88765b",
+      "details": "All eight matching private direct-topic callbacks rejected across once/session/always/deny: no message_thread_id, or a different raw message_thread_id. Eight legacy private-thread/forum cases passed. Source built by actual TelegramAdapter._build_message_event, not manually assembled; lookup and SDK transport synthetic only."
+    },
+    "repair": "Normalize callback IDs with existing _telegram_id_to_str and apply the same private-topic precedence as _build_message_event. Trusted source chat_type determines private precedence; group/forum threads retain raw message_thread_id. Existing route and caller policy checks unchanged.",
+    "checks": [
+      {
+        "command": "source /Users/joe/Developer/github/spark/.venv/bin/activate\nvalidation_home=$(mktemp -d /tmp/spark-approval-topic-focused.XXXXXX)\nSPARK_HOME=\"$validation_home\" PYTHONPATH=$PWD/src python -m pytest tests/gateway/test_approval_button_authorization.py tests/gateway/test_telegram_approval_buttons.py tests/gateway/test_telegram_thread_fallback.py tests/gateway/test_telegram_reply_mode.py tests/gateway/test_telegram_group_gating.py -q -n 0 -m 'not integration' --tb=short --durations=5",
+        "result": "173 passed in 8.12s",
+        "coverage": "All choices; actual inbound builder sources for private direct topics, conflicting private raw thread IDs, legacy private threads and group forum threads; wrong route rejected before matching authorized retry, each resolves once. Full caller authorization fixture and existing private-topic send/fallback/reply/group neighbors."
+      },
+      {
+        "command": "ruff check tests/gateway/test_approval_button_authorization.py",
+        "result": "All checks passed!"
+      },
+      {
+        "command": "ruff check src/gateway/platforms/telegram.py --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027",
+        "result": "All checks passed!"
+      },
+      {
+        "command": "git diff --check",
+        "result": "exit 0"
+      }
+    ],
+    "all_commands_exited": true,
+    "broad_suite_run": false,
+    "limits": [
+      "Isolated worktree only; root frozen full-suite source unchanged",
+      "No caller allowlist/pairing/group policy or execution-owner lifetime changes",
+      "No live SDK/external sends/provider calls, command execution, installs, browser or build",
+      "Root canonical integration/final acceptance remains pending"
+    ]
+  }
+}

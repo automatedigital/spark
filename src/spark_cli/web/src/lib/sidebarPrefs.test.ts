@@ -3,7 +3,7 @@ import {
   isEditableShortcutTarget,
   isSidebarToggleShortcut,
   readSidebarExpanded,
-  SIDEBAR_EXPANDED_KEY,
+  SIDEBAR_EXPANDED_KEY, sidebarPreferenceKey, setSidebarPreferenceScope,
   writeSidebarExpanded,
 } from "./sidebarPrefs";
 
@@ -22,7 +22,7 @@ describe("sidebar preferences", () => {
 
     expect(readSidebarExpanded(store)).toBe(true);
 
-    store.data.set(SIDEBAR_EXPANDED_KEY, "false");
+    store.data.set(sidebarPreferenceKey(SIDEBAR_EXPANDED_KEY), "false");
     expect(readSidebarExpanded(store)).toBe(false);
   });
 
@@ -30,10 +30,10 @@ describe("sidebar preferences", () => {
     const store = storage();
 
     writeSidebarExpanded(false, store);
-    expect(store.data.get(SIDEBAR_EXPANDED_KEY)).toBe("false");
+    expect(store.data.get(sidebarPreferenceKey(SIDEBAR_EXPANDED_KEY))).toBe("false");
 
     writeSidebarExpanded(true, store);
-    expect(store.data.get(SIDEBAR_EXPANDED_KEY)).toBe("true");
+    expect(store.data.get(sidebarPreferenceKey(SIDEBAR_EXPANDED_KEY))).toBe("true");
   });
 
   it("recognizes the sidebar shortcut without conflicting modifiers", () => {
@@ -49,5 +49,29 @@ describe("sidebar preferences", () => {
     expect(isEditableShortcutTarget({ isContentEditable: true })).toBe(true);
     expect(isEditableShortcutTarget({ closest: vi.fn().mockReturnValue({}) })).toBe(true);
     expect(isEditableShortcutTarget({ tagName: "button", closest: vi.fn().mockReturnValue(null) })).toBe(false);
+  });
+});
+
+describe("sidebar profile isolation", () => {
+  it("separates two backends and two profiles", () => {
+    expect(sidebarPreferenceKey("width", "a", "https://one")).not.toBe(sidebarPreferenceKey("width", "a", "https://two"));
+    expect(sidebarPreferenceKey("width", "a", "https://one")).not.toBe(sidebarPreferenceKey("width", "b", "https://one"));
+  });
+  it("never silently imports unscoped preferences into another backend/profile", () => {
+    const store = storage();
+    store.data.set(SIDEBAR_EXPANDED_KEY, "false");
+    setSidebarPreferenceScope("profile-a");
+    expect(readSidebarExpanded(store)).toBe(true);
+    writeSidebarExpanded(false, store);
+    setSidebarPreferenceScope("profile-b");
+    expect(readSidebarExpanded(store)).toBe(true);
+    setSidebarPreferenceScope("profile-a");
+    expect(readSidebarExpanded(store)).toBe(false);
+    setSidebarPreferenceScope("unresolved");
+  });
+  it("storage failures do not block navigation", () => {
+    const broken = { getItem: () => { throw new Error("private mode"); }, setItem: () => { throw new Error("quota"); } };
+    expect(readSidebarExpanded(broken)).toBe(true);
+    expect(() => writeSidebarExpanded(false, broken)).not.toThrow();
   });
 });

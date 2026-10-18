@@ -4,11 +4,27 @@ on:
   push:
     branches: [main]
     paths:
-      - "src/spark_cli/web/**"
+      - "src/spark_cli/**"
+      - "src/core/**"
+      - "src/agent/**"
+      - "src/tools/**"
+      - "src/gateway/**"
+      - "src/cron/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "scripts/generate_tool_manifest.py"
       - ".github/workflows/web-quality.yml"
   pull_request:
     paths:
-      - "src/spark_cli/web/**"
+      - "src/spark_cli/**"
+      - "src/core/**"
+      - "src/agent/**"
+      - "src/tools/**"
+      - "src/gateway/**"
+      - "src/cron/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "scripts/generate_tool_manifest.py"
       - ".github/workflows/web-quality.yml"
 
 concurrency:
@@ -48,7 +64,7 @@ jobs:
   # history, so a failure must block the merge rather than report as advisory.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -68,6 +84,35 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,web]"
+
+      - name: Backend lifecycle, profile, cache and discovery contracts
+        working-directory: .
+        run: |
+          python -m pytest -q -n 0 -m "not integration and not network" \
+            tests/run_agent/test_orchestration_replay.py \
+            tests/run_agent/test_stream_capability_fallback.py \
+            tests/run_agent/test_async_delegation.py \
+            tests/run_agent/test_real_interrupt_subagent.py \
+            tests/run_agent/test_caching_golden.py \
+            tests/tools/test_subagent_worktree.py \
+            tests/core/test_kanban_worker_ownership.py \
+            tests/core/test_runtime_commands.py \
+            tests/spark_cli/test_async_subagent_routes.py \
+            tests/spark_cli/test_subagent_navigation.py \
+            tests/spark_cli/test_sidebar_metadata.py \
+            tests/spark_cli/test_web_server_events.py \
+            tests/test_web_turn_persistence.py tests/spark_cli/test_web_state.py \
+            tests/spark_cli/test_web_projections.py \
+            tests/gateway/test_async_delegation_delivery.py \
+            tests/gateway/test_stop_ownership.py \
+            tests/gateway/test_approval_ownership.py \
+            tests/gateway/test_approval_button_ownership.py \
+            tests/gateway/test_approval_button_ids.py \
+            tests/gateway/test_approval_button_authorization.py \
+            tests/tools/test_approval_ownership.py \
+            tests/test_model_tools_lazy_imports.py tests/tools/test_lazy_manifest.py \
+            tests/test_minimal_startup.py
+          python scripts/generate_tool_manifest.py --check
 
       - name: Install web dependencies
         run: npm ci
@@ -102,3 +147,50 @@ jobs:
 
       - name: Draft recovery end-to-end
         run: python ./e2e/work-recovery.py
+
+      - name: Sidebar scale and ownership browser gate
+        if: ${{ !cancelled() }}
+        env:
+          PYTHON: python
+        run: node ./e2e/browser-gates.mjs --suite sidebar --repeat 3 --output-dir /tmp/spark-browser-gates/sidebar
+
+      - name: Production-built draft and recovery browser gate
+        if: ${{ !cancelled() }}
+        env:
+          PYTHON: python
+        run: node ./e2e/browser-gates.mjs --suite production-recovery --output-dir /tmp/spark-browser-gates/production-recovery
+
+      - name: Build canonical web candidate
+        if: ${{ !cancelled() }}
+        run: npm run build
+
+      - name: Production child inspector browser gate
+        if: ${{ !cancelled() }}
+        env:
+          SPARK_E2E_BUILT_WEB: "1"
+          SPARK_E2E_REPORTS: /tmp/spark-browser-gates/inspector
+        run: python ./e2e/subagent-controls.py
+
+      - name: Production task and worktree navigation browser gate
+        if: ${{ !cancelled() }}
+        env:
+          SPARK_E2E_BUILT_WEB: "1"
+          SPARK_E2E_REPORTS: /tmp/spark-browser-gates/navigation
+        run: python ./e2e/subagent-navigation.py
+
+      - name: Repeated 2000-row long-thread gate
+        if: ${{ !cancelled() }}
+        env:
+          PYTHON: python
+        run: node ./e2e/browser-gates.mjs --suite longthread --repeat 3 --output-dir /tmp/spark-browser-gates/longthread
+
+      - name: Retain browser gate reports, failures and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-gates-${{ github.run_attempt }}
+          path: |
+            /tmp/spark-browser-gates
+            src/spark_cli/web/screenshots/work-recovery
+          if-no-files-found: warn
+          retention-days: 14

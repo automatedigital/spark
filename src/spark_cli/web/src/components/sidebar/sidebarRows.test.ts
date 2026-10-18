@@ -124,3 +124,16 @@ describe("buildSidebarRows", () => {
     ]);
   });
 });
+
+describe("settlement and attention", () => {
+  it("never hides a pending decision in collapsed settled rows, including a 1,000-row fixture", () => {
+    const sessions = Array.from({ length: 1000 }, (_, i) => session(`s${i}`, i % 2 ? "web" : "workspace:alpha"));
+    const metadata = Object.fromEntries(sessions.map((s) => [s.id, { pinned: false, settled: true, position: null, revision: 1 }]));
+    const rows = buildSidebarRows({ projects, sessions, metadata, attention: { s999: { pending_decision: true, running: false, status: "completed" } }, pinnedIds: new Set(), expandedProjects: new Set(["alpha"]), collapsedSections: new Set(["settled"]), searchResultsActive: false, searchQ: "", loading: false, loadingMore: false, hasMore: true, loadError: null, dragging: false });
+    expect(rows.some((r) => r.kind === "session" && r.session.id === "s999")).toBe(true);
+    expect(rows.filter((r) => r.kind === "session")).toHaveLength(1);
+    expect(rows.some((r) => r.kind === "settled-header")).toBe(true);
+    const searchRows = buildSidebarRows({ projects, sessions: [sessions[0]], metadata, pinnedIds: new Set(), expandedProjects: new Set(), collapsedSections: new Set(["settled"]), searchResultsActive: true, searchQ: "s0", loading: false, loadingMore: false, hasMore: false, loadError: null, dragging: false });
+    expect(searchRows.some((r) => r.kind === "session" && r.placement === "settled")).toBe(true);
+  });
+});

@@ -2920,6 +2920,34 @@ class TestConversationControl:
                 approval_mod._gateway_queues.pop("approval-owner", None)
             web_server._clear_web_turn("approval-owner")
 
+    def test_cancelled_web_action_cannot_resolve_newer_approval(self, web_client):
+        from core.spark_state import SessionDB
+        from spark_cli import web_server
+        from tools import approval
+
+        sid = "approval-stale-button"
+        db = SessionDB()
+        try:
+            db.ensure_session(sid, source="web", model="test-model")
+        finally:
+            db.close()
+        web_server._mark_web_turn_active(sid)
+        old = web_server._create_web_pending_action(sid, kind="approval", payload={"command": "synthetic-A"})
+        new = web_server._create_web_pending_action(sid, kind="approval", payload={"command": "synthetic-B"})
+        entry = approval._ApprovalEntry({"action_id": new["action_id"], "command": "synthetic-B"})
+        with approval._lock:
+            approval._gateway_queues[sid] = [entry]
+        try:
+            stale = web_client.post(f"/api/conversations/{sid}/approval", json={"choice": "once", "action_id": old["action_id"]})
+            assert stale.status_code == 404
+            assert not entry.event.is_set() and approval.has_blocking_approval(sid)
+            current = web_client.post(f"/api/conversations/{sid}/approval", json={"choice": "once", "action_id": new["action_id"]})
+            assert current.status_code == 200 and current.json()["resolved"] == 1
+            assert entry.result == "once" and not approval.has_blocking_approval(sid)
+        finally:
+            approval.unregister_gateway_notify(sid)
+            web_server._clear_web_turn(sid)
+
     def test_approval_action_uses_current_session_after_migration(self, web_client):
         from core.spark_state import SessionDB
         from spark_cli import web_server
@@ -3351,3 +3379,81 @@ def test_cancelled_web_turn_reports_failure_not_success(web_client, monkeypatch)
 
     done = [event for event in events if event[0] == "chat.turn_done"]
     assert done[-1][1]["backend_error_class"] == "CancelledError"
+
+
+def test_subagent_capabilities_are_versioned_and_route_precedes_detail(web_client, monkeypatch):
+    from core.spark_state import SessionDB
+
+    db = SessionDB()
+    db.create_session("cap-parent", "web")
+    db.close()
+    monkeypatch.setattr("spark_cli.config.load_config", lambda: {"delegation": {"model": "my-custom-model", "provider": "custom-provider"}})
+    response = web_client.get("/api/conversations/cap-parent/subagents/capabilities")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == 1
+    assert body["controls"] == {
+        "inspect": {"supported": True, "reason": None},
+        "interrupt": {"supported": False, "reason": "No live owned child is available"},
+        "retry": {"supported": False, "reason": "Async execution is disabled"},
+    }
+    assert body["runtime"]["model"] == "my-custom-model"
+    assert body["runtime"]["provider"] == "custom-provider"
+    assert body["runtime"]["available"] is False
+    assert web_client.get("/api/conversations/missing/subagents/capabilities").status_code == 404
+
+
+def test_subagent_interrupt_receipt_survives_lost_ack_and_validates_ownership(web_client):
+    from core.spark_state import SessionDB
+    from spark_cli import web_server
+
+    db = SessionDB()
+    db.create_session("receipt-parent", "web")
+    db.create_session("receipt-child", "delegate", parent_session_id="receipt-parent")
+    db.create_session("unrelated", "web")
+    db.create_subagent_run({"id": "receipt-run", "parent_session_id": "receipt-parent",
+                            "child_session_id": "receipt-child", "status": "running"})
+    db.close()
+    child = MagicMock(session_id="receipt-child")
+    parent = MagicMock()
+    parent._active_children = [child]
+    web_server._web_agents["receipt-parent"] = parent
+    web_server._mark_web_turn_active("receipt-parent")
+    url = "/api/conversations/receipt-parent/subagents/receipt-run/interrupt"
+    try:
+        first = web_client.post(url, json={"message": "stop", "request_id": "cancel-1"})
+        assert first.status_code == 200
+        child.interrupt.assert_called_once_with("stop")
+        # Lost response followed by a retry with no live runtime must use the receipt.
+        web_server._clear_web_turn("receipt-parent")
+        web_server._web_agents.pop("receipt-parent")
+        second = web_client.post(url, json={"request_id": "cancel-1", "message": "stop"})
+        assert second.json() == first.json()
+        assert web_client.post(url, json={"request_id": "cancel-1", "message": "different"}).status_code == 409
+        assert web_client.post("/api/conversations/unrelated/subagents/receipt-run/interrupt",
+                               json={"request_id": "cancel-1", "message": "stop"}).status_code == 404
+        db = SessionDB()
+        assert db.get_subagent_run("receipt-run")["status"] == "stopping"
+        assert len(db.get_subagent_events("receipt-run")) == 1
+        db.close()
+    finally:
+        web_server._clear_web_turn("receipt-parent")
+        web_server._web_agents.pop("receipt-parent", None)
+
+
+def test_subagent_publication_is_deduplicated_and_terminal_snapshot_does_not_regress(web_client, monkeypatch):
+    from core.spark_state import SessionDB
+    from spark_cli import web_server
+
+    db = SessionDB()
+    db.create_session("pub-parent", "web")
+    db.close()
+    published = []
+    monkeypatch.setattr(web_server, "_publish_event", lambda *args, **kwargs: published.append(args))
+    payload = {"id": "pub-child", "event_id": "terminal-1", "event": "completed"}
+    web_server._persist_and_publish_subagent_event("pub-parent", payload)
+    web_server._persist_and_publish_subagent_event("pub-parent", payload)
+    web_server._persist_and_publish_subagent_event("pub-parent", {
+        "id": "pub-child", "event_id": "late-tool", "event": "tool_started"})
+    assert len(published) == 2
+    assert published[-1][1]["subagent"]["status"] == "completed"

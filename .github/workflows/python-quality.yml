@@ -82,10 +82,15 @@ jobs:
       # A command-line -m replaces pytest's configured marker expression, so
       # retain both exclusions explicitly. Otherwise this job can run tests
       # that touch configured external services.
-      - name: Run the fast test suite
+      - name: Run non-serial fast tests in parallel
         env:
           # Some tests construct a client at import/init time and only need a
           # syntactically valid key; no request is ever sent (integration
           # tests are deselected).
           OPENAI_API_KEY: sk-test-not-a-real-key
-        run: python -m pytest tests/ -m "not slow and not integration" -q --timeout=60
+        run: python -m pytest tests/ -m "not serial and not slow and not integration" -q --timeout=60 -n 4
+
+      - name: Run serial fast tests without xdist
+        env:
+          OPENAI_API_KEY: sk-test-not-a-real-key
+        run: python -m pytest tests/ -m "serial and not slow and not integration" -q --timeout=60 -n 0

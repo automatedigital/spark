@@ -40,6 +40,13 @@ _ensure_feishu_mocks()
 
 from gateway.config import PlatformConfig
 from gateway.platforms.feishu import FeishuAdapter
+from tests.fixtures.app_upgrade.gateway.authorization import bind_approval_policy
+
+
+@pytest.fixture(autouse=True)
+def approval_policy(monkeypatch):
+    monkeypatch.setenv("FEISHU_ALLOW_ALL_USERS", "true")
+    monkeypatch.setenv("FEISHU_GROUP_POLICY", "open")
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +57,7 @@ def _make_adapter() -> FeishuAdapter:
     """Create a FeishuAdapter with mocked internals."""
     config = PlatformConfig(enabled=True)
     adapter = FeishuAdapter(config)
+    bind_approval_policy(adapter)
     adapter._client = MagicMock()
     return adapter
 
@@ -59,12 +67,13 @@ def _make_card_action_data(
     chat_id: str = "oc_12345",
     open_id: str = "ou_user1",
     token: str = "tok_abc",
+    message_id: str = "msg_001",
 ) -> SimpleNamespace:
     """Create a mock Feishu card action callback data object."""
     return SimpleNamespace(
         event=SimpleNamespace(
             token=token,
-            context=SimpleNamespace(open_chat_id=chat_id),
+            context=SimpleNamespace(open_chat_id=chat_id, open_message_id=message_id),
             operator=SimpleNamespace(open_id=open_id),
             action=SimpleNamespace(
                 tag="button",
@@ -213,9 +222,11 @@ class TestFeishuApprovalCallback:
     async def test_resolves_approval_on_click(self):
         adapter = _make_adapter()
         adapter._approval_state[1] = {
+            "action_id": "entry-1",
             "session_key": "agent:main:feishu:group:oc_12345",
             "message_id": "msg_001",
             "chat_id": "oc_12345",
+            "source": adapter.build_source(chat_id="oc_12345", chat_type="group"),
         }
 
         data = _make_card_action_data(
@@ -232,7 +243,7 @@ class TestFeishuApprovalCallback:
         ):
             await adapter._handle_card_action_event(data)
 
-        mock_resolve.assert_called_once_with("agent:main:feishu:group:oc_12345", "once")
+        mock_resolve.assert_called_once_with("agent:main:feishu:group:oc_12345", "once", action_id="entry-1")
         mock_update.assert_called_once_with("msg_001", "Approved once", "Norbert", "once")
 
         # State should be cleaned up
@@ -242,14 +253,17 @@ class TestFeishuApprovalCallback:
     async def test_deny_button(self):
         adapter = _make_adapter()
         adapter._approval_state[2] = {
+            "action_id": "entry-2",
             "session_key": "some-session",
             "message_id": "msg_002",
             "chat_id": "oc_12345",
+            "source": adapter.build_source(chat_id="oc_12345", chat_type="group"),
         }
 
         data = _make_card_action_data(
             action_value={"spark_action": "deny", "approval_id": 2},
             token="tok_deny",
+            message_id="msg_002",
         )
 
         with (
@@ -262,21 +276,24 @@ class TestFeishuApprovalCallback:
         ):
             await adapter._handle_card_action_event(data)
 
-        mock_resolve.assert_called_once_with("some-session", "deny")
+        mock_resolve.assert_called_once_with("some-session", "deny", action_id="entry-2")
         mock_update.assert_called_once_with("msg_002", "Denied", "Alice", "deny")
 
     @pytest.mark.asyncio
     async def test_session_approval(self):
         adapter = _make_adapter()
         adapter._approval_state[3] = {
+            "action_id": "entry-3",
             "session_key": "sess-3",
             "message_id": "msg_003",
             "chat_id": "oc_99",
+            "source": adapter.build_source(chat_id="oc_99", chat_type="group"),
         }
 
         data = _make_card_action_data(
             action_value={"spark_action": "approve_session", "approval_id": 3},
             token="tok_ses",
+            chat_id="oc_99", message_id="msg_003",
         )
 
         with (
@@ -289,21 +306,24 @@ class TestFeishuApprovalCallback:
         ):
             await adapter._handle_card_action_event(data)
 
-        mock_resolve.assert_called_once_with("sess-3", "session")
+        mock_resolve.assert_called_once_with("sess-3", "session", action_id="entry-3")
         mock_update.assert_called_once_with("msg_003", "Approved for session", "Bob", "session")
 
     @pytest.mark.asyncio
     async def test_always_approval(self):
         adapter = _make_adapter()
         adapter._approval_state[4] = {
+            "action_id": "entry-4",
             "session_key": "sess-4",
             "message_id": "msg_004",
             "chat_id": "oc_55",
+            "source": adapter.build_source(chat_id="oc_55", chat_type="group"),
         }
 
         data = _make_card_action_data(
             action_value={"spark_action": "approve_always", "approval_id": 4},
             token="tok_alw",
+            chat_id="oc_55", message_id="msg_004",
         )
 
         with (
@@ -316,7 +336,7 @@ class TestFeishuApprovalCallback:
         ):
             await adapter._handle_card_action_event(data)
 
-        mock_resolve.assert_called_once_with("sess-4", "always")
+        mock_resolve.assert_called_once_with("sess-4", "always", action_id="entry-4")
 
     @pytest.mark.asyncio
     async def test_already_resolved_drops_silently(self):

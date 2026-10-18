@@ -3,7 +3,7 @@
  * grouped by workspace project. Hermes-style layout; backed by the shared
  * session store.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -55,6 +55,10 @@ import type {
   SessionInfo,
   WorkspaceProject,
 } from "@/lib/api";
+import { SidebarMetadataFeedback, SidebarThreadActions } from "./SidebarThreadActions";
+import { captureSidebarScrollAnchor, type SidebarScrollAnchor } from "./sidebarScrollAnchor";
+import { sidebarStatus } from "@/lib/sidebarOrganization";
+import { readSidebarPreference, writeSidebarPreference, SIDEBAR_SCOPE_EVENT } from "@/lib/sidebarPrefs";
 import { cn, timeAgo } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,7 +85,6 @@ function SessionRow({
   unread = false,
   onOpen,
   onTogglePin,
-  onDelete,
   onDragStart,
   onDragEnd,
 }: {
@@ -92,10 +95,11 @@ function SessionRow({
   unread?: boolean;
   onOpen: () => void;
   onTogglePin: () => void;
-  onDelete: () => void;
   onDragStart?: (id: string) => void;
   onDragEnd?: () => void;
 }) {
+  const { sidebarAttention } = useSessionStore();
+  const status = sidebarStatus(session, sidebarAttention[session.id], unread);
   const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
     // Shift-click pins/unpins a chat (hinted in the PINNED empty state).
     if (e.shiftKey) {
@@ -106,8 +110,11 @@ function SessionRow({
   };
 
   return (
+    <div className="group flex min-w-0 items-center">
     <div
       role="button"
+      aria-current={active ? "page" : undefined}
+      aria-label={`${threadTitle(session)}, ${status}${pinned ? ", pinned" : ""}`}
       tabIndex={0}
       draggable
       onDragStart={(e) => {
@@ -125,7 +132,7 @@ function SessionRow({
         }
       }}
       className={cn(
-        "group relative flex w-full min-w-0 cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pr-2 text-left transition",
+        "group relative flex w-full min-w-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary select-none items-center gap-2 rounded-sm py-1.5 pr-2 text-left transition",
         indent ? "pl-7" : "pl-2.5",
         active
           ? "bg-primary/12 text-foreground"
@@ -146,17 +153,10 @@ function SessionRow({
       <span className="shrink-0 text-[10px] text-muted-foreground/50 group-hover:hidden">
         {timeAgo(session.last_active)}
       </span>
-      <button
-        type="button"
-        className="absolute right-1.5 hidden rounded p-0.5 text-muted-foreground/50 hover:text-destructive group-hover:block"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        aria-label="Delete thread"
-      >
-        <Trash2 className="h-3 w-3" />
-      </button>
+      {status !== "Ready" && <span className="shrink-0 text-[10px]">{status}</span>}
+
+    </div>
+    <SidebarThreadActions session={session} />
     </div>
   );
 }
@@ -255,7 +255,7 @@ function ProjectGroup({
             {savingRename && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
           </form>
         ) : (
-          <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={onToggle}>
+          <button type="button" aria-expanded={isExpanded} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={onToggle}>
             <span className="text-muted-foreground/50">
               {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </span>
@@ -790,8 +790,8 @@ const SECTION_COLLAPSE_KEY = "spark.sidebar.collapsedSections";
 
 function loadCollapsedSections(): Set<string> {
   try {
-    const raw = localStorage.getItem(SECTION_COLLAPSE_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    const raw = readSidebarPreference(SECTION_COLLAPSE_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set(["settled"]);
   } catch {
     return new Set();
   }
@@ -799,7 +799,7 @@ function loadCollapsedSections(): Set<string> {
 
 function saveCollapsedSections(collapsed: Set<string>) {
   try {
-    localStorage.setItem(SECTION_COLLAPSE_KEY, JSON.stringify([...collapsed]));
+    writeSidebarPreference(SECTION_COLLAPSE_KEY, JSON.stringify([...collapsed]));
   } catch {
     // ignore (e.g. private browsing)
   }
@@ -820,6 +820,7 @@ function SectionHeader({
     <div className="flex items-center justify-between px-2 pb-1">
       <button
         type="button"
+        aria-expanded={!collapsed}
         onClick={onToggle}
         className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 hover:text-foreground"
       >
@@ -856,12 +857,12 @@ export function SidebarSessions({
     searchResults,
     searching,
     pinnedIds,
+    sidebarMetadata, sidebarAttention,
     togglePin,
     selectedId,
     unreadSessionIds,
     expandedProjects,
     toggleProjectExpanded,
-    deleteSession,
     deleteProject,
     createProject,
     moveSessionToProject,
@@ -871,12 +872,18 @@ export function SidebarSessions({
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollAnchorRef = useRef<{ key: string; delta: number } | null>(null);
+  const scrollAnchorRef = useRef<SidebarScrollAnchor | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections);
   const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<DropTarget>(null);
   const [dragError, setDragError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const refresh = () => setCollapsedSections(loadCollapsedSections());
+    window.addEventListener(SIDEBAR_SCOPE_EVENT, refresh);
+    return () => window.removeEventListener(SIDEBAR_SCOPE_EVENT, refresh);
+  }, []);
 
   const toggleSection = (section: string) => {
     setCollapsedSections((prev) => {
@@ -905,6 +912,7 @@ export function SidebarSessions({
   }, []);
 
   const rows = useMemo(() => buildSidebarRows({
+    metadata: sidebarMetadata, attention: sidebarAttention,
     projects,
     sessions: displayedSessions,
     pinnedIds,
@@ -918,6 +926,7 @@ export function SidebarSessions({
     loadError: sessionsError,
     dragging: Boolean(draggingSessionId),
   }), [
+    sidebarMetadata, sidebarAttention,
     collapsedSections,
     displayedSessions,
     draggingSessionId,
@@ -932,11 +941,12 @@ export function SidebarSessions({
     sessionsError,
   ]);
 
+  const getRowKey = useCallback((index: number) => rows[index].key, [rows]);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => estimateSidebarRowHeight(rows[index]),
-    getItemKey: (index) => rows[index].key,
+    getItemKey: getRowKey,
     overscan: 8,
   });
   const virtualItems = virtualizer.getVirtualItems();
@@ -959,21 +969,30 @@ export function SidebarSessions({
   // pagination rebuild the flattened model.
   useLayoutEffect(() => {
     const anchor = scrollAnchorRef.current;
-    if (!anchor || !scrollRef.current) return;
+    const element = scrollRef.current;
+    if (!anchor || !element) return;
+    // The DOM offset changes immediately, but its native scroll event arrives
+    // later. A row refresh in that interval must not restore the older viewport
+    // over the user's new position. The pending event will capture its anchor.
+    if (Math.abs(element.scrollTop - anchor.scrollTop) > 1) {
+      scrollAnchorRef.current = null;
+      return;
+    }
     const index = rows.findIndex((row) => row.key === anchor.key);
-    if (index < 0) return;
-    virtualizer.scrollToIndex(index, { align: "start" });
-    scrollRef.current.scrollTop += anchor.delta;
+    if (index < 0) { scrollAnchorRef.current = null; return; }
+    const item = virtualizer.measurementsCache[index];
+    if (item) {
+      // An index scroll keeps retrying as sizes settle. Those delayed retries
+      // can overwrite a later user scroll or a subsequent SSE restoration.
+      // Restore the keyed row and its pixel offset together as one offset.
+      virtualizer.scrollToOffset(item.start + anchor.delta);
+      anchor.scrollTop = element.scrollTop;
+    }
   }, [rows, virtualizer]);
 
   const rememberScrollAnchor = () => {
     const scrollTop = scrollRef.current?.scrollTop ?? 0;
-    const first = virtualizer.getVirtualItems().find((item) => item.end > scrollTop);
-    if (!first) return;
-    scrollAnchorRef.current = {
-      key: rows[first.index]?.key ?? "",
-      delta: scrollTop - first.start,
-    };
+    scrollAnchorRef.current = captureSidebarScrollAnchor(virtualizer, scrollTop);
   };
 
   const draggedSessionFromEvent = (e: React.DragEvent): string => (
@@ -1023,6 +1042,7 @@ export function SidebarSessions({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <SidebarMetadataFeedback />
       <ProjectWizard
         open={creatingProject}
         onClose={() => setCreatingProject(false)}
@@ -1061,7 +1081,21 @@ export function SidebarSessions({
       <div
         ref={scrollRef}
         className="scrollbar-always min-h-0 flex-1 overflow-y-auto px-1 pb-2"
+        style={{ overflowAnchor: "none" }}
         onScroll={rememberScrollAnchor}
+        onKeyDown={(event) => {
+          const target = event.target as HTMLElement;
+          if (target.getAttribute("role") !== "button" || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+          const current = Number(target.closest<HTMLElement>("[data-index]")?.dataset.index);
+          if (!Number.isFinite(current)) return;
+          const candidates = rows.flatMap((row, index) => row.kind === "session" ? [index] : []);
+          const offset = candidates.indexOf(current);
+          const next = event.key === "Home" ? candidates[0] : event.key === "End" ? candidates.at(-1) : candidates[offset + (event.key === "ArrowUp" ? -1 : 1)];
+          if (next === undefined) return;
+          event.preventDefault();
+          virtualizer.scrollToIndex(next, { align: "auto" });
+          requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>(`[data-index="${next}"] [role="button"]`)?.focus());
+        }}
         data-testid="session-sidebar-scroll"
       >
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -1164,7 +1198,6 @@ export function SidebarSessions({
                     unread={unreadSessionIds.has(row.session.id)}
                     onOpen={() => onOpenSession(row.session.id)}
                     onTogglePin={() => togglePin(row.session.id)}
-                    onDelete={() => void deleteSession(row.session.id)}
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                   />
@@ -1194,6 +1227,7 @@ export function SidebarSessions({
                     />
                   </div>
                 )}
+                {row.kind === "settled-header" && <SectionHeader label="Settled" collapsed={collapsedSections.has("settled")} onToggle={() => toggleSection("settled")} />}
                 {row.kind === "chats-empty" && (
                   <p className="px-2.5 pb-1 text-[11px] italic text-muted-foreground/40">Drop here to unfile</p>
                 )}

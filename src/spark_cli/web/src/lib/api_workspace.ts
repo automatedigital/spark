@@ -177,9 +177,10 @@ export const workspaceApi = {
         body: JSON.stringify({ rows, cols }),
       },
     ),
-  getWorkspacePreviewStatus: (slug: string) =>
+  getWorkspacePreviewStatus: (slug: string, signal?: AbortSignal) =>
     fetchJSON<WorkspacePreviewStatus>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/status`,
+      { signal },
     ),
   startWorkspacePreview: (slug: string, options?: { command?: string; url?: string; port?: number }) =>
     fetchJSON<WorkspacePreviewStatus>(
@@ -222,16 +223,18 @@ export const workspaceApi = {
     ),
 
   // ── Streamed server-side browser (WebUI path) ──
-  getWorkspacePreviewLogs: (slug: string) =>
+  getWorkspacePreviewLogs: (slug: string, signal?: AbortSignal) =>
     fetchJSON<{ slug: string; logs: WorkspacePreviewLog[] }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/logs`,
+      { signal },
     ),
 
   /** Auditable agent browser action transcript (navigate/click/type/a11y…). */
-  getWorkspacePreviewActionLog: (slug: string, sinceTs?: number, limit = 500) =>
+  getWorkspacePreviewActionLog: (slug: string, sinceTs?: number, limit = 500, signal?: AbortSignal) =>
     fetchJSON<{ slug: string; actions: BrowserActionLogEntry[]; count: number }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/action-log?limit=${limit}` +
         (sinceTs ? `&since_ts=${sinceTs}` : ""),
+      { signal },
     ),
   getWorkspacePreviewSnapshot: (slug: string) =>
     fetchJSON<WorkspacePreviewSnapshot>(

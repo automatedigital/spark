@@ -12,6 +12,8 @@
     "test:e2e": "node ./e2e/multi-chat.mjs",
     "test:e2e:recovery": "node ./e2e/recovery-state.mjs",
     "test:e2e:sidebar": "node ./e2e/sidebar-scale.mjs",
+    "test:e2e:subagents": "python ./e2e/subagent-controls.py",
+    "test:e2e:navigation": "python ./e2e/subagent-navigation.py",
     "test:e2e:baseline": "node ./e2e/baseline-capture.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
@@ -68,6 +70,6 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.57.0",
     "vite": "7.3.6",
-    "vitest": "3.2.7"
+    "vitest": "4.1.12"
   }
 }

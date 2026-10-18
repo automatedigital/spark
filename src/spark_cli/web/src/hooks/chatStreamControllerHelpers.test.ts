@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  adoptChatStreamSession,
   eventAction,
   executeChatStreamEffect,
   flushAction,
@@ -21,6 +22,18 @@ function event(
 }
 
 describe("chat stream controller helpers", () => {
+  it("adopts an acknowledged ID without losing buffered tokens, reasoning, revision or recovery identity", () => {
+    let state = createChatStreamState({ sessionId: "s1", recoverySequence: 7 });
+    state = reduceChatStreamController(state, eventAction(event("chat.token", { t: "buffered" }))).state;
+    state = reduceChatStreamController(state, eventAction(event("chat.reasoning", { text: "thinking" }))).state;
+    const adopted = adoptChatStreamSession(state, "s1-compressed", ["s1"]);
+    expect(adopted.state).toEqual({ ...state, activeSessionId: "s1-compressed", sessionAliases: ["s1", "s1-compressed"] });
+    expect(adopted.state.messages).toBe(state.messages);
+    const flushed = reduceChatStreamController(adopted.state, flushAction("manual"));
+    expect(flushed.state.messages.filter((message) => message.role === "assistant").map((message) => message.content)).toEqual(["buffered"]);
+    expect(flushed.state.recoverySequence).toBe(7);
+    expect(flushed.state.tokenBuffer).toBe("");
+  });
   it("reduces event, snapshot, and flush actions through the pure reducer", () => {
     const initial = createChatStreamState({ sessionId: "s1" });
     const eventTransition = reduceChatStreamController(initial, eventAction(event("chat.token", { t: "hello" })));

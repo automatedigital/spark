@@ -1,0 +1,4726 @@
+{
+  "schema": "spark.app-upgrade.browser-gates.v1",
+  "captured_at": "2026-10-15T17:24:52.095125+00:00",
+  "status": "blocked acceptance; scope implemented, failures retained",
+  "source": {
+    "base_commit": "f771a18f9d04bd3a30d60590c20873e031956fd4",
+    "branch": "fix/p09-browser-gates",
+    "worktree": "/tmp/spark-p09-gates",
+    "parent_reported_newer_commit": "6cb9677; not integrated into this isolated evidence",
+    "implementation_changes_uncommitted_during_capture": true
+  },
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "cpu": "Apple M2 Max",
+    "memory_bytes": 68719476736,
+    "python": "3.11.7",
+    "node": "22.22.1",
+    "playwright_node": "1.59.1",
+    "chromium": "147.0.7727.15",
+    "python_playwright": "1.62.0",
+    "venv": "/Users/joe/Developer/github/spark/.venv",
+    "activation": "source /Users/joe/Developer/github/spark/.venv/bin/activate; export PATH=/Users/joe/.nvm/versions/node/v22.22.1/bin:$PATH; export PYTHON=/Users/joe/Developer/github/spark/.venv/bin/python; export PYTHONPATH=$PWD/src",
+    "dependencies": "Initial exploratory symlink reused root deps; copied with cp -cR into worktree before comparison runs. No npm install, lockfile or package edits. Shared Vite cache produced invalid-hook diagnostics; those exploratory samples are excluded.",
+    "load": "Same physical host as P00; shared host load is uncontrolled. Longthread and sidebar comparison batches were sequential."
+  },
+  "fixtures": {
+    "longthread": "Unchanged deterministic 2000 alternating user/assistant rows, code blocks; dark codex theme, 1440x900, DPR1; history page 50; all successes loaded 39 earlier pages; synthetic stream 16 tokens at 60ms/event.",
+    "sidebar": "1000 SQLite sessions, 10 real workspace folders, one ancient needle message in scale-499; initial snapshot 50 shells; real offset-50 scroll paging and explicit Inbox next-page paging; same session ID in a second isolated SPARK_HOME DB.",
+    "default_baseline_semantics": "18 theme/size/viewport cases and transactional canonical publication remain default. Filtered/output-dir runs never publish canonical files. Full 18-case matrix was not executed.",
+    "provider": "Fake streams only; comparison fixture endpoints use a dead loopback provider URL, no inference or messaging."
+  },
+  "commands": [
+    {
+      "command": "node src/spark_cli/web/e2e/baseline-capture.mjs --repeat 3 --case dark:2000:1440 --output-dir /tmp/spark-p09-evidence/longthread",
+      "exit": 0,
+      "phase": "exploratory; Node 25.8.0; shared dependencies; excluded from comparison"
+    },
+    {
+      "command": "node src/spark_cli/web/e2e/baseline-capture.mjs --repeat 5 --case dark:2000:1440 --output-dir /tmp/spark-p09-evidence/longthread-node22",
+      "exit": 1,
+      "phase": "exploratory; Node 22.22.1; shared dependencies; 2 passed, 2 invalid-hook failures, 1 console-fetch failure; excluded from comparison"
+    },
+    {
+      "command": "node src/spark_cli/web/e2e/browser-gates.mjs --suite longthread --repeat 5 --output-dir /tmp/spark-p09-evidence/longthread-localdeps",
+      "exit": 1,
+      "gate": {
+        "suite": "longthread",
+        "repeat": 5,
+        "attempts": [
+          {
+            "attempt": 1,
+            "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+            "args": [
+              "e2e/baseline-capture.mjs",
+              "--case",
+              "dark:2000:1440",
+              "--output-dir",
+              "/tmp/spark-p09-evidence/longthread-localdeps/attempt-01"
+            ],
+            "directory": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-01",
+            "timeoutMs": 240000,
+            "elapsedMs": 25142,
+            "timedOut": false,
+            "exit": 0,
+            "signal": null
+          },
+          {
+            "attempt": 2,
+            "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+            "args": [
+              "e2e/baseline-capture.mjs",
+              "--case",
+              "dark:2000:1440",
+              "--output-dir",
+              "/tmp/spark-p09-evidence/longthread-localdeps/attempt-02"
+            ],
+            "directory": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-02",
+            "timeoutMs": 240000,
+            "elapsedMs": 37059,
+            "timedOut": false,
+            "exit": 0,
+            "signal": null
+          },
+          {
+            "attempt": 3,
+            "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+            "args": [
+              "e2e/baseline-capture.mjs",
+              "--case",
+              "dark:2000:1440",
+              "--output-dir",
+              "/tmp/spark-p09-evidence/longthread-localdeps/attempt-03"
+            ],
+            "directory": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-03",
+            "timeoutMs": 240000,
+            "elapsedMs": 21231,
+            "timedOut": false,
+            "exit": 0,
+            "signal": null
+          },
+          {
+            "attempt": 4,
+            "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+            "args": [
+              "e2e/baseline-capture.mjs",
+              "--case",
+              "dark:2000:1440",
+              "--output-dir",
+              "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04"
+            ],
+            "directory": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04",
+            "timeoutMs": 240000,
+            "elapsedMs": 48230,
+            "timedOut": false,
+            "exit": 1,
+            "signal": null
+          },
+          {
+            "attempt": 5,
+            "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+            "args": [
+              "e2e/baseline-capture.mjs",
+              "--case",
+              "dark:2000:1440",
+              "--output-dir",
+              "/tmp/spark-p09-evidence/longthread-localdeps/attempt-05"
+            ],
+            "directory": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-05",
+            "timeoutMs": 240000,
+            "elapsedMs": 24631,
+            "timedOut": false,
+            "exit": 0,
+            "signal": null
+          }
+        ]
+      }
+    },
+    {
+      "command": "node src/spark_cli/web/e2e/browser-gates.mjs --suite sidebar --repeat 3 --output-dir /tmp/spark-p09-evidence/sidebar-diagnostic",
+      "exit": 1,
+      "gate": {
+        "suite": "sidebar",
+        "repeat": 3,
+        "attempts": [
+          {
+            "attempt": 1,
+            "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+            "args": [
+              "e2e/sidebar-scale.mjs"
+            ],
+            "directory": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-01",
+            "timeoutMs": 240000,
+            "elapsedMs": 19016,
+            "timedOut": false,
+            "exit": 0,
+            "signal": null
+          },
+          {
+            "attempt": 2,
+            "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+            "args": [
+              "e2e/sidebar-scale.mjs"
+            ],
+            "directory": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-02",
+            "timeoutMs": 240000,
+            "elapsedMs": 12007,
+            "timedOut": false,
+            "exit": 1,
+            "signal": null
+          },
+          {
+            "attempt": 3,
+            "command": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+            "args": [
+              "e2e/sidebar-scale.mjs"
+            ],
+            "directory": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-03",
+            "timeoutMs": 240000,
+            "elapsedMs": 18614,
+            "timedOut": false,
+            "exit": 0,
+            "signal": null
+          }
+        ]
+      }
+    },
+    {
+      "command": "node src/spark_cli/web/e2e/browser-gates.mjs --suite production-recovery --output-dir /tmp/spark-p09-evidence/production-final",
+      "exit": 0,
+      "gate": {
+        "suite": "production-recovery",
+        "repeat": 1,
+        "attempts": [
+          {
+            "attempt": 1,
+            "command": "/Users/joe/Developer/github/spark/.venv/bin/python",
+            "args": [
+              "e2e/production-recovery.py",
+              "--output-dir",
+              "/tmp/spark-p09-evidence/production-final/attempt-01"
+            ],
+            "directory": "/tmp/spark-p09-evidence/production-final/attempt-01",
+            "timeoutMs": 300000,
+            "elapsedMs": 28228,
+            "timedOut": false,
+            "exit": 0,
+            "signal": null
+          }
+        ]
+      }
+    },
+    {
+      "command": "PYTHONPATH=$PWD/src python -m pytest -q -n 0 -m 'not integration and not network' tests/run_agent/test_async_delegation.py tests/run_agent/test_real_interrupt_subagent.py tests/run_agent/test_caching_golden.py tests/tools/test_subagent_worktree.py tests/core/test_kanban_worker_ownership.py tests/spark_cli/test_async_subagent_routes.py tests/spark_cli/test_sidebar_metadata.py tests/spark_cli/test_web_server_events.py tests/test_web_turn_persistence.py tests/spark_cli/test_web_state.py tests/spark_cli/test_web_projections.py tests/test_model_tools_lazy_imports.py tests/tools/test_lazy_manifest.py tests/test_minimal_startup.py",
+      "exit": 0,
+      "result": "272 passed in 81.00s"
+    },
+    {
+      "command": "initial focused pytest command used tests/test_web_state.py instead of tests/spark_cli/test_web_state.py",
+      "exit": 4,
+      "result": "no tests ran; corrected in workflow and rerun above"
+    },
+    {
+      "command": "PYTHONPATH=$PWD/src python scripts/generate_tool_manifest.py --check",
+      "exit": 0,
+      "result": "70 tools / 28 isolated modules / 4 optional guards"
+    },
+    {
+      "command": "ruff check src/",
+      "exit": 1,
+      "result": "299 findings on integrated base; no source fixes in this scope"
+    },
+    {
+      "command": "ruff check src/spark_cli/web/e2e/production-recovery.py",
+      "exit": 0
+    },
+    {
+      "command": "node --check src/spark_cli/web/e2e/sidebar-scale.mjs; node --check src/spark_cli/web/e2e/baseline-capture.mjs; node --check src/spark_cli/web/e2e/browser-gates.mjs",
+      "exit": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit": 0
+    },
+    {
+      "command": "git diff --exit-code -- src/spark_cli/web_dist src/spark_cli/web/package.json src/spark_cli/web/package-lock.json",
+      "exit": 0
+    },
+    {
+      "command": "yaml.safe_load(.github/workflows/web-quality.yml) plus backend test-path existence audit",
+      "exit": 0,
+      "result": "all existing targets resolve; tests/run_agent/test_orchestration_replay.py is intentionally supplied by replay agent and absent on this isolated base"
+    }
+  ],
+  "long_thread": {
+    "attempts": 5,
+    "passed": 4,
+    "failed": 1,
+    "summary": {
+      "backend_ready_ms": {
+        "raw": [
+          835.977292,
+          1476.1133330000002,
+          863.418584,
+          838.23075
+        ],
+        "median": 850.824667,
+        "p95_nearest_rank": 1476.1133330000002,
+        "n": 4,
+        "p00": {
+          "raw": [
+            651.3195000000001,
+            652.363,
+            653.6757500000001
+          ],
+          "median": 652.363,
+          "p95_nearest_rank": 653.6757500000001
+        },
+        "median_delta_pct": 30.421968597238024,
+        "p95_delta_pct": 125.8173617424235
+      },
+      "first_render_ms": {
+        "raw": [
+          1629.6,
+          1774.65,
+          1327.47,
+          1432.79
+        ],
+        "median": 1531.195,
+        "p95_nearest_rank": 1774.65,
+        "n": 4,
+        "p00": {
+          "raw": [
+            1058.42,
+            1155.95,
+            1194.83
+          ],
+          "median": 1155.95,
+          "p95_nearest_rank": 1194.83
+        },
+        "median_delta_pct": 32.46204420606426,
+        "p95_delta_pct": 48.527405572340854
+      },
+      "first_visible_token_ms": {
+        "raw": [
+          202.80000001192093,
+          385.80000001192093,
+          174.69999998807907,
+          192.5
+        ],
+        "median": 197.65000000596046,
+        "p95_nearest_rank": 385.80000001192093,
+        "n": 4,
+        "p00": {
+          "raw": [
+            255.20000004768372,
+            187.60000002384186,
+            252.80000001192093
+          ],
+          "median": 252.80000001192093,
+          "p95_nearest_rank": 255.20000004768372
+        },
+        "median_delta_pct": -21.81566455829107,
+        "p95_delta_pct": 51.17554856576598
+      },
+      "first_visible_minus_synthetic_delay_ms": {
+        "raw": [
+          142.80000001192093,
+          325.80000001192093,
+          114.69999998807907,
+          132.5
+        ],
+        "median": 137.65000000596046,
+        "p95_nearest_rank": 325.80000001192093,
+        "n": 4,
+        "p00": {
+          "raw": [
+            195.20000004768372,
+            127.60000002384186,
+            192.80000001192093
+          ],
+          "median": 192.80000001192093,
+          "p95_nearest_rank": 195.20000004768372
+        },
+        "median_delta_pct": -28.60477178555524,
+        "p95_delta_pct": 66.90573767025312
+      },
+      "max_visible_update_gap_ms": {
+        "raw": [
+          253.5,
+          245.80000001192093,
+          192.69999998807907,
+          218.5
+        ],
+        "median": 232.15000000596046,
+        "p95_nearest_rank": 253.5,
+        "n": 4,
+        "p00": {
+          "raw": [
+            188.5999999642372,
+            197.30000001192093,
+            228.30000001192093
+          ],
+          "median": 197.30000001192093,
+          "p95_nearest_rank": 228.30000001192093
+        },
+        "median_delta_pct": 17.663456660888954,
+        "p95_delta_pct": 11.038107747158655
+      },
+      "js_heap_used_bytes": {
+        "raw": [
+          58747256,
+          28824904,
+          44669688,
+          39756948
+        ],
+        "median": 42213318.0,
+        "p95_nearest_rank": 58747256,
+        "n": 4,
+        "p00": {
+          "raw": [
+            37094464,
+            53101276,
+            28972368
+          ],
+          "median": 37094464,
+          "p95_nearest_rank": 53101276
+        },
+        "median_delta_pct": 13.799509274483658,
+        "p95_delta_pct": 10.632475197017865
+      }
+    },
+    "raw": [
+      {
+        "schema": "spark.web.baseline.v1",
+        "capturedAt": "2026-10-15T17:17:36.133Z",
+        "backendReadyMs": 835.977292,
+        "mode": "dev",
+        "iteration": 1,
+        "caseFilter": "dark:2000:1440",
+        "source": {
+          "commit": "f771a18f",
+          "branch": "fix/p09-browser-gates",
+          "browser": "147.0.7727.15",
+          "node": "v22.22.1"
+        },
+        "fixtureSizes": [
+          50,
+          500,
+          2000
+        ],
+        "viewports": [
+          {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          }
+        ],
+        "themes": [
+          {
+            "id": "codex",
+            "name": "dark"
+          },
+          {
+            "id": "daylight",
+            "name": "light"
+          }
+        ],
+        "cases": [
+          {
+            "fixtureRows": 2000,
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "deviceScaleFactor": 1
+            },
+            "theme": {
+              "id": "codex",
+              "name": "dark"
+            },
+            "firstRenderMs": 1629.6,
+            "navigationTiming": {
+              "type": "navigate",
+              "startTime": 0,
+              "domContentLoadedEventEnd": 914.5,
+              "loadEventEnd": 915.6999999880791,
+              "duration": 915.6999999880791
+            },
+            "history": {
+              "pagesLoaded": 39,
+              "attempts": 39,
+              "sameUrlReloads": 0,
+              "fullyLoaded": true,
+              "requestCount": 43,
+              "requests": [
+                {
+                  "at": 7457.103792,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 7622.483042,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 8105.421042,
+                  "limit": 50,
+                  "beforeId": "2501"
+                },
+                {
+                  "at": 8286.06825,
+                  "limit": 50,
+                  "beforeId": "2451"
+                },
+                {
+                  "at": 8740.317917,
+                  "limit": 50,
+                  "beforeId": "2401"
+                },
+                {
+                  "at": 9104.86925,
+                  "limit": 50,
+                  "beforeId": "2351"
+                },
+                {
+                  "at": 9454.625625,
+                  "limit": 50,
+                  "beforeId": "2301"
+                },
+                {
+                  "at": 10301.562542,
+                  "limit": 50,
+                  "beforeId": "2251"
+                },
+                {
+                  "at": 10710.406958,
+                  "limit": 50,
+                  "beforeId": "2201"
+                },
+                {
+                  "at": 10837.779708,
+                  "limit": 50,
+                  "beforeId": "2151"
+                },
+                {
+                  "at": 10954.032458,
+                  "limit": 50,
+                  "beforeId": "2101"
+                },
+                {
+                  "at": 11126.258792,
+                  "limit": 50,
+                  "beforeId": "2051"
+                },
+                {
+                  "at": 12777.283625,
+                  "limit": 50,
+                  "beforeId": "2001"
+                },
+                {
+                  "at": 13024.998833,
+                  "limit": 50,
+                  "beforeId": "1951"
+                },
+                {
+                  "at": 13201.765542,
+                  "limit": 50,
+                  "beforeId": "1901"
+                },
+                {
+                  "at": 13374.022458,
+                  "limit": 50,
+                  "beforeId": "1851"
+                },
+                {
+                  "at": 13811.771625,
+                  "limit": 50,
+                  "beforeId": "1801"
+                },
+                {
+                  "at": 13927.848583,
+                  "limit": 50,
+                  "beforeId": "1751"
+                },
+                {
+                  "at": 14093.149958,
+                  "limit": 50,
+                  "beforeId": "1701"
+                },
+                {
+                  "at": 14313.841125,
+                  "limit": 50,
+                  "beforeId": "1651"
+                },
+                {
+                  "at": 14881.249708,
+                  "limit": 50,
+                  "beforeId": "1601"
+                },
+                {
+                  "at": 15067.972833,
+                  "limit": 50,
+                  "beforeId": "1551"
+                },
+                {
+                  "at": 15223.252875,
+                  "limit": 50,
+                  "beforeId": "1501"
+                },
+                {
+                  "at": 15301.52725,
+                  "limit": 50,
+                  "beforeId": "1451"
+                },
+                {
+                  "at": 15750.268792,
+                  "limit": 50,
+                  "beforeId": "1401"
+                },
+                {
+                  "at": 15825.182292,
+                  "limit": 50,
+                  "beforeId": "1351"
+                },
+                {
+                  "at": 15980.4,
+                  "limit": 50,
+                  "beforeId": "1301"
+                },
+                {
+                  "at": 16057.206667,
+                  "limit": 50,
+                  "beforeId": "1251"
+                },
+                {
+                  "at": 16290.648625,
+                  "limit": 50,
+                  "beforeId": "1201"
+                },
+                {
+                  "at": 16442.652667,
+                  "limit": 50,
+                  "beforeId": "1151"
+                },
+                {
+                  "at": 16938.140333,
+                  "limit": 50,
+                  "beforeId": "1101"
+                },
+                {
+                  "at": 17108.877958,
+                  "limit": 50,
+                  "beforeId": "1051"
+                },
+                {
+                  "at": 17244.559792,
+                  "limit": 50,
+                  "beforeId": "1001"
+                },
+                {
+                  "at": 17374.651583,
+                  "limit": 50,
+                  "beforeId": "951"
+                },
+                {
+                  "at": 17773.437083,
+                  "limit": 50,
+                  "beforeId": "901"
+                },
+                {
+                  "at": 17858.369458,
+                  "limit": 50,
+                  "beforeId": "851"
+                },
+                {
+                  "at": 17939.991792,
+                  "limit": 50,
+                  "beforeId": "801"
+                },
+                {
+                  "at": 18113.425417,
+                  "limit": 50,
+                  "beforeId": "751"
+                },
+                {
+                  "at": 18240.532333,
+                  "limit": 50,
+                  "beforeId": "701"
+                },
+                {
+                  "at": 18312.809333,
+                  "limit": 50,
+                  "beforeId": "651"
+                },
+                {
+                  "at": 18411.790625,
+                  "limit": 50,
+                  "beforeId": "601"
+                },
+                {
+                  "at": 21726.30575,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 21893.429667,
+                  "limit": 50,
+                  "beforeId": null
+                }
+              ],
+              "mountedRows": 12
+            },
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 0,
+              "eventPayloadBytes": 0,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 859,
+              "streamRecoveryActions": 0
+            },
+            "resizeObserver": {
+              "constructed": 43,
+              "observedTargets": 14924,
+              "callbacks": 274,
+              "callbackEntries": 10388
+            },
+            "performance": {
+              "Timestamp": 413316.018907,
+              "AudioHandlers": 0,
+              "AudioWorkletProcessors": 0,
+              "Documents": 2,
+              "Frames": 2,
+              "JSEventListeners": 45216,
+              "LayoutObjects": 44518,
+              "MediaKeySessions": 0,
+              "MediaKeys": 0,
+              "Nodes": 71951,
+              "Resources": 66,
+              "ContextLifecycleStateObservers": 6,
+              "V8PerContextDatas": 2,
+              "WorkerGlobalScopes": 0,
+              "UACSSResources": 0,
+              "RTCPeerConnections": 0,
+              "ResourceFetchers": 2,
+              "AdSubframes": 0,
+              "DetachedScriptStates": 0,
+              "ArrayBufferContents": 3,
+              "LayoutCount": 0,
+              "RecalcStyleCount": 0,
+              "LayoutDuration": 0,
+              "RecalcStyleDuration": 0,
+              "DevToolsCommandDuration": 4e-06,
+              "ScriptDuration": 0,
+              "V8CompileDuration": 0,
+              "TaskDuration": 6e-06,
+              "TaskOtherDuration": 2e-06,
+              "ThreadTime": 2.8e-05,
+              "ProcessTime": 14.331115,
+              "JSHeapUsedSize": 58747256,
+              "JSHeapTotalSize": 118734848,
+              "FirstMeaningfulPaint": 0,
+              "DomContentLoaded": 413302.500777,
+              "NavigationStart": 413301.586363
+            },
+            "scrollDrift": {
+              "before": {
+                "id": "turn:user:db:2201",
+                "top": 125,
+                "scrollTop": 98308
+              },
+              "after": {
+                "id": "turn:user:db:2201",
+                "top": 125,
+                "scrollTop": 98308
+              },
+              "sameRow": true,
+              "driftPx": 0
+            },
+            "stream": {
+              "samples": [
+                {
+                  "at": 806.7000000476837,
+                  "visibleTokens": 2,
+                  "visibleChars": 48,
+                  "streaming": "false"
+                },
+                {
+                  "at": 926.5,
+                  "visibleTokens": 4,
+                  "visibleChars": 96,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1061.5,
+                  "visibleTokens": 6,
+                  "visibleChars": 144,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1299.1000000238419,
+                  "visibleTokens": 10,
+                  "visibleChars": 241,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1552.6000000238419,
+                  "visibleTokens": 14,
+                  "visibleChars": 341,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1724.1000000238419,
+                  "visibleTokens": 16,
+                  "visibleChars": 0,
+                  "streaming": "true"
+                }
+              ],
+              "startedAt": 603.9000000357628,
+              "firstVisibleTokenMs": 202.80000001192093,
+              "syntheticInitialDelayMs": 60,
+              "firstVisibleMinusSyntheticDelayMs": 142.80000001192093,
+              "maxVisibleUpdateGapMs": 253.5,
+              "updateCount": 6,
+              "elapsedMs": 1120.199999988079,
+              "updatesPerSecond": 5.3561863953435545,
+              "expectedTokenCount": 16,
+              "finalVisibleTokenCount": 16,
+              "efficiency": {
+                "version": "1.0",
+                "eventPayloads": 19,
+                "eventPayloadBytes": 13684,
+                "reconnects": 0,
+                "httpPolls": 0,
+                "reactCommits": 26,
+                "streamRecoveryActions": 0
+              }
+            },
+            "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/2000-w1440.png",
+            "errors": {
+              "page": [],
+              "console": []
+            }
+          }
+        ],
+        "summary": {
+          "caseCount": 1,
+          "streamUpdateCount": 6,
+          "pageErrorCount": 0,
+          "consoleErrorCount": 0
+        },
+        "notes": [
+          "This is a raw current-state baseline, not redesign acceptance evidence.",
+          "Rows are deterministic user/assistant messages seeded into a temporary SPARK_HOME.",
+          "Efficiency counters are exposed only when the explicit spark_efficiency_test flag is present."
+        ]
+      },
+      {
+        "schema": "spark.web.baseline.v1",
+        "capturedAt": "2026-10-15T17:18:12.321Z",
+        "backendReadyMs": 1476.1133330000002,
+        "mode": "dev",
+        "iteration": 1,
+        "caseFilter": "dark:2000:1440",
+        "source": {
+          "commit": "f771a18f",
+          "branch": "fix/p09-browser-gates",
+          "browser": "147.0.7727.15",
+          "node": "v22.22.1"
+        },
+        "fixtureSizes": [
+          50,
+          500,
+          2000
+        ],
+        "viewports": [
+          {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          }
+        ],
+        "themes": [
+          {
+            "id": "codex",
+            "name": "dark"
+          },
+          {
+            "id": "daylight",
+            "name": "light"
+          }
+        ],
+        "cases": [
+          {
+            "fixtureRows": 2000,
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "deviceScaleFactor": 1
+            },
+            "theme": {
+              "id": "codex",
+              "name": "dark"
+            },
+            "firstRenderMs": 1774.65,
+            "navigationTiming": {
+              "type": "navigate",
+              "startTime": 0,
+              "domContentLoadedEventEnd": 1155,
+              "loadEventEnd": 1156.699999988079,
+              "duration": 1156.699999988079
+            },
+            "history": {
+              "pagesLoaded": 39,
+              "attempts": 39,
+              "sameUrlReloads": 0,
+              "fullyLoaded": true,
+              "requestCount": 42,
+              "requests": [
+                {
+                  "at": 11419.521792,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 11684.140709,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 11953.952542,
+                  "limit": 50,
+                  "beforeId": "2501"
+                },
+                {
+                  "at": 12048.704209,
+                  "limit": 50,
+                  "beforeId": "2451"
+                },
+                {
+                  "at": 12852.610334,
+                  "limit": 50,
+                  "beforeId": "2401"
+                },
+                {
+                  "at": 13021.73075,
+                  "limit": 50,
+                  "beforeId": "2351"
+                },
+                {
+                  "at": 13833.425459,
+                  "limit": 50,
+                  "beforeId": "2301"
+                },
+                {
+                  "at": 15981.782667,
+                  "limit": 50,
+                  "beforeId": "2251"
+                },
+                {
+                  "at": 16665.1025,
+                  "limit": 50,
+                  "beforeId": "2201"
+                },
+                {
+                  "at": 16804.027834,
+                  "limit": 50,
+                  "beforeId": "2151"
+                },
+                {
+                  "at": 17043.139875,
+                  "limit": 50,
+                  "beforeId": "2101"
+                },
+                {
+                  "at": 17641.4355,
+                  "limit": 50,
+                  "beforeId": "2051"
+                },
+                {
+                  "at": 18669.301834,
+                  "limit": 50,
+                  "beforeId": "2001"
+                },
+                {
+                  "at": 18885.385375,
+                  "limit": 50,
+                  "beforeId": "1951"
+                },
+                {
+                  "at": 20086.727167,
+                  "limit": 50,
+                  "beforeId": "1901"
+                },
+                {
+                  "at": 20233.029792,
+                  "limit": 50,
+                  "beforeId": "1851"
+                },
+                {
+                  "at": 20872.538792,
+                  "limit": 50,
+                  "beforeId": "1801"
+                },
+                {
+                  "at": 20976.938667,
+                  "limit": 50,
+                  "beforeId": "1751"
+                },
+                {
+                  "at": 21087.78075,
+                  "limit": 50,
+                  "beforeId": "1701"
+                },
+                {
+                  "at": 22806.125375,
+                  "limit": 50,
+                  "beforeId": "1651"
+                },
+                {
+                  "at": 23007.088834,
+                  "limit": 50,
+                  "beforeId": "1601"
+                },
+                {
+                  "at": 23753.312834,
+                  "limit": 50,
+                  "beforeId": "1551"
+                },
+                {
+                  "at": 23930.693625,
+                  "limit": 50,
+                  "beforeId": "1501"
+                },
+                {
+                  "at": 24168.44975,
+                  "limit": 50,
+                  "beforeId": "1451"
+                },
+                {
+                  "at": 24945.258709,
+                  "limit": 50,
+                  "beforeId": "1401"
+                },
+                {
+                  "at": 25034.282709,
+                  "limit": 50,
+                  "beforeId": "1351"
+                },
+                {
+                  "at": 25130.446042,
+                  "limit": 50,
+                  "beforeId": "1301"
+                },
+                {
+                  "at": 26694.961125,
+                  "limit": 50,
+                  "beforeId": "1251"
+                },
+                {
+                  "at": 26998.248209,
+                  "limit": 50,
+                  "beforeId": "1201"
+                },
+                {
+                  "at": 27125.479709,
+                  "limit": 50,
+                  "beforeId": "1151"
+                },
+                {
+                  "at": 28063.241875,
+                  "limit": 50,
+                  "beforeId": "1101"
+                },
+                {
+                  "at": 28158.187834,
+                  "limit": 50,
+                  "beforeId": "1051"
+                },
+                {
+                  "at": 28235.178834,
+                  "limit": 50,
+                  "beforeId": "1001"
+                },
+                {
+                  "at": 28788.948125,
+                  "limit": 50,
+                  "beforeId": "951"
+                },
+                {
+                  "at": 28896.971125,
+                  "limit": 50,
+                  "beforeId": "901"
+                },
+                {
+                  "at": 28977.497042,
+                  "limit": 50,
+                  "beforeId": "851"
+                },
+                {
+                  "at": 29040.44725,
+                  "limit": 50,
+                  "beforeId": "801"
+                },
+                {
+                  "at": 29172.596625,
+                  "limit": 50,
+                  "beforeId": "751"
+                },
+                {
+                  "at": 29351.31,
+                  "limit": 50,
+                  "beforeId": "701"
+                },
+                {
+                  "at": 29810.139792,
+                  "limit": 50,
+                  "beforeId": "651"
+                },
+                {
+                  "at": 30126.24375,
+                  "limit": 50,
+                  "beforeId": "601"
+                },
+                {
+                  "at": 32561.218792,
+                  "limit": 50,
+                  "beforeId": null
+                }
+              ],
+              "mountedRows": 8
+            },
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 0,
+              "eventPayloadBytes": 0,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 938,
+              "streamRecoveryActions": 0
+            },
+            "resizeObserver": {
+              "constructed": 43,
+              "observedTargets": 17424,
+              "callbacks": 306,
+              "callbackEntries": 12169
+            },
+            "performance": {
+              "Timestamp": 413352.329338,
+              "AudioHandlers": 0,
+              "AudioWorkletProcessors": 0,
+              "Documents": 2,
+              "Frames": 2,
+              "JSEventListeners": 1772,
+              "LayoutObjects": 1831,
+              "MediaKeySessions": 0,
+              "MediaKeys": 0,
+              "Nodes": 5533,
+              "Resources": 55,
+              "ContextLifecycleStateObservers": 6,
+              "V8PerContextDatas": 2,
+              "WorkerGlobalScopes": 0,
+              "UACSSResources": 0,
+              "RTCPeerConnections": 0,
+              "ResourceFetchers": 2,
+              "AdSubframes": 0,
+              "DetachedScriptStates": 0,
+              "ArrayBufferContents": 1,
+              "LayoutCount": 0,
+              "RecalcStyleCount": 0,
+              "LayoutDuration": 0,
+              "RecalcStyleDuration": 0,
+              "DevToolsCommandDuration": 1e-05,
+              "ScriptDuration": 0,
+              "V8CompileDuration": 0,
+              "TaskDuration": 1.4e-05,
+              "TaskOtherDuration": 4e-06,
+              "ThreadTime": 4.3e-05,
+              "ProcessTime": 22.202595,
+              "JSHeapUsedSize": 28824904,
+              "JSHeapTotalSize": 125026304,
+              "FirstMeaningfulPaint": 0,
+              "DomContentLoaded": 413331.631123,
+              "NavigationStart": 413330.476062
+            },
+            "scrollDrift": {
+              "before": {
+                "id": "turn:user:db:555",
+                "top": 75,
+                "scrollTop": 500
+              },
+              "after": {
+                "id": "turn:user:db:555",
+                "top": 75,
+                "scrollTop": 500
+              },
+              "sameRow": true,
+              "driftPx": 0
+            },
+            "stream": {
+              "samples": [
+                {
+                  "at": 1163.8999999761581,
+                  "visibleTokens": 4,
+                  "visibleChars": 96,
+                  "streaming": "false"
+                },
+                {
+                  "at": 1409.699999988079,
+                  "visibleTokens": 8,
+                  "visibleChars": 192,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1609.5,
+                  "visibleTokens": 11,
+                  "visibleChars": 266,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1788.300000011921,
+                  "visibleTokens": 14,
+                  "visibleChars": 341,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1929.199999988079,
+                  "visibleTokens": 16,
+                  "visibleChars": 0,
+                  "streaming": "true"
+                }
+              ],
+              "startedAt": 778.0999999642372,
+              "firstVisibleTokenMs": 385.80000001192093,
+              "syntheticInitialDelayMs": 60,
+              "firstVisibleMinusSyntheticDelayMs": 325.80000001192093,
+              "maxVisibleUpdateGapMs": 245.80000001192093,
+              "updateCount": 5,
+              "elapsedMs": 1151.1000000238419,
+              "updatesPerSecond": 4.343671270868247,
+              "expectedTokenCount": 16,
+              "finalVisibleTokenCount": 16,
+              "efficiency": {
+                "version": "1.0",
+                "eventPayloads": 19,
+                "eventPayloadBytes": 13682,
+                "reconnects": 0,
+                "httpPolls": 0,
+                "reactCommits": 29,
+                "streamRecoveryActions": 0
+              }
+            },
+            "screenshot": "src/spark_cli/web/screenshots/baseline/thread/dark/2000-w1440.png",
+            "errors": {
+              "page": [],
+              "console": []
+            }
+          }
+        ],
+        "summary": {
+          "caseCount": 1,
+          "streamUpdateCount": 5,
+          "pageErrorCount": 0,
+          "consoleErrorCount": 0
+        },
+        "notes": [
+          "This is a raw current-state baseline, not redesign acceptance evidence.",
+          "Rows are deterministic user/assistant messages seeded into a temporary SPARK_HOME.",
+          "Efficiency counters are exposed only when the explicit spark_efficiency_test flag is present."
+        ]
+      },
+      {
+        "schema": "spark.web.baseline.v1",
+        "capturedAt": "2026-10-15T17:18:34.466Z",
+        "backendReadyMs": 863.418584,
+        "mode": "dev",
+        "iteration": 1,
+        "caseFilter": "dark:2000:1440",
+        "source": {
+          "commit": "f771a18f",
+          "branch": "fix/p09-browser-gates",
+          "browser": "147.0.7727.15",
+          "node": "v22.22.1"
+        },
+        "fixtureSizes": [
+          50,
+          500,
+          2000
+        ],
+        "viewports": [
+          {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          }
+        ],
+        "themes": [
+          {
+            "id": "codex",
+            "name": "dark"
+          },
+          {
+            "id": "daylight",
+            "name": "light"
+          }
+        ],
+        "cases": [
+          {
+            "fixtureRows": 2000,
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "deviceScaleFactor": 1
+            },
+            "theme": {
+              "id": "codex",
+              "name": "dark"
+            },
+            "firstRenderMs": 1327.47,
+            "navigationTiming": {
+              "type": "navigate",
+              "startTime": 0,
+              "domContentLoadedEventEnd": 938.7000000476837,
+              "loadEventEnd": 939.9000000357628,
+              "duration": 939.9000000357628
+            },
+            "history": {
+              "pagesLoaded": 39,
+              "attempts": 39,
+              "sameUrlReloads": 0,
+              "fullyLoaded": true,
+              "requestCount": 43,
+              "requests": [
+                {
+                  "at": 9180.851625,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 9355.05425,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 9531.084084,
+                  "limit": 50,
+                  "beforeId": "2501"
+                },
+                {
+                  "at": 9601.999792,
+                  "limit": 50,
+                  "beforeId": "2451"
+                },
+                {
+                  "at": 9667.76675,
+                  "limit": 50,
+                  "beforeId": "2401"
+                },
+                {
+                  "at": 9874.210417,
+                  "limit": 50,
+                  "beforeId": "2351"
+                },
+                {
+                  "at": 10049.263792,
+                  "limit": 50,
+                  "beforeId": "2301"
+                },
+                {
+                  "at": 10463.945,
+                  "limit": 50,
+                  "beforeId": "2251"
+                },
+                {
+                  "at": 10526.118417,
+                  "limit": 50,
+                  "beforeId": "2201"
+                },
+                {
+                  "at": 10601.584334,
+                  "limit": 50,
+                  "beforeId": "2151"
+                },
+                {
+                  "at": 10660.71225,
+                  "limit": 50,
+                  "beforeId": "2101"
+                },
+                {
+                  "at": 10734.735167,
+                  "limit": 50,
+                  "beforeId": "2051"
+                },
+                {
+                  "at": 10806.547,
+                  "limit": 50,
+                  "beforeId": "2001"
+                },
+                {
+                  "at": 10863.859542,
+                  "limit": 50,
+                  "beforeId": "1951"
+                },
+                {
+                  "at": 11001.691875,
+                  "limit": 50,
+                  "beforeId": "1901"
+                },
+                {
+                  "at": 11457.415084,
+                  "limit": 50,
+                  "beforeId": "1851"
+                },
+                {
+                  "at": 11586.767334,
+                  "limit": 50,
+                  "beforeId": "1801"
+                },
+                {
+                  "at": 11867.473834,
+                  "limit": 50,
+                  "beforeId": "1751"
+                },
+                {
+                  "at": 11962.598834,
+                  "limit": 50,
+                  "beforeId": "1701"
+                },
+                {
+                  "at": 12045.570084,
+                  "limit": 50,
+                  "beforeId": "1651"
+                },
+                {
+                  "at": 12439.33475,
+                  "limit": 50,
+                  "beforeId": "1601"
+                },
+                {
+                  "at": 12571.974625,
+                  "limit": 50,
+                  "beforeId": "1551"
+                },
+                {
+                  "at": 12735.282709,
+                  "limit": 50,
+                  "beforeId": "1501"
+                },
+                {
+                  "at": 12861.952375,
+                  "limit": 50,
+                  "beforeId": "1451"
+                },
+                {
+                  "at": 12940.827459,
+                  "limit": 50,
+                  "beforeId": "1401"
+                },
+                {
+                  "at": 13005.457459,
+                  "limit": 50,
+                  "beforeId": "1351"
+                },
+                {
+                  "at": 13441.930584,
+                  "limit": 50,
+                  "beforeId": "1301"
+                },
+                {
+                  "at": 13571.998459,
+                  "limit": 50,
+                  "beforeId": "1251"
+                },
+                {
+                  "at": 13627.266292,
+                  "limit": 50,
+                  "beforeId": "1201"
+                },
+                {
+                  "at": 13732.36325,
+                  "limit": 50,
+                  "beforeId": "1151"
+                },
+                {
+                  "at": 13809.676167,
+                  "limit": 50,
+                  "beforeId": "1101"
+                },
+                {
+                  "at": 13915.489667,
+                  "limit": 50,
+                  "beforeId": "1051"
+                },
+                {
+                  "at": 13987.893542,
+                  "limit": 50,
+                  "beforeId": "1001"
+                },
+                {
+                  "at": 14626.51075,
+                  "limit": 50,
+                  "beforeId": "951"
+                },
+                {
+                  "at": 14707.829667,
+                  "limit": 50,
+                  "beforeId": "901"
+                },
+                {
+                  "at": 15029.7115,
+                  "limit": 50,
+                  "beforeId": "851"
+                },
+                {
+                  "at": 15396.43825,
+                  "limit": 50,
+                  "beforeId": "801"
+                },
+                {
+                  "at": 15624.807542,
+                  "limit": 50,
+                  "beforeId": "751"
+                },
+                {
+                  "at": 15844.509,
+                  "limit": 50,
+                  "beforeId": "701"
+                },
+                {
+                  "at": 15910.992834,
+                  "limit": 50,
+                  "beforeId": "651"
+                },
+                {
+                  "at": 15964.789709,
+                  "limit": 50,
+                  "beforeId": "601"
+                },
+                {
+                  "at": 17993.96525,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 18061.272209,
+                  "limit": 50,
+                  "beforeId": null
+                }
+              ],
+              "mountedRows": 10
+            },
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 0,
+              "eventPayloadBytes": 0,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 497,
+              "streamRecoveryActions": 0
+            },
+            "resizeObserver": {
+              "constructed": 43,
+              "observedTargets": 8110,
+              "callbacks": 182,
+              "callbackEntries": 5727
+            },
+            "performance": {
+              "Timestamp": 413374.908985,
+              "AudioHandlers": 0,
+              "AudioWorkletProcessors": 0,
+              "Documents": 2,
+              "Frames": 2,
+              "JSEventListeners": 23772,
+              "LayoutObjects": 25769,
+              "MediaKeySessions": 0,
+              "MediaKeys": 0,
+              "Nodes": 29095,
+              "Resources": 61,
+              "ContextLifecycleStateObservers": 6,
+              "V8PerContextDatas": 2,
+              "WorkerGlobalScopes": 0,
+              "UACSSResources": 0,
+              "RTCPeerConnections": 0,
+              "ResourceFetchers": 2,
+              "AdSubframes": 0,
+              "DetachedScriptStates": 0,
+              "ArrayBufferContents": 4,
+              "LayoutCount": 0,
+              "RecalcStyleCount": 0,
+              "LayoutDuration": 0,
+              "RecalcStyleDuration": 0,
+              "DevToolsCommandDuration": 3e-06,
+              "ScriptDuration": 0.000671,
+              "V8CompileDuration": 0,
+              "TaskDuration": 0.000683,
+              "TaskOtherDuration": 9e-06,
+              "ThreadTime": 0.000709,
+              "ProcessTime": 8.832364,
+              "JSHeapUsedSize": 44669688,
+              "JSHeapTotalSize": 106790912,
+              "FirstMeaningfulPaint": 0,
+              "DomContentLoaded": 413366.467602,
+              "NavigationStart": 413365.528886
+            },
+            "scrollDrift": {
+              "before": {
+                "id": "turn:user:db:555",
+                "top": 75,
+                "scrollTop": 500
+              },
+              "after": {
+                "id": "turn:user:db:555",
+                "top": 75,
+                "scrollTop": 500
+              },
+              "sameRow": true,
+              "driftPx": 0
+            },
+            "stream": {
+              "samples": [
+                {
+                  "at": 739.5,
+                  "visibleTokens": 2,
+                  "visibleChars": 48,
+                  "streaming": "false"
+                },
+                {
+                  "at": 883.5,
+                  "visibleTokens": 4,
+                  "visibleChars": 96,
+                  "streaming": "true"
+                },
+                {
+                  "at": 992.9000000357628,
+                  "visibleTokens": 6,
+                  "visibleChars": 144,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1178.6000000238419,
+                  "visibleTokens": 9,
+                  "visibleChars": 216,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1371.300000011921,
+                  "visibleTokens": 12,
+                  "visibleChars": 291,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1557.9000000357628,
+                  "visibleTokens": 15,
+                  "visibleChars": 366,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1631,
+                  "visibleTokens": 16,
+                  "visibleChars": 0,
+                  "streaming": "true"
+                }
+              ],
+              "startedAt": 564.8000000119209,
+              "firstVisibleTokenMs": 174.69999998807907,
+              "syntheticInitialDelayMs": 60,
+              "firstVisibleMinusSyntheticDelayMs": 114.69999998807907,
+              "maxVisibleUpdateGapMs": 192.69999998807907,
+              "updateCount": 7,
+              "elapsedMs": 1066.199999988079,
+              "updatesPerSecond": 6.565372350476707,
+              "expectedTokenCount": 16,
+              "finalVisibleTokenCount": 16,
+              "efficiency": {
+                "version": "1.0",
+                "eventPayloads": 19,
+                "eventPayloadBytes": 13686,
+                "reconnects": 0,
+                "httpPolls": 0,
+                "reactCommits": 24,
+                "streamRecoveryActions": 0
+              }
+            },
+            "screenshot": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-03/run-01/screenshots/dark/2000-w1440.png",
+            "errors": {
+              "page": [],
+              "console": []
+            }
+          }
+        ],
+        "summary": {
+          "caseCount": 1,
+          "streamUpdateCount": 7,
+          "pageErrorCount": 0,
+          "consoleErrorCount": 0
+        },
+        "notes": [
+          "This is a raw current-state baseline, not redesign acceptance evidence.",
+          "Rows are deterministic user/assistant messages seeded into a temporary SPARK_HOME.",
+          "Efficiency counters are exposed only when the explicit spark_efficiency_test flag is present."
+        ]
+      },
+      {
+        "schema": "spark.web.baseline.v1",
+        "capturedAt": "2026-10-15T17:19:47.324Z",
+        "backendReadyMs": 838.23075,
+        "mode": "dev",
+        "iteration": 1,
+        "caseFilter": "dark:2000:1440",
+        "source": {
+          "commit": "f771a18f",
+          "branch": "fix/p09-browser-gates",
+          "browser": "147.0.7727.15",
+          "node": "v22.22.1"
+        },
+        "fixtureSizes": [
+          50,
+          500,
+          2000
+        ],
+        "viewports": [
+          {
+            "width": 1440,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          {
+            "width": 1024,
+            "height": 900,
+            "deviceScaleFactor": 1
+          },
+          {
+            "width": 768,
+            "height": 900,
+            "deviceScaleFactor": 1
+          }
+        ],
+        "themes": [
+          {
+            "id": "codex",
+            "name": "dark"
+          },
+          {
+            "id": "daylight",
+            "name": "light"
+          }
+        ],
+        "cases": [
+          {
+            "fixtureRows": 2000,
+            "viewport": {
+              "width": 1440,
+              "height": 900,
+              "deviceScaleFactor": 1
+            },
+            "theme": {
+              "id": "codex",
+              "name": "dark"
+            },
+            "firstRenderMs": 1432.79,
+            "navigationTiming": {
+              "type": "navigate",
+              "startTime": 0,
+              "domContentLoadedEventEnd": 916.7000000476837,
+              "loadEventEnd": 917.9000000357628,
+              "duration": 917.9000000357628
+            },
+            "history": {
+              "pagesLoaded": 39,
+              "attempts": 39,
+              "sameUrlReloads": 0,
+              "fullyLoaded": true,
+              "requestCount": 43,
+              "requests": [
+                {
+                  "at": 7084.685708,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 7142.495333,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 7582.617208,
+                  "limit": 50,
+                  "beforeId": "2501"
+                },
+                {
+                  "at": 8534.196167,
+                  "limit": 50,
+                  "beforeId": "2451"
+                },
+                {
+                  "at": 8636.737917,
+                  "limit": 50,
+                  "beforeId": "2401"
+                },
+                {
+                  "at": 8733.52475,
+                  "limit": 50,
+                  "beforeId": "2351"
+                },
+                {
+                  "at": 8788.458333,
+                  "limit": 50,
+                  "beforeId": "2301"
+                },
+                {
+                  "at": 8904.745875,
+                  "limit": 50,
+                  "beforeId": "2251"
+                },
+                {
+                  "at": 9215.1125,
+                  "limit": 50,
+                  "beforeId": "2201"
+                },
+                {
+                  "at": 9332.096417,
+                  "limit": 50,
+                  "beforeId": "2151"
+                },
+                {
+                  "at": 9435.113833,
+                  "limit": 50,
+                  "beforeId": "2101"
+                },
+                {
+                  "at": 9582.597083,
+                  "limit": 50,
+                  "beforeId": "2051"
+                },
+                {
+                  "at": 9778.365625,
+                  "limit": 50,
+                  "beforeId": "2001"
+                },
+                {
+                  "at": 10250.201625,
+                  "limit": 50,
+                  "beforeId": "1951"
+                },
+                {
+                  "at": 10528.894292,
+                  "limit": 50,
+                  "beforeId": "1901"
+                },
+                {
+                  "at": 10720.770458,
+                  "limit": 50,
+                  "beforeId": "1851"
+                },
+                {
+                  "at": 10802.203,
+                  "limit": 50,
+                  "beforeId": "1801"
+                },
+                {
+                  "at": 10873.648042,
+                  "limit": 50,
+                  "beforeId": "1751"
+                },
+                {
+                  "at": 11266.49175,
+                  "limit": 50,
+                  "beforeId": "1701"
+                },
+                {
+                  "at": 11394.982625,
+                  "limit": 50,
+                  "beforeId": "1651"
+                },
+                {
+                  "at": 11547.393792,
+                  "limit": 50,
+                  "beforeId": "1601"
+                },
+                {
+                  "at": 12269.465083,
+                  "limit": 50,
+                  "beforeId": "1551"
+                },
+                {
+                  "at": 12446.651542,
+                  "limit": 50,
+                  "beforeId": "1501"
+                },
+                {
+                  "at": 12541.718,
+                  "limit": 50,
+                  "beforeId": "1451"
+                },
+                {
+                  "at": 12943.526417,
+                  "limit": 50,
+                  "beforeId": "1401"
+                },
+                {
+                  "at": 13713.421458,
+                  "limit": 50,
+                  "beforeId": "1351"
+                },
+                {
+                  "at": 14489.785375,
+                  "limit": 50,
+                  "beforeId": "1301"
+                },
+                {
+                  "at": 14647.975625,
+                  "limit": 50,
+                  "beforeId": "1251"
+                },
+                {
+                  "at": 14807.127375,
+                  "limit": 50,
+                  "beforeId": "1201"
+                },
+                {
+                  "at": 15472.278583,
+                  "limit": 50,
+                  "beforeId": "1151"
+                },
+                {
+                  "at": 15604.132,
+                  "limit": 50,
+                  "beforeId": "1101"
+                },
+                {
+                  "at": 15720.219125,
+                  "limit": 50,
+                  "beforeId": "1051"
+                },
+                {
+                  "at": 15814.609167,
+                  "limit": 50,
+                  "beforeId": "1001"
+                },
+                {
+                  "at": 18155.146958,
+                  "limit": 50,
+                  "beforeId": "951"
+                },
+                {
+                  "at": 18342.586167,
+                  "limit": 50,
+                  "beforeId": "901"
+                },
+                {
+                  "at": 18595.271417,
+                  "limit": 50,
+                  "beforeId": "851"
+                },
+                {
+                  "at": 18678.315083,
+                  "limit": 50,
+                  "beforeId": "801"
+                },
+                {
+                  "at": 18874.280833,
+                  "limit": 50,
+                  "beforeId": "751"
+                },
+                {
+                  "at": 19305.58625,
+                  "limit": 50,
+                  "beforeId": "701"
+                },
+                {
+                  "at": 19430.346333,
+                  "limit": 50,
+                  "beforeId": "651"
+                },
+                {
+                  "at": 19611.011833,
+                  "limit": 50,
+                  "beforeId": "601"
+                },
+                {
+                  "at": 21461.507,
+                  "limit": 50,
+                  "beforeId": null
+                },
+                {
+                  "at": 21569.248125,
+                  "limit": 50,
+                  "beforeId": null
+                }
+              ],
+              "mountedRows": 8
+            },
+            "efficiency": {
+              "version": "1.0",
+              "eventPayloads": 0,
+              "eventPayloadBytes": 0,
+              "reconnects": 0,
+              "httpPolls": 0,
+              "reactCommits": 749,
+              "streamRecoveryActions": 0
+            },
+            "resizeObserver": {
+              "constructed": 43,
+              "observedTargets": 10946,
+              "callbacks": 243,
+              "callbackEntries": 7666
+            },
+            "performance": {
+              "Timestamp": 413447.919114,
+              "AudioHandlers": 0,
+              "AudioWorkletProcessors": 0,
+              "Documents": 2,
+              "Frames": 2,
+              "JSEventListeners": 18709,
+              "LayoutObjects": 20808,
+              "MediaKeySessions": 0,
+              "MediaKeys": 0,
+              "Nodes": 22982,
+              "Resources": 59,
+              "ContextLifecycleStateObservers": 6,
+              "V8PerContextDatas": 2,
+              "WorkerGlobalScopes": 0,
+              "UACSSResources": 0,
+              "RTCPeerConnections": 0,
+              "ResourceFetchers": 2,
+              "AdSubframes": 0,
+              "DetachedScriptStates": 0,
+              "ArrayBufferContents": 3,
+              "LayoutCount": 0,
+              "RecalcStyleCount": 0,
+              "LayoutDuration": 0,
+              "RecalcStyleDuration": 0,
+              "DevToolsCommandDuration": 5e-06,
+              "ScriptDuration": 0,
+              "V8CompileDuration": 0,
+              "TaskDuration": 7e-06,
+              "TaskOtherDuration": 2e-06,
+              "ThreadTime": 2.5e-05,
+              "ProcessTime": 14.71275,
+              "JSHeapUsedSize": 39756948,
+              "JSHeapTotalSize": 110608384,
+              "FirstMeaningfulPaint": 0,
+              "DomContentLoaded": 413433.732013,
+              "NavigationStart": 413432.815463
+            },
+            "scrollDrift": {
+              "before": {
+                "id": "turn:user:db:555",
+                "top": 75,
+                "scrollTop": 500
+              },
+              "after": {
+                "id": "turn:user:db:555",
+                "top": 75,
+                "scrollTop": 500
+              },
+              "sameRow": true,
+              "driftPx": 0
+            },
+            "stream": {
+              "samples": [
+                {
+                  "at": 676.9000000357628,
+                  "visibleTokens": 2,
+                  "visibleChars": 48,
+                  "streaming": "true"
+                },
+                {
+                  "at": 805.2000000476837,
+                  "visibleTokens": 4,
+                  "visibleChars": 96,
+                  "streaming": "true"
+                },
+                {
+                  "at": 943.5,
+                  "visibleTokens": 6,
+                  "visibleChars": 144,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1094.6000000238419,
+                  "visibleTokens": 9,
+                  "visibleChars": 216,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1254.2000000476837,
+                  "visibleTokens": 11,
+                  "visibleChars": 266,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1472.7000000476837,
+                  "visibleTokens": 14,
+                  "visibleChars": 341,
+                  "streaming": "true"
+                },
+                {
+                  "at": 1566.800000011921,
+                  "visibleTokens": 16,
+                  "visibleChars": 0,
+                  "streaming": "true"
+                }
+              ],
+              "startedAt": 484.4000000357628,
+              "firstVisibleTokenMs": 192.5,
+              "syntheticInitialDelayMs": 60,
+              "firstVisibleMinusSyntheticDelayMs": 132.5,
+              "maxVisibleUpdateGapMs": 218.5,
+              "updateCount": 7,
+              "elapsedMs": 1082.3999999761581,
+              "updatesPerSecond": 6.46711012578916,
+              "expectedTokenCount": 16,
+              "finalVisibleTokenCount": 16,
+              "efficiency": {
+                "version": "1.0",
+                "eventPayloads": 19,
+                "eventPayloadBytes": 13667,
+                "reconnects": 0,
+                "httpPolls": 0,
+                "reactCommits": 32,
+                "streamRecoveryActions": 0
+              }
+            },
+            "screenshot": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-05/run-01/screenshots/dark/2000-w1440.png",
+            "errors": {
+              "page": [],
+              "console": []
+            }
+          }
+        ],
+        "summary": {
+          "caseCount": 1,
+          "streamUpdateCount": 7,
+          "pageErrorCount": 0,
+          "consoleErrorCount": 0
+        },
+        "notes": [
+          "This is a raw current-state baseline, not redesign acceptance evidence.",
+          "Rows are deterministic user/assistant messages seeded into a temporary SPARK_HOME.",
+          "Efficiency counters are exposed only when the explicit spark_efficiency_test flag is present."
+        ]
+      }
+    ],
+    "failure": {
+      "error": "Error: History paging reloaded 3 times at http://127.0.0.1:58639/?spark_efficiency_test=1\n    at recoverSameUrlReload (file:///private/tmp/spark-p09-gates/src/spark_cli/web/e2e/baseline-capture.mjs:260:13)\n    at loadEarlierMessages (file:///private/tmp/spark-p09-gates/src/spark_cli/web/e2e/baseline-capture.mjs:273:15)\n    at async captureCase (file:///private/tmp/spark-p09-gates/src/spark_cli/web/e2e/baseline-capture.mjs:582:20)\n    at async run (file:///private/tmp/spark-p09-gates/src/spark_cli/web/e2e/baseline-capture.mjs:777:26)\n    at async file:///private/tmp/spark-p09-gates/src/spark_cli/web/e2e/baseline-capture.mjs:857:9",
+      "historyRequests": [
+        {
+          "at": 6671.598667,
+          "limit": 50,
+          "beforeId": null
+        },
+        {
+          "at": 6737.991625,
+          "limit": 50,
+          "beforeId": null
+        },
+        {
+          "at": 7172.714542,
+          "limit": 50,
+          "beforeId": "2501"
+        },
+        {
+          "at": 7361.784084,
+          "limit": 50,
+          "beforeId": "2451"
+        },
+        {
+          "at": 8099.623959,
+          "limit": 50,
+          "beforeId": "2401"
+        },
+        {
+          "at": 8387.947417,
+          "limit": 50,
+          "beforeId": "2351"
+        },
+        {
+          "at": 9020.092125,
+          "limit": 50,
+          "beforeId": "2301"
+        },
+        {
+          "at": 9292.827417,
+          "limit": 50,
+          "beforeId": "2251"
+        },
+        {
+          "at": 9474.323375,
+          "limit": 50,
+          "beforeId": "2201"
+        },
+        {
+          "at": 10066.144292,
+          "limit": 50,
+          "beforeId": "2151"
+        },
+        {
+          "at": 10612.355917,
+          "limit": 50,
+          "beforeId": null
+        },
+        {
+          "at": 10650.241417,
+          "limit": 50,
+          "beforeId": null
+        },
+        {
+          "at": 11019.847959,
+          "limit": 50,
+          "beforeId": "2501"
+        },
+        {
+          "at": 11694.828875,
+          "limit": 50,
+          "beforeId": "2451"
+        },
+        {
+          "at": 11828.772084,
+          "limit": 50,
+          "beforeId": "2401"
+        },
+        {
+          "at": 11970.021084,
+          "limit": 50,
+          "beforeId": "2351"
+        },
+        {
+          "at": 12850.515209,
+          "limit": 50,
+          "beforeId": "2301"
+        },
+        {
+          "at": 13041.905542,
+          "limit": 50,
+          "beforeId": "2251"
+        },
+        {
+          "at": 13888.66675,
+          "limit": 50,
+          "beforeId": "2201"
+        },
+        {
+          "at": 14763.589167,
+          "limit": 50,
+          "beforeId": "2151"
+        },
+        {
+          "at": 15872.76775,
+          "limit": 50,
+          "beforeId": "2101"
+        },
+        {
+          "at": 16177.099917,
+          "limit": 50,
+          "beforeId": "2051"
+        },
+        {
+          "at": 16649.214667,
+          "limit": 50,
+          "beforeId": "2001"
+        },
+        {
+          "at": 16811.239667,
+          "limit": 50,
+          "beforeId": "1951"
+        },
+        {
+          "at": 16986.654875,
+          "limit": 50,
+          "beforeId": "1901"
+        },
+        {
+          "at": 17570.106917,
+          "limit": 50,
+          "beforeId": "1851"
+        },
+        {
+          "at": 18766.355125,
+          "limit": 50,
+          "beforeId": "1801"
+        },
+        {
+          "at": 18926.287417,
+          "limit": 50,
+          "beforeId": "1751"
+        },
+        {
+          "at": 19440.257084,
+          "limit": 50,
+          "beforeId": "1701"
+        },
+        {
+          "at": 19736.025167,
+          "limit": 50,
+          "beforeId": "1651"
+        },
+        {
+          "at": 19982.251042,
+          "limit": 50,
+          "beforeId": "1601"
+        },
+        {
+          "at": 20854.30275,
+          "limit": 50,
+          "beforeId": "1551"
+        },
+        {
+          "at": 21948.216542,
+          "limit": 50,
+          "beforeId": "1501"
+        },
+        {
+          "at": 22919.210125,
+          "limit": 50,
+          "beforeId": "1451"
+        },
+        {
+          "at": 23090.365917,
+          "limit": 50,
+          "beforeId": "1401"
+        },
+        {
+          "at": 23236.5475,
+          "limit": 50,
+          "beforeId": "1351"
+        },
+        {
+          "at": 23785.5565,
+          "limit": 50,
+          "beforeId": "1301"
+        },
+        {
+          "at": 23944.15725,
+          "limit": 50,
+          "beforeId": "1251"
+        },
+        {
+          "at": 24871.157959,
+          "limit": 50,
+          "beforeId": "1201"
+        },
+        {
+          "at": 25067.948584,
+          "limit": 50,
+          "beforeId": "1151"
+        },
+        {
+          "at": 33087.2615,
+          "limit": 50,
+          "beforeId": null
+        },
+        {
+          "at": 33383.544375,
+          "limit": 50,
+          "beforeId": null
+        },
+        {
+          "at": 33534.276667,
+          "limit": 50,
+          "beforeId": "2501"
+        },
+        {
+          "at": 33684.355792,
+          "limit": 50,
+          "beforeId": "2451"
+        },
+        {
+          "at": 34132.392167,
+          "limit": 50,
+          "beforeId": "2401"
+        },
+        {
+          "at": 34241.254792,
+          "limit": 50,
+          "beforeId": "2351"
+        },
+        {
+          "at": 34319.8295,
+          "limit": 50,
+          "beforeId": "2301"
+        },
+        {
+          "at": 34475.737584,
+          "limit": 50,
+          "beforeId": "2251"
+        },
+        {
+          "at": 34614.648209,
+          "limit": 50,
+          "beforeId": "2201"
+        },
+        {
+          "at": 34941.56425,
+          "limit": 50,
+          "beforeId": "2151"
+        },
+        {
+          "at": 35035.039125,
+          "limit": 50,
+          "beforeId": "2101"
+        },
+        {
+          "at": 35146.749875,
+          "limit": 50,
+          "beforeId": "2051"
+        },
+        {
+          "at": 35281.265584,
+          "limit": 50,
+          "beforeId": "2001"
+        },
+        {
+          "at": 35412.223125,
+          "limit": 50,
+          "beforeId": "1951"
+        },
+        {
+          "at": 35553.701625,
+          "limit": 50,
+          "beforeId": "1901"
+        },
+        {
+          "at": 36294.586875,
+          "limit": 50,
+          "beforeId": "1851"
+        },
+        {
+          "at": 36453.340792,
+          "limit": 50,
+          "beforeId": "1801"
+        },
+        {
+          "at": 36823.052459,
+          "limit": 50,
+          "beforeId": "1751"
+        },
+        {
+          "at": 36960.9235,
+          "limit": 50,
+          "beforeId": "1701"
+        },
+        {
+          "at": 37148.09025,
+          "limit": 50,
+          "beforeId": "1651"
+        },
+        {
+          "at": 37277.781834,
+          "limit": 50,
+          "beforeId": "1601"
+        },
+        {
+          "at": 37456.4465,
+          "limit": 50,
+          "beforeId": "1551"
+        },
+        {
+          "at": 37586.321084,
+          "limit": 50,
+          "beforeId": "1501"
+        },
+        {
+          "at": 37913.8535,
+          "limit": 50,
+          "beforeId": "1451"
+        },
+        {
+          "at": 37994.454,
+          "limit": 50,
+          "beforeId": "1401"
+        },
+        {
+          "at": 38186.514917,
+          "limit": 50,
+          "beforeId": "1351"
+        },
+        {
+          "at": 38411.290084,
+          "limit": 50,
+          "beforeId": "1301"
+        },
+        {
+          "at": 39421.263209,
+          "limit": 50,
+          "beforeId": "1251"
+        },
+        {
+          "at": 39596.461167,
+          "limit": 50,
+          "beforeId": "1201"
+        },
+        {
+          "at": 40028.068917,
+          "limit": 50,
+          "beforeId": "1151"
+        },
+        {
+          "at": 40494.496834,
+          "limit": 50,
+          "beforeId": "1101"
+        },
+        {
+          "at": 40918.392292,
+          "limit": 50,
+          "beforeId": "1051"
+        },
+        {
+          "at": 41359.753209,
+          "limit": 50,
+          "beforeId": "1001"
+        },
+        {
+          "at": 42266.055042,
+          "limit": 50,
+          "beforeId": "951"
+        },
+        {
+          "at": 43157.136125,
+          "limit": 50,
+          "beforeId": "901"
+        },
+        {
+          "at": 43399.46975,
+          "limit": 50,
+          "beforeId": "851"
+        },
+        {
+          "at": 43612.368209,
+          "limit": 50,
+          "beforeId": "801"
+        },
+        {
+          "at": 44227.633709,
+          "limit": 50,
+          "beforeId": "751"
+        },
+        {
+          "at": 44573.648042,
+          "limit": 50,
+          "beforeId": "701"
+        },
+        {
+          "at": 45303.296125,
+          "limit": 50,
+          "beforeId": "651"
+        },
+        {
+          "at": 46227.173334,
+          "limit": 50,
+          "beforeId": "601"
+        }
+      ],
+      "historyResponses": [
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&_=1792084722692",
+          "status": 200,
+          "at": 6759.831209
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&_=1792084722754",
+          "status": 200,
+          "at": 6884.3135
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2501&_=1792084723193",
+          "status": 200,
+          "at": 7229.632917
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2451&_=1792084723377",
+          "status": 200,
+          "at": 7884.380917
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2401&_=1792084724121",
+          "status": 200,
+          "at": 8194.801834
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2351&_=1792084724406",
+          "status": 200,
+          "at": 8440.8305
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2301&_=1792084725039",
+          "status": 200,
+          "at": 9164.721
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2251&_=1792084725314",
+          "status": 200,
+          "at": 9308.606917
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2201&_=1792084725491",
+          "status": 200,
+          "at": 9491.666
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&_=1792084726610",
+          "status": 200,
+          "at": 10739.58525
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&_=1792084726679",
+          "status": 200,
+          "at": 11046.494209
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2501&_=1792084727019",
+          "status": 200,
+          "at": 11138.285834
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2451&_=1792084727713",
+          "status": 200,
+          "at": 11712.415584
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2401&_=1792084727847",
+          "status": 200,
+          "at": 11834.753709
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2351&_=1792084727990",
+          "status": 200,
+          "at": 11997.177
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2301&_=1792084728870",
+          "status": 200,
+          "at": 12906.434334
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2251&_=1792084729064",
+          "status": 200,
+          "at": 13151.760792
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2201&_=1792084729873",
+          "status": 200,
+          "at": 13916.014917
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2151&_=1792084730782",
+          "status": 200,
+          "at": 14939.223167
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2101&_=1792084731892",
+          "status": 200,
+          "at": 15941.410542
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2051&_=1792084732166",
+          "status": 200,
+          "at": 16336.396667
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2001&_=1792084732669",
+          "status": 200,
+          "at": 16685.763625
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1951&_=1792084732829",
+          "status": 200,
+          "at": 16827.577834
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1901&_=1792084733009",
+          "status": 200,
+          "at": 17001.576834
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1851&_=1792084733536",
+          "status": 200,
+          "at": 17616.209334
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1801&_=1792084734784",
+          "status": 200,
+          "at": 18807.246125
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1751&_=1792084734948",
+          "status": 200,
+          "at": 18935.446292
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1701&_=1792084735431",
+          "status": 200,
+          "at": 19444.013667
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1651&_=1792084735755",
+          "status": 200,
+          "at": 19789.214417
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1601&_=1792084736002",
+          "status": 200,
+          "at": 20067.587625
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1551&_=1792084736875",
+          "status": 200,
+          "at": 20878.224834
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1501&_=1792084737967",
+          "status": 200,
+          "at": 21994.710792
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1451&_=1792084738938",
+          "status": 200,
+          "at": 22967.870834
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1401&_=1792084739100",
+          "status": 200,
+          "at": 23091.436792
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1351&_=1792084739222",
+          "status": 200,
+          "at": 23236.809292
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1301&_=1792084739808",
+          "status": 200,
+          "at": 23821.916375
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1251&_=1792084739966",
+          "status": 200,
+          "at": 24006.595709
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1201&_=1792084740893",
+          "status": 200,
+          "at": 24897.17125
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1151&_=1792084741077",
+          "status": 200,
+          "at": 25112.582334
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&_=1792084749098",
+          "status": 200,
+          "at": 33270.771375
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&_=1792084749413",
+          "status": 200,
+          "at": 33501.2115
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2501&_=1792084749558",
+          "status": 200,
+          "at": 33545.176209
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2451&_=1792084749689",
+          "status": 200,
+          "at": 33686.610334
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2401&_=1792084750154",
+          "status": 200,
+          "at": 34138.966
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2351&_=1792084750264",
+          "status": 200,
+          "at": 34248.063875
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2301&_=1792084750341",
+          "status": 200,
+          "at": 34324.202625
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2251&_=1792084750498",
+          "status": 200,
+          "at": 34481.192584
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2201&_=1792084750611",
+          "status": 200,
+          "at": 34615.232959
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2151&_=1792084750963",
+          "status": 200,
+          "at": 34945.783667
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2101&_=1792084751058",
+          "status": 200,
+          "at": 35043.088417
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2051&_=1792084751170",
+          "status": 200,
+          "at": 35151.7105
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=2001&_=1792084751305",
+          "status": 200,
+          "at": 35320.962959
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1951&_=1792084751434",
+          "status": 200,
+          "at": 35419.648375
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1901&_=1792084751576",
+          "status": 200,
+          "at": 35560.965334
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1851&_=1792084752317",
+          "status": 200,
+          "at": 36303.673625
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1801&_=1792084752477",
+          "status": 200,
+          "at": 36494.0685
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1751&_=1792084752824",
+          "status": 200,
+          "at": 36823.284959
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1701&_=1792084752985",
+          "status": 200,
+          "at": 36965.567709
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1651&_=1792084753172",
+          "status": 200,
+          "at": 37153.019042
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1601&_=1792084753302",
+          "status": 200,
+          "at": 37288.790834
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1551&_=1792084753481",
+          "status": 200,
+          "at": 37460.492459
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1501&_=1792084753610",
+          "status": 200,
+          "at": 37590.401459
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1451&_=1792084753928",
+          "status": 200,
+          "at": 37914.111542
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1401&_=1792084754020",
+          "status": 200,
+          "at": 38004.438042
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1351&_=1792084754210",
+          "status": 200,
+          "at": 38227.912209
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1301&_=1792084754436",
+          "status": 200,
+          "at": 38464.110625
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1251&_=1792084755446",
+          "status": 200,
+          "at": 39431.406709
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1201&_=1792084755620",
+          "status": 200,
+          "at": 39655.5275
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1151&_=1792084756052",
+          "status": 200,
+          "at": 40078.166334
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1101&_=1792084756517",
+          "status": 200,
+          "at": 40500.501459
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1051&_=1792084756877",
+          "status": 200,
+          "at": 40967.445584
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=1001&_=1792084757382",
+          "status": 200,
+          "at": 41493.988209
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=951&_=1792084758289",
+          "status": 200,
+          "at": 42273.920792
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=901&_=1792084759178",
+          "status": 200,
+          "at": 43169.0995
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=851&_=1792084759422",
+          "status": 200,
+          "at": 43411.810584
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=801&_=1792084759635",
+          "status": 200,
+          "at": 43910.973209
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=751&_=1792084760249",
+          "status": 200,
+          "at": 44241.717625
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=701&_=1792084760575",
+          "status": 200,
+          "at": 44578.745292
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=651&_=1792084761326",
+          "status": 200,
+          "at": 45317.674292
+        },
+        {
+          "url": "http://127.0.0.1:58639/api/sessions/baseline_thread_2000/messages?limit=50&before_id=601&_=1792084762250",
+          "status": 200,
+          "at": 46288.383417
+        }
+      ],
+      "pageErrors": [],
+      "consoleErrors": [
+        "%o\n\n%s\n\n%s\n Error: Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.\n    at getRootForUpdatedFiber (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:3526:128)\n    at enqueueConcurrentHookUpdate (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:3510:16)\n    at dispatchReducerAction (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:6795:90)\n    at Object.onChange (http://127.0.0.1:58639/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15:1309:9)\n    at Virtualizer.notify (http://127.0.0.1:58639/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15:417:65)\n    at Virtualizer.resizeItem (http://127.0.0.1:58639/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15:946:14)\n    at Virtualizer.measureElement (http://127.0.0.1:58639/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15:888:14)\n    at http://127.0.0.1:58639/src/components/ChatPanel.tsx:1063:17\n    at commitAttachRef (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:9576:63)\n    at runWithFiberInDEV (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:997:72) The above error occurred in the <div> component. React will try to recreate this component tree from scratch using the error boundary you provided, LazyLoadErrorBoundary.",
+        "Failed to load a deferred WebUI feature Error: Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.\n    at getRootForUpdatedFiber (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:3526:128)\n    at enqueueConcurrentHookUpdate (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:3510:16)\n    at dispatchReducerAction (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:6795:90)\n    at Object.onChange (http://127.0.0.1:58639/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15:1309:9)\n    at Virtualizer.notify (http://127.0.0.1:58639/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15:417:65)\n    at Virtualizer.resizeItem (http://127.0.0.1:58639/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15:946:14)\n    at Virtualizer.measureElement (http://127.0.0.1:58639/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15:888:14)\n    at http://127.0.0.1:58639/src/components/ChatPanel.tsx:1063:17\n    at commitAttachRef (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:9576:63)\n    at runWithFiberInDEV (http://127.0.0.1:58639/node_modules/.vite/deps/react-dom_client.js?v=b4999c15:997:72) {componentStack: \n    at div (<anonymous>)\n    at div (<anonymous>)\u2026http://127.0.0.1:58639/src/i18n/context.tsx:5:32)}"
+      ],
+      "url": "http://127.0.0.1:58639/?spark_efficiency_test=1",
+      "state": {
+        "buttons": [],
+        "mountedRows": []
+      }
+    },
+    "failure_cause": "Maximum update depth exceeded in React virtualizer measureElement/ChatPanel measured-row callback; final history responses HTTP200. Harness observed three same-URL navigations and rejected the third recovery. P00 exact waitForResponse timeout was not identically reproduced; relationship to this render failure is an inference, not established identity."
+  },
+  "sidebar": {
+    "attempts": 3,
+    "passed": 2,
+    "failed": 1,
+    "summary": {
+      "firstUsefulMs": {
+        "raw": [
+          1225.6740829999999,
+          1176.6692910000002,
+          1180.318292
+        ],
+        "median": 1180.318292,
+        "p95_nearest_rank": 1225.6740829999999,
+        "n": 3,
+        "p00": {
+          "raw": [
+            1052.0583749999998,
+            1000.426125,
+            1098.155959
+          ],
+          "median": 1052.0583749999998,
+          "p95_nearest_rank": 1098.155959
+        },
+        "median_delta_pct": 12.191330828006585,
+        "p95_delta_pct": 11.612023133409966
+      },
+      "selectionMs": {
+        "raw": [
+          75.69999998807907,
+          88,
+          97.19999998807907
+        ],
+        "median": 88,
+        "p95_nearest_rank": 97.19999998807907,
+        "n": 3,
+        "p00": {
+          "raw": [
+            42.09999996423721,
+            43.80000001192093,
+            42.299999952316284
+          ],
+          "median": 42.299999952316284,
+          "p95_nearest_rank": 43.80000001192093
+        },
+        "median_delta_pct": 108.03782529361743,
+        "p95_delta_pct": 121.91780813156257
+      },
+      "localSearchMs": {
+        "raw": [
+          44.69999998807907,
+          102.79999995231628,
+          41
+        ],
+        "median": 44.69999998807907,
+        "p95_nearest_rank": 102.79999995231628,
+        "n": 3,
+        "p00": {
+          "raw": [
+            41.69999998807907,
+            42.10000002384186,
+            29.399999976158142
+          ],
+          "median": 41.69999998807907,
+          "p95_nearest_rank": 42.10000002384186
+        },
+        "median_delta_pct": 7.19424460637319,
+        "p95_delta_pct": 144.18052231377462
+      },
+      "fullHistorySearchMs": {
+        "raw": [
+          279.0999999642372,
+          287.19999998807907,
+          281
+        ],
+        "median": 281,
+        "p95_nearest_rank": 287.19999998807907,
+        "n": 3,
+        "p00": {
+          "raw": [
+            269.19999998807907,
+            336.60000002384186,
+            282.30000001192093
+          ],
+          "median": 282.30000001192093,
+          "p95_nearest_rank": 336.60000002384186
+        },
+        "median_delta_pct": -0.4605030151845657,
+        "p95_delta_pct": -14.676173509288093
+      },
+      "sidebarUpdateMs": {
+        "raw": [
+          3419.599999964237,
+          4651.300000011921,
+          4780.300000011921
+        ],
+        "median": 4651.300000011921,
+        "p95_nearest_rank": 4780.300000011921,
+        "n": 3,
+        "p00": {
+          "raw": [
+            31.30000001192093,
+            40,
+            35.19999998807907
+          ],
+          "median": 35.19999998807907,
+          "p95_nearest_rank": 40
+        },
+        "median_delta_pct": 13113.920459054385,
+        "p95_delta_pct": 11850.750000029802
+      }
+    },
+    "raw": [
+      {
+        "sessionCount": 1000,
+        "projects": 10,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "theme": "dark",
+        "mode": "dev",
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+          "SSE insertion scroll anchor and nonselected unread marker",
+          "server pin; duplicate placements; collapse/expand; drag to project",
+          "virtualized ArrowDown moves keyboard focus to the next row",
+          "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+          "Inbox explicit next-page paging",
+          "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+        ],
+        "correctnessFailures": [],
+        "backendReadyMs": 841.472625,
+        "firstUsefulMs": 1225.6740829999999,
+        "initialSnapshots": [
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          }
+        ],
+        "startupRequests": [],
+        "selectionMs": 75.69999998807907,
+        "localSearchMs": 44.69999998807907,
+        "fullHistorySearchMs": 279.0999999642372,
+        "sidebarUpdateMs": 3419.599999964237,
+        "mountedSessionRows": 20,
+        "secondPageRequests": 1,
+        "metadataUpdateMs": 271.47108300000036,
+        "fullHistoryRequests": [
+          "ancient needle"
+        ]
+      },
+      {
+        "sessionCount": 1000,
+        "projects": 10,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "theme": "dark",
+        "mode": "dev",
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows"
+        ],
+        "correctnessFailures": [],
+        "backendReadyMs": 843.9606249999999,
+        "firstUsefulMs": 1176.6692910000002,
+        "initialSnapshots": [
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          }
+        ],
+        "startupRequests": [],
+        "selectionMs": 88,
+        "localSearchMs": 102.79999995231628,
+        "fullHistorySearchMs": 287.19999998807907,
+        "sidebarUpdateMs": 4651.300000011921,
+        "mountedSessionRows": 20,
+        "secondPageRequests": 1,
+        "sessionRequests": [
+          {
+            "limit": 50,
+            "offset": 50
+          }
+        ],
+        "requests": [
+          "http://127.0.0.1:61242/",
+          "http://127.0.0.1:61242/@vite/client",
+          "https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap",
+          "http://127.0.0.1:61242/src/main.tsx",
+          "http://127.0.0.1:61242/@react-refresh",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/react-dom_client.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/index.css",
+          "http://127.0.0.1:61242/src/App.tsx",
+          "http://127.0.0.1:61242/src/i18n/index.ts",
+          "http://127.0.0.1:61242/src/lib/UpdateModalContext.tsx",
+          "http://127.0.0.1:61242/src/lib/theme.tsx",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/chunk-WQJP7KRX.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/chunk-PX6F3LHL.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/i18n/context.tsx",
+          "http://127.0.0.1:61242/src/i18n/i18nContext.ts",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/react.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/vite/dist/client/env.mjs",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/lucide-react.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/lib/api.ts",
+          "http://127.0.0.1:61242/src/lib/updateModal.ts",
+          "http://127.0.0.1:61242/src/i18n/en.ts",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/chunk-RUNEERYU.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/pages/ChatPage.tsx",
+          "http://127.0.0.1:61242/src/components/sidebar/SidebarSessions.tsx",
+          "http://127.0.0.1:61242/src/components/sidebar/InboxSidebarSessions.tsx",
+          "http://127.0.0.1:61242/src/lib/sessionStore.tsx",
+          "http://127.0.0.1:61242/src/components/GlobalToasts.tsx",
+          "http://127.0.0.1:61242/src/components/NotificationBell.tsx",
+          "http://127.0.0.1:61242/src/components/CodexUsageBadge.tsx",
+          "http://127.0.0.1:61242/src/components/BrandLogo.tsx",
+          "http://127.0.0.1:61242/src/components/LazyLoadBoundary.tsx",
+          "http://127.0.0.1:61242/src/components/CursorGlow.tsx",
+          "http://127.0.0.1:61242/src/lib/globalNavigation.ts",
+          "http://127.0.0.1:61242/src/lib/desktop.ts",
+          "http://127.0.0.1:61242/src/sidecar.ts",
+          "http://127.0.0.1:61242/src/hooks/useEventBus.ts",
+          "http://127.0.0.1:61242/src/lib/gatewayFooterState.ts",
+          "http://127.0.0.1:61242/src/lib/renderHealth.ts",
+          "http://127.0.0.1:61242/src/lib/navigationEvents.ts",
+          "http://127.0.0.1:61242/src/lib/sidebarPrefs.ts",
+          "http://127.0.0.1:61242/src/lib/apiHelpers.ts",
+          "http://127.0.0.1:61242/src/lib/apiTypes.ts",
+          "http://127.0.0.1:61242/src/lib/api_sidebar.ts",
+          "http://127.0.0.1:61242/src/lib/api_session.ts",
+          "http://127.0.0.1:61242/src/lib/api_skill.ts",
+          "http://127.0.0.1:61242/src/lib/api_cron.ts",
+          "http://127.0.0.1:61242/src/lib/api_kanban.ts",
+          "http://127.0.0.1:61242/src/lib/api_workspace.ts",
+          "http://127.0.0.1:61242/src/lib/api_canvas.ts",
+          "http://127.0.0.1:61242/src/lib/api_memory.ts",
+          "http://127.0.0.1:61242/src/lib/api_connector.ts",
+          "http://127.0.0.1:61242/src/lib/api_workflow.ts",
+          "http://127.0.0.1:61242/src/lib/api_config.ts",
+          "http://127.0.0.1:61242/src/lib/api_model.ts",
+          "http://127.0.0.1:61242/src/lib/api_admin.ts",
+          "http://127.0.0.1:61242/src/lib/api_gateway.ts",
+          "http://127.0.0.1:61242/src/lib/api_plugin.ts",
+          "http://127.0.0.1:61242/src/lib/api_mcp.ts",
+          "http://127.0.0.1:61242/src/lib/api_provider.ts",
+          "http://127.0.0.1:61242/src/lib/api_browser.ts",
+          "http://127.0.0.1:61242/src/lib/api_env.ts",
+          "http://127.0.0.1:61242/src/lib/panelTabs.ts",
+          "http://127.0.0.1:61242/src/lib/utils.ts",
+          "http://127.0.0.1:61242/src/components/ui/button.tsx",
+          "http://127.0.0.1:61242/src/components/ChatPanel.tsx",
+          "http://127.0.0.1:61242/src/components/chat/PromptBar.tsx",
+          "http://127.0.0.1:61242/src/components/chat/DraftStatus.tsx",
+          "http://127.0.0.1:61242/src/lib/attachmentStaging.ts",
+          "http://127.0.0.1:61242/src/hooks/useChatDraft.ts",
+          "http://127.0.0.1:61242/src/components/chat/ThreadRow.tsx",
+          "http://127.0.0.1:61242/src/components/chat/TypeOnTitle.tsx",
+          "http://127.0.0.1:61242/src/components/workspace/FileTreePane.tsx",
+          "http://127.0.0.1:61242/src/lib/fileCategory.ts",
+          "http://127.0.0.1:61242/src/components/workspace/WorkspaceChangesPanel.tsx",
+          "http://127.0.0.1:61242/src/components/workspace/WorkspacePreviewPanel.tsx",
+          "http://127.0.0.1:61242/src/lib/previewPrefs.ts",
+          "http://127.0.0.1:61242/src/hooks/useSubagents.ts",
+          "http://127.0.0.1:61242/src/components/chat/SubagentsPanel.tsx",
+          "http://127.0.0.1:61242/src/lib/subagents.ts",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/react-dom.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/@tanstack_react-virtual.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/components/sidebar/SidebarThreadActions.tsx",
+          "http://127.0.0.1:61242/src/lib/sidebarOrganization.ts",
+          "http://127.0.0.1:61242/src/components/ui/badge.tsx",
+          "http://127.0.0.1:61242/src/components/ui/input.tsx",
+          "http://127.0.0.1:61242/src/lib/projectWizard.ts",
+          "http://127.0.0.1:61242/src/components/sidebar/sidebarRows.ts",
+          "http://127.0.0.1:61242/src/hooks/useToast.ts",
+          "http://127.0.0.1:61242/src/components/Toast.tsx",
+          "http://127.0.0.1:61242/src/components/sidebar/ProjectSourceDialog.tsx",
+          "http://127.0.0.1:61242/src/lib/unreadSessionStore.ts",
+          "http://127.0.0.1:61242/src/lib/webState.ts",
+          "http://127.0.0.1:61242/src/lib/chatDiagnostics.ts",
+          "http://127.0.0.1:61242/src/lib/notificationPolicy.ts",
+          "http://127.0.0.1:61242/src/lib/efficiencyMetrics.ts",
+          "http://127.0.0.1:61242/src/lib/connection.ts",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/clsx.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/tailwind-merge.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/class-variance-authority.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/components/chat/ContextTray.tsx",
+          "http://127.0.0.1:61242/src/lib/context.ts",
+          "http://127.0.0.1:61242/src/lib/draftStore.ts",
+          "http://127.0.0.1:61242/src/lib/savedOutputs.ts",
+          "http://127.0.0.1:61242/src/lib/rowMeasurement.ts",
+          "http://127.0.0.1:61242/src/components/chat/StatusPill.tsx",
+          "http://127.0.0.1:61242/src/components/chat/BriefPanel.tsx",
+          "http://127.0.0.1:61242/src/components/chat/SessionInfoBar.tsx",
+          "http://127.0.0.1:61242/src/components/chat/TimelineMinimap.tsx",
+          "http://127.0.0.1:61242/src/components/chat/MessagesTimeline.tsx",
+          "http://127.0.0.1:61242/src/components/chat/ChangedFilesCard.tsx",
+          "http://127.0.0.1:61242/src/components/chat/PlanCard.tsx",
+          "http://127.0.0.1:61242/src/components/chat/PendingActionTray.tsx",
+          "http://127.0.0.1:61242/src/components/chat/RecoveryCard.tsx",
+          "http://127.0.0.1:61242/src/lib/chatRecovery.ts",
+          "http://127.0.0.1:61242/src/components/Skeleton.tsx",
+          "http://127.0.0.1:61242/src/lib/chatTurnState.ts",
+          "http://127.0.0.1:61242/src/lib/chatScrollState.ts",
+          "http://127.0.0.1:61242/src/lib/chatTranscriptMerge.ts",
+          "http://127.0.0.1:61242/src/lib/chatApproval.ts",
+          "http://127.0.0.1:61242/src/lib/chatTimeline.ts",
+          "http://127.0.0.1:61242/src/lib/threadTimelineModel.ts",
+          "http://127.0.0.1:61242/src/lib/turnOutcomeModel.ts",
+          "http://127.0.0.1:61242/src/components/chat/timelineMinimapModel.ts",
+          "http://127.0.0.1:61242/src/lib/exactMessage.ts",
+          "http://127.0.0.1:61242/src/hooks/useChatSessionController.ts",
+          "http://127.0.0.1:61242/src/hooks/useChatComposerActions.ts",
+          "http://127.0.0.1:61242/src/hooks/useChatStreamController.ts",
+          "http://127.0.0.1:61242/src/lib/modelName.ts",
+          "http://127.0.0.1:61242/src/components/chat/SlashCommandMenu.tsx",
+          "http://127.0.0.1:61242/src/components/chat/AtFileMenu.tsx",
+          "http://127.0.0.1:61242/src/hooks/useTokenEstimate.ts",
+          "http://127.0.0.1:61242/src/components/chat/promptBarPolicy.ts",
+          "http://127.0.0.1:61242/src/components/chat/ContextWindowMeter.tsx",
+          "http://127.0.0.1:61242/src/components/chat/ComposerAttachmentMenu.tsx",
+          "http://127.0.0.1:61242/src/components/chat/ComposerMoreMenu.tsx",
+          "http://127.0.0.1:61242/src/components/chat/composerContracts.ts",
+          "http://127.0.0.1:61242/src/components/ui/ConfirmDialog.tsx",
+          "http://127.0.0.1:61242/src/components/workspace/StreamedBrowser.tsx",
+          "http://127.0.0.1:61242/src/components/workspace/NativePreview.tsx",
+          "http://127.0.0.1:61242/src/lib/nativePreview.ts",
+          "http://127.0.0.1:61242/src/lib/previewUrl.ts",
+          "http://127.0.0.1:61242/src/components/Markdown.tsx",
+          "http://127.0.0.1:61242/src/components/chat/ReasoningBubble.tsx",
+          "http://127.0.0.1:61242/src/components/chat/ToolCallBubble.tsx",
+          "http://127.0.0.1:61242/src/lib/onboardingValidation.ts",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/lib/chatStatus.ts",
+          "http://127.0.0.1:61242/src/components/chat/AssistantMessageRow.tsx",
+          "http://127.0.0.1:61242/src/components/chat/TurnWorkGroup.tsx",
+          "http://127.0.0.1:61242/src/components/chat/UserMessageRow.tsx",
+          "http://127.0.0.1:61242/src/lib/chatHistory.ts",
+          "http://127.0.0.1:61242/src/hooks/chatSessionControllerHelpers.ts",
+          "http://127.0.0.1:61242/src/lib/chatComposerController.ts",
+          "http://127.0.0.1:61242/src/lib/chatStreamReducer.ts",
+          "http://127.0.0.1:61242/src/lib/liveStreamWindow.ts",
+          "http://127.0.0.1:61242/src/hooks/chatStreamControllerHelpers.ts",
+          "http://127.0.0.1:61242/src/components/chat/contextWindowPolicy.ts",
+          "http://127.0.0.1:61242/src/lib/browserCoords.ts",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_core.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_javascript.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_typescript.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_python.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_bash.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_json.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_yaml.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_sql.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_xml.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_css.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_markdown.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_rust.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/highlight__js_lib_languages_go.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/components/markdownParse.ts",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/@tauri-apps_api_core.js?v=b4999c15",
+          "http://127.0.0.1:61242/src/lib/detectOutputType.ts",
+          "http://127.0.0.1:61242/src/components/chat/ApprovalPrompt.tsx",
+          "http://127.0.0.1:61242/src/components/chat/FeedbackForm.tsx",
+          "http://127.0.0.1:61242/src/lib/userBubbleTokens.ts",
+          "http://127.0.0.1:61242/src/lib/textWindow.ts",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/chunk-QBBRNX3Z.js?v=b4999c15",
+          "http://127.0.0.1:61242/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=b4999c15",
+          "http://127.0.0.1:61242/icon_small-dark.png",
+          "http://127.0.0.1:61242/api/web-state/snapshot?session_limit=50&message_limit=200",
+          "http://127.0.0.1:61242/api/model/codex-usage",
+          "http://127.0.0.1:61242/api/dashboard/auth/info",
+          "http://127.0.0.1:61242/api/status",
+          "http://127.0.0.1:61242/api/model/status",
+          "http://127.0.0.1:61242/api/cron/jobs",
+          "http://127.0.0.1:61242/api/onboarding/status",
+          "http://127.0.0.1:61242/api/sidebar/threads",
+          "http://127.0.0.1:61242/api/workspace/projects",
+          "http://127.0.0.1:61242/api/status",
+          "http://127.0.0.1:61242/api/events?topics=notifications",
+          "http://127.0.0.1:61242/api/config",
+          "http://127.0.0.1:61242/api/update/check",
+          "http://127.0.0.1:61242/api/model/status",
+          "http://127.0.0.1:61242/api/model/suggestions",
+          "http://127.0.0.1:61242/api/status",
+          "http://127.0.0.1:61242/api/status",
+          "http://127.0.0.1:61242/api/sidebar/threads",
+          "http://127.0.0.1:61242/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d",
+          "http://127.0.0.1:61242/fonts/CourierPrime-Regular.woff2",
+          "http://127.0.0.1:61242/api/sessions/scale-000/brief",
+          "http://127.0.0.1:61242/api/model/status",
+          "http://127.0.0.1:61242/api/model/suggestions",
+          "http://127.0.0.1:61242/api/web-state/snapshot?session_limit=50&message_limit=200&selected_session_id=scale-000",
+          "http://127.0.0.1:61242/api/status",
+          "http://127.0.0.1:61242/api/conversations/scale-000/turn-status",
+          "http://127.0.0.1:61242/api/sessions/scale-000/forks",
+          "http://127.0.0.1:61242/api/sessions/scale-000/messages?limit=50&_=1792084826411",
+          "http://127.0.0.1:61242/api/config",
+          "http://127.0.0.1:61242/api/conversations/scale-000/turn-outcomes",
+          "http://127.0.0.1:61242/api/conversations/scale-000/plan",
+          "http://127.0.0.1:61242/api/conversations/scale-000/pending-actions",
+          "http://127.0.0.1:61242/api/conversations/scale-000/turn-status",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/tree",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/preview/detect-servers",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/preview/status",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/preview/logs",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/git/status",
+          "http://127.0.0.1:61242/api/conversations/scale-000/subagents",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/preview/events",
+          "http://127.0.0.1:61242/api/sessions/scale-000/messages?limit=50&_=1792084826465",
+          "http://127.0.0.1:61242/api/sidebar/threads",
+          "http://127.0.0.1:61242/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-000",
+          "http://127.0.0.1:61242/api/sessions/scale-000/warm",
+          "http://127.0.0.1:61242/api/estimate-tokens",
+          "http://127.0.0.1:61242/api/sessions/search?q=ancient+needle&limit=100&offset=0",
+          "http://127.0.0.1:61242/api/sessions/scale-499",
+          "http://127.0.0.1:61242/api/web-state/snapshot?session_limit=50&message_limit=200",
+          "http://127.0.0.1:61242/api/conversations/scale-499/turn-status",
+          "http://127.0.0.1:61242/api/sessions/scale-499/forks",
+          "http://127.0.0.1:61242/api/sessions/scale-499/messages?limit=50&_=1792084827083",
+          "http://127.0.0.1:61242/api/workspace/projects/project-9/tree",
+          "http://127.0.0.1:61242/api/workspace/projects/project-9/preview/detect-servers",
+          "http://127.0.0.1:61242/api/workspace/projects/project-9/preview/status",
+          "http://127.0.0.1:61242/api/workspace/projects/project-9/preview/logs",
+          "http://127.0.0.1:61242/api/workspace/projects/project-9/git/status",
+          "http://127.0.0.1:61242/api/conversations/scale-499/subagents",
+          "http://127.0.0.1:61242/api/sessions/scale-499/brief",
+          "http://127.0.0.1:61242/api/conversations/scale-499/turn-outcomes",
+          "http://127.0.0.1:61242/api/conversations/scale-499/plan",
+          "http://127.0.0.1:61242/api/conversations/scale-499/pending-actions",
+          "http://127.0.0.1:61242/api/conversations/scale-499/turn-status",
+          "http://127.0.0.1:61242/api/workspace/projects/project-9/preview/events",
+          "http://127.0.0.1:61242/api/sessions/scale-499/messages?limit=50&_=1792084827315",
+          "http://127.0.0.1:61242/api/sidebar/threads",
+          "http://127.0.0.1:61242/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-499",
+          "http://127.0.0.1:61242/api/workspace/projects/__workspace__/tree",
+          "http://127.0.0.1:61242/api/workspace/projects/__workspace__/preview/detect-servers",
+          "http://127.0.0.1:61242/api/workspace/projects/__workspace__/preview/status",
+          "http://127.0.0.1:61242/api/workspace/projects/__workspace__/preview/logs",
+          "http://127.0.0.1:61242/api/workspace/projects/__workspace__/preview/events",
+          "http://127.0.0.1:61242/api/web-state/snapshot?session_limit=50&message_limit=200",
+          "http://127.0.0.1:61242/api/conversations/scale-000/turn-status",
+          "http://127.0.0.1:61242/api/sessions/scale-000/forks",
+          "http://127.0.0.1:61242/api/sessions/scale-000/messages?limit=50&_=1792084827512",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/tree",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/preview/detect-servers",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/preview/status",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/preview/logs",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/git/status",
+          "http://127.0.0.1:61242/api/conversations/scale-000/subagents",
+          "http://127.0.0.1:61242/api/sessions/scale-000/brief",
+          "http://127.0.0.1:61242/api/conversations/scale-000/turn-outcomes",
+          "http://127.0.0.1:61242/api/conversations/scale-000/plan",
+          "http://127.0.0.1:61242/api/conversations/scale-000/pending-actions",
+          "http://127.0.0.1:61242/api/conversations/scale-000/turn-status",
+          "http://127.0.0.1:61242/api/workspace/projects/project-0/preview/events",
+          "http://127.0.0.1:61242/api/sidebar/threads",
+          "http://127.0.0.1:61242/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-000",
+          "http://127.0.0.1:61242/api/sessions/scale-000/messages?limit=50&_=1792084827702",
+          "http://127.0.0.1:61242/api/sessions/scale-000/title",
+          "http://127.0.0.1:61242/api/estimate-tokens",
+          "http://127.0.0.1:61242/api/sessions/scale-000/warm",
+          "http://127.0.0.1:61242/api/sessions?limit=50&offset=50",
+          "http://127.0.0.1:61242/api/sidebar/threads"
+        ],
+        "events": [
+          {
+            "at": 1399.3999999761581,
+            "url": null,
+            "type": "state",
+            "slug": "project-0",
+            "status": "stopped",
+            "command": null,
+            "port": null,
+            "kind": null,
+            "error": null,
+            "started_at": null,
+            "updated_at": null
+          },
+          {
+            "at": 2242.099999964237,
+            "url": null,
+            "type": "state",
+            "slug": "project-9",
+            "status": "stopped",
+            "command": null,
+            "port": null,
+            "kind": null,
+            "error": null,
+            "started_at": null,
+            "updated_at": null
+          },
+          {
+            "at": 2701.699999988079,
+            "url": null,
+            "type": "state",
+            "slug": "project-0",
+            "status": "stopped",
+            "command": null,
+            "port": null,
+            "kind": null,
+            "error": null,
+            "started_at": null,
+            "updated_at": null
+          },
+          {
+            "at": 7367.300000011921,
+            "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-000",
+            "schema_version": 1,
+            "topic": "sessions.changed",
+            "entity_id": "scale-000",
+            "session_id": "scale-000",
+            "sequence": 1,
+            "projection_version": 1,
+            "timestamp": 1792084832.4897249,
+            "ts": 1792084832.4897249,
+            "payload": {
+              "action": "updated",
+              "session_id": "scale-000",
+              "session": {
+                "source": "workspace:project-0",
+                "title": "Scale measured update",
+                "kanban_status": "backlog",
+                "started_at": 1792084823.663689,
+                "model": "test-model",
+                "ended_at": null,
+                "tool_call_count": 0,
+                "output_tokens": 0,
+                "estimated_cost_usd": null,
+                "last_active": null,
+                "id": "scale-000",
+                "is_active": null,
+                "input_tokens": 0,
+                "message_count": 0,
+                "preview": null
+              }
+            },
+            "data": {
+              "action": "updated",
+              "session_id": "scale-000",
+              "session": {
+                "source": "workspace:project-0",
+                "title": "Scale measured update",
+                "kanban_status": "backlog",
+                "started_at": 1792084823.663689,
+                "model": "test-model",
+                "ended_at": null,
+                "tool_call_count": 0,
+                "output_tokens": 0,
+                "estimated_cost_usd": null,
+                "last_active": null,
+                "id": "scale-000",
+                "is_active": null,
+                "input_tokens": 0,
+                "message_count": 0,
+                "preview": null
+              }
+            },
+            "server_epoch": "0518db470ea44fbd8a73a70988c0e41d",
+            "sequence_start": 1
+          },
+          {
+            "at": 7410.599999964237,
+            "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-000",
+            "schema_version": 1,
+            "topic": "sessions.changed",
+            "entity_id": "scale-000",
+            "session_id": "scale-000",
+            "sequence": 2,
+            "projection_version": 1,
+            "timestamp": 1792084832.536203,
+            "ts": 1792084832.536203,
+            "payload": {
+              "action": "updated",
+              "session_id": "scale-000",
+              "session": {
+                "source": "workspace:project-0",
+                "title": "Scale chat 000",
+                "kanban_status": "backlog",
+                "started_at": 1792084823.663689,
+                "model": "test-model",
+                "ended_at": null,
+                "tool_call_count": 0,
+                "output_tokens": 0,
+                "estimated_cost_usd": null,
+                "last_active": null,
+                "id": "scale-000",
+                "is_active": null,
+                "input_tokens": 0,
+                "message_count": 0,
+                "preview": null
+              }
+            },
+            "data": {
+              "action": "updated",
+              "session_id": "scale-000",
+              "session": {
+                "source": "workspace:project-0",
+                "title": "Scale chat 000",
+                "kanban_status": "backlog",
+                "started_at": 1792084823.663689,
+                "model": "test-model",
+                "ended_at": null,
+                "tool_call_count": 0,
+                "output_tokens": 0,
+                "estimated_cost_usd": null,
+                "last_active": null,
+                "id": "scale-000",
+                "is_active": null,
+                "input_tokens": 0,
+                "message_count": 0,
+                "preview": null
+              }
+            },
+            "server_epoch": "0518db470ea44fbd8a73a70988c0e41d",
+            "sequence_start": 2
+          },
+          {
+            "at": 8115.899999976158,
+            "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-000",
+            "schema_version": 1,
+            "topic": "sessions.changed",
+            "entity_id": "scale-live",
+            "session_id": "scale-live",
+            "sequence": 3,
+            "projection_version": 1,
+            "timestamp": 1792084833.235751,
+            "ts": 1792084833.235751,
+            "payload": {
+              "action": "created",
+              "session_id": "scale-live",
+              "session": {
+                "source": "workspace:project-0",
+                "title": "Scale live insertion",
+                "kanban_status": "active",
+                "started_at": 1792084833.233783,
+                "model": "fake-stream",
+                "ended_at": null,
+                "tool_call_count": 0,
+                "output_tokens": 0,
+                "estimated_cost_usd": null,
+                "last_active": null,
+                "id": "scale-live",
+                "is_active": null,
+                "input_tokens": 0,
+                "message_count": 0,
+                "preview": null
+              }
+            },
+            "data": {
+              "action": "created",
+              "session_id": "scale-live",
+              "session": {
+                "source": "workspace:project-0",
+                "title": "Scale live insertion",
+                "kanban_status": "active",
+                "started_at": 1792084833.233783,
+                "model": "fake-stream",
+                "ended_at": null,
+                "tool_call_count": 0,
+                "output_tokens": 0,
+                "estimated_cost_usd": null,
+                "last_active": null,
+                "id": "scale-live",
+                "is_active": null,
+                "input_tokens": 0,
+                "message_count": 0,
+                "preview": null
+              }
+            },
+            "server_epoch": "0518db470ea44fbd8a73a70988c0e41d",
+            "sequence_start": 3
+          },
+          {
+            "at": 8305.399999976158,
+            "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-000",
+            "schema_version": 1,
+            "topic": "bus.cursor",
+            "entity_id": null,
+            "session_id": null,
+            "sequence": 4,
+            "projection_version": 1,
+            "timestamp": 1792084833.4304829,
+            "ts": 1792084833.4304829,
+            "payload": {
+              "filtered_topic": "chat.token"
+            },
+            "data": {
+              "filtered_topic": "chat.token"
+            },
+            "server_epoch": "0518db470ea44fbd8a73a70988c0e41d",
+            "sequence_start": 4
+          },
+          {
+            "at": 8337.199999988079,
+            "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-000",
+            "schema_version": 1,
+            "topic": "bus.cursor",
+            "entity_id": null,
+            "session_id": null,
+            "sequence": 5,
+            "projection_version": 1,
+            "timestamp": 1792084833.462804,
+            "ts": 1792084833.462804,
+            "payload": {
+              "filtered_topic": "chat.turn_done"
+            },
+            "data": {
+              "filtered_topic": "chat.turn_done"
+            },
+            "server_epoch": "0518db470ea44fbd8a73a70988c0e41d",
+            "sequence_start": 5
+          },
+          {
+            "at": 8340,
+            "url": "/api/events?topics=sessions%2Cchat%2Cbus%2Cworkspace%2Ccanvas%2Cskills%2Cmemory%2Cnotifications&after_sequence=0&projection_version=1&server_epoch=0518db470ea44fbd8a73a70988c0e41d&detail_session_id=scale-000",
+            "schema_version": 1,
+            "topic": "sessions.changed",
+            "entity_id": "scale-live",
+            "session_id": "scale-live",
+            "sequence": 6,
+            "projection_version": 1,
+            "timestamp": 1792084833.466332,
+            "ts": 1792084833.466332,
+            "payload": {
+              "action": "updated",
+              "session_id": "scale-live",
+              "session": {
+                "source": "workspace:project-0",
+                "title": "Scale live insertion",
+                "kanban_status": "active",
+                "started_at": 1792084833.233783,
+                "model": "fake-stream",
+                "ended_at": null,
+                "tool_call_count": 0,
+                "output_tokens": 0,
+                "estimated_cost_usd": null,
+                "last_active": null,
+                "id": "scale-live",
+                "is_active": false,
+                "input_tokens": 0,
+                "message_count": 2,
+                "preview": null
+              }
+            },
+            "data": {
+              "action": "updated",
+              "session_id": "scale-live",
+              "session": {
+                "source": "workspace:project-0",
+                "title": "Scale live insertion",
+                "kanban_status": "active",
+                "started_at": 1792084833.233783,
+                "model": "fake-stream",
+                "ended_at": null,
+                "tool_call_count": 0,
+                "output_tokens": 0,
+                "estimated_cost_usd": null,
+                "last_active": null,
+                "id": "scale-live",
+                "is_active": false,
+                "input_tokens": 0,
+                "message_count": 2,
+                "preview": null
+              }
+            },
+            "server_epoch": "0518db470ea44fbd8a73a70988c0e41d",
+            "sequence_start": 6
+          }
+        ],
+        "backendTitle": {
+          "id": "scale-000",
+          "source": "workspace:project-0",
+          "user_id": null,
+          "model": "test-model",
+          "model_config": null,
+          "system_prompt": null,
+          "parent_session_id": null,
+          "started_at": 1792084823.663689,
+          "ended_at": null,
+          "end_reason": null,
+          "message_count": 0,
+          "tool_call_count": 0,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "billing_provider": null,
+          "billing_base_url": null,
+          "billing_mode": null,
+          "estimated_cost_usd": null,
+          "actual_cost_usd": null,
+          "cost_status": null,
+          "cost_source": null,
+          "pricing_version": null,
+          "title": "Scale chat 000",
+          "kanban_status": "backlog"
+        },
+        "error": "AssertionError [ERR_ASSERTION]: SSE insertion preserves scroll anchor\n+ actual - expected\n\n+ 'session:scale-073'\n- 'session:scale-032'\n                  ^\n\n    at run (file:///private/tmp/spark-p09-gates/src/spark_cli/web/e2e/sidebar-scale.mjs:297:12)\n    at runNextTicks (node:internal/process/task_queues:64:5)\n    at process.processImmediate (node:internal/timers:452:9)\n    at process.callbackTrampoline (node:internal/async_hooks:130:17)\n    at async file:///private/tmp/spark-p09-gates/src/spark_cli/web/e2e/sidebar-scale.mjs:415:1"
+      },
+      {
+        "sessionCount": 1000,
+        "projects": 10,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "theme": "dark",
+        "mode": "dev",
+        "checks": [
+          "Inbox semantic selection/local/full-history search",
+          "legacy pins do not cross profile boundary",
+          "1000 sessions / 10 projects; real offset-50 paging and bounded virtual rows",
+          "SSE insertion scroll anchor and nonselected unread marker",
+          "server pin; duplicate placements; collapse/expand; drag to project",
+          "virtualized ArrowDown moves keyboard focus to the next row",
+          "menu Escape returns focus; stale CAS rejected and newer SSE metadata retained",
+          "Inbox explicit next-page paging",
+          "two real isolated profile databases with duplicate session ID; metadata and preference scopes differ"
+        ],
+        "correctnessFailures": [],
+        "backendReadyMs": 836.1393330000001,
+        "firstUsefulMs": 1180.318292,
+        "initialSnapshots": [
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          },
+          {
+            "sessionLimit": 50,
+            "sessionCount": 50,
+            "limits": {
+              "sessions": 50,
+              "messages": 200,
+              "detail_idle_ttl_ms": 120000
+            }
+          }
+        ],
+        "startupRequests": [],
+        "selectionMs": 97.19999998807907,
+        "localSearchMs": 41,
+        "fullHistorySearchMs": 281,
+        "sidebarUpdateMs": 4780.300000011921,
+        "mountedSessionRows": 20,
+        "secondPageRequests": 1,
+        "metadataUpdateMs": 215.81166600000142,
+        "fullHistoryRequests": [
+          "ancient needle"
+        ]
+      }
+    ],
+    "earlier_title_failures": {
+      "nonselected_title_after_switch": "3/3 timed out at 5000ms in sidebar-final batch",
+      "selected_title_after_switch": "1/3 timed out in sidebar-comparable; two successes 3994.6 and 4002.5ms"
+    },
+    "failure_cause": "SSE insertion changed anchor session:scale-032 to session:scale-073. The same failed run also measured local filtering at 102.8ms, above the retained 100ms budget.",
+    "comparability": "Selection measures click to chat-panel identity, matching P00. Title PATCH now follows opening the remote history result and switching back; this extra lifecycle transition differs from P00 and must not be interpreted as isolated render CPU regression."
+  },
+  "production": {
+    "passed": true,
+    "checks": {
+      "checks": [
+        "draft survives immediate chat switch and browser refresh",
+        "failed send preserves draft through refresh",
+        "late acknowledgement clears only submitted draft without switching chat",
+        "concurrent tab edit preserves local input and exposes conflict",
+        "thread drafts remain isolated across refresh and switching",
+        "uploaded file reference and context selection survive refresh",
+        "interrupted upload recovers as missing and blocks send until removed",
+        "failed attachment remains visible without losing typed text",
+        "profile identity isolates stored drafts at same browser origin"
+      ]
+    },
+    "source_proof": {
+      "mode": "production-built",
+      "runtimeSource": "/var/folders/px/w5ttjwk56dg761_zbyj1c2bw0000gn/T/spark-built-recovery-ptvwejo5/src",
+      "builtAssets": "/var/folders/px/w5ttjwk56dg761_zbyj1c2bw0000gn/T/spark-built-recovery-ptvwejo5/src/spark_cli/web_dist",
+      "driver": "/private/tmp/spark-p09-gates/src/spark_cli/web/e2e/work-recovery.py",
+      "canonicalBundleTouched": false,
+      "python": "3.11.7 (main, Dec 15 2023, 12:09:56) [Clang 14.0.6 ]",
+      "buildExit": 0,
+      "resolvedBackendSource": "/var/folders/px/w5ttjwk56dg761_zbyj1c2bw0000gn/T/spark-built-recovery-ptvwejo5/src/spark_cli/web_server.py"
+    },
+    "scope": "Existing work-recovery.py main and assertions imported unchanged; only REPORTS redirected. Fresh Vite assets served by normal FastAPI mount from a copied src tree under temporary outDir. Runtime source/build removed after run; manifest and screenshots retained. No canonical or installed assets used as proof."
+  },
+  "notes": [
+    "Nearest-rank p95 is the maximum for these n=3/n=4 samples, not a stable population percentile.",
+    "Longthread timing statistics condition on successful captures. Sidebar timing statistics include probes completed before a later assertion failed; raw attempts retain gate status.",
+    "Subtracting configured 60ms synthetic first-token delay leaves HTTP scheduling, persistence, SSE and UI processing together, not pure UI CPU time or real provider latency.",
+    "Visible-update gaps are DOM mutation gaps, not transport packet-loss measurements. CDP heap is not full browser RSS.",
+    "CI configuration has been parsed and local components exercised; hosted Actions execution has not occurred.",
+    "Runner repeats retain every exit, apply 240s per sidebar/longthread attempt and 300s production-recovery, kill process groups on timeout and fail the aggregate if any attempt fails."
+  ],
+  "open_gates": [
+    "React virtualizer update-depth failure during long-history pagination",
+    "SSE insertion sidebar anchor loss and title-update latency/timeouts",
+    "Investigate all median/p95 regressions above 10 percent shown in summary; baseline shared-host noise and changed title trigger are explicit limitations",
+    "Integrate replay-agent test before CI; it is absent at this base",
+    "Rerun browser gates after P06/P07 and newer parent integration; no claim for 6cb9677 or backup changes",
+    "All18 theme/viewport baseline cases, installed macOS/Windows packages and final canonical bundle owned by parent",
+    "Full browser RSS, real provider/gateway behavior and 10000-message browser search p95 not measured here"
+  ],
+  "artifacts": [
+    {
+      "path": "/tmp/spark-p09-evidence/longthread/run-01/baseline-f771a18f.json",
+      "bytes": 10626,
+      "sha256": "a6775603fb20445481c0bf9f2c7ddc223382aaf80fe55a7b64907a189f5633fd"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread/run-01/screenshots/dark/2000-w1440.png",
+      "bytes": 182389,
+      "sha256": "44ca863ad231ca2de1abf8c67d531b36a3ec52bfa205b28984b037e3af7efb06"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread/run-02/baseline-f771a18f.json",
+      "bytes": 10614,
+      "sha256": "451918dd48c5077e5326ad5e933f769e2bc43d81544c934ec828b5269d81490e"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread/run-02/screenshots/dark/2000-w1440.png",
+      "bytes": 182402,
+      "sha256": "33de74fd87a4222c14076ed02b754a27e3c06c7f4e9750a1fc045533888bc9bd"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread/run-03/baseline-f771a18f.json",
+      "bytes": 10587,
+      "sha256": "f26404a9a48b32805bb4ba5dfac4be5a1b95bfd0b09d2b8dbdbf9bd415dd344d"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread/run-03/screenshots/dark/2000-w1440.png",
+      "bytes": 124170,
+      "sha256": "b8e53f6e67e84e6c36bfa038af7c84b5ba4c3d49d926926b4c4b7d42773546e8"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-01/run-01/baseline-f771a18f.json",
+      "bytes": 10441,
+      "sha256": "cb401da60472d12ce6ba6c9cee50ce846fedb8bcca7fc4e298d779d15ebea9c4"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-01/run-01/screenshots/dark/2000-w1440.png",
+      "bytes": 194949,
+      "sha256": "803edb5aa5c9d44a96b4693dbd0a573641cdfa83e671e949e3ca55c721ac4557"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-01/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-01/stdout.log",
+      "bytes": 274,
+      "sha256": "e5767cd5eb687fe9f2cd3ca52331ce802b58122e8964fda806829f20c28c29aa"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-02/run-01/baseline-f771a18f.json",
+      "bytes": 10193,
+      "sha256": "826232ca27c90d5514bd94a9b9a7854bac481678fb3e780a733505da3f2945dd"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-02/run-01/screenshots/dark/2000-w1440.png",
+      "bytes": 182365,
+      "sha256": "7729a8254f6a3d43b11736835023f02bd3a1bc26d51bd819b7c093a29b2694b5"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-02/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-02/stdout.log",
+      "bytes": 274,
+      "sha256": "4fc62181eb95dd32db9301ac4f0ed22fa1c780eb6f320b747df9f1e347547669"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-03/run-01/baseline-f771a18f.json",
+      "bytes": 10626,
+      "sha256": "68dc1abc1b602fd4b5d6af0142146a6baceb60409e2a8daac9e8ea5580ca4f24"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-03/run-01/screenshots/dark/2000-w1440.png",
+      "bytes": 182359,
+      "sha256": "cfe3622b76b1ae4079990269d0944b773a7d00858d12ed848a39e819f588b732"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-03/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-03/stdout.log",
+      "bytes": 274,
+      "sha256": "7815e2b66f05fdb2cb47e17ddf5c64b5baae3c8a097996040035c9897f134eb9"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04/run-01/backend.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04/run-01/failure.json",
+      "bytes": 730,
+      "sha256": "a21af9bb2c1aa9c5c7c1091ccaa4d3366a331b6a119f61d7d20e36f392035d01"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04/run-01/screenshots/dark-2000-w1440-failure.json",
+      "bytes": 24985,
+      "sha256": "134a29526b46abafc811c4c2831a9cc0c59553730dc103209372e96e682e2635"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04/run-01/screenshots/dark-2000-w1440-failure.png",
+      "bytes": 48469,
+      "sha256": "2c10e39f177c11ae9cb0e0fb8725ff459b793f91cac48ed887697766abfc6eae"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04/run-01/vite.log",
+      "bytes": 73,
+      "sha256": "5bedac7d855bf7db1d4dc6473e654f518ee66c92ad1a2a1ba783f0494d3a17c6"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04/stderr.log",
+      "bytes": 773,
+      "sha256": "86838314fddac2ad14595c1b399ce64c839f19423f5793340e312efbb38aae8d"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-04/stdout.log",
+      "bytes": 120,
+      "sha256": "ae22c2b6280eec510b46a9d5413b4c0791063ce2ad6b7b1c5590fff604af20d0"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-05/run-01/baseline-f771a18f.json",
+      "bytes": 10599,
+      "sha256": "16c5266b7b6fd08f127287e3ab35f99e7f01732e598a064a19be39edf8b22e3a"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-05/run-01/screenshots/dark/2000-w1440.png",
+      "bytes": 182388,
+      "sha256": "e9f30d01077f9dcc442b78b56e88bae7e31d65b99051ecd56f4e96026d1d8951"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-05/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/attempt-05/stdout.log",
+      "bytes": 274,
+      "sha256": "075ed641bccfe0cad193df57123cd9f078e147df1103aee0e259b2022d8ce3fd"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-localdeps/gate.json",
+      "bytes": 2512,
+      "sha256": "cf7edcf44f6e17988a0d6f19c7e370d7d649412cc03cbeb72038c190746da7d5"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-01/backend.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-01/failure.json",
+      "bytes": 638,
+      "sha256": "3245ae504e77dd2190df6b8d378299f8b945b2a4362b7157b088f171b50185e5"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-01/screenshots/dark-2000-w1440-failure.json",
+      "bytes": 8001,
+      "sha256": "0350a6f50fa677c6713f5659378e510657e71e8f7c8e55d568c4e68092498b8a"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-01/screenshots/dark-2000-w1440-failure.png",
+      "bytes": 84821,
+      "sha256": "d995db8127378ce18ed16243ecb1aa88fa2f1f74a379dd360d23157b551dfb32"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-01/vite.log",
+      "bytes": 73,
+      "sha256": "136a982bc60b98289eb212178e3564dbc4f0e8e99fbb6aeaf079bdae22d86dcd"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-02/baseline-f771a18f.json",
+      "bytes": 10605,
+      "sha256": "e690e7613433c810f7d12959d8195262dfc5d62c37ae4aa98b15c6e8ef3fbf85"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-02/screenshots/dark/2000-w1440.png",
+      "bytes": 194701,
+      "sha256": "b0d603cb3a89902c3b717b8ecd006182265e13d0408ba5cfc828aec6d1a59c72"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-03/backend.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-03/failure.json",
+      "bytes": 646,
+      "sha256": "7198c562a95ed22b04344c2988b7d63ec137c740cec3d4bc2f7ea6f274a27d16"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-03/screenshots/dark-2000-w1440-failure.json",
+      "bytes": 4395,
+      "sha256": "c98083a3f42cd7f3884981b358adef1ba56c7b29ad9a00b2d56d91af929b4d08"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-03/screenshots/dark-2000-w1440-failure.png",
+      "bytes": 100179,
+      "sha256": "0cfabe764954b105d49d937ae1ce9ca4089908d5576f69af4e71b98c4eb250fc"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-03/vite.log",
+      "bytes": 73,
+      "sha256": "39c5dc4a2a7e75be3c248c77a6cf669d52e535ef643d4d550bfe095e7f8f4bdc"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-04/baseline-f771a18f.json",
+      "bytes": 10635,
+      "sha256": "d344bced5dc36a38c5cd176cf36851c4d71c3d435c158449bd8247e5d110ba7f"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-04/screenshots/dark/2000-w1440.png",
+      "bytes": 124154,
+      "sha256": "8cf52b11e94814208d62782958bd76c8dc13cb2a83cfd90ec3103388cf4fc48d"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-05/backend.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-05/failure.json",
+      "bytes": 3923,
+      "sha256": "3a7124d32b1d4c809b449383f02597888b67436b790fa59a132eb5e861103050"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-05/screenshots/dark/2000-w1440.png",
+      "bytes": 182407,
+      "sha256": "f32e1b8e479db1942d1ed9ee89ec4401577919c45c8cb3f76698970ce9f75e2d"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/longthread-node22/run-05/vite.log",
+      "bytes": 73,
+      "sha256": "87dbe8faa200dfecb113e38525cc047a2916c8ac08e2230a2cada91dfb23306e"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/build.log",
+      "bytes": 996,
+      "sha256": "b04d036518d047b552c7c36ab1b306bb640bf762f039a196020eaf22d0056780"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-codex-1024.png",
+      "bytes": 86154,
+      "sha256": "21eb216fef2885b8270afd634528e503c6b021248b0bd8182486764f14d857a8"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-codex-1440.png",
+      "bytes": 87461,
+      "sha256": "3b146e5a09aa023dab89987537f13b9f10884db269c317cb4c6b7f8db90a158a"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-codex-390.png",
+      "bytes": 34598,
+      "sha256": "0af1064001c67d21f0109f6f884349d382e56723d7392faed2cc25d1a9be401c"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-codex-768.png",
+      "bytes": 80694,
+      "sha256": "7510ba3e110e9b4f1a3cb7ff22873c81f04d5543c8de18a02b0ddfb87575753e"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-conflict.png",
+      "bytes": 97425,
+      "sha256": "34fd7fb2576aebc66f7405f0a3fd71c0fc205a23a3adc9b707ebaf8b3e52685f"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-daylight-1024.png",
+      "bytes": 146580,
+      "sha256": "e962a527383f730d2a18505e12716ab41c1d8453e706a5edacf118d37a507e35"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-daylight-1440.png",
+      "bytes": 157896,
+      "sha256": "0a536fd997fff239d3aa889e48c19e5b762d6f960f3509dbdd9d7493741b14c8"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-daylight-390.png",
+      "bytes": 71190,
+      "sha256": "352c147c8310eb1299b14f6a1083f4eccd63540ef1a4da208d88d76ad9c20746"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/draft-daylight-768.png",
+      "bytes": 136595,
+      "sha256": "c31177e81a4e4ab4388ecdfcd4ead6d04c4cf32cf678df67f88cc018013946a9"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/initial.png",
+      "bytes": 50007,
+      "sha256": "ce9db05d0cae5d21297f8da1fae7cf4eb3c32c980a61ececbe83063446edc9d4"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/manifest.json",
+      "bytes": 19445,
+      "sha256": "20fff1c5977c68c01996651f160278adda3e2a71a240a9c7cb522c413cd6a04f"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/production.json",
+      "bytes": 464,
+      "sha256": "74c69c0af36bf76b5fb6fa956776afba66586f2954b79af5cce87b8e904a88fb"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/report.json",
+      "bytes": 633,
+      "sha256": "362383b380220f2a0cacb1191b699d6c8a3b3b727e08fc8dee3c34ef741f0cf5"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/stdout.log",
+      "bytes": 648,
+      "sha256": "2514c18aa0e9e0d80ac5a8341d1dc0468af5a23cd50653078ae52218561ac9db"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/attempt-01/verified.png",
+      "bytes": 70516,
+      "sha256": "4817a12661da935ad6e7af062dafc9671a68b53649957a7c836d02156ae2da6b"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production/gate.json",
+      "bytes": 502,
+      "sha256": "577da656ca3357836ddad6f62072b37939e1f0ac9b21d4bbc804ee1a63e176bf"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/build.log",
+      "bytes": 986,
+      "sha256": "cc8bdb06d22f598ac6cabadcd3c7f3ae982262105cfbd0573bfad9de8846831c"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-codex-1024.png",
+      "bytes": 87190,
+      "sha256": "9af8f25648406ada3ca387a70e11df311185285ddbfdaa523347b962973c6183"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-codex-1440.png",
+      "bytes": 94474,
+      "sha256": "952090c35ac64ed4a9c0ffa42990176e1619c87b81d5cdc0bda57e2b22fa47d9"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-codex-390.png",
+      "bytes": 34683,
+      "sha256": "046a1daefbbea316c5b33f4d22e71dcd56081feedb94a2865dd8f729ba8af278"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-codex-768.png",
+      "bytes": 81193,
+      "sha256": "b5fa023db74717e3979a6d2b0893c7e5dabb1ab2a227734ff4528270a219c372"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-conflict.png",
+      "bytes": 97441,
+      "sha256": "4204e0ffb703399b87077e5d878be4f3b1a2aff45cff4b918dbe5775e9444649"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-daylight-1024.png",
+      "bytes": 151206,
+      "sha256": "d2d8bd55914c8a06e0060b0649d880f39efa01d36015ce7b479892baf1ad0c83"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-daylight-1440.png",
+      "bytes": 165540,
+      "sha256": "ca363d7f74e822519ac5a8abc271f89aa2c0b5bfcec664d1e6950554861c367a"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-daylight-390.png",
+      "bytes": 71122,
+      "sha256": "df0d18e78ff44237656b26fa8713a3aaecb4015f9157ba4cdacf34f7c0bd61cd"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/draft-daylight-768.png",
+      "bytes": 139475,
+      "sha256": "c73decee615557b9213d573b695b3a78c187c2991451a572c0f273f3675a46e6"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/initial.png",
+      "bytes": 50007,
+      "sha256": "ce9db05d0cae5d21297f8da1fae7cf4eb3c32c980a61ececbe83063446edc9d4"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/manifest.json",
+      "bytes": 14960,
+      "sha256": "c37d1352013eb6d25ca7ccb7ca9e11676838c8687185b0ae3165f279b771f439"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/production.json",
+      "bytes": 601,
+      "sha256": "d20064d154b718cb12b3d230138b76671e72af0d1f2083108e55d9fab6b73110"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/report.json",
+      "bytes": 633,
+      "sha256": "362383b380220f2a0cacb1191b699d6c8a3b3b727e08fc8dee3c34ef741f0cf5"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/stdout.log",
+      "bytes": 648,
+      "sha256": "2514c18aa0e9e0d80ac5a8341d1dc0468af5a23cd50653078ae52218561ac9db"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/attempt-01/verified.png",
+      "bytes": 71123,
+      "sha256": "921ffe289f04d8c794630592cb6dea963e1ce684a40d69414e7deb1254fe7e72"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/production-final/gate.json",
+      "bytes": 514,
+      "sha256": "766f90442b90d7be9da60c02f9c70238f4e97beef02dbd3d1824c04a66f6f094"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-1/failure.json",
+      "bytes": 1117,
+      "sha256": "e91dabaea46d6a5c59daacd60ce21c1c89e86e6494b085872e8e578c46ae2c91"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-1/failure.png",
+      "bytes": 103264,
+      "sha256": "df644fdca3587641fd5e1767d95b23264ea0cc9a540da559eae9915f9df7bd1e"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-2/failure.json",
+      "bytes": 615,
+      "sha256": "747289cc3bd6b53c07d4e1b24d064d8d5ba3e7cdc3047a9ca06b87c8f1d89ce9"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-2/failure.png",
+      "bytes": 97730,
+      "sha256": "e83c5a2e5dde28b45300833f53ff8241b1c4772b7e69768c637ddb69dce63216"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-01/report.json",
+      "bytes": 1850,
+      "sha256": "9f1c1c077e51eae9cbd62447f73971598305ba99c8e80a183aefceab6ff7cefc"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-01/sidebar.png",
+      "bytes": 112671,
+      "sha256": "8a0a664928f23862a21172ceebc2b75b183eef8c4450605ba15562383366be81"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-01/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-01/stdout.log",
+      "bytes": 1425,
+      "sha256": "22408a1b64d21ba152c23a585e60f1233801fbb86d2ba9e4705c09fcd7d51fd8"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-02/failure.json",
+      "bytes": 1514,
+      "sha256": "f35f3893cf897da30e216ba5fda44182f1ce24797179b07a63464d77020f5eeb"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-02/failure.png",
+      "bytes": 114697,
+      "sha256": "a78c8dd63f4ccc354d7c4fd24d89e321957da981c386ba53befc1f5744b403cf"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-02/stderr.log",
+      "bytes": 3651,
+      "sha256": "16ce0906228065a15fb98065dacf816f137b0919c4af9137971f63192b3c123f"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-02/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-03/report.json",
+      "bytes": 1817,
+      "sha256": "390e35a9202789337d89f88ec165cae5e4b85dbe90d567baf38349b6790691aa"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-03/sidebar.png",
+      "bytes": 112671,
+      "sha256": "8a0a664928f23862a21172ceebc2b75b183eef8c4450605ba15562383366be81"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-03/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/attempt-03/stdout.log",
+      "bytes": 1392,
+      "sha256": "f35738c434f086cc4e630eb4a9e1f83cbb183606b7cf5d39fa6e7336ac8cc94f"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-comparable/gate.json",
+      "bytes": 1109,
+      "sha256": "7a57b4b73ac9d9bd1af25c2c4125ff703cb3fc4f497cc312a2a23892689eceff"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diag/failure.json",
+      "bytes": 13715,
+      "sha256": "2916798cd53830bb1274d7848ed3a7bb32c6742bba197f4f657591806b1fc2ec"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diag/failure.png",
+      "bytes": 97730,
+      "sha256": "e83c5a2e5dde28b45300833f53ff8241b1c4772b7e69768c637ddb69dce63216"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-01/report.json",
+      "bytes": 1952,
+      "sha256": "c4ecb2421db8e5da32e8eb8de25565eaeb7add53c1050bd89b8dbf0ce9feb893"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-01/sidebar.png",
+      "bytes": 112671,
+      "sha256": "8a0a664928f23862a21172ceebc2b75b183eef8c4450605ba15562383366be81"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-01/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-01/stdout.log",
+      "bytes": 1518,
+      "sha256": "ba03a8ee36c60875217e65584e57276d9943f394f8b1b3f72980c06336b6d6ac"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-02/failure.json",
+      "bytes": 31211,
+      "sha256": "ae28e702b632683842c1dc0a79d6301c7cf06c22d447b826aab27841a708ebcb"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-02/failure.png",
+      "bytes": 126461,
+      "sha256": "d985832cbe69573b2564ac5d2b5f4a5169b6a491e0f39aa0da4486c600dcf5d4"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-02/stderr.log",
+      "bytes": 1835,
+      "sha256": "20e9ee25277411c441ece9f7424ac13439cc59e8cb6fa71d2aad5f0aeb02b7f2"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-02/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-03/report.json",
+      "bytes": 1923,
+      "sha256": "86610bc6760f14898455b7e1bf34933563a97fe3d89696a77b6f56648e921314"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-03/sidebar.png",
+      "bytes": 112671,
+      "sha256": "8a0a664928f23862a21172ceebc2b75b183eef8c4450605ba15562383366be81"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-03/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/attempt-03/stdout.log",
+      "bytes": 1489,
+      "sha256": "e3d1e1322a6c136050552a17c38bc0bcca5b3853bf6beb1c069310e937b6a4fc"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-diagnostic/gate.json",
+      "bytes": 1109,
+      "sha256": "169d8c1460b84e0febdce8fb00d88658a7b07f127307096ec0b7e24dfecf52de"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-01/failure.json",
+      "bytes": 18586,
+      "sha256": "0dc2954355ed055c33dda594cbdf6081138cf7b235702dc167fae7b82516e19a"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-01/failure.png",
+      "bytes": 104225,
+      "sha256": "e0439e84868e1748d068fc9a6b3667f81a8925e079d322fb304bff3bffa3e453"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-01/stderr.log",
+      "bytes": 3566,
+      "sha256": "9106f7c8bcff098a96d3fa58861f82d63337f599cedfc3b327b24bdb6e3ca242"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-01/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-02/failure.json",
+      "bytes": 18659,
+      "sha256": "d9489a52c99031db6b555449230eb3f1780d697f8b485c2356c82ac5ec6692af"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-02/failure.png",
+      "bytes": 104954,
+      "sha256": "8f8356ed2ea8c4f4904551f6e9e6f39c45c9f130ed8608cf01e73500b435e095"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-02/stderr.log",
+      "bytes": 3571,
+      "sha256": "362e5f787e3f67d1a501940654d19328011ccfb391ef71fb2e33f279f942f34a"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-02/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-03/failure.json",
+      "bytes": 18611,
+      "sha256": "3ddda07814d7f515a07a84e07db7a9877f7f28588fee96af3d428a9557b37fb2"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-03/failure.png",
+      "bytes": 104955,
+      "sha256": "2e8943bd6fe9514a980c9694a6bd4ca197c4f3da0466e5e115923e41f9ef71f9"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-03/stderr.log",
+      "bytes": 3571,
+      "sha256": "65db072763f599818c104615e53dda4600932264bf0fa9117554621b7a74be8a"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/attempt-03/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-final/gate.json",
+      "bytes": 1092,
+      "sha256": "30b1baa155a7332984b0e6be5dc3db68b0a28678d79a64e202437aa1a62e50a5"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-localdeps/report.json",
+      "bytes": 19283,
+      "sha256": "726c3167102a2b9e9e1799df5fad699363ded2cbdc8ff86f7a45c4d77c5d8887"
+    },
+    {
+      "path": "/tmp/spark-p09-evidence/sidebar-localdeps/sidebar.png",
+      "bytes": 105476,
+      "sha256": "c246b5e749ae6dd6a4b52a4288a2a2589fd99910e4576b58d2cb53e2ff8bcd48"
+    },
+    {
+      "path": "/tmp/spark-p09-ruff.log",
+      "bytes": 113258,
+      "sha256": "03519b1351bf21ab373ef8ec5d5143bf006df2ff9fa3430fc8539d44c9f2c7df"
+    },
+    {
+      "path": "/tmp/spark-p09-replay-projections.log",
+      "bytes": 179,
+      "sha256": "a9a04f332d7ed68e5866dfc97e9cdb5e0c0b30ca4eacf1a1c838a8593a27cf60"
+    },
+    {
+      "path": "/tmp/spark-p09-sidebar-comparable.log",
+      "bytes": 291,
+      "sha256": "fbb612580554cec329441a670d2d0068e041904eef62c2f728beb98372add196"
+    },
+    {
+      "path": "/tmp/spark-p09-sidebar-diag.log",
+      "bytes": 3510,
+      "sha256": "c7a8782aa626cde1857d278c5f6de5ea51fdb279dea325e5a4dd4ab008425038"
+    },
+    {
+      "path": "/tmp/spark-p09-longthread.log",
+      "bytes": 696,
+      "sha256": "5d1fcd9771864d5de65e023dd0e0bc1ec8f2e0546ae08f294f7e9aadcd0c33a1"
+    },
+    {
+      "path": "/tmp/spark-p09-sidebar-2.log",
+      "bytes": 3516,
+      "sha256": "3565a10611048593b6886b0446d7a6904cc1837b93032ae853577ba5c90f1172"
+    },
+    {
+      "path": "/tmp/spark-p09-sidebar-1.log",
+      "bytes": 4679,
+      "sha256": "afd6e03df4420e6be2e33aef2d90d67da13891a06dab452aa18d8d72efc8c62e"
+    },
+    {
+      "path": "/tmp/spark-p09-pytest.log",
+      "bytes": 84,
+      "sha256": "d7b74430db39e1a8dac6bf3cd7301846f74d05aa94e40ec882ba6cbf82e62347"
+    },
+    {
+      "path": "/tmp/spark-p09-replay-gates.log",
+      "bytes": 1785,
+      "sha256": "6fd75e1a48600c35ffa600d87b6b7aeb4ac04e5f8f05570853415ae3f0941dd7"
+    },
+    {
+      "path": "/tmp/spark-p09-pytest-final.log",
+      "bytes": 351,
+      "sha256": "3c7aef8c1d97d660cfb0dc369021813926c90a977b692c7099e7c99f8f197ee9"
+    },
+    {
+      "path": "/tmp/spark-p09-sidebar-localdeps.log",
+      "bytes": 17504,
+      "sha256": "0dd16c4cd5f98d7b8f747e257ce8b10a2bddd41d74b5e96cf1e6cd4fe50478a7"
+    },
+    {
+      "path": "/tmp/spark-p09-longthread-localdeps.log",
+      "bytes": 510,
+      "sha256": "477ce370a5789e9054a0e6d0ce51f25d71b72145fff9969fe30b0b897a8c6e10"
+    },
+    {
+      "path": "/tmp/spark-p09-replay-defects.log",
+      "bytes": 17157,
+      "sha256": "89b444adda0be3c8fcfbeef610df08bee774275373aa8bff53aa5217aebfa7d2"
+    },
+    {
+      "path": "/tmp/spark-p09-sidebar-diagnostic.log",
+      "bytes": 291,
+      "sha256": "a5f7c8d208230b3ddb40a299a59edabf7898c680b3e940251b640845f1e509cb"
+    },
+    {
+      "path": "/tmp/spark-p09-longthread-node22.log",
+      "bytes": 6142,
+      "sha256": "62e988d4dd1ce3a88863e501954f9821af551c61c4516e4dc376ef67dea05419"
+    },
+    {
+      "path": "/tmp/spark-p09-sidebar-final.log",
+      "bytes": 276,
+      "sha256": "fa3b6c03beba71d086ce0428bf014b3da85ef0f8608579ec9167dd892bf6b2c7"
+    },
+    {
+      "path": "/tmp/spark-p09-production-final.log",
+      "bytes": 107,
+      "sha256": "05bfe07d3f4681b9d0522b5a3cdd972578a4e5e5ab699048b68ed73a53b10e8d"
+    },
+    {
+      "path": "/tmp/spark-p09-replay-final.log",
+      "bytes": 111,
+      "sha256": "37709b268ebfc2169a3f71463b3200ebb7aff04b50d3a6f6414ddaa3ee439c37"
+    },
+    {
+      "path": "/tmp/spark-p09-production.log",
+      "bytes": 101,
+      "sha256": "1ec87af612fb7463788dc9fde56ad01a64d400ad9f635d2a84c90afc467f5b1f"
+    }
+  ],
+  "implementation_files": [
+    {
+      "path": ".github/workflows/web-quality.yml",
+      "sha256": "909711deb84923dfab917efd49f415915ee9765fc115997f98a266add7b18bb3"
+    },
+    {
+      "path": "src/spark_cli/web/e2e/sidebar-scale.mjs",
+      "sha256": "fd270fff529b5d3e3c2aec3a4d9985427a900f15c0f88f2b9a7664f065c40474"
+    },
+    {
+      "path": "src/spark_cli/web/e2e/baseline-capture.mjs",
+      "sha256": "bb8bd4ee61dc1379994936a99f1bb6e82087b4c494e41c96a18be68bcf9d5753"
+    },
+    {
+      "path": "src/spark_cli/web/e2e/browser-gates.mjs",
+      "sha256": "2fdd02da9fe8994c58ec2acf29a4f5ada76a4213945d947fe28d78a1d7bc2e97"
+    },
+    {
+      "path": "src/spark_cli/web/e2e/production-recovery.py",
+      "sha256": "f5454cd304ab9a8a12e6a6198306c963799e368e59ca1fd5f27ed9603af58853"
+    }
+  ]
+}

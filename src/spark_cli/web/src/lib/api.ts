@@ -14,6 +14,7 @@ import {
   getApiBase,
   mediaFileUrl,
 } from "./apiHelpers";
+import { sidebarApi } from "./api_sidebar";
 import { sessionApi } from "./api_session";
 import { skillApi } from "./api_skill";
 import { cronApi } from "./api_cron";
@@ -33,6 +34,8 @@ import type {
   ConversationSubagentMessagesResponse,
   ConversationSubagentResponse,
   ConversationSubagentsResponse,
+  SubagentCapabilities,
+  SubagentRetryResponse,
   DashboardAuthInfo,
   DiagnosticsSummary,
   FileListResponse,
@@ -69,6 +72,7 @@ import { browserApi } from "./api_browser";
 import { envApi } from "./api_env";
 
 export const api = {
+  ...sidebarApi,
   ...adminApi,
   ...browserApi,
   ...canvasApi,
@@ -194,25 +198,32 @@ export const api = {
         body: JSON.stringify({ message, context_items: contextItems ?? [] }),
       },
     ),
-  getConversationSubagents: (sessionId: string) =>
+  getConversationSubagents: (sessionId: string, signal?: AbortSignal) =>
     fetchJSON<ConversationSubagentsResponse>(
-      `/api/conversations/${encodeURIComponent(sessionId)}/subagents`,
+      `/api/conversations/${encodeURIComponent(sessionId)}/subagents`, { signal },
     ),
-  getConversationSubagent: (sessionId: string, subagentId: string) =>
+  getConversationSubagent: (sessionId: string, subagentId: string, eventLimit = 200, signal?: AbortSignal, eventAfterId?: number) =>
     fetchJSON<ConversationSubagentResponse>(
-      `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}`,
+      `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}?event_limit=${eventLimit}${eventAfterId === undefined ? "" : `&event_after_id=${eventAfterId}`}`, { signal },
     ),
-  getConversationSubagentMessages: (sessionId: string, subagentId: string, includeToolResults = false) =>
+  getConversationSubagentMessages: (sessionId: string, subagentId: string, includeToolResults = false, limit = 200, signal?: AbortSignal, beforeId?: number) =>
     fetchJSON<ConversationSubagentMessagesResponse>(
-      `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}/messages${includeToolResults ? "?include_tool_results=true" : ""}`,
+      `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}/messages?limit=${limit}${includeToolResults ? "&include_tool_results=true" : ""}${beforeId === undefined ? "" : `&before_id=${beforeId}`}`, { signal },
     ),
-  interruptConversationSubagent: (sessionId: string, subagentId: string, message?: string) =>
+  getSubagentCapabilities: (sessionId: string, signal?: AbortSignal) =>
+    fetchJSON<SubagentCapabilities>(`/api/conversations/${encodeURIComponent(sessionId)}/subagents/capabilities`, { signal }),
+  retryConversationSubagent: (sessionId: string, subagentId: string, requestId: string) =>
+    fetchJSON<SubagentRetryResponse>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}/retry`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request_id: requestId }) },
+    ),
+  interruptConversationSubagent: (sessionId: string, subagentId: string, message?: string, requestId?: string) =>
     fetchJSON<ConversationSubagentInterruptResponse>(
       `/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}/interrupt`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: message ?? null }),
+        body: JSON.stringify({ message: message ?? null, request_id: requestId }),
       },
     ),
   interruptConversation: (sessionId: string, message?: string) =>
@@ -414,9 +425,10 @@ export const api = {
       body: JSON.stringify({ content }),
     });
   },
-  detectDevServers: (slug: string) =>
+  detectDevServers: (slug: string, signal?: AbortSignal) =>
     fetchJSON<{ slug: string; servers: { url: string; port: number }[] }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/preview/detect-servers`,
+      { signal },
     ),
   listArtifacts: (type: string = "all", limit = 200) =>
     fetchJSON<ArtifactsResponse>(

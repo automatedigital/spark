@@ -13,20 +13,29 @@ describe("approval contract", () => {
       sessionId: "session-a",
       choice: "session",
       busy: false,
+      actionId: "approval-a",
     })).toEqual({
       sessionId: "session-a",
-      payload: { choice: "session", resolve_all: false },
+      payload: { choice: "session", resolve_all: false, action_id: "approval-a" },
     });
   });
 
   it("guards missing sessions, busy submissions, and already-resolved prompts", () => {
-    const input = { choice: "once" as const, busy: false };
+    const input = { choice: "once" as const, busy: false, actionId: "approval-a" };
     expect(approvalSubmission({ ...input, sessionId: null })).toBeNull();
     expect(approvalSubmission({ ...input, sessionId: "session-a", busy: true })).toBeNull();
     expect(approvalSubmission({ ...input, sessionId: "session-a", resolved: true })).toBeNull();
     expect(approvalIsDisabled(true, false)).toBe(true);
     expect(approvalIsDisabled(false, true)).toBe(true);
     expect(approvalIsDisabled(false, false)).toBe(false);
+  });
+
+  it("refuses historical buttons without an exact approval identity", () => {
+    const input = { sessionId: "session-a", choice: "once" as const, busy: false };
+    expect(approvalSubmission(input)).toBeNull();
+    expect(approvalSubmission({ ...input, actionId: "" })).toBeNull();
+    expect(approvalSubmission({ ...input, actionId: "   " })).toBeNull();
+    expect(approvalSubmission({ ...input, actionId: "approval-b" })?.payload.action_id).toBe("approval-b");
   });
 
   it("marks pending approval rows resolved while preserving other rows and identities", () => {

@@ -134,7 +134,7 @@ def test_patch_status_block_unblock_and_complete():
     assert done["status"] == "done"
 
 
-def test_reclaim_stale_running_returns_task_to_ready():
+def test_reclaim_stale_running_requires_review_before_retry():
     task = kb.create_task(title="Run me", assignee="worker-a")
     kb.patch_task(task["id"], status="ready")
     claim = kb.claim_ready_task(task["id"], profile="worker-a", claim_ttl_seconds=-1)
@@ -145,7 +145,8 @@ def test_reclaim_stale_running_returns_task_to_ready():
     reclaimed = kb.reclaim_stale_running(claim_ttl_seconds=1, check_pid=False)
 
     assert reclaimed == [task["id"]]
-    assert kb.get_task(task["id"])["status"] == "ready"
+    assert kb.get_task(task["id"])["status"] == "blocked"
+    assert kb.get_task_detail(task["id"])["runs"][0]["outcome"] == "uncertain"
 
 
 def test_bulk_patch_reports_missing_task_errors():

@@ -19,6 +19,8 @@ export * from "./apiTypes";
 
 
 const DASHBOARD_TOKEN_KEY = "spark_dashboard_token";
+let connectionGeneration = 0;
+export function apiConnectionGeneration(): number { return connectionGeneration; }
 
 // ── Connection mode / API base URL ──────────────────────────────────────────
 // In "local" mode the UI talks to the same origin it was served from (base "").
@@ -48,16 +50,24 @@ export function getApiBase(): string {
  * already validated the connection (validateRemoteConnection in connection.ts).
  */
 export function setRemoteConnection(baseUrl: string, token: string): void {
+  const previousBase = getApiBase();
+  const previousMode = getConnectionMode();
+  const previousGeneration = connectionGeneration;
   localStorage.setItem(CONNECTION_MODE_KEY, "remote");
   localStorage.setItem(REMOTE_BASE_URL_KEY, normalizeBaseUrl(baseUrl) ?? baseUrl.trim().replace(/\/+$/, ""));
   setDashboardToken(token);
+  if (connectionGeneration === previousGeneration && (getApiBase() !== previousBase || getConnectionMode() !== previousMode)) connectionGeneration += 1;
 }
 
 /** Switch back to the local sidecar: clears remote base + token. */
 export function setLocalConnection(): void {
+  const previousBase = getApiBase();
+  const previousMode = getConnectionMode();
+  const previousGeneration = connectionGeneration;
   localStorage.setItem(CONNECTION_MODE_KEY, "local");
   localStorage.removeItem(REMOTE_BASE_URL_KEY);
   clearDashboardToken();
+  if (connectionGeneration === previousGeneration && (getApiBase() !== previousBase || getConnectionMode() !== previousMode)) connectionGeneration += 1;
 }
 
 // Ephemeral session token for protected endpoints (reveal).
@@ -70,11 +80,16 @@ export function getDashboardToken(): string | null {
 }
 
 export function setDashboardToken(token: string): void {
-  localStorage.setItem(DASHBOARD_TOKEN_KEY, token.trim());
+  const next = token.trim();
+  const previous = getDashboardToken() ?? "";
+  localStorage.setItem(DASHBOARD_TOKEN_KEY, next);
+  if (previous !== next) connectionGeneration += 1;
 }
 
 export function clearDashboardToken(): void {
+  const previous = getDashboardToken();
   localStorage.removeItem(DASHBOARD_TOKEN_KEY);
+  if (previous) connectionGeneration += 1;
 }
 
 /** Build a URL for raw-file serving (binary-safe) with auth token as query param.

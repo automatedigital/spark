@@ -1,0 +1,79 @@
+{
+  "python_executable": "/Users/joe/Developer/github/spark/.venv/bin/python",
+  "python_version": "3.11.7 (main, Dec 15 2023, 12:09:56) [Clang 14.0.6 ]",
+  "worktree": "/Users/joe/.t3/worktrees/spark/t3-7ec9d903",
+  "root": "/Users/joe/Developer/github/spark",
+  "worktree_head": "ccb0c414e652d9ff9f82fcd325b36935a971f6af",
+  "root_head": "3c424ec2ca673d5cdd02cf62013536be2fa1bafa",
+  "root_unchanged_base_matches": {
+    "src/tools/file_operations.py": true,
+    "tests/tools/test_write_deny.py": true
+  },
+  "after_sha256": {
+    "src/tools/file_operations.py": "016eb702cfd827b77e7708eef32e288716af15db94fc3b241d210a26296dcac6",
+    "tests/tools/test_write_deny.py": "33f2c551c61e677f18b3655c1eea557c3c48d5568fec61e9374070771be94eb5"
+  },
+  "test_environment": {
+    "PYTHONPATH": "/Users/joe/.t3/worktrees/spark/t3-7ec9d903/src",
+    "SPARK_HOME": "/tmp/spark-upgrade-profile-write-deny-20261015-v1/collection-home",
+    "PYTEST_PLUGINS": "unset"
+  },
+  "before_command": "python -m pytest tests/tools/test_write_deny.py::test_spark_credentials_remain_denied_across_profiles -q -n0 -m 'not integration and not network'",
+  "after_command": "python -m pytest tests/tools/test_write_deny.py tests/tools/test_file_write_safety.py tests/tools/test_file_operations.py tests/tools/test_native_file_operations.py tests/tools/test_file_read_guards.py tests/tools/test_file_operations_edge_cases.py tests/tools/test_file_tools.py tests/tools/test_file_tools_live.py -q -n0 -m 'not integration and not network'",
+  "before_result": {
+    "exit_code": 1,
+    "failed": 2,
+    "seconds": 0.17
+  },
+  "historical_cancellation_cause": "unproved; all 37 passed in prior plain nonserial run; separate issue",
+  "after_result": {
+    "exit_code": 0,
+    "passed": 192,
+    "seconds": 32.99,
+    "warnings": 0
+  },
+  "final_portability_check": {
+    "command": "python -m pytest tests/tools/test_write_deny.py -q -n0 -m 'not integration and not network'",
+    "exit_code": 0,
+    "passed": 21,
+    "seconds": 0.24,
+    "warnings": 0
+  },
+  "final_sha256": {
+    "src/tools/file_operations.py": "016eb702cfd827b77e7708eef32e288716af15db94fc3b241d210a26296dcac6",
+    "tests/tools/test_write_deny.py": "b63d01963f43d3693e23041b91a754904cdd4e6119bd96e34a7de369e1ce7e32"
+  },
+  "ruff": {
+    "touched": "passed",
+    "selected_source_gate": "passed",
+    "selected_source_command": "ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027"
+  },
+  "independent_review": {
+    "task": "/root/review_profile_write_guard",
+    "initial_findings": [
+      "P2: set USERPROFILE as well as HOME to isolate Windows home resolution"
+    ],
+    "resolution": "set synthetic USERPROFILE; child asserts home before importing app",
+    "followup": "no remaining findings",
+    "read_only": true,
+    "windows_execution": false
+  },
+  "limitations": [
+    "No broad acceptance rerun after correction",
+    "Historical37 interruption cause remains unproved",
+    "Before proof used original HOME-only subprocess setup; final test adds portable USERPROFILE isolation; saved proof-v1 bytes retained"
+  ],
+  "evidence_sha256": {
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/after-neighbors.txt": "596ad36c1372ddcefc3b99b09e4923babc6f499253b5dac282fc384ece742c3a",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/after-portable-regressions.txt": "5b659ff4aec67a30b01248b8729fe2d4d43bafdf7e75345eba783dab5a173ac0",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/before-source.sha256": "7de33a62433ccb5e9bf4a7a54097b2357a54b946c3f5ad2122a3efba13fd9a10",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/before.txt": "4293e1c6bab1954119391d483823ddbfe0ac1a7b9b0af53a5d11e8bd78b7a927",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/file_operations.before.py": "e2adbb95da3917b2069188e9dc68dc5f10ab57a3b3d77f6805430bf9b1d7568a",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/final-receipt.json": "dcd3c2569923b97926e02e6668341cb3e49c769c08355e1e8c6c38a9fa21111f",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/provenance.json": "88a048c7467b9acf66b127ac206d42ba3597d05630f86f642a289c5b43a5e37a",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/review.txt": "2002e17c5008de4c131f481309c1c9751cd8679d9e77744087f8d362a6015355",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/ruff-source-gate.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/ruff-touched.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "/tmp/spark-upgrade-profile-write-deny-20261015-v1/test_write_deny.proof-v1.py": "33f2c551c61e677f18b3655c1eea557c3c48d5568fec61e9374070771be94eb5"
+  }
+}

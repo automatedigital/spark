@@ -1,0 +1,426 @@
+{
+  "schema": "spark.panel-ownership-candidate.v1",
+  "status": "functional-changes-consolidated-retention-acceptance-open",
+  "base": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
+  "branch": "fix/p09-panel-ownership",
+  "node": "v22.22.1",
+  "nodeExecutable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+  "preHoldChecks": {
+    "npmCi": {
+      "exit": 0,
+      "packagesAdded": 306
+    },
+    "typescript": {
+      "exit": 0
+    },
+    "lint": {
+      "exit": 0,
+      "errors": 0,
+      "warnings": 1,
+      "note": "Missing schedulePrependFrame dependency corrected afterward; recheck pending."
+    },
+    "focusedTests": {
+      "exit": 0,
+      "files": 5,
+      "tests": 20
+    },
+    "temporaryProductionBuild": {
+      "exit": 0,
+      "output": "/tmp/spark-panel-ownership-422f1487/build",
+      "canonicalBundle": false
+    }
+  },
+  "sourceChangedAfterChecks": false,
+  "heapCaptures": [],
+  "hold": "Further diagnostic work stopped during user-directed consolidation; no new captures or review rounds.",
+  "acceptance": {
+    "oldOwnerGenerationsCollectible": null,
+    "continuingOwnerControl": null,
+    "browserBehavior": "Final444 units/type/lint and bounded serial correctness pass; earlier production receipts precede final source, inspector aggregate exit1/304 retained.",
+    "retentionFixAccepted": false
+  },
+  "earlierCorrectnessChecks": {
+    "typescript": {
+      "exit": 0
+    },
+    "lint": {
+      "exit": 0,
+      "errors": 0,
+      "warnings": 0
+    },
+    "frontendTests": {
+      "exit": 0,
+      "files": 77,
+      "tests": 440
+    },
+    "temporaryProductionBuild": {
+      "exit": 0,
+      "output": "/tmp/spark-panel-ownership-422f1487/final-build",
+      "canonicalBundle": false
+    },
+    "behavior1": {
+      "exit": 0,
+      "checks": 6,
+      "path": "/tmp/spark-panel-ownership-422f1487/behavior-1/result.json"
+    },
+    "behavior2": {
+      "exit": 1,
+      "checksCompleted": 7,
+      "path": "/tmp/spark-panel-ownership-422f1487/behavior-2/result.json",
+      "failure": "Timed out waiting for exact copy request: fixture content 56022 chars did not exceed 128 KiB truncation threshold; ordinary copy path was used."
+    },
+    "behavior3": {
+      "exit": 0,
+      "checks": 9,
+      "path": "/tmp/spark-panel-ownership-422f1487/behavior-3/result.json",
+      "fixtureChars": 168022
+    },
+    "chatContracts": {
+      "exit": 0,
+      "log": "/tmp/spark-panel-ownership-422f1487/chat-contracts.log"
+    },
+    "productionRecovery": {
+      "exit": 0,
+      "checks": 9,
+      "path": "/tmp/spark-panel-ownership-422f1487/production-recovery"
+    },
+    "productionInspector": {
+      "exit": 1,
+      "behaviorChecksCompleted": 11,
+      "pageErrors": 0,
+      "path": "/tmp/spark-panel-ownership-422f1487/inspector/report.json",
+      "failure": "Final asset assertion requires every response status 200; reloads include 304. Prior same-URL 200 responses recorded, but ETag/body/cache-request receipts unavailable. Assertion unchanged; aggregate failure retained."
+    }
+  },
+  "finalCorrectnessChecks": {
+    "typescript": {
+      "exit": 0,
+      "log": "stable-type.log"
+    },
+    "lint": {
+      "exit": 0,
+      "errors": 0,
+      "warnings": 0,
+      "log": "stable-lint.log"
+    },
+    "frontendTests": {
+      "exit": 0,
+      "files": 77,
+      "tests": 444,
+      "log": "stable-tests.log",
+      "note": "Full444-test receipt predates P2 two-line guard; new P2 source has20focused/type/lint and3actual browser cases."
+    },
+    "temporaryProductionBuild": {
+      "status": "pending-frozen-source",
+      "note": "Earlier final-build and production-browser receipts predate scope/buffer/stale-effect repairs."
+    },
+    "handoff-after-1": {
+      "exit": 0,
+      "checks": 10,
+      "path": "/tmp/spark-panel-ownership-422f1487/handoff-after-1/result.json",
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+      ],
+      "httpErrors": null,
+      "failure": null
+    },
+    "stable-buffer-backend-aba": {
+      "exit": 0,
+      "checks": 14,
+      "path": "/tmp/spark-panel-ownership-422f1487/stable-buffer-backend-aba/result.json",
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+      ],
+      "httpErrors": [
+        {
+          "path": "/api/conversations/owner_a/messages",
+          "method": "POST",
+          "status": 400
+        }
+      ],
+      "failure": null
+    },
+    "stable-profile-aba": {
+      "exit": 0,
+      "checks": 10,
+      "path": "/tmp/spark-panel-ownership-422f1487/stable-profile-aba/result.json",
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+      ],
+      "httpErrors": [
+        {
+          "path": "/api/conversations/owner_a/messages",
+          "method": "POST",
+          "status": 400
+        }
+      ],
+      "failure": null
+    },
+    "stable-copy-backend": {
+      "exit": 0,
+      "checks": 10,
+      "path": "/tmp/spark-panel-ownership-422f1487/stable-copy-backend/result.json",
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+      ],
+      "httpErrors": [
+        {
+          "path": "/api/conversations/owner_a/messages",
+          "method": "POST",
+          "status": 400
+        }
+      ],
+      "failure": null
+    },
+    "stable-brief-boundary": {
+      "exit": 0,
+      "checks": 10,
+      "path": "/tmp/spark-panel-ownership-422f1487/stable-brief-boundary/result.json",
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+      ],
+      "httpErrors": [
+        {
+          "path": "/api/conversations/owner_a/messages",
+          "method": "POST",
+          "status": 400
+        }
+      ],
+      "failure": null
+    },
+    "stable-credential-aba": {
+      "exit": 0,
+      "checks": 10,
+      "path": "/tmp/spark-panel-ownership-422f1487/stable-credential-aba/result.json",
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+      ],
+      "httpErrors": [
+        {
+          "path": "/api/conversations/owner_a/messages",
+          "method": "POST",
+          "status": 400
+        }
+      ],
+      "failure": null
+    }
+  },
+  "attribution": {
+    "crossProfileBrief": "Pre-existing mutable global API/profile routing; strict before-4 GET+PUT origin-only proof. Scope epoch gates address it; no retention proof inferred.",
+    "unbufferedHandoff": "Base mirror/bridge unchanged, candidate imperative adoption/order introduces failing path. Actual trace proves stale config rollback plus stale snapshot republish; virtualizer is amplifier. Base behavioral failure and render-ref assignment trigger not proved.",
+    "bufferedHandoff": "Actual buffered token lost before explicit preserving adoption, then passes after; exact one-token oracle retained."
+  },
+  "sourceFreeze": {
+    "base": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
+    "files": {
+      "src/spark_cli/web/e2e/panel-ownership-handoff.tsx": "edbfb8e01de8176188318731bbc77be9b848fd8fc4d1071115f723ba21eb00c5",
+      "src/spark_cli/web/e2e/panel-ownership.mjs": "82f50642389dd9e98827b7ea21e05fabab7c04c7694b740184503674f95fad12",
+      "src/spark_cli/web/src/components/ChatPanel.tsx": "1bde91eb7fac6e6f57506f2e0b2a451d8eba45bc6c3d414fa7cbff5aed841eff",
+      "src/spark_cli/web/src/hooks/chatStreamControllerHelpers.test.ts": "923c4275fbc1bcd0677979e0879803e2a6c0ef8206f07551f2d1f4c3e00bbc35",
+      "src/spark_cli/web/src/hooks/chatStreamControllerHelpers.ts": "00a4ad18438138e62508fedf033fa95967c573858e8b85c78d8f0ee7141ae356",
+      "src/spark_cli/web/src/hooks/useChatComposerActions.ts": "1daba5cea248541d5a25de592a3055b993d3e6f7a0f645c99705fcd64f1b0d6a",
+      "src/spark_cli/web/src/hooks/useChatSessionController.ts": "1f5bbb3278541bd7ab703b58b46a1ac837b7caf55327d5654355cf85ad17aa78",
+      "src/spark_cli/web/src/hooks/useChatStreamController.ts": "527a753f3f6a8b9a7be132229f1a4d17b0713b30aa73e04aa0331e23b72faea8",
+      "src/spark_cli/web/src/lib/apiHelpers.ts": "0076edf8e42e1677098acdf9bf0d00d4b4ed11ec5e7141b37549add221a1a758",
+      "src/spark_cli/web/src/lib/chatPanelOwnership.test.ts": "8730a3b8f1a604db31c455af5cf7700e27c29a24431a747bcf6886feb80ba783",
+      "src/spark_cli/web/src/lib/chatPanelOwnership.ts": "b2145d0642f5e02bafd381bf190a0adcae8b7f56daa0b6d6dea3295bc124e951",
+      "src/spark_cli/web/src/lib/sidebarPrefs.ts": "a342cd6127342ff93f8f2f746dfb48cf97086c026b519e5ee1614875995e0e93",
+      "src/spark_cli/web/src/pages/ChatPage.tsx": "5c0b128e2afbfedb856e174e8e264f9ce141123022fd5fe85dcf5ce2b157ba28"
+    },
+    "probeHelpers": {
+      "probe.mjs": "b1984197b3baebc1fc78ff1326ca00d2c353d5d2627848c56f87d0562e1dfef9",
+      "graph.py": "b57ea239335a6a36607ca96449126ac9c97f3a57f896a1e37fe7cd90826e8bf3",
+      "control-backend.py": "72020f1b34d0c452b7469069ac33852fb854befe55752ba5dde6a472ca9cb144",
+      "ownership-transform.mjs": "edc0e8f1d900ac681207adf4880f33779cec9347f8ac2fdcbcca117ef00b9696",
+      "attribution-owned-navigation.mjs": "6769b2220516f22cca3b5d4089c6e7d25233762028386789537eed8ce5531bec",
+      "attribution-owned-control.mjs": "6c561deed8b64622df90835fbb0e8dfd5221b4148b8ab4824594228f27f5ad64",
+      "handoff-vite.mjs": "4775066eee0a669e83b4a6bd664663a2fe0ebf840d04b1be44291c9447edfc1d"
+    },
+    "originalSourceSha256": "a8a34541c17dd07c104503729c1f63c4d1b822165c31fed74417a1ccf116692c",
+    "originalSearchFenceSha256": "512b49d27e625824934749c499bb4efe64a301048a66042e7dba85b9f22da5cd",
+    "originalLockSha256": "53e7f64f5aa5eb3d4abf82859eafb76a3dafef8ec018457c1e08f9e633347f9d",
+    "candidateSourceSha256": "3a191ae41f3eab4cc67a461fe054bbd8892eeed7f3688c932daa87d9fbea840e",
+    "candidateSearchFenceSha256": "512b49d27e625824934749c499bb4efe64a301048a66042e7dba85b9f22da5cd",
+    "candidateLockSha256": "53e7f64f5aa5eb3d4abf82859eafb76a3dafef8ec018457c1e08f9e633347f9d",
+    "schema": "spark.panel-ownership-source-freeze.v2",
+    "previousManifest": "/tmp/spark-panel-ownership-422f1487/frozen-source-manifest.json",
+    "previousManifestSha256": "a387e9c17327e4ca55bd18941c5ad51ec11b033bc6ad453ab933a14aab9df722",
+    "previousSourceBytes": "/tmp/spark-panel-ownership-422f1487/source-freeze-v1-before-refresh-p2",
+    "newCorrectnessHelper": {
+      "refresh-vite.mjs": "419d044bca421f5c32c7cba1f8891422bf4145945c6ccf14934b819003089716"
+    },
+    "changedSinceV1": [
+      "src/spark_cli/web/e2e/panel-ownership.mjs",
+      "src/spark_cli/web/src/components/ChatPanel.tsx"
+    ]
+  },
+  "protocolManifest": {
+    "path": "/tmp/spark-panel-ownership-422f1487/protocol-v3-manifest.json",
+    "sha256": "794d209d067031769fa3aa8993fb5684e01e4f5bca880fd954b9cab5a1528ae3",
+    "previousProtocolV2Unchanged": true,
+    "coreGateClassifierUnchanged": true,
+    "newCandidatePrepareOnlyPaths": 2,
+    "executedCapture": false
+  },
+  "previousSourceFreezeV1": {
+    "base": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
+    "files": {
+      "src/spark_cli/web/e2e/panel-ownership-handoff.tsx": "edbfb8e01de8176188318731bbc77be9b848fd8fc4d1071115f723ba21eb00c5",
+      "src/spark_cli/web/e2e/panel-ownership.mjs": "bb8f3d972d41dd78bcf7da8f8172a7186dae2b314716004bebf5492ca2e9b223",
+      "src/spark_cli/web/src/components/ChatPanel.tsx": "15a4a35b8c2b495e03c1fc94034ac8acbf5707754c8ee74d9158c9f9fdb1e290",
+      "src/spark_cli/web/src/hooks/chatStreamControllerHelpers.test.ts": "923c4275fbc1bcd0677979e0879803e2a6c0ef8206f07551f2d1f4c3e00bbc35",
+      "src/spark_cli/web/src/hooks/chatStreamControllerHelpers.ts": "00a4ad18438138e62508fedf033fa95967c573858e8b85c78d8f0ee7141ae356",
+      "src/spark_cli/web/src/hooks/useChatComposerActions.ts": "1daba5cea248541d5a25de592a3055b993d3e6f7a0f645c99705fcd64f1b0d6a",
+      "src/spark_cli/web/src/hooks/useChatSessionController.ts": "1f5bbb3278541bd7ab703b58b46a1ac837b7caf55327d5654355cf85ad17aa78",
+      "src/spark_cli/web/src/hooks/useChatStreamController.ts": "527a753f3f6a8b9a7be132229f1a4d17b0713b30aa73e04aa0331e23b72faea8",
+      "src/spark_cli/web/src/lib/apiHelpers.ts": "0076edf8e42e1677098acdf9bf0d00d4b4ed11ec5e7141b37549add221a1a758",
+      "src/spark_cli/web/src/lib/chatPanelOwnership.test.ts": "8730a3b8f1a604db31c455af5cf7700e27c29a24431a747bcf6886feb80ba783",
+      "src/spark_cli/web/src/lib/chatPanelOwnership.ts": "b2145d0642f5e02bafd381bf190a0adcae8b7f56daa0b6d6dea3295bc124e951",
+      "src/spark_cli/web/src/lib/sidebarPrefs.ts": "a342cd6127342ff93f8f2f746dfb48cf97086c026b519e5ee1614875995e0e93",
+      "src/spark_cli/web/src/pages/ChatPage.tsx": "5c0b128e2afbfedb856e174e8e264f9ce141123022fd5fe85dcf5ce2b157ba28"
+    },
+    "probeHelpers": {
+      "probe.mjs": "b1984197b3baebc1fc78ff1326ca00d2c353d5d2627848c56f87d0562e1dfef9",
+      "graph.py": "b57ea239335a6a36607ca96449126ac9c97f3a57f896a1e37fe7cd90826e8bf3",
+      "control-backend.py": "72020f1b34d0c452b7469069ac33852fb854befe55752ba5dde6a472ca9cb144",
+      "ownership-transform.mjs": "edc0e8f1d900ac681207adf4880f33779cec9347f8ac2fdcbcca117ef00b9696",
+      "attribution-owned-navigation.mjs": "6769b2220516f22cca3b5d4089c6e7d25233762028386789537eed8ce5531bec",
+      "attribution-owned-control.mjs": "6c561deed8b64622df90835fbb0e8dfd5221b4148b8ab4824594228f27f5ad64",
+      "handoff-vite.mjs": "4775066eee0a669e83b4a6bd664663a2fe0ebf840d04b1be44291c9447edfc1d"
+    },
+    "originalSourceSha256": "a8a34541c17dd07c104503729c1f63c4d1b822165c31fed74417a1ccf116692c",
+    "originalSearchFenceSha256": "512b49d27e625824934749c499bb4efe64a301048a66042e7dba85b9f22da5cd",
+    "originalLockSha256": "53e7f64f5aa5eb3d4abf82859eafb76a3dafef8ec018457c1e08f9e633347f9d",
+    "candidateSourceSha256": "a0c4459c5f5b05af54a260789c4da477927ec37b1a0a2a3764ce6172857e3427",
+    "candidateSearchFenceSha256": "512b49d27e625824934749c499bb4efe64a301048a66042e7dba85b9f22da5cd",
+    "candidateLockSha256": "53e7f64f5aa5eb3d4abf82859eafb76a3dafef8ec018457c1e08f9e633347f9d"
+  },
+  "previousProtocolManifestV2": {
+    "path": "/tmp/spark-panel-ownership-422f1487/protocol-v2-manifest.json",
+    "sha256": "015955716ed4728df31c2826411ed6171bc46813748b88147afe39dd0df23b8d",
+    "prepareOnlyProductionPaths": 4,
+    "executedCapture": false,
+    "candidateRefsAreActiveOracle": false,
+    "controlLimitation": "One bounded turn; shared live IDs may survive, no zero-slope or repeated multi-turn inference.",
+    "terminalRecoveryOracle": "Successful final-token history request START after actual turn_done monotonic timestamp before checkpoints11/12."
+  },
+  "p2RefreshResponse": {
+    "finding": "Refresh launched three global-transport reads before owner/scope checks, and could publish after scope changed in flight.",
+    "beforeLaunch": {
+      "path": "/tmp/spark-panel-ownership-422f1487/refresh-before-1/refresh-proof.json",
+      "retiredReads": 3,
+      "ownerCurrent": true,
+      "scopeCurrent": false,
+      "sameScopePositive": true
+    },
+    "beforePublication": {
+      "path": "/tmp/spark-panel-ownership-422f1487/refresh-read-before-1/refresh-proof.json",
+      "foreignPublished": 1
+    },
+    "baseBehaviorRuntimeProved": false,
+    "appDelta": "/tmp/spark-panel-ownership-422f1487/refresh-p2-app-only.patch",
+    "callerErrorFinallyChanged": false,
+    "focusedChecks": {
+      "typeExit": 0,
+      "lintErrors": 0,
+      "lintWarnings": 0,
+      "tests": 20,
+      "files": 4,
+      "exit": 0
+    },
+    "afterCases": {
+      "refresh-after3-tray-launch": {
+        "path": "/tmp/spark-panel-ownership-422f1487/refresh-after3-tray-launch/result.json",
+        "exit": 0,
+        "checks": 11,
+        "errors": [],
+        "consoleErrors": [
+          "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+        ],
+        "httpErrors": [
+          {
+            "path": "/api/conversations/owner_a/messages",
+            "method": "POST",
+            "status": 400
+          }
+        ],
+        "retiredReads": [],
+        "foreignPublished": 0
+      },
+      "refresh-after3-tray-reads": {
+        "path": "/tmp/spark-panel-ownership-422f1487/refresh-after3-tray-reads/result.json",
+        "exit": 0,
+        "checks": 11,
+        "errors": [],
+        "consoleErrors": [
+          "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+        ],
+        "httpErrors": [
+          {
+            "path": "/api/conversations/owner_a/messages",
+            "method": "POST",
+            "status": 400
+          }
+        ],
+        "retiredReads": [],
+        "foreignPublished": 0
+      },
+      "refresh-after3-inline-launch": {
+        "path": "/tmp/spark-panel-ownership-422f1487/refresh-after3-inline-launch/result.json",
+        "exit": 0,
+        "checks": 11,
+        "errors": [],
+        "consoleErrors": [
+          "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+        ],
+        "httpErrors": [
+          {
+            "path": "/api/conversations/owner_a/messages",
+            "method": "POST",
+            "status": 400
+          }
+        ],
+        "retiredReads": [],
+        "foreignPublished": 0
+      }
+    },
+    "preservedExtraFailures": [
+      "refresh-after-tray-launch",
+      "refresh-after2-tray-launch/aborted-preparation.json",
+      "refresh-after2-tray-reads",
+      "refresh-after2-inline-launch"
+    ],
+    "commandsClosedReceipt": "/tmp/spark-panel-ownership-422f1487/refresh-final-commands-closed.json"
+  },
+  "consolidation": {
+    "experimental_heap_helpers_integrated": false,
+    "frontend_tests": 448,
+    "frontend_test_files": 78,
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "build_exit": 0,
+    "bundle_gzip_kib": 242.4,
+    "production_recovery_checks_passed": 9,
+    "diagnostic_batch": {
+      "original_navigation_exit": 0,
+      "candidate_navigation_exit": 1,
+      "continuing_controls": "not run",
+      "failed_gate_preserved": true
+    },
+    "specific_cycle2_generation_collection_observed": true,
+    "full_memory_acceptance": false,
+    "native_package_built": false,
+    "release_or_rollout": false,
+    "python_nonserial_exit": 0,
+    "python_nonserial_passed": 12456,
+    "python_nonserial_skipped": 151,
+    "python_nonserial_seconds": 419.4,
+    "integration_commit": "83208ce"
+  }
+}

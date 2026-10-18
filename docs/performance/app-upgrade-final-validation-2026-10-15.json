@@ -1,0 +1,694 @@
+{
+  "status": "in_progress",
+  "application_source_commit": "3097f32b",
+  "recorded_at_commit": "b432e028a55868fa043d6620ebddc8c791d0f571",
+  "canonical_manifest_sha256": "c8a2adf0354a2446602a6ca5bbb0e77dc66f554031b489d216ffa4aa058fec7d",
+  "node22": {
+    "version": "v22.22.1",
+    "executable": "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+    "frontend": {
+      "lint_exit": 0,
+      "typescript_exit": 0,
+      "tests_passed": 435,
+      "test_files": 76,
+      "build_exit": 0,
+      "initial_js_gzip_kib": 241.05,
+      "budget_kib": 600
+    },
+    "browser_suites": [
+      {
+        "suite": "multi-chat",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/multi-chat.mjs"
+        ],
+        "node": "v22.22.1",
+        "exit": 0,
+        "timeout": false,
+        "seconds": 60.65
+      },
+      {
+        "suite": "chat-contracts",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/chat-contracts.mjs"
+        ],
+        "node": "v22.22.1",
+        "exit": 0,
+        "timeout": false,
+        "seconds": 19.81
+      },
+      {
+        "suite": "recovery",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/recovery-state.mjs"
+        ],
+        "node": "v22.22.1",
+        "exit": 0,
+        "timeout": false,
+        "seconds": 13.34
+      },
+      {
+        "suite": "sidebar-3",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/browser-gates.mjs",
+          "--suite",
+          "sidebar",
+          "--repeat",
+          "3",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar"
+        ],
+        "node": "v22.22.1",
+        "exit": 1,
+        "timeout": false,
+        "seconds": 54.41
+      },
+      {
+        "suite": "matrix-18",
+        "args": [
+          "/Users/joe/.nvm/versions/node/v22.22.1/bin/node",
+          "e2e/baseline-capture.mjs",
+          "--repeat",
+          "1",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/final-browser-node22/matrix"
+        ],
+        "node": "v22.22.1",
+        "exit": 1,
+        "timeout": false,
+        "seconds": 61.46
+      }
+    ]
+  },
+  "unsupported_node25_diagnostics": {
+    "version": "v25.8.0",
+    "requested_executable": "/opt/homebrew/opt/node@22/bin/node",
+    "actual_executable": "/opt/homebrew/Cellar/node/25.8.0/bin/node",
+    "suites": [
+      {
+        "suite": "multi-chat",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/multi-chat.mjs"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 65.33,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/multi-chat.log"
+      },
+      {
+        "suite": "chat-contracts",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/chat-contracts.mjs"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 19.65,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/chat-contracts.log"
+      },
+      {
+        "suite": "recovery",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/recovery-state.mjs"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 14.11,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/recovery.log"
+      },
+      {
+        "suite": "sidebar-3",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/browser-gates.mjs",
+          "--suite",
+          "sidebar",
+          "--repeat",
+          "3",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar"
+        ],
+        "exit": 1,
+        "timed_out": false,
+        "seconds": 59.78,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar-3.log"
+      },
+      {
+        "suite": "matrix-18",
+        "args": [
+          "/opt/homebrew/opt/node@22/bin/node",
+          "e2e/baseline-capture.mjs",
+          "--repeat",
+          "1",
+          "--output-dir",
+          "/tmp/spark-upgrade-20261015/final-browser-gates/matrix"
+        ],
+        "exit": 1,
+        "timed_out": false,
+        "seconds": 81.22,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/matrix-18.log"
+      },
+      {
+        "suite": "production-recovery",
+        "args": [
+          "/Users/joe/Developer/github/spark/.venv/bin/python",
+          "-c",
+          "import asyncio,importlib.util; from pathlib import Path; p=Path('e2e/work-recovery.py'); s=importlib.util.spec_from_file_location('final_recovery',p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.REPORTS=Path('/tmp/spark-upgrade-20261015/final-browser-gates/production-recovery'); asyncio.run(m.main())"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 19.09,
+        "log": "/tmp/spark-upgrade-20261015/final-browser-gates/production-recovery.log"
+      }
+    ],
+    "matrix_note": "Parent deliberately stopped only its owned process group after runtime mismatch was found; partial artifacts retained."
+  },
+  "canonical_production_draft_recovery": {
+    "exit": 0,
+    "checks": [
+      "draft survives immediate chat switch and browser refresh",
+      "failed send preserves draft through refresh",
+      "late acknowledgement clears only submitted draft without switching chat",
+      "concurrent tab edit preserves local input and exposes conflict",
+      "thread drafts remain isolated across refresh and switching",
+      "uploaded file reference and context selection survive refresh",
+      "interrupted upload recovers as missing and blocks send until removed",
+      "failed attachment remains visible without losing typed text",
+      "profile identity isolates stored drafts at same browser origin"
+    ]
+  },
+  "sidebars": {
+    "node22": [
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-01/failure.json",
+        "sha256": "343be844582bb3f8c389b6bd0d1536941401de50a45390d019c4daf1d43f37a0",
+        "selection_ms": 125.19999998807907,
+        "local_search_ms": 71.90000003576279,
+        "full_history_search_ms": 280.10000002384186,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 125.19999998807907ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-02/failure.json",
+        "sha256": "c1b32cc022526c0234b834c8f681edb71884a051e267169108447044cbcc5f08",
+        "selection_ms": 166,
+        "local_search_ms": 74.69999998807907,
+        "full_history_search_ms": 290.7000000476837,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 166ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-node22/sidebar/attempt-03/failure.json",
+        "sha256": "286eddd124a72b7416f6a0d3a5573851cd4b9471eeb285abd293c3a7f5ce8d3c",
+        "selection_ms": 124.80000001192093,
+        "local_search_ms": 20,
+        "full_history_search_ms": 354.30000001192093,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 124.80000001192093ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      }
+    ],
+    "node25": [
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar/attempt-01/failure.json",
+        "sha256": "78f8e0bcb449c76f30186bc4ef57cf617f48220b89ce07843d89df12188cf64e",
+        "selection_ms": 118.5,
+        "local_search_ms": 167.89999997615814,
+        "full_history_search_ms": 338.89999997615814,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 118.5ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar/attempt-02/failure.json",
+        "sha256": "e65a5ecf9551a6057a4aefc1bbc7162b20ff34d7b5146304d378196d0a8daf7f",
+        "selection_ms": 147.5,
+        "local_search_ms": 134.39999997615814,
+        "full_history_search_ms": 307.60000002384186,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 147.5ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      },
+      {
+        "path": "/tmp/spark-upgrade-20261015/final-browser-gates/sidebar/attempt-03/failure.json",
+        "sha256": "782c1bb0aac5d835ac350e40dd42df076e32f6089ec629909ca9854de50f7e08",
+        "selection_ms": 144.70000004768372,
+        "local_search_ms": 85.70000004768372,
+        "full_history_search_ms": 351.60000002384186,
+        "error": "AssertionError [ERR_ASSERTION]: Selection took 144.70000004768372ms\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:423:12)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/sidebar-scale.mjs:458:1"
+      }
+    ]
+  },
+  "limits": [
+    "P03 approval ownership repair still under validation",
+    "P09 retention and browser observation ownership audits remain open",
+    "No installed macOS/Windows, staging or release evidence",
+    "Current source backend full suite has not yet rerun after all followups"
+  ],
+  "selection_end_diagnostic": {
+    "original_assertion_exit": 1,
+    "original_observed_ms": 101,
+    "same_dom_commit_ms": 69.39999997615814,
+    "path": "/tmp/spark-upgrade-20261015/selection-observation-diagnostic/failure.json",
+    "sha256": "2442fd4e71795d568f457a45d65ed9ea57468b5ec87e6f311df1c4dd6116c69b",
+    "note": "Additional MutationObserver mark only; original 100ms assertion unchanged. Parent command initially used an incorrect relative activation path; fixture itself invoked root venv Python. Diagnostic only, not acceptance."
+  },
+  "matrix_failure": {
+    "path": "/tmp/spark-upgrade-20261015/final-browser-node22/matrix/run-01/failure.json",
+    "sha256": "c44f3ca3eeb831cdf5de08a071917be23f4921b7c9036be8a729bc1544c01115",
+    "error": "Error: dark:2000:1440 stream probe did not produce nonzero rendered updates and events\n    at validateCaseResult (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:691:11)\n    at run (file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:787:17)\n    at async file:///Users/joe/Developer/github/spark/src/spark_cli/web/e2e/baseline-capture.mjs:857:9",
+    "completed_case_records": 7,
+    "last_case": {
+      "rows": 2000,
+      "theme": {
+        "id": "codex",
+        "name": "dark"
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900,
+        "deviceScaleFactor": 1
+      },
+      "stream": {
+        "samples": [],
+        "firstVisibleTokenMs": null,
+        "syntheticInitialDelayMs": 60,
+        "firstVisibleMinusSyntheticDelayMs": null,
+        "maxVisibleUpdateGapMs": null,
+        "updateCount": 0,
+        "elapsedMs": null,
+        "updatesPerSecond": null,
+        "expectedTokenCount": null,
+        "finalVisibleTokenCount": 0,
+        "efficiency": {
+          "version": "1.0",
+          "eventPayloads": 5,
+          "eventPayloadBytes": 5087,
+          "reconnects": 0,
+          "httpPolls": 0,
+          "reactCommits": 32,
+          "streamRecoveryActions": 0
+        }
+      },
+      "scroll_drift": {
+        "before": {
+          "id": "turn:user:db:1925",
+          "top": 34,
+          "scrollTop": 93275
+        },
+        "after": {
+          "id": "turn:user:db:1925",
+          "top": 34,
+          "scrollTop": 93275
+        },
+        "sameRow": true,
+        "driftPx": 0
+      },
+      "errors": {
+        "page": [],
+        "console": []
+      }
+    }
+  },
+  "browser_observation_followup": {
+    "integration_commit": "405057e9",
+    "agent_commit": "caeb89b9d733f31aafc630e028385c7667b865cf",
+    "measured_source_commit": "b432e028a55868fa043d6620ebddc8c791d0f571",
+    "application_source_matches_root_before_integration": true,
+    "report": "docs/performance/app-upgrade-browser-observation-2026-10-15.md",
+    "results": "/tmp/spark-upgrade-20261015/browser-observation/final/results.json",
+    "node_version": "v22.22.1",
+    "suites": [
+      {
+        "suite": "sidebar",
+        "runs": 3,
+        "exit": 0,
+        "seconds": 36.83
+      },
+      {
+        "suite": "targeted_2000",
+        "runs": 3,
+        "exit": 0,
+        "seconds": 46.95
+      },
+      {
+        "suite": "matrix",
+        "cases": 18,
+        "exit": 0,
+        "seconds": 120.27
+      }
+    ],
+    "selection_browser_commit_ms": [
+      57.3,
+      47.3,
+      49.5
+    ],
+    "selection_legacy_observation_ms": [
+      91.6,
+      70.3,
+      75.7
+    ],
+    "selection_budget_ms": 100,
+    "selection_definition": "inline-click-to-session-dom-commit; not paint or history-fetch completion",
+    "primary_stream_semantics_changed": false,
+    "matrix_original_rendered_updates": 140,
+    "matrix_final_visible_tokens_each": 16,
+    "matrix_sampled_scroll_drift_px_each": 0,
+    "prior_failures_retained": true,
+    "prior_missing_trace_cause": "unproved",
+    "limits": [
+      "Development-mode matrix; canonical production UI flows are recorded separately.",
+      "No forced-reload negative test of new observation error branches.",
+      "No performance improvement inferred from changed selection endpoint.",
+      "Retention, later source integrations, final regression and package acceptance remain open."
+    ]
+  },
+  "current_integrated_candidate": {
+    "commit": "e8d6713",
+    "application_source_commit": "e8c50260",
+    "canonical_manifest_sha256": "90eaa3dc157086d3ea041f065d9de4c1a9d0a1e4c4879080787a0df08fdc1f1f",
+    "canonical_entry": "assets/index-D1VeEVIg.js",
+    "canonical_entry_sha256": "332bfff3eccc8495434ebf72d18a6e5578134229becceb156cfbb68d1bfc96ee",
+    "node_version": "v22.22.1",
+    "frontend_tests_passed": 436,
+    "frontend_files": 76,
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "build_exit": 0,
+    "initial_js_gzip_kib": 241.16,
+    "mypy_source_files": 133,
+    "mypy_exit": 0,
+    "ci_ruff_exit": 0,
+    "manifest_check_exit": 0,
+    "dev_chat_contracts_exit": 0,
+    "canonical_inspector_checks": 11,
+    "canonical_inspector_exit": 0,
+    "production_recovery_checks": 9,
+    "production_recovery_exit": 0,
+    "full_local_pytest": {
+      "status": "failed",
+      "log": "/tmp/spark-upgrade-20261015/full-local-pytest-integrated-approval.txt",
+      "exit": 1,
+      "failed": 79,
+      "passed": 12438,
+      "skipped": 151,
+      "warnings": 136,
+      "seconds": 454.54
+    },
+    "independent_approval_review": "pending",
+    "retention_acceptance": "open",
+    "logs": [
+      "/tmp/spark-upgrade-20261015/frontend-integrated-approval-build.txt",
+      "/tmp/spark-upgrade-20261015/mypy-integrated-approval.txt",
+      "/tmp/spark-upgrade-20261015/chat-contracts-integrated-approval.txt",
+      "/tmp/spark-upgrade-20261015/inspector-built-integrated-approval/report.json",
+      "/tmp/spark-upgrade-20261015/recovery-built-integrated-approval/production.json"
+    ]
+  },
+  "integration_regression_followup": {
+    "commit": "2e0f159",
+    "report": "docs/performance/app-upgrade-integration-regressions-2026-10-15.md",
+    "families": [
+      {
+        "cause": "optional agent-cache cleanup",
+        "broad_failures": 32,
+        "focused_passed": 37,
+        "seconds": 127.51
+      },
+      {
+        "cause": "replay interrupt fixture state leak",
+        "broad_failures": 46,
+        "focused_passed": 73,
+        "seconds": 41.57
+      },
+      {
+        "cause": "CLI module parent reference restoration",
+        "broad_failures": 1,
+        "serial_before_failed": 13,
+        "serial_after_passed": 461,
+        "seconds": 15.4
+      }
+    ],
+    "fresh_broad_run": "pending_remaining_integrations"
+  },
+  "caller_policy_broad_run": {
+    "source_commit": "61126d04",
+    "root_regression_repairs": "2e0f159",
+    "exit": 1,
+    "failed": 62,
+    "passed": 12559,
+    "skipped": 151,
+    "warnings": 135,
+    "seconds": 555.54,
+    "log": "/tmp/spark-upgrade-20261015/full-local-pytest-caller-policy.txt",
+    "remaining_families": {
+      "live_shell_interrupt": 46,
+      "orchestration_async_config": 16
+    },
+    "telegram_topic_followup_not_in_run": "6c452268"
+  },
+  "search_fix_integration": {
+    "source_commit": "a45a6e4b",
+    "agent_commit": "3a085fe53eb5f11b6f6deb3662f21ae6e893d4c4",
+    "report": "docs/performance/app-upgrade-search-scroll-fix-2026-10-15.md",
+    "specific_production_probe_exit": 0,
+    "ui_stages_passed": 4,
+    "retired_fallback_writes_after_search_intent": 0,
+    "target_viewport_intersection": true,
+    "browser_errors": 0,
+    "node_version": "v22.22.1",
+    "frontend_tests_passed": 440,
+    "frontend_test_files": 77,
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "build_exit": 0,
+    "initial_js_gzip_kib": 241.16,
+    "canonical_manifest_sha256": "c2bf6413440f5caa77b3d598dcea726b85a9cbdb7f4cc92b702927bb962e58a7",
+    "canonical_entry": "assets/index-DLHzGrkY.js",
+    "canonical_entry_sha256": "9cbad4962187bfd881de9aaa7dced84f0d035d23189296c4ab1f0cfa1e0a904c",
+    "parent_log": "/tmp/spark-upgrade-20261015/frontend-search-integrated.txt",
+    "retention_acceptance": "open"
+  },
+  "telegram_topic_followup": {
+    "commit": "6c452268",
+    "focused_passed": 173,
+    "seconds": 4.81,
+    "log": "/tmp/spark-upgrade-20261015/telegram-topic-integrated-attempt2.txt",
+    "first_parent_attempt": {
+      "exit": 4,
+      "tests_collected": 0,
+      "reason": "incorrect nonexistent test path",
+      "log": "/tmp/spark-upgrade-20261015/telegram-topic-integrated.txt"
+    }
+  },
+  "owned_cleanup_broad_run": {
+    "source_commit": "423a3eb7e12a92cf54742df193fa3a8c74be2322",
+    "fixture_agent_commit": "ccb0c414e652d9ff9f82fcd325b36935a971f6af",
+    "command": "python -m pytest tests/ -m 'not integration and not network' -q -n 4",
+    "exit": 1,
+    "failed": 37,
+    "passed": 12599,
+    "skipped": 151,
+    "warnings": 135,
+    "seconds": 564.22,
+    "log": "/tmp/spark-upgrade-20261015/full-local-pytest-owned-cleanup.txt",
+    "remaining_families": {
+      "async_bridge_interrupted": 5,
+      "code_execution_interrupted": 32
+    },
+    "prior_live_file_and_async_config_failure_groups_present": false,
+    "failure_cause": "Not yet attributed; cancellation/interrupt symptoms are confirmed, further fixture diagnosis delegated.",
+    "serial_validation": {
+      "status": "passed",
+      "command": "python -m pytest tests/ -m 'serial and not integration and not network' -q -n 0",
+      "log": "/tmp/spark-upgrade-20261015/serial-runtime-owned-cleanup.txt",
+      "exit": 0,
+      "passed": 182,
+      "skipped": 15,
+      "deselected": 12613,
+      "warnings": 1,
+      "seconds": 289.03,
+      "warning": "Existing unregistered ssh marker during collection"
+    },
+    "limit": "Parallel run also scheduled serial-marked cases; serial-only acceptance is separate. No failure is excluded or relabeled.",
+    "bounded_diagnostic_followup": {
+      "family_run_passed": 82,
+      "family_seconds": 111.38,
+      "fallback_order_passed": 3,
+      "fallback_order_seconds": 5.07,
+      "owner_group_passed": 42,
+      "owner_group_failed": 1,
+      "owner_group_seconds": 23.47,
+      "failure": "Async child entry after Gemini reload; distinct source-class identity explanation not runtime-confirmed.",
+      "cancellation_failure_cause": "unproved",
+      "evidence": "/tmp/spark-upgrade-cancel-isolation-20261015/",
+      "next_diagnostic": "One read-only worker-traced nonserial -n 4 run, 900-second process-group limit; authorized while correctness repair runs. No performance claims."
+    },
+    "nonserial_traced_attempt": {
+      "exit": 3,
+      "passed": 9697,
+      "failed": 1,
+      "skipped": 74,
+      "warnings": 134,
+      "seconds": 266.58,
+      "full_acceptance": false,
+      "diagnostic_fault": "Tracer consumed fixture-mocked time.monotonic finite iterator; StopIteration/internal error.",
+      "original_37_nodes_passed": 37,
+      "original_cause": "unproved",
+      "process_groups_closed": true,
+      "evidence": "/tmp/spark-upgrade-cancel-transition-20261015T213250Z/",
+      "automatic_retry": false
+    },
+    "plain_nonserial_acceptance": {
+      "status": "failed",
+      "command": "python -m pytest tests/ -m 'not serial and not integration and not network' -q -n 4",
+      "tracer": false,
+      "process_group_wall_limit_seconds": 900,
+      "serial_companion": "182 passed / 15 skipped / 289.03s",
+      "result": "pending",
+      "exit": 1,
+      "passed": 12453,
+      "failed": 1,
+      "skipped": 151,
+      "warnings": 135,
+      "seconds": 408.36,
+      "timed_out": false,
+      "workers": 4,
+      "unique_runtime_nodes": 12590,
+      "historical_37_nodes_passed": 37,
+      "log": "/tmp/spark-upgrade-plain-nonserial-20261015T214537Z/full-plain-nonserial.txt",
+      "coverage": "/tmp/spark-upgrade-plain-nonserial-20261015T214537Z/coverage-and-source-verification.json",
+      "remaining_failure": "tests/tools/test_write_deny.py::TestWriteDenyExactPaths::test_spark_env",
+      "failure_scope": "Import-time credential deny list captures outer SPARK_HOME; default-home and later profile-path behavior is under focused investigation.",
+      "all_groups_closed": true
+    }
+  },
+  "panel_ownership_source_review": {
+    "status": "accepted_for_measurement",
+    "candidate_base": "e8d6713ddd59c029f6dcd6d915df9ca42b4c71eb",
+    "frozen_source_files": 13,
+    "hashes_verified": true,
+    "frontend_passed": 444,
+    "frontend_files": 77,
+    "type_exit": 0,
+    "lint_errors": 0,
+    "lint_warnings": 0,
+    "confirmed_source_findings": 1,
+    "finding": "Delayed approval/action surface refresh crossed scope; candidate before proofs demonstrate both launch and publication, and two-line entry/post-await owner+scope checks pass targeted browser proofs and independent response review.",
+    "retention_captures_started": true,
+    "protocol_version": 3,
+    "protocol_manifest_sha256": "794d209d067031769fa3aa8993fb5684e01e4f5bca880fd954b9cab5a1528ae3",
+    "protocol_input_hashes_verified": 29,
+    "source_acceptance": "Accepted for measurement only; integration/retention/package gates remain open.",
+    "inspector_aggregate": "Historical exit 1 on unproved HTTP 304 cache revalidation; not a passing aggregate.",
+    "finding_runtime_proved": true,
+    "app_response_changed_lines": 2,
+    "response_cases_passed": 3,
+    "response_checks_each": 11,
+    "source_manifest_sha256": "88fef8effbc184aa36de578136ad49826fb185444018ccd3cfb449665cc3ec85",
+    "candidate_source_sha256": "3a191ae41f3eab4cc67a461fe054bbd8892eeed7f3688c932daa87d9fbea840e",
+    "response_review": "spark-panel-refresh-p2-response-source-review-v3",
+    "response_review_confirmed_remaining_findings": 0,
+    "capture_batch": {
+      "path": "/tmp/spark-panel-ownership-422f1487/capture-v3-quiet-20261015-1",
+      "original_navigation_exit": 0,
+      "candidate_navigation_exit": 1,
+      "candidate_timed_out": false,
+      "candidate_failure": "Unchanged browser-error assertion: getWorkspaceFileTree Tree load failed TypeError: Failed to fetch; page errors empty, one console error. Cause unassigned.",
+      "navigation_samples_each": 13,
+      "navigation_snapshots_each": [
+        2,
+        12
+      ],
+      "original_control": "not started",
+      "candidate_control": "not started",
+      "stopped_on_failure": true,
+      "all_owned_groups_closed": true,
+      "frozen_hashes_after_match": true,
+      "automatic_retry": false,
+      "retention_acceptance": false,
+      "offline_packet": {
+        "manifest_sha256": "5ac8fc09f22b5cdbe2827f46c7ec4c6f6afd0cfbbe38999344f50dcb25350ca7",
+        "path": "/tmp/spark-panel-ownership-422f1487/capture-v3-quiet-20261015-1/offline-analysis-v1/",
+        "original_turns": [
+          1350,
+          3100
+        ],
+        "original_cycle2_turn_ids_survive": 1350,
+        "candidate_turns": [
+          175,
+          850
+        ],
+        "candidate_cycle2_turn_ids_survive": 0,
+        "candidate_actual_js_arrays": [
+          2,
+          9
+        ],
+        "candidate_cycle2_array_ids_survive": 0,
+        "candidate_valid_session_owners": [
+          2,
+          9
+        ],
+        "candidate_cycle2_owner_ids_survive": 0,
+        "raw_shared_classifier_entry": "141 is hidden system/Hole, not an empty JSArray",
+        "candidate_pending_model_status_requests": [
+          2,
+          9
+        ],
+        "model_failures_recorded_before_snapshots": 0,
+        "native_error_holder_identity": "unproved; stack callsites do not prove request rejection",
+        "retention_acceptance": false,
+        "continuing_controls": "not run",
+        "next_diagnostic": "Preparation only: same-document pending-request drainage capped at5 seconds, then additional ordinary GC snapshot without reference clearing."
+      }
+    }
+  },
+  "consolidated_handover": {
+    "status": "functional_validation_passed",
+    "source_commit": "83208ce",
+    "credential_guard_commit": "050452d8",
+    "node": "v22.22.1",
+    "frontend_tests": 448,
+    "frontend_test_files": 78,
+    "lint_exit": 0,
+    "typescript_exit": 0,
+    "build_exit": 0,
+    "initial_js_gzip_kib": 242.4,
+    "bundle_budget_kib": 600,
+    "canonical_entry": "assets/index-D4cG3MKs.js",
+    "canonical_entry_sha256": "2996541b4ae0a364d4c0d18db46f2136667b5eddfd6bfca715bf9494048f1edf",
+    "canonical_manifest_sha256": "3b8cf52b450c30b5ee91280ada030a184ea1d940be42dc8629cc9c231233b7fd",
+    "production_recovery_exit": 0,
+    "production_recovery_checks": 9,
+    "production_recovery_report": "src/spark_cli/web/screenshots/work-recovery/report.json",
+    "production_screenshot_reviewed": "src/spark_cli/web/screenshots/work-recovery/verified.png",
+    "ci_ruff_exit": 0,
+    "manifest_check_exit": 0,
+    "mypy_exit": 0,
+    "mypy_source_files": 133,
+    "logs": {
+      "frontend": "/tmp/spark-upgrade-20261015/final-consolidated-frontend.txt",
+      "python": "/tmp/spark-upgrade-20261015/final-consolidated-python.txt",
+      "static": "/tmp/spark-upgrade-20261015/final-consolidated-static.txt",
+      "recovery": "/tmp/spark-upgrade-20261015/final-consolidated-recovery.txt"
+    },
+    "diagnostics_stopped": true,
+    "further_heap_helpers_integrated": false,
+    "remaining": [
+      "Complete memory/performance acceptance and continuing-owner controls",
+      "Resolve historical tree-fetch browser gate and inspector304 aggregate limits",
+      "Native packaging, installed-platform QA and rollout"
+    ],
+    "release_or_deployment": false,
+    "python_exit": 0,
+    "python_passed": 12456,
+    "python_skipped": 151,
+    "python_warnings": 135,
+    "python_seconds": 419.4,
+    "python_selection": "not serial and not integration and not network",
+    "serial_companion": {
+      "passed": 182,
+      "skipped": 15,
+      "seconds": 289.03,
+      "source_commit": "423a3eb7",
+      "note": "Earlier serial runtime acceptance; subsequent Python production change is the separately tested credential write guard."
+    }
+  }
+}

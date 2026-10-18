@@ -761,6 +761,11 @@ class _TurnLoopMixin:
                 _should_review_memory = True
                 self._turns_since_memory = 0
 
+        # Append committed child results at a new parent boundary, preserving all
+        # cached historical messages and the existing system/toolset prefix.
+        from core.orchestration.delegation import deliver_results_at_turn_boundary
+        deliver_results_at_turn_boundary(self, messages)
+
         # Add user message
         user_msg = {"role": "user", "content": user_message}
         messages.append(user_msg)
@@ -971,6 +976,9 @@ class _TurnLoopMixin:
 
         # Clear any stale interrupt state at start
         self.clear_interrupt()
+        cancel_event = getattr(self, "_spark_async_cancel_event", None)
+        if cancel_event is not None and cancel_event.is_set():
+            self.interrupt(getattr(self, "_spark_async_cancel_message", None))
 
         # External memory provider: prefetch once before the tool loop.
         # Reuse the cached result on every iteration to avoid re-calling
@@ -1298,9 +1306,26 @@ class _TurnLoopMixin:
                             _use_streaming = False
 
                     if _use_streaming:
-                        response = self._interruptible_streaming_api_call(
-                            api_kwargs, on_first_delta=_stop_spinner
-                        )
+                        try:
+                            response = self._interruptible_streaming_api_call(
+                                api_kwargs, on_first_delta=_stop_spinner
+                            )
+                        except InterruptedError:
+                            raise
+                        except Exception:
+                            # Only the transport's pre-output capability rejection
+                            # sets this flag during a streaming attempt. Negotiate
+                            # once with the exact built payload, before HTTP 400
+                            # reaches the generic non-retryable error policy. A
+                            # failure here follows normal recovery; it cannot
+                            # re-enter this fallback or execute tools twice.
+                            if not getattr(self, "_disable_streaming", False):
+                                raise
+                            if self._interrupt_requested:
+                                raise InterruptedError(
+                                    "Agent interrupted before non-streaming fallback"
+                                ) from None
+                            response = self._interruptible_api_call(api_kwargs)
                     else:
                         response = self._interruptible_api_call(api_kwargs)
 

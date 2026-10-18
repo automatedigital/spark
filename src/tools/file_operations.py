@@ -56,6 +56,7 @@ WRITE_DENIED_PATHS = {
         os.path.join(_HOME, ".ssh", "id_rsa"),
         os.path.join(_HOME, ".ssh", "id_ed25519"),
         os.path.join(_HOME, ".ssh", "config"),
+        os.path.join(_HOME, ".spark", ".env"),
         str(get_spark_home() / ".env"),
         os.path.join(_HOME, ".bashrc"),
         os.path.join(_HOME, ".zshrc"),
@@ -114,6 +115,10 @@ def _is_write_denied(path: str) -> bool:
     for prefix in WRITE_DENIED_PREFIXES:
         if resolved.startswith(prefix):
             return True
+
+    # Profile switches after import must also protect the active credentials.
+    if resolved == os.path.realpath(get_spark_home() / ".env"):
+        return True
 
     # 2) Optional safe-root sandbox
     safe_root = _get_safe_write_root()

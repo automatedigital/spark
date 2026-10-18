@@ -735,6 +735,14 @@ export interface SubagentRun {
   parent_session_id?: string | null;
   conversation_id?: string | null;
   child_session_id?: string | null;
+  root_run_id?: string | null;
+  attempt_id?: string | null;
+  node_id?: string | null;
+  parent_node_id?: string | null;
+  execution_mode?: string | null;
+  retry_of?: string | null;
+  worktree?: { run_id: string; repository: string; base_commit: string; branch: string; path: string; setup_status: string } | null;
+  workspace_path?: string | null;
   name?: string | null;
   task?: string | null;
   goal?: string | null;
@@ -757,11 +765,52 @@ export interface SubagentRun {
 export interface ConversationSubagentsResponse {
   session_id: string;
   subagents: SubagentRun[];
+  total?: number;
+  limit?: number;
 }
 
 export interface ConversationSubagentResponse {
   session_id: string;
   subagent: SubagentRun;
+  event_limit?: number;
+  has_more_events?: boolean;
+  next_event_after_id?: number | null;
+}
+
+export interface SubagentControlSupport {
+  supported: boolean;
+  reason: string | null;
+}
+
+export interface SubagentNavigation {
+  schema_version: 1;
+  subagent_id: string;
+  task: SubagentControlSupport & { id?: string; run_id?: number; title?: string; board_slug?: string };
+  worktree: SubagentControlSupport & { project_slug?: string; path?: string; branch?: string };
+}
+
+export interface SubagentWorktreeProject {
+  ok: true;
+  subagent_id: string;
+  project_slug: string;
+}
+
+export interface SubagentCapabilities {
+  schema_version: 1;
+  controls: Record<"inspect" | "interrupt" | "retry", SubagentControlSupport>;
+  children?: Record<string, { controls: Record<"inspect" | "interrupt" | "retry", SubagentControlSupport> }>;
+  runtime: {
+    available: boolean;
+    async_enabled: boolean;
+    worker_kind: string;
+    completion_delivery: string;
+  };
+}
+
+export interface SubagentRetryResponse {
+  mode: "async";
+  status: "accepted";
+  handles: Array<Pick<SubagentRun, "id" | "parent_session_id" | "root_run_id" | "attempt_id" | "node_id" | "status">>;
 }
 
 export interface ConversationSubagentMessagesResponse {
@@ -774,6 +823,8 @@ export interface ConversationSubagentMessagesResponse {
   limit: number;
   offset?: number;
   include_tool_results?: boolean;
+  has_earlier?: boolean;
+  next_before_id?: number | null;
 }
 
 export interface ConversationSubagentInterruptResponse {

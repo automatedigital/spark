@@ -7,6 +7,7 @@ export interface ApprovalSubmission {
   payload: {
     choice: ApprovalChoice;
     resolve_all: boolean;
+    action_id: string;
   };
 }
 
@@ -19,14 +20,16 @@ export function approvalSubmission(input: {
   choice: ApprovalChoice;
   busy: boolean;
   resolved?: boolean;
+  actionId?: string;
 }): ApprovalSubmission | null {
-  if (!input.sessionId || input.busy || input.resolved) return null;
+  if (!input.sessionId || input.busy || input.resolved || !input.actionId?.trim()) return null;
 
   return {
     sessionId: input.sessionId,
     payload: {
       choice: input.choice,
       resolve_all: false,
+      action_id: input.actionId,
     },
   };
 }

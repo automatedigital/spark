@@ -32,6 +32,7 @@ SUBAGENT_LIFECYCLE_EVENTS = frozenset(
         "completed",
         "failed",
         "interrupted",
+        "uncertain",
     }
 )
 
@@ -185,6 +186,7 @@ def make_subagent_event(
     identity = subagent_identity(task_index, task_count)
     body: dict[str, Any] = {
         "schema": SUBAGENT_EVENT_SCHEMA,
+        "event_id": uuid.uuid4().hex,
         "type": f"subagent.{event}",
         "event": event,
         **identity,
@@ -266,6 +268,10 @@ def emit_subagent_event(
 def make_run_record(
     *,
     parent_session_id: str | None = None,
+    root_run_id: str | None = None,
+    attempt_id: str | None = None,
+    parent_node_id: str | None = None,
+    node_id: str | None = None,
     child_session_id: str | None = None,
     task_index: int,
     task_count: int = 1,
@@ -283,6 +289,10 @@ def make_run_record(
     }
     record = {
         "id": f"subagent_{run_token}",
+        "root_run_id": root_run_id if isinstance(root_run_id, str) else None,
+        "attempt_id": attempt_id if isinstance(attempt_id, str) else None,
+        "parent_node_id": parent_node_id if isinstance(parent_node_id, str) else None,
+        "node_id": node_id if isinstance(node_id, str) else None,
         **identity,
         "parent_session_id": parent_session_id,
         "child_session_id": child_session_id,
@@ -370,6 +380,7 @@ def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dic
         "completed": "completed",
         "failed": "failed",
         "interrupted": "interrupted",
+        "uncertain": "uncertain",
     }.get(event, "working")
     now = time.time()
     run_snapshot = {
@@ -382,7 +393,7 @@ def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dic
         "started_at": run_record.get("started_at") or now,
         "last_event_at": now,
     }
-    if event in {"completed", "failed", "interrupted"}:
+    if event in {"completed", "failed", "interrupted", "uncertain"}:
         run_snapshot["ended_at"] = now
     if result:
         run_snapshot.update(
@@ -399,23 +410,21 @@ def emit(parent_agent: Any, run_record: dict[str, Any], event: str, payload: dic
 
     parent_attrs = getattr(parent_agent, "__dict__", {}) if parent_agent is not None else {}
     dedicated_cb = parent_attrs.get("subagent_event_callback") if isinstance(parent_attrs, dict) else None
+    # Dedicated transports own persistence through the same atomic entry point.
+    # Do not introduce a second writer before invoking their callback.
+    lifecycle_event["subagent_run"] = run_snapshot
     if not dedicated_cb:
         db = getattr(parent_agent, "_session_db", None) if parent_agent is not None else None
         if db is not None:
-            try:
-                if event == "created":
-                    db.create_subagent_run(run_snapshot)
-                else:
-                    db.update_subagent_run(str(run_id), run_snapshot)
-                db.append_subagent_event(str(run_id), event, lifecycle_event)
-            except Exception:
-                logger.debug("Ignoring error in emit()", exc_info=True)
+            committed = db.commit_subagent_lifecycle(run_snapshot, lifecycle_event)
+            lifecycle_event = committed["event"]
 
     if dedicated_cb:
         try:
             dedicated_cb(lifecycle_event)
         except Exception:
-            logger.debug("Ignoring error in emit()", exc_info=True)
+            logger.exception("Subagent lifecycle commit/publication failed")
+            raise
 
     progress_cb = getattr(parent_agent, "tool_progress_callback", None) if parent_agent is not None else None
     emit_subagent_event(progress_cb, lifecycle_event)
