@@ -904,6 +904,12 @@ export default function ChatPage() {
   // response can adopt into it. Same-owner acknowledged ID catchup is explicit.
   const panelScope = sidebarPreferenceKey("chat");
   const panelOwner = panelOwnership.navigate(panelScope, composingFor === null ? selectedId : null, sidebarPreferenceScopeGeneration(), apiConnectionGeneration());
+  // Commit the selected thread shell before mounting its heavier panel. Track
+  // ownership so acknowledged ID changes preserve the existing panel instance.
+  const [readyPanelOwner, setReadyPanelOwner] = useState(panelOwner.ownerToken);
+  useEffect(() => {
+    setReadyPanelOwner(panelOwner.ownerToken);
+  }, [panelOwner.ownerToken]);
   const adoptPanelSession = useCallback((request: OwnedSessionAdoption) => {
     if (!panelOwnership.adopt(request, sidebarPreferenceKey("chat"), sidebarPreferenceScopeGeneration(), apiConnectionGeneration())) return false;
     if (request.nextID !== request.previousID) selectSession(request.nextID);
@@ -1148,7 +1154,12 @@ export default function ChatPage() {
               onCancel={cancelCompose}
             />
           ) : selectedId ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+              data-testid="chat-selection"
+              data-session-id={selectedId}
+              aria-busy={readyPanelOwner !== panelOwner.ownerToken}
+            >
               {/* Thread header */}
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2">
                 <div className="flex items-center gap-2 min-w-0">
@@ -1173,21 +1184,27 @@ export default function ChatPage() {
                   )}
                 </div>
               </div>
-              <ChatPanel
-                key={panelOwner.ownerToken}
-                owner={panelOwner}
-                scrollBookmarks={panelOwnership}
-                onSessionAdopt={adoptPanelSession}
-                sessionId={selectedId}
-                sessionTitle={selectedSession ? threadTitle(selectedSession) : null}
-                workspaceSlug={activeProjectSlug ?? undefined}
-                subagents={subagents}
-                onSubagentSelect={(id) => { if (panelOwner.isCurrent()) handleSelectSubagent(id); }}
-                initialMessage={activeInitialMessage}
-                onBack={() => selectSession(null)}
-                onSessionUpdated={clearPendingInitialMessage}
-                className="min-h-0 flex-1"
-              />
+              {readyPanelOwner === panelOwner.ownerToken ? (
+                <ChatPanel
+                  key={panelOwner.ownerToken}
+                  owner={panelOwner}
+                  scrollBookmarks={panelOwnership}
+                  onSessionAdopt={adoptPanelSession}
+                  sessionId={selectedId}
+                  sessionTitle={selectedSession ? threadTitle(selectedSession) : null}
+                  workspaceSlug={activeProjectSlug ?? undefined}
+                  subagents={subagents}
+                  onSubagentSelect={(id) => { if (panelOwner.isCurrent()) handleSelectSubagent(id); }}
+                  initialMessage={activeInitialMessage}
+                  onBack={() => selectSession(null)}
+                  onSessionUpdated={clearPendingInitialMessage}
+                  className="min-h-0 flex-1"
+                />
+              ) : (
+                <div role="status" className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+                  Loading conversation…
+                </div>
+              )}
             </div>
           ) : (
             <NewSessionHero

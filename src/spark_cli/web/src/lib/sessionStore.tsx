@@ -252,11 +252,22 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   const [sidebarProjectScope, setSidebarProjectScope] = useState<string | null>(null);
   const [pendingInitialMessages, setPendingInitialMessages] = useState<PendingInitialMessages>({});
 
-  const [searchQ, setSearchQ] = useState("");
+  const [searchQ, setSearchQuery] = useState("");
+  const searchQueryRef = useRef("");
   const [searchResults, setSearchResults] = useState<SessionInfo[] | null>(null);
   const [searching, setSearching] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestRef = useRef(0);
+  const setSearchQ = useCallback((query: string) => {
+    if (query === searchQueryRef.current) return;
+    searchQueryRef.current = query;
+    // Commit the input and loaded-page results together, without an effect's
+    // second render. Invalidate old FTS responses before the next effect runs.
+    searchRequestRef.current += 1;
+    setSearchQuery(query);
+    setSearchResults(query.trim() ? filterSessionsLocally(sessionsRef.current, query) : null);
+    setSearching(Boolean(query.trim()));
+  }, []);
   const queuedSessionRowsRef = useRef<Map<string, SessionInfo>>(new Map());
   const queuedSessionRowsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextSessionsOffsetRef = useRef(0);
@@ -587,8 +598,6 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     const localResults = filterSessionsLocally(sessionsRef.current, searchQ);
     // Filtering the loaded page is immediate. Full-history FTS is deliberately
     // debounced so normal typing cannot fan out one database query per key.
-    setSearchResults(localResults);
-    setSearching(true);
     const requestId = ++searchRequestRef.current;
     searchDebounceRef.current = setTimeout(async () => {
       try {
@@ -650,7 +659,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     setSelectedId(null);
     setComposingFor(null);
     setSearchQ("");
-  }, []);
+  }, [setSearchQ]);
 
   const toggleProjectExpanded = useCallback((slug: string) => {
     setExpandedProjects((prev) => {
@@ -760,7 +769,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
         return next;
       });
     }
-  }, [selectSession]);
+  }, [selectSession, setSearchQ]);
 
   useEffect(() => {
     const projectTarget = takeGlobalNavTarget("project");

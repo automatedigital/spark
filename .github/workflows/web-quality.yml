@@ -149,37 +149,31 @@ jobs:
         run: python ./e2e/work-recovery.py
 
       - name: Sidebar scale and ownership browser gate
-        if: ${{ !cancelled() }}
         env:
           PYTHON: python
         run: node ./e2e/browser-gates.mjs --suite sidebar --repeat 3 --output-dir /tmp/spark-browser-gates/sidebar
 
       - name: Production-built draft and recovery browser gate
-        if: ${{ !cancelled() }}
         env:
           PYTHON: python
         run: node ./e2e/browser-gates.mjs --suite production-recovery --output-dir /tmp/spark-browser-gates/production-recovery
 
       - name: Build canonical web candidate
-        if: ${{ !cancelled() }}
         run: npm run build
 
       - name: Production child inspector browser gate
-        if: ${{ !cancelled() }}
         env:
           SPARK_E2E_BUILT_WEB: "1"
           SPARK_E2E_REPORTS: /tmp/spark-browser-gates/inspector
         run: python ./e2e/subagent-controls.py
 
       - name: Production task and worktree navigation browser gate
-        if: ${{ !cancelled() }}
         env:
           SPARK_E2E_BUILT_WEB: "1"
           SPARK_E2E_REPORTS: /tmp/spark-browser-gates/navigation
         run: python ./e2e/subagent-navigation.py
 
       - name: Repeated 2000-row long-thread gate
-        if: ${{ !cancelled() }}
         env:
           PYTHON: python
         run: node ./e2e/browser-gates.mjs --suite longthread --repeat 3 --output-dir /tmp/spark-browser-gates/longthread

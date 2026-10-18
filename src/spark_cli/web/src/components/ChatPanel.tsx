@@ -1739,6 +1739,9 @@ export function ChatPanel({
       data-stream-visible-chars={streamingAssistantVisibleChars}
       data-reasoning-visible-chars={stressReasoningVisibleChars}
       data-recovery-polls={recoveryPollCount}
+      data-history-loading={loadingHistory || loadingEarlier ? "true" : "false"}
+      data-history-has-earlier={hasEarlier ? "true" : "false"}
+      data-history-message-count={chatMessages.length}
       className={cn("flex min-h-0 w-full flex-1 flex-col bg-background/45 relative", className)}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}

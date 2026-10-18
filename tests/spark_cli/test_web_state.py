@@ -92,3 +92,32 @@ def test_large_history_event_payload_is_bounded_by_shell_detail_split():
     resumed = journal.resume(9_950, projection_version=1, server_epoch="epoch")
     assert len(resumed.events) == 50
     assert len(json.dumps(resumed.events)) < 25_000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("epoch", ["epoch", "old", None])
+async def test_sse_zero_cursor_replays_first_event_and_flushes_subscription(monkeypatch, epoch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from spark_cli import web_server, web_state
+
+    journal = WebStateJournal(server_epoch="epoch")
+    journal.append("sessions.changed", {"action": "updated", "title": "First update"}, "s1")
+    monkeypatch.setattr(web_state, "web_state_journal", journal)
+    monkeypatch.setattr(web_server, "_event_subscribers", set())
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=True))
+    response = await web_server.sse_events_bus(request, server_epoch=epoch)
+    chunks = [chunk async for chunk in response.body_iterator]
+    assert chunks[0] == ": connected\n\n"
+    events = [json.loads(chunk.removeprefix("data: ")) for chunk in chunks[1:]]
+    if epoch == "epoch":
+        assert len(events) == 1
+        assert events[0]["sequence"] == 1
+        assert events[0]["data"]["title"] == "First update"
+    elif epoch == "old":
+        assert len(events) == 1
+        assert events[0]["topic"] == "bus.snapshot_required"
+    else:
+        assert events == []
+    assert not web_server._event_subscribers
