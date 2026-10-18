@@ -896,10 +896,6 @@ export default function ChatPage() {
   const [subagentSelections, setSubagentSelections] = useState<Record<string, string | null>>({});
   const [preferenceScope, setPreferenceScope] = useState(() => sidebarPreferenceKey("chat"));
   const [panelOwnership] = useState(() => new ChatPanelOwnership());
-  const [panelSessionId, setPanelSessionId] = useState<string | null>(selectedId);
-  useEffect(() => {
-    setPanelSessionId(selectedId);
-  }, [selectedId]);
   useEffect(() => {
     panelOwnership.activate();
     return () => panelOwnership.retire();
@@ -908,6 +904,12 @@ export default function ChatPage() {
   // response can adopt into it. Same-owner acknowledged ID catchup is explicit.
   const panelScope = sidebarPreferenceKey("chat");
   const panelOwner = panelOwnership.navigate(panelScope, composingFor === null ? selectedId : null, sidebarPreferenceScopeGeneration(), apiConnectionGeneration());
+  // Commit the selected thread shell before mounting its heavier panel. Track
+  // ownership so acknowledged ID changes preserve the existing panel instance.
+  const [readyPanelOwner, setReadyPanelOwner] = useState(panelOwner.ownerToken);
+  useEffect(() => {
+    setReadyPanelOwner(panelOwner.ownerToken);
+  }, [panelOwner.ownerToken]);
   const adoptPanelSession = useCallback((request: OwnedSessionAdoption) => {
     if (!panelOwnership.adopt(request, sidebarPreferenceKey("chat"), sidebarPreferenceScopeGeneration(), apiConnectionGeneration())) return false;
     if (request.nextID !== request.previousID) selectSession(request.nextID);
@@ -1156,7 +1158,7 @@ export default function ChatPage() {
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
               data-testid="chat-selection"
               data-session-id={selectedId}
-              aria-busy={panelSessionId !== selectedId}
+              aria-busy={readyPanelOwner !== panelOwner.ownerToken}
             >
               {/* Thread header */}
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background/70 px-4 py-2">
@@ -1182,7 +1184,7 @@ export default function ChatPage() {
                   )}
                 </div>
               </div>
-              {panelSessionId === selectedId ? (
+              {readyPanelOwner === panelOwner.ownerToken ? (
                 <ChatPanel
                   key={panelOwner.ownerToken}
                   owner={panelOwner}

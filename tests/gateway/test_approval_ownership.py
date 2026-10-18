@@ -141,6 +141,7 @@ async def test_async_child_guards_survive_sequential_parent_turns_and_deliver_on
         assert not deliveries(g.db, parent.session_id)
         if after_second_turn == "stop":
             await g.adapter.inbound_text("/stop")
+            await idle(g.adapter)
         release.set()
         g.wire.release_all()
         await until(lambda: len(decisions) == 2, "all earlier child contexts check their guards")
@@ -293,6 +294,9 @@ async def test_async_child_guard_after_normal_parent_completion(gateway, approva
         assert parent._active_children and key not in approval._gateway_notify_cbs
         if after_parent == "stop":
             await g.adapter.inbound_text("/stop")
+            # Normal command dispatch runs in the adapter's background task.
+            # Observe its completion before letting children check their guards.
+            await idle(g.adapter)
         elif after_parent == "next_turn":
             replacement = replace_adapter(g)
             await replacement.inbound_text(new)
