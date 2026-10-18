@@ -239,7 +239,7 @@ async function waitForChatSession(page, sessionId, title) {
   await page.locator('[data-testid="chat-panel"] [data-row-id]').first().waitFor({ timeout: 15_000 });
 }
 
-async function loadEarlierMessages(page, { sessionId, title }) {
+async function loadEarlierMessages(page, { sessionId, title, expectedRows }) {
   const initialUrl = page.url();
   const seenBeforeIds = new Set();
   let pagesLoaded = 0;
@@ -274,8 +274,21 @@ async function loadEarlierMessages(page, { sessionId, title }) {
         handledNavigations = mainFrameNavigations;
       }
 
+      // A history refresh briefly hides the paging control. Its absence alone
+      // cannot establish completion; require settled state and all fixture rows.
+      await page.waitForFunction(({ sessionId, expectedRows }) => {
+        const panel = document.querySelector('[data-testid="chat-panel"]');
+        if (panel?.getAttribute("data-session-id") !== sessionId
+          || panel.getAttribute("data-history-loading") !== "false") return false;
+        return panel.getAttribute("data-history-has-earlier") === "true"
+          || Number(panel.getAttribute("data-history-message-count")) >= expectedRows;
+      }, { sessionId, expectedRows }, { timeout: 15_000 });
+      const complete = await page.locator('[data-testid="chat-panel"]').evaluate((panel, expectedRows) => (
+        panel.getAttribute("data-history-has-earlier") === "false"
+        && Number(panel.getAttribute("data-history-message-count")) >= expectedRows
+      ), expectedRows);
+      if (complete) break;
       const button = page.getByRole("button", { name: "Load earlier messages", exact: true });
-      if (await button.count() === 0) break;
       await button.first().waitFor({ state: "visible", timeout: 15_000 });
       await page.waitForFunction(() => {
         const candidate = [...document.querySelectorAll("button")]
@@ -643,7 +656,7 @@ async function captureCase({ browser, apiBase, webBase, screenshotRoot, size, vi
     await waitForChatSession(page, sessionId, title);
     const firstRenderMs = performance.now() - startedAt;
     await page.waitForTimeout(150);
-    const paging = await loadEarlierMessages(page, { sessionId, title });
+    const paging = await loadEarlierMessages(page, { sessionId, title, expectedRows: size });
     await page.waitForTimeout(250);
     const fullyLoaded = await page.getByRole("button", { name: /^(Load earlier messages|Loading…)$/ }).count() === 0;
     if (!fullyLoaded) throw new Error(`History remained paged for ${size} rows`);
