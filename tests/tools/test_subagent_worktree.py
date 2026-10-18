@@ -152,13 +152,30 @@ def test_profile_boundaries_and_non_git_fail_explicitly(repo, tmp_path, monkeypa
 
 
 def test_concurrent_creation_and_metadata_survive_reopen(repo):
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ThreadPoolExecutor(max_workers=8) as pool:
         records = list(pool.map(lambda name: create_subagent_worktree(repo, name),
-                                ["parallel-a", "parallel-b"]))
+                                [f"parallel-{index}" for index in range(8)]))
     for record in records:
         assert get_subagent_worktree(record.run_id) == record
         assert cleanup_subagent_worktree(record.run_id)["reason"] == "active"
-    assert records[0].path != records[1].path
+    assert len({record.path for record in records}) == 8
+
+
+def test_concurrent_processes_share_repository_worktree_lock(repo):
+    def create(index):
+        return json.loads(subprocess.check_output([
+            sys.executable, "-c",
+            "import json, sys; from tools.subagent_worktree import create_subagent_worktree; "
+            "print(json.dumps(create_subagent_worktree(sys.argv[1], sys.argv[2]).as_dict()))",
+            str(repo), f"process-{index}",
+        ], text=True))
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        records = list(pool.map(create, range(4)))
+    assert len({record["path"] for record in records}) == 4
+    for record in records:
+        assert git(record["path"], "rev-parse", "HEAD") == record["base_commit"]
+        assert get_subagent_worktree(record["run_id"]).as_dict() == record
 
 
 @pytest.mark.slow

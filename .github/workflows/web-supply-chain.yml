@@ -6,6 +6,7 @@ name: web-supply-chain
 
 on:
   push:
+    branches: [main]
     paths:
       - "src/spark_cli/web/package.json"
       - "src/spark_cli/web/package-lock.json"
@@ -14,6 +15,11 @@ on:
     paths:
       - "src/spark_cli/web/package.json"
       - "src/spark_cli/web/package-lock.json"
+      - ".github/workflows/web-supply-chain.yml"
+
+concurrency:
+  group: web-supply-chain-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:

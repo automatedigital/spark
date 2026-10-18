@@ -479,7 +479,10 @@ async function run() {
     // Minimap marker navigation changes the scroll position to the selected row.
     const beforeJump = await scrollBox.evaluate((element) => element.scrollTop);
     await page.getByRole("button", { name: "Turn 1 · user message", exact: true }).click();
-    await page.waitForTimeout(150);
+    await page.waitForFunction(({ selector, previous }) => {
+      const element = document.querySelector(selector);
+      return element && element.scrollTop < previous - 5;
+    }, { selector: '[data-testid="chat-scroll"]', previous: beforeJump });
     const afterJump = await scrollBox.evaluate((element) => element.scrollTop);
     if (afterJump >= beforeJump - 5) throw new Error(`Minimap did not navigate upward: ${beforeJump} -> ${afterJump}`);
 

@@ -64,6 +64,16 @@ def mock_args():
 class TestCmdUpdateBranchFallback:
     """cmd_update falls back to main when current branch has no remote counterpart."""
 
+    @pytest.fixture(autouse=True)
+    def _ready_web_bundle(self, monkeypatch):
+        # Branch-selection tests must not download Node or rebuild assets.
+        # Real build success/failure is covered by test_update_web_build.py.
+        monkeypatch.setattr("spark_cli.main._build_web_ui", lambda *args, **kwargs: True)
+        monkeypatch.setattr(
+            "spark_cli.dashboard_health.dashboard_frontend_assets_ready",
+            lambda *args, **kwargs: (True, ""),
+        )
+
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
     def test_update_falls_back_to_main_when_branch_not_on_remote(

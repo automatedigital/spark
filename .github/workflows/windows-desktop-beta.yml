@@ -37,6 +37,9 @@ jobs:
       - name: Install Spark and build dependencies
         run: python -m pip install -e ".[web,pty,messaging,dev]"
 
+      - name: Verify native Windows worktree ownership and locking
+        run: python -m pytest tests/tools/test_subagent_worktree.py -q -n 0
+
       - name: Build unsigned Windows beta
         shell: pwsh
         run: ./scripts/build_desktop_windows.ps1

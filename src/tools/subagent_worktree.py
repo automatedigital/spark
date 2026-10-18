@@ -12,6 +12,7 @@ import re
 import signal
 import subprocess
 import tempfile
+import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -83,6 +84,44 @@ def _save(record: SubagentWorktree) -> None:
     temporary = target.with_suffix(".tmp")
     temporary.write_text(json.dumps(record.as_dict(), indent=2) + "\n")
     temporary.replace(target)
+
+
+def _mutate_worktree(repository: str, *args: str) -> None:
+    # Git inspects other worktree registrations while adding/removing one.
+    # Serialize mutations across threads, processes, profiles and linked roots
+    # so it never reads another add's partially written commondir file.
+    common = Path(_git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    with (common / "spark-subagent-worktree.lock").open("a+b") as lock:
+        if os.name == "nt":
+            import msvcrt
+
+            if lock.tell() == 0:
+                lock.write(b"\0")
+                lock.flush()
+        else:
+            import fcntl
+
+        deadline = time.monotonic() + _GIT_TIMEOUT
+        while True:
+            try:
+                if os.name == "nt":
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as exc:
+                if time.monotonic() >= deadline:
+                    raise WorktreeIsolationError("Timed out waiting for repository worktree lock") from exc
+                time.sleep(0.01)
+        try:
+            _git(repository, "worktree", *args)
+        finally:
+            if os.name == "nt":
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def get_subagent_worktree(run_id: str) -> SubagentWorktree | None:
@@ -168,7 +207,7 @@ def create_subagent_worktree(
     ):
         raise WorktreeIsolationError("Setup commands must be non-empty argv lists")
     checkout.parent.mkdir(parents=True, exist_ok=True)
-    _git(repository, "worktree", "add", "-b", branch, str(checkout), commit)
+    _mutate_worktree(repository, "add", "-b", branch, str(checkout), commit)
     record = SubagentWorktree(run_id, repository, commit, branch, str(checkout))
     try:
         _save(record)
@@ -220,7 +259,7 @@ def cleanup_subagent_worktree(run_id: str) -> dict[str, Any]:
             return {"removed": False, "reason": "committed", "worktree": record.as_dict()}
         if _git(record.path, "symbolic-ref", "--short", "HEAD") != record.branch:
             return {"removed": False, "reason": "branch_changed", "worktree": record.as_dict()}
-        _git(record.repository, "worktree", "remove", record.path)
+        _mutate_worktree(record.repository, "remove", record.path)
     except WorktreeIsolationError as exc:
         return {"removed": False, "reason": "inspection_failed", "error": str(exc)}
     _metadata_path(run_id).unlink()

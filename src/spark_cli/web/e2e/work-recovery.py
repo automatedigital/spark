@@ -146,14 +146,22 @@ async def main():
                 # Storage events must surface concurrent editing rather than
                 # overwrite the text that this tab is currently composing.
                 await composer.fill("Alpha first tab")
-                await page.wait_for_timeout(500)
+                await page.wait_for_function("""() => Object.keys(localStorage).some(key => {
+                    if (!key.startsWith('spark.draft.v1:')) return false;
+                    try { return JSON.parse(localStorage.getItem(key)).text === 'Alpha first tab'; }
+                    catch { return false; }
+                })""")
                 other = await context.new_page()
                 await other.goto(web_url)
                 await select("alpha", other)
                 other_composer = other.get_by_role("textbox", name="Message composer")
                 await expect(other_composer).to_have_value("Alpha first tab")
                 await other_composer.fill("Alpha second tab")
-                await other.wait_for_timeout(500)
+                await other.wait_for_function("""() => Object.keys(localStorage).some(key => {
+                    if (!key.startsWith('spark.draft.v1:')) return false;
+                    try { return JSON.parse(localStorage.getItem(key)).text === 'Alpha second tab'; }
+                    catch { return false; }
+                })""")
                 await expect(composer).to_have_value("Alpha first tab")
                 await expect(page.get_by_text(re.compile("another tab", re.I)).first).to_be_visible()
                 await page.screenshot(path=str(REPORTS / "draft-conflict.png"))
