@@ -255,17 +255,17 @@ db.close()
     assert.equal((await snapshot()).entries["scale-049"].pinned, false, "Legacy pins require explicit import");
     const select = async (id) => {
       await row(id).click();
-      await page.waitForFunction((id) => document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") === `scale-${id}`, id);
+      await page.waitForFunction((id) => document.querySelector('[data-testid="chat-selection"]')?.getAttribute("data-session-id") === `scale-${id}`, id);
     };
     await row("000").evaluate((element) => {
       const expectedSession = "scale-000";
       window.__sparkSelectionObservation = {
         expectedSession,
-        initialSession: document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") ?? null,
+        initialSession: document.querySelector('[data-testid="chat-selection"]')?.getAttribute("data-session-id") ?? null,
         committedAt: null,
       };
       const observer = new MutationObserver(() => {
-        if (document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") !== expectedSession) return;
+        if (document.querySelector('[data-testid="chat-selection"]')?.getAttribute("data-session-id") !== expectedSession) return;
         window.__sparkSelectionObservation.committedAt = performance.now();
         observer.disconnect();
       });
@@ -273,7 +273,7 @@ db.close()
       window.__sparkSelectionStartedAt = performance.now();
       element.click();
     });
-    await page.waitForFunction(() => document.querySelector('[data-testid="chat-panel"]')?.getAttribute("data-session-id") === "scale-000");
+    await page.waitForFunction(() => document.querySelector('[data-testid="chat-selection"]')?.getAttribute("data-session-id") === "scale-000");
     assert.equal(await row("000").getAttribute("aria-current"), "page");
     // Retain the old endpoint, including automation polling/protocol trips.
     // The budget below now uses the same DOM-identity boundary on browser time.
@@ -289,6 +289,8 @@ db.close()
       "Selection measurement did not observe the expected session DOM commit");
     metrics.selectionMs = selection.committedAt - selection.startedAt;
     metrics.selectionObservation.legacyObservationTailMs = metrics.selectionLegacyObservedMs - metrics.selectionMs;
+    await page.waitForFunction(() => Boolean(document.querySelector('[data-testid="chat-panel"]')));
+    metrics.panelReadyMs = await page.evaluate(() => performance.now() - window.__sparkSelectionStartedAt);
     await select("000");
     let search = page.getByPlaceholder("Search", { exact: true });
     metrics.localSearchMs = await measureSearchResult(search, "Scale chat 049", '[role="button"][aria-label^="Scale chat 049,"]');
