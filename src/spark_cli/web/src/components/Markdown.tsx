@@ -17,6 +17,7 @@ import { api, mediaFileUrl, openExternal } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
 import { isDirectPreviewUrl } from "@/lib/previewUrl";
+import { MarkdownCallout } from "./MarkdownCallout";
 import {
   type BlockNode,
   type BlockProps,
@@ -446,6 +447,7 @@ function Block({
   showCursor,
   safeMode,
   defaultWrap,
+  calloutDepth = 0,
 }: {
   block: BlockNode;
   highlightTerms?: string[];
@@ -453,8 +455,23 @@ function Block({
   showCursor?: boolean;
   safeMode?: boolean;
   defaultWrap?: boolean;
+  calloutDepth?: number;
 }) {
   switch (block.type) {
+    case "callout": {
+      // Bound recursion for pathological model output; keep the remaining source readable.
+      const children = calloutDepth < 8 ? parseBlocks(block.content) : null;
+      return (
+        <MarkdownCallout kind={block.kind}>
+          {children ? children.map((child, index) => (
+            <Block key={index} block={child} highlightTerms={highlightTerms} live={live}
+              showCursor={showCursor && index === children.length - 1} safeMode={safeMode}
+              defaultWrap={defaultWrap} calloutDepth={calloutDepth + 1} />
+          )) : <p className="whitespace-pre-wrap">{block.content}</p>}
+          {showCursor && children?.length === 0 ? <StreamingCursor /> : null}
+        </MarkdownCallout>
+      );
+    }
     case "code":
       return <CodeBlock lang={block.lang} content={block.content} live={live} showCursor={showCursor} safeMode={safeMode} defaultWrap={defaultWrap} />;
 
