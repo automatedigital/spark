@@ -139,3 +139,11 @@ GitHub confirms F09 #178, F02 #179, F08 #180, F10 #181, F03 #182 and F07 #183 in
 F02 #179: published head `eb31f7fbfc02e8ba2b78d6c3c09de894fc36ab4e`; agent evidence **129 Python / 448 frontend tests**, browser create/edit/order/clear round trip, lint/types/mypy and isolated build pass. F08 #180 reports **456 frontend tests** and real Chromium sound preview; installed desktop audio unverified. F09 #178 reports **65 Python / 448 frontend tests** and read-only history browser flow; Windows/packages unverified.
 
 I01 portability recovery is published at `8987f857f2dd2ce1da96a4f04de7e738402faaf7`: **74 tests pass, 11 native-Windows cases skip** locally. Blanket501 is removed, but draft acceptance still requires Windows runtime evidence. New Ubuntu mypy-ratchet has ten Windows-API attribute/return errors; the lead fetched the actual completed job log via jobs API and delegated a focused platform-typing correction, not a blind rerun.
+
+### Final handoff receipts for F03 / F07 / F10
+
+- F03 #182: published head `314b876c4bde42f7696235461c4729ce80d94472`; **166 focused tests**, changed-file Ruff/full app mypy and real SQLite CLI export flow pass. Mandatory nested redaction included; manifest import check timed out twice and remains unverified.
+- F07 #183: published head `bab15418550385c1ca73a3480900733a6f98a962`; **464 frontend tests**, Node22 lint/types/build/budget and toggle/copy/safety browser fixture pass. Browser find did not reveal collapsed content; F06 must integrate first.
+- F10 #181: published head `e4081d9053b004e375eca472c86aaa00027ddce9`; **88 Python / 448 frontend tests**, browser saved-output flow, lint/types/build/budget pass. Windows output browsing remains unsupported/unverified; no claim of native Windows feature acceptance.
+
+All three stopped checkouts remain preserved, recovery checkouts clean, and exact commands/limits are in the corresponding linked delivery reports.
