@@ -125,3 +125,5 @@ I03 lead environment correction: the first independent 39-test run passed under 
 - Snapshot passes on #155, #166–#168, #171–#173, #175–#176; #169 e2e still running. #155 still has a known Windows compatibility blocker despite passing CI.
 - #170 fails the third repeated longthread browser attempt after two passes; #174 fails inspector scroll drift `(1000, 1410)`. F04/F06 bounded review tasks must inspect exact artifacts and compare/reproduce before any fix or retry. No assertion is waived, no blind CI rerun.
 - Original interrupted tasks I04/I06/I10/F01/F06 produced committed/pushed PRs around interruption; their PR bodies and source/check snapshots are retained as evidence, not inferred from terminal task status.
+
+I01 capacity reassignment: recovery round3 failed before execution with `Selected model is at capacity. Please try a different model.` Original work remains preserved. A fresh live-catalog Codex `gpt-6-astra` task (medium/default options) owns the same PR155 correction: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I01-portability-astra-r4`. No duplicate live worker or new PR.
