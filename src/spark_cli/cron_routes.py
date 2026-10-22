@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 _log = logging.getLogger(__name__)
 
@@ -22,10 +22,52 @@ class CronJobCreate(BaseModel):
     schedule: str
     name: str = ""
     deliver: str = "local"
+    model: str | None = None
+    provider: str | None = None
+    skills: list[str] | None = None
 
 
 class CronJobUpdate(BaseModel):
     updates: dict
+
+
+@router.get("/providers")
+def list_cron_providers():
+    """Reuse profile provider resolution, exposing identifiers and labels only."""
+    from spark_cli.config import load_config
+    from spark_cli.models import list_available_providers
+    from spark_cli.providers import custom_provider_slug
+    from spark_cli.runtime_provider import resolve_runtime_provider
+
+    cfg = load_config()
+    candidates = {
+        item["id"]: item["label"]
+        for item in list_available_providers()
+        if item.get("authenticated")
+    }
+    for key, entry in (cfg.get("providers") or {}).items():
+        if isinstance(entry, dict):
+            candidates[str(key)] = str(entry.get("name") or key)
+
+    for entry in cfg.get("custom_providers") or []:
+        if isinstance(entry, dict) and entry.get("name"):
+            key = entry.get("provider_key")
+            requested = f"custom:{key}" if key else custom_provider_slug(entry["name"])
+            candidates[requested] = entry["name"]
+    # Include the resolved default (including legacy/custom configurations).
+    try:
+        default = resolve_runtime_provider()["provider"]
+        candidates.setdefault(default, default)
+    except Exception:
+        pass
+    providers = []
+    for requested, label in candidates.items():
+        try:
+            resolve_runtime_provider(requested=requested)
+        except Exception:
+            continue
+        providers.append({"id": requested, "label": label})
+    return providers
 
 
 @router.get("/jobs")
@@ -55,6 +97,9 @@ async def create_cron_job(body: CronJobCreate):
             schedule=body.schedule,
             name=body.name,
             deliver=body.deliver,
+            model=body.model or None,
+            provider=body.provider or None,
+            skills=body.skills,
         )
         return job
     except Exception as e:
@@ -68,6 +113,17 @@ async def update_cron_job(job_id: str, body: CronJobUpdate):
 
     try:
         updates = dict(body.updates)
+        # Canonical skills must win over the legacy single-skill field, including
+        # an explicit empty list. Do not let a stale legacy value reappear.
+        if "skills" in updates:
+            updates["skills"] = TypeAdapter(list[str] | None).validate_python(updates["skills"]) or []
+            updates.pop("skill", None)
+        for field in ("model", "provider"):
+            if field in updates:
+                value = updates[field]
+                if value is not None and not isinstance(value, str):
+                    raise ValueError(f"{field} must be a string or null")
+                updates[field] = value.strip() or None if value is not None else None
         if isinstance(updates.get("schedule"), str):
             updates["schedule"] = parse_schedule(updates["schedule"])
         job = update_job(job_id, updates)

@@ -404,6 +404,10 @@ export interface AnalyticsResponse {
 }
 
 export interface CronJob {
+  model?: string | null;
+  provider?: string | null;
+  skills?: string[];
+  skill?: string | null;
   id: string;
   name?: string;
   prompt: string;
