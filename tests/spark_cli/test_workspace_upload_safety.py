@@ -673,10 +673,10 @@ def test_windows_metadata_reparse_cannot_escape(uploads, tmp_path, monkeypatch, 
     monkeypatch.setattr(routes, "_windows_upload_handle", open_handle)
     response = post(client, scope, path="nested")
     assert len(attempted) == 1
-    assert response.status_code in (200, 400), response.text
     assert {p.relative_to(outside): p.read_bytes() for p in outside.rglob("*")} == {
         Path("sentinel.txt"): b"outside",
     }
+    assert response.status_code in (200, 400), response.text
     if attempted[0] == 0:
         assert response.status_code == 400
         assert "saved" not in response.json()
@@ -726,3 +726,30 @@ def test_windows_relative_open_contract(
     kernel.CreateFileW.assert_not_called()
     kernel.CloseHandle.assert_not_called()
     native.NtCreateFile.assert_called_once()
+
+
+@pytest.mark.parametrize("directory,create_new,open_if", [
+    (False, True, False), (True, False, True), (False, False, False),
+])
+def test_windows_relative_reparse_resolution_rejected(monkeypatch, directory, create_new, open_if):
+    import ctypes
+
+    kernel = SimpleNamespace(
+        CreateFileW=Mock(), CloseHandle=Mock(), GetFileInformationByHandleEx=Mock(),
+    )
+    native = SimpleNamespace(
+        NtCreateFile=Mock(return_value=-1), RtlNtStatusToDosError=Mock(return_value=1921),
+    )
+    monkeypatch.setattr(ctypes, "WinDLL", Mock(side_effect=[kernel, native]), raising=False)
+    monkeypatch.setattr(ctypes, "WinError", lambda code: OSError(code, "Windows fixture"), raising=False)
+    with monkeypatch.context() as patch:
+        patch.setattr(routes.sys, "platform", "win32")
+        with pytest.raises(routes.HTTPException) as rejected:
+            routes._windows_upload_handle(
+                Path("child"), directory=directory, create_new=create_new,
+                open_if=open_if, root_handle=123,
+            )
+    assert rejected.value.status_code == 400
+    kernel.CreateFileW.assert_not_called()
+    kernel.GetFileInformationByHandleEx.assert_not_called()
+    kernel.CloseHandle.assert_not_called()  # Failed NT open returned no owned handle.

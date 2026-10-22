@@ -962,7 +962,7 @@ def _windows_upload_handle(
     if error:
         if create_new and error in (80, 183):
             raise FileExistsError(errno.EEXIST, "Upload name already exists", str(path))
-        if error in (5, 32, 123, 267, 4390, 1920):
+        if error in (5, 32, 123, 267, 4390, 1920, 1921):
             raise HTTPException(status_code=400, detail="Unsafe or unavailable upload target")
         raise ctypes.WinError(error)
     owned = True
