@@ -329,7 +329,7 @@ def test_windows_upload_handle_access_contract(
 @pytest.mark.skipif(os.name != "nt", reason="native Windows directory sharing contract")
 @pytest.mark.parametrize("operation", ["rename", "write_handle"])
 def test_windows_directory_handle_blocks_other_process_until_closed(tmp_path, operation):
-    """Rename needs DELETE; reparse mutation needs a write-capable handle."""
+    """Rename needs DELETE; generic-write opens also conflict with the pin."""
     import ctypes
     from ctypes import wintypes
 
@@ -395,12 +395,12 @@ def test_windows_final_handle_rejects_swap(uploads, tmp_path, monkeypatch, scope
     real_open = routes._windows_upload_handle
     swapped = False
 
-    def swap_then_open(path, *, directory, create_new=False):
+    def swap_then_open(path, *, directory, create_new=False, **kwargs):
         nonlocal swapped
         if not directory and create_new and not swapped:
             (dest / "note.txt").symlink_to(sentinel)
             swapped = True
-        return real_open(path, directory=directory, create_new=create_new)
+        return real_open(path, directory=directory, create_new=create_new, **kwargs)
 
     monkeypatch.setattr(routes, "_windows_upload_handle", swap_then_open)
     assert post(client, scope).status_code == 400
@@ -555,3 +555,174 @@ def test_collision_retry_directory_swap_writes_only_pinned_inode(uploads, tmp_pa
     assert (pinned / "note.txt").read_bytes() == b"earlier attachment"
     assert list(outside.iterdir()) == [outside / "note.txt"]
     assert (outside / "note.txt").read_bytes() == b"outside"
+
+
+def _set_windows_mount_point(directory, target):
+    """Actual metadata-only FSCTL contender; no mklink or GENERIC_WRITE shortcut."""
+    import ctypes
+    import struct
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                       wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    control = kernel.DeviceIoControl
+    control.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                        wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                        wintypes.LPVOID]
+    control.restype = wintypes.BOOL
+    # MountPointReparseBuffer: substitute and print offsets are relative to
+    # PathBuffer; lengths exclude the UTF-16 terminators. No symlink privilege.
+    substitute = ("\\??\\" + str(target.resolve())).encode("utf-16-le")
+    printed = str(target.resolve()).encode("utf-16-le")
+    names = substitute + b"\0\0" + printed + b"\0\0"
+    data = struct.pack("<HHHH", 0, len(substitute), len(substitute) + 2, len(printed)) + names
+    payload = struct.pack("<IHH", 0xA0000003, len(data), 0) + data
+    buffer = ctypes.create_string_buffer(payload)
+    handle = create(str(directory), 0x100, 1, None, 3, 0x02200000, None)
+    # Prove the FILE_WRITE_ATTRIBUTES-only contender was actually acquired.
+    assert handle != wintypes.HANDLE(-1).value, ctypes.get_last_error()
+    try:
+        returned = wintypes.DWORD()
+        if control(handle, 0x900A4, buffer, len(payload), None, 0,
+                   ctypes.byref(returned), None):
+            return 0
+        return ctypes.get_last_error()
+    finally:
+        assert close(handle)
+
+
+def _prove_windows_mount_point_control(tmp_path, outside):
+    control = tmp_path / "fsctl-control"
+    control.mkdir()
+    try:
+        assert _set_windows_mount_point(control, outside) == 0
+        assert (control / "sentinel.txt").read_bytes() == b"outside"
+    finally:
+        control.rmdir()  # Remove the junction itself, never the target tree.
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native metadata-only reparse FSCTL")
+def test_windows_metadata_only_reparse_contender(tmp_path):
+    import ctypes
+    from ctypes import wintypes
+
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "sentinel.txt").write_bytes(b"outside")
+    _prove_windows_mount_point_control(tmp_path, outside)
+    close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    handle = routes._windows_upload_handle(directory, directory=True)
+    try:
+        result = _set_windows_mount_point(directory, outside)
+        # Some filesystems may deny the FSCTL. Both successful mutation and a
+        # concrete access/sharing denial are exercised, never skipped silently.
+        assert result in (0, 5, 32), result
+    finally:
+        assert close(handle)
+    if result == 0:
+        assert (directory / "sentinel.txt").read_bytes() == b"outside"
+    directory.rmdir()
+    assert {p.name: p.read_bytes() for p in outside.iterdir()} == {"sentinel.txt": b"outside"}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native metadata-only reparse upload boundary")
+@pytest.mark.parametrize("scope", ["project", "global"])
+@pytest.mark.parametrize("boundary", ["read", "final_open", "descent"])
+def test_windows_metadata_reparse_cannot_escape(uploads, tmp_path, monkeypatch, scope, boundary):
+    client, root, project = uploads
+    dest = project / "nested" if scope == "project" else root / "files"
+    dest.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "sentinel.txt").write_bytes(b"outside")
+    _prove_windows_mount_point_control(tmp_path, outside)
+    original_read = UploadFile.read
+    original_open = routes._windows_upload_handle
+    attempted = []
+
+    def mutate():
+        result = _set_windows_mount_point(dest, outside)
+        assert result in (0, 5, 32), result
+        attempted.append(result)
+
+    async def read(self, *args):
+        content = await original_read(self, *args)
+        if boundary == "read":
+            mutate()
+        return content
+
+    def open_handle(path, *, directory, create_new=False, **kwargs):
+        if not attempted and (
+            (boundary == "final_open" and create_new)
+            or (boundary == "descent" and kwargs.get("open_if"))
+        ):
+            mutate()
+        return original_open(path, directory=directory, create_new=create_new, **kwargs)
+
+    monkeypatch.setattr(UploadFile, "read", read)
+    monkeypatch.setattr(routes, "_windows_upload_handle", open_handle)
+    response = post(client, scope, path="nested")
+    assert len(attempted) == 1
+    assert response.status_code in (200, 400), response.text
+    assert {p.relative_to(outside): p.read_bytes() for p in outside.rglob("*")} == {
+        Path("sentinel.txt"): b"outside",
+    }
+    if attempted[0] == 0:
+        assert response.status_code == 400
+        assert "saved" not in response.json()
+    else:
+        assert response.status_code == 200
+        item = response.json()["saved"][0]
+        assert Path(item["absolute_path"]).read_bytes() == b"new"
+
+
+@pytest.mark.parametrize("directory,create_new,open_if,access,share,disposition,options", [
+    (True, False, True, 0x100081, 1, 3, 0x200021),
+    (True, False, False, 0x100081, 1, 1, 0x200021),
+    (False, True, False, 0x40100080, 1, 2, 0x200060),
+    (False, False, False, 0x100080, 3, 1, 0x200060),
+])
+def test_windows_relative_open_contract(
+    monkeypatch, directory, create_new, open_if, access, share, disposition, options,
+):
+    import ctypes
+
+    def create(result, desired, attributes, io, allocation, attrs, sharing, mode, flags, ea, size):
+        obj = attributes._obj
+        assert obj.RootDirectory == 123
+        assert obj.ObjectName.contents.Buffer == "child"
+        assert obj.ObjectName.contents.Length == 10
+        assert obj.Attributes == 0x40
+        assert (desired, sharing, mode, flags) == (access, share, disposition, options)
+        result._obj.value = 42
+        return 0
+
+    def attributes(handle, kind, output, size):
+        output._obj.attributes = 0x10 if directory else 0
+        return True
+
+    kernel = SimpleNamespace(
+        CreateFileW=Mock(), CloseHandle=Mock(),
+        GetFileInformationByHandleEx=Mock(side_effect=attributes),
+    )
+    native = SimpleNamespace(NtCreateFile=Mock(side_effect=create))
+    monkeypatch.setattr(ctypes, "WinDLL", Mock(side_effect=[kernel, native]), raising=False)
+    with monkeypatch.context() as patch:
+        patch.setattr(routes.sys, "platform", "win32")
+        assert routes._windows_upload_handle(
+            Path("child"), directory=directory, create_new=create_new,
+            open_if=open_if, root_handle=123,
+        ) == 42
+    kernel.CreateFileW.assert_not_called()
+    kernel.CloseHandle.assert_not_called()
+    native.NtCreateFile.assert_called_once()

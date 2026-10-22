@@ -867,11 +867,15 @@ def read_project_file_raw(slug: str, path: str = Query(...)):
     return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
-def _windows_upload_handle(path: Path, *, directory: bool, create_new: bool = False) -> int:
+def _windows_upload_handle(
+    path: Path, *, directory: bool, create_new: bool = False,
+    root_handle: int | None = None, open_if: bool = False,
+) -> int:
     """Open without following reparse points and deny delete/rename sharing.
 
-    Ancestors remain open until the upload ends. Unlike a path precheck, these
-    handles prevent a concurrent junction/directory replacement on Windows.
+    Ancestors remain open until the upload ends to prevent rename. Below the
+    volume root, use single-component NT relative opens: sharing alone cannot
+    prevent FILE_WRITE_ATTRIBUTES-only reparse mutation on an empty directory.
     """
     if sys.platform != "win32":
         raise RuntimeError("Windows upload handles require Windows")
@@ -901,17 +905,64 @@ def _windows_upload_handle(path: Path, *, directory: bool, create_new: bool = Fa
     # makes our no-write/no-delete sharing effective for the pinned ancestors.
     access = 0x81 if directory else (0x40000080 if create_new else 0x80)
     # OPEN_REPARSE_POINT opens the link itself; BACKUP_SEMANTICS permits directories.
-    handle = create(str(path), access,
-                    3 if not directory and not create_new else 1, None,
-                    1 if create_new else 3, 0x00200000 | 0x02000000, None)
-    if handle == wintypes.HANDLE(-1).value:
-        error = ctypes.get_last_error()
-        if create_new and error in (80, 183):  # ERROR_FILE_EXISTS / ALREADY_EXISTS
+    share = 3 if not directory and not create_new else 1
+    if root_handle is None:
+        handle = create(str(path), access, share, None,
+                        1 if create_new else 3, 0x00200000 | 0x02000000, None)
+        error = ctypes.get_last_error() if handle == wintypes.HANDLE(-1).value else 0
+    else:
+        name = str(path)
+        if not name or name in (".", "..") or any(c in name for c in "\\/:"):
+            raise HTTPException(status_code=400, detail="Invalid upload component")
+
+        class UnicodeString(ctypes.Structure):
+            _fields_ = [("Length", wintypes.USHORT), ("MaximumLength", wintypes.USHORT),
+                        ("Buffer", wintypes.LPWSTR)]
+
+        class ObjectAttributes(ctypes.Structure):
+            _fields_ = [("Length", wintypes.ULONG), ("RootDirectory", wintypes.HANDLE),
+                        ("ObjectName", ctypes.POINTER(UnicodeString)),
+                        ("Attributes", wintypes.ULONG), ("SecurityDescriptor", wintypes.LPVOID),
+                        ("SecurityQualityOfService", wintypes.LPVOID)]
+
+        class IoStatusBlock(ctypes.Structure):
+            _fields_ = [("Status", ctypes.c_void_p), ("Information", ctypes.c_size_t)]
+
+        buffer = ctypes.create_unicode_buffer(name)
+        length = len(name.encode("utf-16-le"))
+        unicode_name = UnicodeString(length, length + 2, ctypes.cast(buffer, wintypes.LPWSTR))
+        attributes = ObjectAttributes(
+            ctypes.sizeof(ObjectAttributes), root_handle, ctypes.pointer(unicode_name),
+            0x40, None, None,  # OBJ_CASE_INSENSITIVE
+        )
+        ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+        nt_create = ntdll.NtCreateFile
+        nt_create.argtypes = [ctypes.POINTER(wintypes.HANDLE), wintypes.DWORD,
+                              ctypes.POINTER(ObjectAttributes), ctypes.POINTER(IoStatusBlock),
+                              wintypes.LPVOID, wintypes.ULONG, wintypes.ULONG, wintypes.ULONG,
+                              wintypes.ULONG, wintypes.LPVOID, wintypes.ULONG]
+        nt_create.restype = wintypes.LONG
+        result = wintypes.HANDLE()
+        io = IoStatusBlock()
+        # FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT, and explicit
+        # DIRECTORY/NON_DIRECTORY. SYNCHRONIZE is required for synchronous CRT IO.
+        status = nt_create(
+            ctypes.byref(result), access | 0x100000, ctypes.byref(attributes),
+            ctypes.byref(io), None, 0x80, share,
+            3 if open_if else (2 if create_new else 1),  # OPEN_IF / CREATE / OPEN
+            0x00200000 | 0x20 | (1 if directory else 0x40), None, 0,
+        )
+        error = 0
+        if status < 0:
+            translate = ntdll.RtlNtStatusToDosError
+            translate.argtypes = [wintypes.LONG]
+            translate.restype = wintypes.ULONG
+            error = translate(status)
+        handle = result.value
+    if error:
+        if create_new and error in (80, 183):
             raise FileExistsError(errno.EEXIST, "Upload name already exists", str(path))
-        # Directories opened for file writes, incompatible sharing (including
-        # an in-flight rename), and malformed Win32 names must not be reported
-        # as successful saves. Other OS failures retain their original cause.
-        if error in (5, 32, 123, 267):
+        if error in (5, 32, 123, 267, 4390, 1920):
             raise HTTPException(status_code=400, detail="Unsafe or unavailable upload target")
         raise ctypes.WinError(error)
     owned = True
@@ -930,12 +981,12 @@ def _windows_upload_handle(path: Path, *, directory: bool, create_new: bool = Fa
 
 
 @contextmanager
-def _upload_directory(root: Path, relative: str) -> Iterator[int | Path]:
+def _upload_directory(root: Path, relative: str) -> Iterator[int]:
     """Pin the actual project root; intentional root/profile links are supported.
 
     Below that boundary links are forbidden. POSIX uses relative no-follow opens;
-    Windows pins all canonical ancestors without delete sharing, so path-based
-    child opens cannot be redirected by renaming/replacing a directory.
+    Windows pins canonical ancestors against rename and opens all descendants
+    relative to directory handles, including newly created directories.
     """
     rel = Path(relative.lstrip("/"))
     parts = rel.parts
@@ -958,12 +1009,15 @@ def _upload_directory(root: Path, relative: str) -> Iterator[int | Path]:
             handles.append(_windows_upload_handle(current, directory=True))
             for part in root.parts[1:]:
                 current /= part
-                handles.append(_windows_upload_handle(current, directory=True))
+                handles.append(_windows_upload_handle(
+                    Path(part), directory=True, root_handle=handles[-1],
+                ))
             for part in parts:
                 current /= part
-                current.mkdir(exist_ok=True)
-                handles.append(_windows_upload_handle(current, directory=True))
-            yield current
+                handles.append(_windows_upload_handle(
+                    Path(part), directory=True, root_handle=handles[-1], open_if=True,
+                ))
+            yield handles[-1]
         finally:
             for handle in reversed(handles):
                 close(handle)
@@ -1000,20 +1054,21 @@ def _upload_directory(root: Path, relative: str) -> Iterator[int | Path]:
             os.close(directory_fd)
 
 
-def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> None:
+def _write_upload(directory_fd: int, filename: str, content: bytes) -> None:
     """Exclusively create a basename in the pinned directory, never following links."""
     if not filename or filename in (".", "..") or Path(filename).name != filename:
         raise HTTPException(status_code=400, detail="Invalid upload filename")
     # CREATE_NEW / O_EXCL is authoritative even when another request races us.
     if sys.platform == "win32":
-        assert isinstance(directory_fd, Path)
         import ctypes
         import msvcrt
         from ctypes import wintypes
 
         if ":" in filename or filename.endswith((".", " ")):
             raise HTTPException(status_code=400, detail="Invalid upload filename")
-        handle = _windows_upload_handle(directory_fd / filename, directory=False, create_new=True)
+        handle = _windows_upload_handle(
+            Path(filename), directory=False, create_new=True, root_handle=directory_fd,
+        )
         # Transfer ownership to the CRT fd, then fdopen closes it on every path.
         try:
             fd = msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
@@ -1035,19 +1090,46 @@ def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> No
         stream.write(content)
 
 
-def _verify_upload_directory(directory_fd: int | Path, expected: Path) -> None:
+def _verify_upload_directory(directory_fd: int, expected: Path) -> None:
     """Do not return a path redirected away from the pinned directory inode."""
-    if isinstance(directory_fd, int):
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        close = kernel.CloseHandle
+        close.argtypes = [wintypes.HANDLE]
+        close.restype = wintypes.BOOL
+        info = kernel.GetFileInformationByHandleEx
+        info.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+        info.restype = wintypes.BOOL
+
+        def identity(handle: int) -> bytes:
+            # FILE_ID_INFO: volume serial (64 bits) plus FILE_ID_128.
+            value = ctypes.create_string_buffer(24)
+            if not info(handle, 18, value, 24):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return value.raw
+
+        # A reparse on this directory is rejected by the opener; a reparse on
+        # an ancestor is detected by identity. This is an acknowledgement check,
+        # not the containment boundary: every child open is handle-relative.
+        expected_handle = _windows_upload_handle(expected, directory=True)
+        try:
+            if identity(directory_fd) != identity(expected_handle):
+                raise HTTPException(status_code=400, detail="Upload directory changed")
+        finally:
+            close(expected_handle)
+    else:
         try:
             matches = os.path.samestat(os.fstat(directory_fd), expected.stat(follow_symlinks=False))
         except OSError as exc:
             raise HTTPException(status_code=400, detail="Upload directory changed") from exc
         if not matches:
             raise HTTPException(status_code=400, detail="Upload directory changed")
-    # Windows ancestors are already pinned against rename and reparse mutation.
 
 
-def _save_new_upload(directory_fd: int | Path, filename: str, content: bytes) -> str:
+def _save_new_upload(directory_fd: int, filename: str, content: bytes) -> str:
     """Allocate an immutable storage name using only the pinned directory writer.
 
     Existing regular files cause bounded retries. Links and non-files are errors,
@@ -1060,13 +1142,14 @@ def _save_new_upload(directory_fd: int | Path, filename: str, content: bytes) ->
             return candidate
         except FileExistsError as exc:
             if sys.platform == "win32":
-                assert isinstance(directory_fd, Path)
                 import ctypes
                 from ctypes import wintypes
 
                 # The inspector opens the existing entry itself, without write
                 # access or reparse traversal. Keep ancestors pinned throughout.
-                handle = _windows_upload_handle(directory_fd / candidate, directory=False)
+                handle = _windows_upload_handle(
+                    Path(candidate), directory=False, root_handle=directory_fd,
+                )
                 close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
                 close.argtypes = [wintypes.HANDLE]
                 close.restype = wintypes.BOOL

@@ -149,3 +149,37 @@ def test_explicit_project_put_can_replace_file(storage):
         response = client.put("/api/workspace/projects/proj/file", params={"path": saved["path"]}, json={"content": "deliberate edit"})
     assert response.status_code == 200, response.text
     assert (project / saved["path"]).read_bytes() == b"deliberate edit"
+
+
+@pytest.mark.parametrize("same_identity", [True, False])
+def test_windows_directory_identity_uses_native_handle_not_crt_fd(tmp_path, monkeypatch, same_identity):
+    import ctypes
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    def identity(handle, kind, output, size):
+        assert kind == 18
+        assert size == 24
+        output.raw = b"a" * 24 if same_identity or handle == 123 else b"b" * 24
+        return True
+
+    kernel = SimpleNamespace(
+        CloseHandle=Mock(return_value=True),
+        GetFileInformationByHandleEx=Mock(side_effect=identity),
+    )
+    monkeypatch.setattr(ctypes, "WinDLL", Mock(return_value=kernel), raising=False)
+    opener = Mock(return_value=456)
+    monkeypatch.setattr(routes, "_windows_upload_handle", opener)
+    fstat = Mock(side_effect=AssertionError("A native HANDLE is not a CRT fd"))
+    monkeypatch.setattr(routes.os, "fstat", fstat)
+    with monkeypatch.context() as patch:
+        patch.setattr(routes.sys, "platform", "win32")
+        if same_identity:
+            routes._verify_upload_directory(123, tmp_path)
+        else:
+            with pytest.raises(routes.HTTPException) as error:
+                routes._verify_upload_directory(123, tmp_path)
+            assert error.value.status_code == 400
+    opener.assert_called_once_with(tmp_path, directory=True)
+    kernel.CloseHandle.assert_called_once_with(456)
+    fstat.assert_not_called()
