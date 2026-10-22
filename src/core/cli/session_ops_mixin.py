@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import shutil
 from datetime import datetime
 
@@ -23,21 +24,41 @@ logger = logging.getLogger(__name__)
 
 class _SessionOpsMixin:
     def _handle_export_command(self, cmd: str):
-        """Handle /export [session_id] [--publish] - write a redacted session export.
+        """Handle /export [session_id] [--format json|markdown] [--publish].
 
         With --publish, opt-in to upload the redacted file to a public GitHub Gist.
         """
         from core.cli.render import _DIM, _RST, _cprint
         from spark_cli.session_export import export_session_redacted, publish_export
 
-        tokens = cmd.strip().split()[1:]  # drop "/export"
-        publish = "--publish" in tokens
-        positional = [t for t in tokens if not t.startswith("--")]
+        try:
+            tokens = iter(shlex.split(cmd)[1:])
+            publish = False
+            format = "json"
+            positional = []
+            for token in tokens:
+                if token == "--publish":
+                    publish = True
+                elif token == "--format":
+                    format = next(tokens, "")
+                elif token.startswith("--format="):
+                    format = token.split("=", 1)[1]
+                elif token.startswith("-"):
+                    raise ValueError(f"Unknown export option: {token}")
+                else:
+                    positional.append(token)
+            if format not in {"json", "markdown"} or len(positional) > 1:
+                raise ValueError("Usage: /export [session_id] [--format json|markdown] [--publish]")
+        except ValueError as exc:
+            _cprint(f"  {_DIM}{exc}{_RST}")
+            return
         session_id = positional[0] if positional else getattr(self, "session_id", None)
         if not session_id:
             _cprint(f"  {_DIM}No active session to export.{_RST}")
             return
-        result = export_session_redacted(session_id, db=getattr(self, "_session_db", None))
+        result = export_session_redacted(
+            session_id, db=getattr(self, "_session_db", None), format=format
+        )
         if result.get("error"):
             _cprint(f"  {_DIM}{result['error']}{_RST}")
             return
