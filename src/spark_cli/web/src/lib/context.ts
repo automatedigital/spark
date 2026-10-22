@@ -73,10 +73,11 @@ export const contextApi = {
     sessionId?: string;
     promptText: string;
     contextItems: ContextItem[];
-  }) =>
+  }, signal?: AbortSignal) =>
     fetchJSON<ContextEstimate>("/api/estimate-tokens", {
       method: "POST",
       headers: jsonHeaders,
+      signal,
       body: JSON.stringify({
         session_id: params.sessionId ?? null,
         prompt: params.promptText,
