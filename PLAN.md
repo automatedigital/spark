@@ -6,7 +6,7 @@ Deliver ten independently scoped defect fixes and ten useful features, each impl
 
 ## Status
 
-20 packets selected; **19/20 code PRs on GitHub**, 0/20 merged. User resumed all work after pausing the 14 live agents. Eight missing PRs and the I01 portability correction are running in fresh isolated worktrees recovered from preserved commits/dirty source. PR creation and passing acceptance remain distinct.
+**Delivery complete: 20/20 code PRs are published on GitHub — ten fixes and ten features.** All twenty branch heads match their GitHub PR heads and all are linked to the parent T3 thread. All assigned implementation/review workers have ended. No PR has been merged or release published. Validation and remaining acceptance gates are recorded below; publication does not imply every CI/native gate passed.
 
 The previous upgrade plan and its unfinished performance/native gates are preserved in [the historical plan](docs/plans/app-upgrade-2026-10-15.md). Existing issues #130, #139 and #140 retain those gates. No historical acceptance is silently carried forward.
 
@@ -37,7 +37,7 @@ The previous upgrade plan and its unfinished performance/native gates are preser
 | F02 | Configure per-job models providers and skills in Schedule | PR published; CI pending | [#157](https://github.com/automatedigital/spark/issues/157) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F02-resume-r3 | [#179](https://github.com/automatedigital/spark/pull/179) / `eb31f7fbfc02` |
 | F03 | Export sessions as readable redacted Markdown | PR published; CI pending | [#158](https://github.com/automatedigital/spark/issues/158) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F03-resume-r3 | [#182](https://github.com/automatedigital/spark/pull/182) / `314b876c4bde` |
 | F04 | Save and restore a bounded prompt stash | PR published; bounded CI review complete; hosted failure remains open | [#159](https://github.com/automatedigital/spark/issues/159) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F04-ci-review-r2 | [#170](https://github.com/automatedigital/spark/pull/170) / `a94d5487b6f7` |
-| F05 | Render safe Mermaid diagrams in chat | Resumed implementation | [#160](https://github.com/automatedigital/spark/issues/160) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F05-resume-r3 | Pending |
+| F05 | Render safe Mermaid diagrams in chat | PR published; local checks pass; CI queued at handoff | [#160](https://github.com/automatedigital/spark/issues/160) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F05-resume-r3 | [#184](https://github.com/automatedigital/spark/pull/184) / `2a64ae895e08` |
 | F06 | Render GitHub-style Markdown callouts | PR published; bounded CI review complete; hosted failure remains open | [#161](https://github.com/automatedigital/spark/issues/161) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F06-ci-review-r2 | [#174](https://github.com/automatedigital/spark/pull/174) / `752034ee380b` |
 | F07 | Render safe collapsible details in chat Markdown | PR published; CI pending | [#162](https://github.com/automatedigital/spark/issues/162) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F07-resume-r3 | [#183](https://github.com/automatedigital/spark/pull/183) / `bab154185503` |
 | F08 | Add opt-in notification sounds with preview | PR published; CI pending | [#163](https://github.com/automatedigital/spark/issues/163) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F08-resume-r3 | [#180](https://github.com/automatedigital/spark/pull/180) / `7dcdcc106b98` |
@@ -159,3 +159,21 @@ PR #170 remains at `a94d5487b6f747a612a11591b0a9fac1c0350fbf`. Latest hosted art
 ### I01 type correction delivered
 
 PR #155 published head `6ef55a4ef7ea53924c94ed962f776cd9db582151`, verified via GitHub. Eight-line platform-guard/narrowing repair resolves the ten introduced Ubuntu mypy errors without suppressions. Standard and explicit Linux mypy pass **133 files**; upload neighbors **74 pass / 11 native-Windows skips**; scoped Ruff passes. Windows-target static diagnostics fall from 40 to 31 with no new upload-helper errors, but native Windows runtime remains unverified. PR stays draft. [Exact evidence](docs/reviews/I01-type-delivery-result.md). This assigned correction is complete; no CI success or native acceptance inferred.
+
+## Final publication verification — 2026-10-22
+
+- [x] Ten independently scoped issue-fix code PRs published, linked and remote heads verified.
+- [x] Ten independently scoped feature code PRs published, linked and remote heads verified.
+- [x] Original paused worktrees, uncommitted source and unrelated handoff move preserved.
+- [x] All assigned sub-agent implementation/review work has ended; no queued/running child remains.
+- [x] PRs, exact heads and check snapshot retained in [the publication manifest](docs/reviews/october-2026-pr-manifest.json).
+
+F05 #184 publishes lazy strict Mermaid rendering with source/copy/error fallback, size caps, sanitation, themes and cancellation. Agent checks: **470 frontend / 14 backend tests**, lint/types/build/initial bundle budget and persisted-chat browser flows pass. Exact-pinned Mermaid/DOMPurify are the sole programme dependency changes. Existing Vite audit advisory is byte-identical to baseline; repository Ruff retains 299 baseline errors. [Full handoff](docs/reviews/F05-delivery-result.md).
+
+### Remaining acceptance and integration boundaries
+
+- I01 #155 remains draft: Windows implementation and cross-platform typing are present, but native Windows runtime proof is missing (11 tests skipped locally). F10 Windows saved-output browsing remains unsupported/unverified.
+- F04 #170 and F06 #174 retain failed hosted browser gates after bounded candidate/base comparisons did not reproduce an attributable source defect. No speculative fix, blind rerun or threshold relaxation was made.
+- Other hosted checks may still be queued/running; the manifest is a snapshot, not a monitoring claim. F03 manifest-import timeout and baseline lint/type/audit findings remain disclosed in reports.
+- Independent PRs require integration/rebase in recorded order: I01→I02 upload handlers, I03→I04 context transport, I05→I06 Git status, F06→F07 Markdown parser; retain F05 diagram dispatch alongside both. F01/F04 composer and F02/F10 Schedule page hunks also need reconciliation. Source PRs do not include a combined production bundle.
+- No full integrated branch/browser/package/rollout acceptance is claimed. These PRs are delivered for review; merging and release remain separate work.
