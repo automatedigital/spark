@@ -10,6 +10,8 @@
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
+export type CalloutKind = "NOTE" | "TIP" | "IMPORTANT" | "WARNING" | "CAUTION";
+
 export type BlockNode =
   | { type: "code"; lang: string; content: string }
   | { type: "heading"; level: number; content: string }
@@ -17,6 +19,7 @@ export type BlockNode =
   | { type: "list"; ordered: boolean; items: string[]; start?: number }
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "blockquote"; content: string }
+  | { type: "callout"; kind: CalloutKind; content: string }
   | { type: "paragraph"; content: string };
 
 export type InlineNode =
@@ -69,6 +72,19 @@ function isTableStart(lines: string[], index: number): boolean {
     index + 1 < lines.length &&
     isTableSeparator(lines[index + 1])
   );
+}
+
+/** Recognize only a complete marker on the first, dequoted line. */
+export function parseCallout(content: string): Extract<BlockNode, { type: "callout" }> | null {
+  const newline = content.indexOf("\n");
+  const firstLine = newline < 0 ? content : content.slice(0, newline);
+  const marker = firstLine.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t\r]*$/);
+  if (!marker) return null;
+  return {
+    type: "callout",
+    kind: marker[1] as CalloutKind,
+    content: newline < 0 ? "" : content.slice(newline + 1),
+  };
 }
 
 export function parseBlocks(text: string): BlockNode[] {
@@ -129,7 +145,8 @@ export function parseBlocks(text: string): BlockNode[] {
         bqLines.push(lines[i].replace(/^>\s?/, ""));
         i++;
       }
-      blocks.push({ type: "blockquote", content: bqLines.join("\n") });
+      const content = bqLines.join("\n");
+      blocks.push(parseCallout(content) ?? { type: "blockquote", content });
       continue;
     }
 
@@ -434,6 +451,10 @@ function blocksEqual(a: BlockNode, b: BlockNode): boolean {
     case "heading": {
       const bb = b as typeof a;
       return a.level === bb.level && a.content === bb.content;
+    }
+    case "callout": {
+      const bb = b as typeof a;
+      return a.kind === bb.kind && a.content === bb.content;
     }
     case "blockquote":
     case "paragraph": {
