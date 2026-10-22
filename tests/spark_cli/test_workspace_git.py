@@ -125,3 +125,79 @@ def test_diff_non_git_400(client):
     _make_plain_project()
     res = client.get("/api/workspace/projects/plain/git/diff", params={"path": "f.txt"})
     assert res.status_code == 400
+
+
+@pytest.fixture(autouse=True)
+def isolated_user_home(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+
+EXACT_PATHS = [
+    "café.txt", "two words.txt", "tab\tname.txt", "line\nname.txt",
+    "carriage\rname.txt", "literal -> arrow.txt", '"quoted.txt"',
+    " leading and trailing.txt ", "back\\slash.txt",
+]
+
+
+@pytest.mark.parametrize("path", EXACT_PATHS)
+@pytest.mark.parametrize("tracked", [False, True], ids=["untracked", "tracked"])
+def test_exact_path_status_diff_revert(client, path, tracked):
+    project = _make_repo()
+    target = project / path
+    if tracked:
+        target.write_text("original\n", encoding="utf-8")
+        _git(project, "add", "--", path)
+        _git(project, "commit", "-qm", "track exact path")
+    target.write_text("changed\nsecond\n", encoding="utf-8")
+
+    response = client.get("/api/workspace/projects/repo/git/status")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["files"] == [{
+        "path": path, "status": "modified" if tracked else "added",
+        "adds": 2, "dels": 1 if tracked else 0,
+    }]
+    assert (body["total_adds"], body["total_dels"]) == (2, 1 if tracked else 0)
+    returned_path = body["files"][0]["path"]
+    diff = client.get("/api/workspace/projects/repo/git/diff", params={"path": returned_path})
+    assert diff.status_code == 200
+    assert "+changed\n+second" in diff.json()["diff"]
+    reverted = client.post("/api/workspace/projects/repo/git/revert", json={"path": returned_path})
+    assert reverted.status_code == 200
+    if tracked:
+        assert target.read_text() == "original\n"
+    else:
+        assert not target.exists()
+    assert client.get("/api/workspace/projects/repo/git/status").json()["files"] == []
+
+
+def test_exact_rename_records_and_following_file(client):
+    project = _make_repo()
+    source = 'old\t"café -> source.txt'
+    destination = '"new\n雪 -> destination.txt"'
+    original = "".join(f"line {i}\n" for i in range(30))
+    (project / source).write_text(original, encoding="utf-8")
+    _git(project, "add", "--", source)
+    _git(project, "commit", "-qm", "track rename source")
+    _git(project, "mv", "--", source, destination)
+    (project / destination).write_text(original + "extra\n", encoding="utf-8")
+    (project / "a.txt").write_text("one\ntwo\nfollowing\n")
+    (project / "z.bin").write_bytes(b"\0binary")
+    _git(project, "add", "--", "z.bin")
+
+    response = client.get("/api/workspace/projects/repo/git/status")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["files"] == sorted([
+        {"path": destination, "status": "modified", "adds": 1, "dels": 0},
+        {"path": "a.txt", "status": "modified", "adds": 1, "dels": 0},
+        {"path": "z.bin", "status": "added", "adds": None, "dels": None},
+    ], key=lambda row: row["path"])
+    assert (body["total_adds"], body["total_dels"]) == (2, 0)
+    diff = client.get("/api/workspace/projects/repo/git/diff", params={"path": destination})
+    assert diff.status_code == 200
+    assert "+extra" in diff.json()["diff"]
