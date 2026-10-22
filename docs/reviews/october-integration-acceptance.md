@@ -26,7 +26,7 @@ All twenty original code heads and tracker #144 are retained as ancestors. The o
 - [x] Node 22.22.1 combined frontend prior to final parser metadata: 555 tests, lint/types/build/budget, audit zero. Final frontend rerun below remains required.
 - [x] Lead real-browser composer/stash/persisted Mermaid flows; independent real Schedule flows.
 - [x] Final parser repair agent: 562 tests, lint/types, 38 mounted browser cases; pinned before/after reproducer verified.
-- [ ] Lead final frontend/bundle/Markdown checks at integrated source.
+- [x] Lead final frontend at integrated parser source: 562 tests, lint, TypeScript/build/budget and 38 mounted completion browser checks pass. Canonical bundle regenerated. Persisted-chat return-scroll harness correction is verified separately before push.
 - [ ] Final hosted native Windows and Linux persistence checks.
 - [ ] Final hosted Python, web, supply-chain and original inspector/navigation/sidebar/recovery/three-attempt longthread gates.
 - [ ] Merge commit verified on main, all original PR states reconciled.
