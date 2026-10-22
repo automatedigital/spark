@@ -49,3 +49,15 @@ The previous upgrade plan and its unfinished performance/native gates are preser
 - Backend and tool audit: running.
 - Web/API/gateway audit: running.
 - Current upstream feature comparison: running.
+
+### Lead source checks
+
+Isolated cron CRUD probes on the baseline confirmed three candidates: `every 0m` is accepted, `update_job` permits changing the durable job ID, and updating legacy `skill` leaves the old canonical `skills` value in place. These require audit reconciliation and separate acceptance scoping before selection; they are not yet counted as delivered fixes.
+
+### Research task identities
+
+All use inherited Codex `gpt-6.1-sol`, medium reasoning, default service tier, read-only source scope.
+
+- backend: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-backend-r1` (running).
+- web: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-web-r1` (running).
+- features: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-features-r1` (running).
