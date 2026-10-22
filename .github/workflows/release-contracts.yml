@@ -21,9 +21,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
-      SPARK_HOME: ${{ runner.temp }}/spark-contracts/profile
-      HOME: ${{ runner.temp }}/spark-contracts/home
-      USERPROFILE: ${{ runner.temp }}/spark-contracts/home
+      SPARK_HOME: ${{ github.workspace }}/.spark-contracts/profile
+      HOME: ${{ github.workspace }}/.spark-contracts/home
+      USERPROFILE: ${{ github.workspace }}/.spark-contracts/home
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
