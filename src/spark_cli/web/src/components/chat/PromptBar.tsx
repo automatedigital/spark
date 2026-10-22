@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp, Box, Brain, Check, ChevronDown, FolderOpen, Loader2, Settings, Square } from "lucide-react";
 import { api } from "@/lib/api";
@@ -14,13 +14,17 @@ import { ContextWindowMeter } from "@/components/chat/ContextWindowMeter";
 import { ComposerAttachmentMenu } from "@/components/chat/ComposerAttachmentMenu";
 import { ComposerMoreMenu } from "@/components/chat/ComposerMoreMenu";
 import { COMPOSER_A11Y_LABELS, COMPOSER_WIDE_ONLY, COMPOSER_WIDE_ONLY_BLOCK } from "@/components/chat/composerContracts";
-import { canNavigateComposerHistory, recallComposerPrompt, stepComposerPromptHistory, type ComposerPromptHistoryBrowse, type ComposerPromptHistoryEntry } from "@/lib/composerPromptHistory";
+import { canNavigateComposerHistory, readComposerRecovery, saveComposerRecovery, recallComposerPrompt, stepComposerPromptHistory, type ComposerPromptHistoryBrowse, type ComposerPromptHistoryEntry } from "@/lib/composerPromptHistory";
+
+import { subscribeDraft } from "@/lib/draftStore";
 
 import { PromptStashChooser } from "./PromptStashChooser";
 import { promptStashKey, type PromptStashScope } from "@/lib/promptStashStore";
 
 interface PromptBarProps {
   promptHistory?: readonly ComposerPromptHistoryEntry[];
+  draftScopeKey?: string;
+  panelOwnerToken?: number;
   stashScope?: PromptStashScope | null;
   input: string;
   setInput: (v: string) => void;
@@ -677,8 +681,12 @@ export function PromptBar({
   onProjectChange,
   placeholder,
   promptHistory = [],
+  draftScopeKey,
+  panelOwnerToken,
 }: PromptBarProps) {
-  const historyOwner = JSON.stringify([workspaceSlug ?? null, sessionId ?? null]);
+  const historyOwner = JSON.stringify([draftScopeKey, panelOwnerToken, workspaceSlug ?? null, sessionId ?? null]);
+  const recovery = useSyncExternalStore(subscribeDraft, () => draftScopeKey ? readComposerRecovery(draftScopeKey) : null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyBrowse, setHistoryBrowse] = useState<ComposerPromptHistoryBrowse | null>(null);
   const [historyMenuOwner, setHistoryMenuOwner] = useState<string | null>(null);
   const historyOpen = historyMenuOwner === historyOwner;
@@ -688,6 +696,7 @@ export function PromptBar({
   useLayoutEffect(() => {
     setHistoryBrowse(null);
     setHistoryMenuOwner(null);
+    setHistoryError(null);
     pendingHistoryCaret.current = null;
   }, [historyOwner]);
   const historyMenuRef = useRef<HTMLDivElement>(null);
@@ -758,7 +767,24 @@ export function PromptBar({
     setCursorPos(pending.position);
   }, [input, historyOwner, historyBrowse]);
 
+  const preserveRecovery = (text: string) => {
+    if (!draftScopeKey || !saveComposerRecovery(draftScopeKey, text)) {
+      setHistoryError("Could not save draft recovery. Your current text is unchanged.");
+      return false;
+    }
+    setHistoryError(null);
+    return true;
+  };
   const applyHistoryPrompt = (prompt: string, browse: ComposerPromptHistoryBrowse | null) => {
+    // Restoring swaps the two drafts, preserving edited recalls too. Selecting
+    // another history entry may replace an edit only after explicit confirmation.
+    if (!browse) {
+      if (!preserveRecovery(input)) return;
+    } else if (!activeBrowse) {
+      if (recovery !== null && recovery !== input && !window.confirm("Start another history browse? Replace the previous recovery draft with your current text? Copy or save the previous recovery first if you want to keep it.")) return;
+      if (!preserveRecovery(input)) return;
+    } else if (input && input !== activeBrowse.entries[activeBrowse.index]?.prompt
+      && !window.confirm("Replace current text with a history prompt? Your saved recovery draft will remain available. Copy or save any current edits first.")) return;
     setHistoryBrowse(browse);
     setHistoryMenuOwner(null);
     setShowMenu(false);
@@ -771,7 +797,7 @@ export function PromptBar({
     if (canNavigateComposerHistory({
       key: e.key, text: input,
       start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd,
-      menuOpen: showMenu || showAtMenu || showSettings || historyOpen,
+      menuOpen: showMenu || showAtMenu || showSettings || historyOpen || stashOwner === stashKey && stashKey !== null,
       modified: e.shiftKey || e.altKey || e.ctrlKey || e.metaKey,
       composing: e.nativeEvent.isComposing,
     })) {
@@ -779,7 +805,7 @@ export function PromptBar({
         e.key === "ArrowUp" ? "backward" : "forward");
       if (next) {
         e.preventDefault();
-        applyHistoryPrompt(next.prompt, next.browse);
+        applyHistoryPrompt(next.browse ? next.prompt : recovery ?? next.prompt, next.browse);
         return;
       }
     }
@@ -997,6 +1023,7 @@ export function PromptBar({
         />
       )}
 
+      {historyError && <p role="alert" className="mb-2 text-sm text-destructive">{historyError}</p>}
       {historyOpen && (
         <div ref={historyMenuRef} role="dialog" aria-label="Loaded prompt history" className="mb-2 max-h-60 overflow-y-auto rounded-lg border border-border bg-popover p-2"
           onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setHistoryMenuOwner(null); textareaRef.current?.focus(); } }}>
@@ -1004,7 +1031,7 @@ export function PromptBar({
           {[...promptHistory].reverse().map((entry, reverseIndex) => (
             <button key={entry.id} type="button" disabled={inputBlocked} title={entry.prompt} className="block w-full truncate rounded px-2 py-1 text-left text-sm hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => {
-                const browse = recallComposerPrompt(historyOwner, promptHistory, promptHistory.length - 1 - reverseIndex, activeBrowse?.draft ?? input);
+                const browse = recallComposerPrompt(historyOwner, promptHistory, promptHistory.length - 1 - reverseIndex, recovery ?? activeBrowse?.draft ?? input);
                 if (browse) applyHistoryPrompt(entry.prompt, browse);
               }}>{entry.prompt}</button>
           ))}
@@ -1073,8 +1100,8 @@ export function PromptBar({
             onClick={() => { setShowMenu(false); setShowAtMenu(false); setShowSettings(false); setHistoryMenuOwner(historyOpen ? null : historyOwner); }}>
             History
           </button>
-          {activeBrowse && <button type="button" disabled={inputBlocked} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-secondary"
-            onClick={() => applyHistoryPrompt(activeBrowse.draft, null)}>Restore draft</button>}
+          {(recovery !== null || activeBrowse) && <button type="button" disabled={inputBlocked} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-secondary"
+            title="Restore saved text and keep current text as the recovery draft" onClick={() => applyHistoryPrompt(recovery ?? activeBrowse!.draft, null)}>Restore draft</button>}
 
           {/* Model + reasoning pill */}
           {modelLabel && (
@@ -1132,7 +1159,7 @@ export function PromptBar({
           )}
 
           {stashScope && <button type="button" disabled={inputBlocked} onClick={() => setStashOwner(stashKey)} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/7 disabled:opacity-40">Saved prompts</button>}
-          {stashScope && stashOwner === stashKey && <PromptStashChooser key={stashKey} scope={stashScope} input={input} onRestore={(text) => { setInput(text); textareaRef.current?.focus(); }} onClose={() => { setStashOwner(null); textareaRef.current?.focus(); }} />}
+          {stashScope && stashOwner === stashKey && <PromptStashChooser key={stashKey} scope={stashScope} input={input} onRestore={(text) => { setHistoryBrowse(null); setHistoryMenuOwner(null); pendingHistoryCaret.current = null; setInput(text); textareaRef.current?.focus(); }} onClose={() => { setStashOwner(null); textareaRef.current?.focus(); }} />}
           <div className="flex-1" />
 
           {/* Token budget indicator */}

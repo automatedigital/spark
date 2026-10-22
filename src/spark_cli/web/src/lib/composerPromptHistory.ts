@@ -1,3 +1,5 @@
+import { flushDraft, getDraft, updateDraft } from "./draftStore";
+
 /** Text-only recall from the loaded transcript; contextItems are never restored. */
 export interface ComposerPromptHistoryEntry {
   id: string;
@@ -59,4 +61,26 @@ export function canNavigateComposerHistory(input: {
   if (input.menuOpen || input.modified || input.composing || input.start !== input.end) return false;
   return (input.key === "ArrowUp" && input.start === 0)
     || (input.key === "ArrowDown" && input.end === input.text.length);
+}
+
+/** A recovery slot uses the existing draft store (including its conflict and
+ * write-failure handling), under the captured backend/profile/project/thread.
+ * JSON distinguishes an original empty string from an unused recovery slot.
+ * It is deliberately not acknowledged when the recalled prompt is submitted.
+ */
+export const composerRecoveryKey = (scopeKey: string) => `${scopeKey}:composer-history`;
+export function readComposerRecovery(scopeKey: string): string | null {
+  const raw = getDraft(composerRecoveryKey(scopeKey)).draft.text;
+  if (!raw) return null;
+  try { const text: unknown = JSON.parse(raw); return typeof text === "string" ? text : null; }
+  catch { return null; }
+}
+export function saveComposerRecovery(scopeKey: string, text: string): boolean {
+  const key = composerRecoveryKey(scopeKey);
+  const entry = getDraft(key);
+  if (entry.status === "conflict" || entry.status === "unavailable"
+    || entry.draft.text && readComposerRecovery(scopeKey) === null) return false;
+  updateDraft(key, { text: JSON.stringify(text) });
+  flushDraft(key);
+  return getDraft(key).status === "saved";
 }

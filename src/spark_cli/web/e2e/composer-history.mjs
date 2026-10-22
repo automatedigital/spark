@@ -17,6 +17,7 @@ await mkdir(output, { recursive: true });
 await writeFile(path.join(home, "config.yaml"), "model:\n  default: fixture\n  provider: openai\n  base_url: http://127.0.0.1:1/v1\n");
 const env = { ...process.env, HOME: home, USERPROFILE: home, SPARK_HOME: home, PYTHONPATH: path.join(repo, "src"), SPARK_WEB_FAKE_STREAMS: "1" };
 const logs = [], children = [], checks = [], errors = [], sent = [];
+let rejectSend = false;
 const wait = async (test, label) => {
   for (let i = 0; i < 600; i++) {
     if (await test()) return;
@@ -55,12 +56,15 @@ try {
   await wait(async () => { try { return (await fetch(base)).ok; } catch { return false; } }, "frontend");
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  let acceptConfirmation = true;
+  page.on("dialog", (dialog) => acceptConfirmation ? dialog.accept() : dialog.dismiss());
   page.on("pageerror", (error) => errors.push(String(error)));
   // Intercept the provider boundary only. Acceptance and streaming use the real replay backend.
   await page.route("**/api/conversations/*/messages", async (route) => {
     const sid = new URL(route.request().url()).pathname.split("/")[3];
     const body = route.request().postDataJSON();
     sent.push({ sid, ...body });
+    if (rejectSend) { await route.fulfill({ status: 503, json: { detail: "Fixture rejected submission" } }); return; }
     const response = await fetch(`${api}/api/dev/fake-streams`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
       session_id: sid, title: "Recall Alpha", message: body.message,
       events: [{ type: "token", text: "REPLAY_RECALL_OK", delay_ms: 500 }],
@@ -87,42 +91,117 @@ try {
   await caret(0, 4); await input.press("ArrowDown"); await value("Recall Alpha first\nsecond line");
   await caret(0); await input.press("Shift+ArrowUp"); await value("Recall Alpha first\nsecond line");
   checks.push("empty Up recalls newest; Up at start steps older; multiline/selection/modifier guards preserve input; no send");
-  await input.fill("unsent draft\nkeep me");
+  // A nonempty draft and an edited recall must both remain recoverable after
+  // real ChatPanel navigation/unmount and a full browser reload.
+  const original = "unsent draft\nkeep me";
+  const recallLatest = async () => {
+    const dialog = panel.getByRole("dialog", { name: "Loaded prompt history" });
+    if (!await dialog.isVisible()) await panel.getByRole("button", { name: "Loaded prompt history", exact: true }).click();
+    await dialog.getByRole("button", { name: "Recall Alpha latest", exact: true }).click();
+  };
   await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value("");
-  await input.fill("unsent draft\nkeep me");
-  await panel.getByRole("button", { name: "Loaded prompt history", exact: true }).click();
-  const dialog = panel.getByRole("dialog", { name: "Loaded prompt history" });
-  await wait(() => dialog.getByRole("button", { name: "Recall Alpha latest", exact: true }).evaluate((el) => el === document.activeElement), "picker keyboard focus");
-  await page.keyboard.press("Escape");
-  assert.equal(await dialog.count(), 0);
-  await panel.getByRole("button", { name: "Loaded prompt history", exact: true }).click();
-  await page.screenshot({ path: path.join(output, "history-picker.png") });
-  assert.equal(await dialog.getByRole("button").count(), 3);
-  assert.equal(await dialog.getByText("ASSISTANT_ONLY_CONTEXT").count(), 0);
-  await dialog.getByRole("button", { name: "Recall Alpha latest", exact: true }).click();
-  await input.fill("edited recall"); await caret(13); await input.press("ArrowDown"); await value("unsent draft\nkeep me");
-  checks.push("picker lists only loaded user text; edited recall Down restores original multiline draft");
   await input.fill("/hel"); await page.getByRole("button", { name: /help/ }).first().waitFor();
   await caret(0); await input.press("ArrowUp"); await value("/hel"); await input.press("Escape");
-  await input.fill(""); await input.press("ArrowUp"); await value("Recall Alpha latest");
+  await input.fill(original);
+  await input.evaluate((el) => { el.focus(); el.setSelectionRange(0, 0); el.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", isComposing: true, bubbles: true })); });
+  await value(original);
+  await panel.getByRole("button", { name: "Loaded prompt history", exact: true }).click();
+  const historyDialog = panel.getByRole("dialog", { name: "Loaded prompt history" });
+  await wait(() => historyDialog.getByRole("button", { name: "Recall Alpha latest", exact: true }).evaluate((el) => el === document.activeElement), "picker keyboard focus");
+  assert.equal(await historyDialog.getByRole("button").count(), 3);
+  assert.equal(await historyDialog.getByText("ASSISTANT_ONLY_CONTEXT").count(), 0);
+  await page.screenshot({ path: path.join(output, "history-picker.png") });
+  await page.keyboard.press("Escape");
+  assert.equal(await historyDialog.count(), 0);
+  acceptConfirmation = false;
+  await recallLatest(); await value(original);
+  acceptConfirmation = true;
+  await recallLatest();
+  await input.fill("edited recall survives reload");
+  await caret((await input.inputValue()).length); await input.press("ArrowDown"); await value(original);
+  await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value("edited recall survives reload");
+  checks.push("IME and slash menu retain arrows; cancel new browse preserves text; edited recall Down and Restore draft preserve both texts");
   await open("f01_b", "Recall Beta");
+  await input.fill("Beta nonempty private draft");
   assert.equal(await panel.getByRole("button", { name: "Restore draft", exact: true }).count(), 0);
-  await input.fill(""); await input.press("ArrowUp"); await value("Recall Beta latest");
   await open("f01_a", "Recall Alpha");
-  assert.equal(await panel.getByRole("button", { name: "Restore draft", exact: true }).count(), 0);
-  await input.fill(""); await input.press("ArrowDown"); await value("");
-  checks.push("slash menu retains arrows; A→B→A retires history ownership and never restores another thread's draft");
-  await input.press("ArrowUp"); await value("Recall Alpha latest");
-  await input.fill("Recall Alpha latest edited before send");
-  assert.equal(sent.length, 0);
+  await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value(original);
+  await page.screenshot({ path: path.join(output, `original-recovered-${checks.length}-${sent.length}.png`) });
+  await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value("edited recall survives reload");
+  await page.reload();
+  await open("f01_a", "Recall Alpha");
+  await value("edited recall survives reload");
+  await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value(original);
+  await page.screenshot({ path: path.join(output, `original-recovered-${checks.length}-${sent.length}.png`) });
+  await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value("edited recall survives reload");
+  await open("f01_b", "Recall Beta"); await value("Beta nonempty private draft");
+  await open("f01_a", "Recall Alpha");
+  checks.push("nonempty A/recall/edit/B/nonempty B/A and reload preserve original and edited recall through Restore draft; B remains untouched");
+
+  // Failed explicit send retains the edit and original; successful send consumes
+  // only the submitted current draft, leaving the original recovery available.
+  rejectSend = true;
   await input.press("Enter");
-  await wait(() => sent.length === 1, "explicit send");
-  assert.equal(sent[0].message, "Recall Alpha latest edited before send");
-  assert.equal(sent[0].sid, "f01_a");
-  assert.deepEqual(sent[0].context_items ?? [], []);
+  await wait(() => sent.length === 1, "failed explicit send");
+  await panel.getByText("Fixture rejected submission", { exact: false }).waitFor();
+  await value("edited recall survives reload");
+  await page.reload(); await open("f01_a", "Recall Alpha");
+  await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value(original);
+  await page.screenshot({ path: path.join(output, `original-recovered-${checks.length}-${sent.length}.png`) });
+  await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value("edited recall survives reload");
+  rejectSend = false;
+  await input.press("Enter");
+  await wait(() => sent.length === 2, "successful explicit send");
   await panel.getByText("REPLAY_RECALL_OK", { exact: true }).waitFor();
   await panel.getByRole("button", { name: "Stop", exact: true }).waitFor({ state: "hidden" });
-  checks.push("explicit Enter sends edited text exactly once to correct session; replay stream completes with no provider");
+  await value("");
+  await page.reload(); await open("f01_a", "Recall Alpha");
+  await panel.getByRole("button", { name: "Restore draft", exact: true }).click(); await value(original);
+  await page.screenshot({ path: path.join(output, `original-recovered-${checks.length}-${sent.length}.png`) });
+  assert.equal(sent[0].message, "edited recall survives reload");
+  assert.equal(sent[1].message, "edited recall survives reload");
+  assert.equal(sent[1].sid, "f01_a");
+  assert.deepEqual(sent[1].context_items ?? [], []);
+  checks.push("failed send and reload retain both drafts; accepted explicit send consumes only submitted text, original survives reload; exactly two explicit requests and no provider");
+
+  // Existing F04 restore is an explicit replacement. Retire history browsing so
+  // Down cannot replace the newly restored stash text.
+  await input.fill("Saved stash text Ω\nline 2");
+  await panel.getByRole("button", { name: "Saved prompts", exact: true }).click();
+  let stash = page.getByRole("dialog", { name: "Saved prompts" });
+  await stash.getByRole("button", { name: "Save current prompt", exact: true }).click();
+  await stash.getByRole("button", { name: "Close saved prompts", exact: true }).click();
+  await input.fill(""); await input.press("ArrowUp");
+  const recalled = await input.inputValue();
+  await panel.getByRole("button", { name: "Saved prompts", exact: true }).click();
+  stash = page.getByRole("dialog", { name: "Saved prompts" });
+  await input.evaluate((el) => el.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  await value(recalled);
+  await stash.getByRole("button", { name: "Restore prompt", exact: true }).click();
+  await stash.getByRole("button", { name: "Replace draft text", exact: true }).click();
+  await value("Saved stash text Ω\nline 2");
+  await caret((await input.inputValue()).length); await input.press("ArrowDown"); await value("Saved stash text Ω\nline 2");
+  await open("f01_b", "Recall Beta"); await value("Beta nonempty private draft");
+  await open("f01_a", "Recall Alpha"); await value("Saved stash text Ω\nline 2");
+  await caret((await input.inputValue()).length); await input.press("ArrowDown"); await value("Saved stash text Ω\nline 2");
+  checks.push("recall → stash restore → Down → B/A → Down preserves newly restored stash; modal guards history keyboard events");
+  assert.equal(sent.length, 2);
+  await open("f01_b", "Recall Beta");
+  await page.evaluate(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    window.__restoreStorage = () => { Storage.prototype.setItem = originalSetItem; };
+    Storage.prototype.setItem = function(key, value) {
+      if (key.endsWith(":composer-history")) throw new DOMException("Fixture quota", "QuotaExceededError");
+      return originalSetItem.call(this, key, value);
+    };
+  });
+  await panel.getByRole("button", { name: "Loaded prompt history", exact: true }).click();
+  await panel.getByRole("dialog", { name: "Loaded prompt history" }).getByRole("button", { name: "Recall Beta latest", exact: true }).click();
+  await panel.getByText("Could not save draft recovery. Your current text is unchanged.", { exact: true }).waitFor();
+  await value("Beta nonempty private draft");
+  await page.evaluate(() => window.__restoreStorage());
+  await page.reload(); await open("f01_b", "Recall Beta"); await value("Beta nonempty private draft");
+  checks.push("quota-failed recovery blocks destructive recall, reports failure and retains current draft across reload");
   assert.deepEqual(errors, []);
   await page.screenshot({ path: path.join(output, "final.png") });
 } catch (error) {

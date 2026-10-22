@@ -2173,6 +2173,8 @@ export function ChatPanel({
       />
 
       <PromptBar
+        draftScopeKey={draft.ready ? draft.scopeKey : undefined}
+        panelOwnerToken={owner.ownerToken}
         promptHistory={buildComposerPromptHistoryEntries(chatMessages)}
         stashScope={draft.stashScope}
         input={input}
