@@ -873,6 +873,8 @@ def _windows_upload_handle(path: Path, *, directory: bool) -> int:
     Ancestors remain open until the upload ends. Unlike a path precheck, these
     handles prevent a concurrent junction/directory replacement on Windows.
     """
+    if sys.platform != "win32":
+        raise RuntimeError("Windows upload handles require Windows")
     import ctypes
     from ctypes import wintypes
 
@@ -912,7 +914,8 @@ def _windows_upload_handle(path: Path, *, directory: bool) -> int:
         if attrs.attributes & 0x400 or bool(attrs.attributes & 0x10) != directory:
             raise HTTPException(status_code=400, detail="Unsafe upload target")
         owned = False
-        return handle
+        # HANDLE uses c_void_p restype, which yields a Python integer here.
+        return cast(int, handle)
     finally:
         if owned:
             close(handle)
@@ -931,7 +934,7 @@ def _upload_directory(root: Path, relative: str) -> Iterator[int | Path]:
     if ".." in parts or rel.drive or rel.root:
         raise HTTPException(status_code=400, detail="Path traversal detected")
     root = root.resolve(strict=True)
-    if os.name == "nt":
+    if sys.platform == "win32":
         # Win32 normalizes trailing dots/spaces and interprets colons as streams.
         if any(part.endswith((".", " ")) or ":" in part for part in parts):
             raise HTTPException(status_code=400, detail="Invalid upload path")
@@ -994,7 +997,8 @@ def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> No
         raise HTTPException(status_code=400, detail="Invalid upload filename")
     # Do not truncate until fstat confirms a regular file; O_NONBLOCK also avoids
     # hanging on a FIFO supplied in place of an existing upload.
-    if isinstance(directory_fd, Path):
+    if sys.platform == "win32":
+        assert isinstance(directory_fd, Path)
         import ctypes
         import msvcrt
         from ctypes import wintypes
@@ -1012,6 +1016,7 @@ def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> No
             close(handle)
             raise
     else:
+        assert isinstance(directory_fd, int)
         fd = os.open(
             filename, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
             0o666, dir_fd=directory_fd,
