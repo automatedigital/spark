@@ -1,0 +1,211 @@
+{
+  "reviewer": "composer",
+  "date": "2026-10-22",
+  "repository": "automatedigital/spark",
+  "worktree": "/tmp/spark-composer-review-20261022",
+  "scope": [
+    167,
+    172,
+    176,
+    170,
+    180
+  ],
+  "verdict_semantics": "SAFE means source review found no demonstrated introduced P1/P2 blocker; required CI, integration and package gates remain mandatory.",
+  "overall_recommendation": "Merge 167 then 172 after combined validation; 180 source-safe but await required e2e success; hold 176 for draft loss and 170 for unresolved browser gate. No rebuild/release completion claim.",
+  "prs": [
+    {
+      "pr": 167,
+      "url": "https://github.com/automatedigital/spark/pull/167",
+      "head": "f60fc342a7adb265c8073b278149089032357b28",
+      "verdict": "SAFE",
+      "source_review_safe": true,
+      "t3_linked": true,
+      "findings": [],
+      "ci_snapshot": [
+        {
+          "name": "lint-types-tests",
+          "status": "IN_PROGRESS",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789427105/job/119861172817"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789427105/job/119861172214"
+        }
+      ],
+      "comments": [],
+      "reviews": [],
+      "installed_package_evidence": false,
+      "merge_recommendation": "MERGE_AFTER_REQUIRED_CI_AND_INTEGRATION_VALIDATION",
+      "minimum_remediation": "Verify terminal required CI; preserve URL/auth transport while applying 172; rerun combined transport/hook tests."
+    },
+    {
+      "pr": 172,
+      "url": "https://github.com/automatedigital/spark/pull/172",
+      "head": "810b8f62dbb87091642a26570132bdd852f7b1bb",
+      "verdict": "SAFE",
+      "source_review_safe": true,
+      "t3_linked": true,
+      "findings": [],
+      "ci_snapshot": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789810746/job/119862524580"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789810746/job/119862524575"
+        }
+      ],
+      "comments": [],
+      "reviews": [],
+      "installed_package_evidence": false,
+      "merge_recommendation": "MERGE_AFTER_167_AND_COMBINED_VALIDATION",
+      "depends_on": [
+        167
+      ],
+      "minimum_remediation": "Retain shared selected-backend fetchJSON plus optional AbortSignal; run combined transport/hook tests and out-of-order browser cases."
+    },
+    {
+      "pr": 176,
+      "url": "https://github.com/automatedigital/spark/pull/176",
+      "head": "a667b806b3b24e7d875f39cd49b1b28a694a3844",
+      "verdict": "BLOCKED",
+      "source_review_safe": false,
+      "t3_linked": true,
+      "findings": [
+        {
+          "priority": "P2",
+          "introduced": true,
+          "path": "src/spark_cli/web/src/components/chat/PromptBar.tsx",
+          "line": 683,
+          "related_lines": [
+            759
+          ],
+          "title": "History retirement destroys the original unsent draft",
+          "trigger": "Nonempty unsent draft in A -> picker recall -> B -> A (or unmount/reload)",
+          "actual": "Recalled prompt persists; original draft and Restore action are gone",
+          "evidence": [
+            "/tmp/composer-176-browser.log",
+            "/tmp/composer-history-review.mjs",
+            "/tmp/composer-history-review-proof/result.json"
+          ]
+        }
+      ],
+      "ci_snapshot": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789941506/job/119863005744"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789941506/job/119863005419"
+        }
+      ],
+      "comments": [],
+      "reviews": [],
+      "installed_package_evidence": false,
+      "merge_recommendation": "HOLD_FOR_SOURCE_FIX",
+      "minimum_remediation": "Preserve original draft under its captured draft owner when recall browsing retires; add real-browser A/B/A and reload preservation checks."
+    },
+    {
+      "pr": 170,
+      "url": "https://github.com/automatedigital/spark/pull/170",
+      "head": "a94d5487b6f747a612a11591b0a9fac1c0350fbf",
+      "verdict": "BLOCKED",
+      "source_review_safe": true,
+      "t3_linked": true,
+      "findings": [],
+      "ci_snapshot": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789747849/job/119862296584"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789747849/job/119862296942"
+        }
+      ],
+      "comments": [],
+      "reviews": [],
+      "installed_package_evidence": false,
+      "merge_recommendation": "HOLD_FOR_REQUIRED_BROWSER_GATE",
+      "gate_blocker": {
+        "introduced_source_defect_proven": false,
+        "run": 39789747849,
+        "job": 119862296942,
+        "path": "src/spark_cli/web/e2e/baseline-capture.mjs",
+        "line": 350,
+        "failure": "History paging made no forward progress at before_id=2401",
+        "evidence": "/tmp/composer-170-newest-failed.log"
+      },
+      "minimum_remediation": "Resolve required hosted longthread cursor failure with source attribution and clean final-head gate; no speculative stash fix."
+    },
+    {
+      "pr": 180,
+      "url": "https://github.com/automatedigital/spark/pull/180",
+      "head": "7dcdcc106b988afd252c3aeb4a4d9ab50e4c51ee",
+      "verdict": "SAFE",
+      "source_review_safe": true,
+      "t3_linked": true,
+      "findings": [],
+      "ci_snapshot": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798452030/job/119891997853"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798452030/job/119891998588"
+        }
+      ],
+      "comments": [],
+      "reviews": [],
+      "installed_package_evidence": false,
+      "merge_recommendation": "SOURCE_SAFE_HOLD_UNTIL_REQUIRED_E2E_SUCCESS",
+      "minimum_remediation": "Required e2e was pending at snapshot; require terminal success, preserve integrated policy/dedupe, validate installed audio separately before release."
+    }
+  ],
+  "fresh_checks": {
+    "167": {
+      "vitest_passed": 39
+    },
+    "172": {
+      "vitest_passed": 10,
+      "pytest_passed": 9
+    },
+    "176": {
+      "vitest_passed": 6,
+      "browser_regression": "FAIL_EXPECTED_P2_DRAFT_LOSS"
+    },
+    "170": {
+      "vitest_passed": 8,
+      "browser": "PASS_6_FEATURE_FLOWS"
+    },
+    "180": {
+      "vitest_passed": 10,
+      "browser": "PASS_WEB_AND_SIMULATED_TAURI"
+    }
+  },
+  "no_source_or_pr_mutations": true,
+  "no_live_provider_calls": true,
+  "no_delegation_merge_push_release_watch": true
+}

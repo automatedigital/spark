@@ -192,3 +192,11 @@ User authorized: independently review every PR, merge safe work, rebuild apps an
 Integration now retains all twenty original heads and expected conflict resolutions in a separate checkout. Upload containment/identity composition, credential redaction, composer draft preservation and cron identity/capability repairs are separately delegated. Vite exact pin updated to **7.3.7**, npm reports **zero vulnerabilities**; existing audit/security threshold retained. Added Linux/Windows persistence contract gate so native Windows upload/lock proof cannot be inferred from macOS-only checks.
 
 Apple agreement: service returned 403; account holder reports agreement accepted. Immediate recheck still returned 403 for team GW2S46PJR7. Recheck at notarization stage; do not distribute an ad-hoc or unnotarized Mac release as signed/notarized.
+
+### Review findings and first integrated repairs
+
+All twenty original heads independently reviewed. Workspace review holds #155/#171/#168/#173/#177 for demonstrated permission, UTF-8 component budget, Git raw-byte transport, newly exposed symlink discard and canvas target/lock lifetime defects. Full verdicts are in docs/reviews/october-merge-* reports. No original unsafe head is approved merely because CI passed.
+
+Integrated anchored/exclusive upload allocation (`a38698e`), structured credential-field redaction (`a0662f6`), and lead upload permission/byte-budget fix. New permission/multibyte tests fail **3/3 before** and focused upload set passes **51 / 11 Windows skips** after; an ancestor substitution at root-open is rejected. First combined frontend checks pass **548 tests**, lint and TypeScript. Standard mypy with explicit checkout PYTHONPATH passes **137 files**; an initial run lacking checkout import ownership produced unrelated import-scope errors and is not acceptance.
+
+Remaining source repairs: composer durable original draft, cron skill identity/output capability, Git unsupported-name/exact-discard boundaries, canvas lexical target and profile-owned lock identity. Native Linux/Windows persistence contracts and final integrated browser/runtime checks remain required before merge.
