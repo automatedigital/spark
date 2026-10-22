@@ -867,24 +867,105 @@ def read_project_file_raw(slug: str, path: str = Query(...)):
     return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
-@contextmanager
-def _upload_directory(destination: Path) -> Iterator[int]:
-    """Pin every directory below the trusted profile home without following links.
+def _windows_upload_handle(path: Path, *, directory: bool) -> int:
+    """Open without following reparse points and deny delete/rename sharing.
 
-    Resolving/checking a pathname before writing is insufficient: any component
-    can be replaced while the multipart body is read. Relative descriptor-based
-    opens retain the directory we actually checked, even after a rename.
+    Ancestors remain open until the upload ends. Unlike a path precheck, these
+    handles prevent a concurrent junction/directory replacement on Windows.
     """
-    if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
-        # A pathname fallback would reintroduce the race (notably on Windows).
-        raise HTTPException(status_code=501, detail="Safe uploads unavailable on this platform")
-    home = get_spark_home().absolute()
-    parts = destination.absolute().relative_to(home).parts
-    if ".." in parts:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                       wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+
+    class AttributeTag(ctypes.Structure):
+        _fields_ = [("attributes", wintypes.DWORD), ("tag", wintypes.DWORD)]
+
+    info = kernel.GetFileInformationByHandleEx
+    info.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    info.restype = wintypes.BOOL
+    # Share only reads: deny renames AND write handles that could install a
+    # reparse point in place. Existing incompatible handles make this open fail.
+    # OPEN_REPARSE_POINT opens the link itself; BACKUP_SEMANTICS permits directories.
+    handle = create(str(path), 0x80 if directory else 0x40000080, 1, None,
+                    3 if directory else 4, 0x00200000 | 0x02000000, None)
+    if handle == wintypes.HANDLE(-1).value:
+        error = ctypes.get_last_error()
+        # Directories opened for file writes, incompatible sharing (including
+        # an in-flight rename), and malformed Win32 names must not be reported
+        # as successful saves. Other OS failures retain their original cause.
+        if error in (5, 32, 123, 267):
+            raise HTTPException(status_code=400, detail="Unsafe or unavailable upload target")
+        raise ctypes.WinError(error)
+    owned = True
+    try:
+        attrs = AttributeTag()
+        if not info(handle, 9, ctypes.byref(attrs), ctypes.sizeof(attrs)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if attrs.attributes & 0x400 or bool(attrs.attributes & 0x10) != directory:
+            raise HTTPException(status_code=400, detail="Unsafe upload target")
+        owned = False
+        return handle
+    finally:
+        if owned:
+            close(handle)
+
+
+@contextmanager
+def _upload_directory(root: Path, relative: str) -> Iterator[int | Path]:
+    """Pin the actual project root; intentional root/profile links are supported.
+
+    Below that boundary links are forbidden. POSIX uses relative no-follow opens;
+    Windows pins all canonical ancestors without delete sharing, so path-based
+    child opens cannot be redirected by renaming/replacing a directory.
+    """
+    rel = Path(relative.lstrip("/"))
+    parts = rel.parts
+    if ".." in parts or rel.drive or rel.root:
         raise HTTPException(status_code=400, detail="Path traversal detected")
+    root = root.resolve(strict=True)
+    if os.name == "nt":
+        # Win32 normalizes trailing dots/spaces and interprets colons as streams.
+        if any(part.endswith((".", " ")) or ":" in part for part in parts):
+            raise HTTPException(status_code=400, detail="Invalid upload path")
+        import ctypes
+        from ctypes import wintypes
+
+        close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+        close.argtypes = [wintypes.HANDLE]
+        close.restype = wintypes.BOOL
+        handles = []
+        try:
+            current = Path(root.anchor)
+            handles.append(_windows_upload_handle(current, directory=True))
+            for part in root.parts[1:]:
+                current /= part
+                handles.append(_windows_upload_handle(current, directory=True))
+            for part in parts:
+                current /= part
+                current.mkdir(exist_ok=True)
+                handles.append(_windows_upload_handle(current, directory=True))
+            yield current
+        finally:
+            for handle in reversed(handles):
+                close(handle)
+        return
     directory_fd = None
     try:
-        directory_fd = os.open(home, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        directory_fd = os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        for part in root.parts[1:]:
+            child_fd = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd
+            )
+            os.close(directory_fd)
+            directory_fd = child_fd
         for part in parts:
             try:
                 os.mkdir(part, dir_fd=directory_fd)
@@ -907,16 +988,34 @@ def _upload_directory(destination: Path) -> Iterator[int]:
             os.close(directory_fd)
 
 
-def _write_upload(directory_fd: int, filename: str, content: bytes) -> None:
+def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> None:
     """Open the final basename without following a swapped-in symlink."""
     if not filename or filename in (".", ".."):
         raise HTTPException(status_code=400, detail="Invalid upload filename")
     # Do not truncate until fstat confirms a regular file; O_NONBLOCK also avoids
     # hanging on a FIFO supplied in place of an existing upload.
-    fd = os.open(
-        filename, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
-        0o666, dir_fd=directory_fd,
-    )
+    if isinstance(directory_fd, Path):
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        if ":" in filename or filename.endswith((".", " ")):
+            raise HTTPException(status_code=400, detail="Invalid upload filename")
+        handle = _windows_upload_handle(directory_fd / filename, directory=False)
+        # Transfer ownership to the CRT fd, then fdopen closes it on every path.
+        try:
+            fd = msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+        except OSError:
+            close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+            close.argtypes = [wintypes.HANDLE]
+            close.restype = wintypes.BOOL
+            close(handle)
+            raise
+    else:
+        fd = os.open(
+            filename, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+            0o666, dir_fd=directory_fd,
+        )
     with os.fdopen(fd, "wb") as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise HTTPException(status_code=400, detail="Upload target must be a regular file")
@@ -931,11 +1030,8 @@ async def upload_files(
     path: str = Query(default=""),
 ):
     project_dir = _project_dir(slug)
-    # Keep the lexical components: _safe_path resolves links and would hide them
-    # from the no-follow directory walk.
-    dest_dir = project_dir / path.lstrip("/")
     saved = []
-    with _upload_directory(dest_dir) as directory_fd:
+    with _upload_directory(project_dir, path) as directory_fd:
         for upload in files:
             filename = Path(upload.filename or "upload").name
             try:
@@ -959,7 +1055,7 @@ async def upload_files(
 async def upload_workspace_files(files: list[UploadFile] = File(...)):
     dest_dir = _workspace_root() / "files"
     saved = []
-    with _upload_directory(dest_dir) as directory_fd:
+    with _upload_directory(_workspace_root(), "files") as directory_fd:
         for upload in files:
             filename = Path(upload.filename or "upload").name
             dest = dest_dir / filename

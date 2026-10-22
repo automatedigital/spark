@@ -1,6 +1,7 @@
 """Multipart upload containment, using only disposable profile/home storage."""
 
 import os
+import subprocess
 
 import pytest
 from fastapi import FastAPI
@@ -131,8 +132,13 @@ def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monke
 
     async def swapped_read(self, *args):
         content = await original_read(self, *args)
-        dest.rename(dest.with_name("pinned"))
-        dest.symlink_to(outside, target_is_directory=True)
+        try:
+            dest.rename(dest.with_name("pinned"))
+        except PermissionError:
+            # Windows directory handles deny renames for the upload lifetime.
+            assert os.name == "nt"
+        else:
+            dest.symlink_to(outside, target_is_directory=True)
         return content
 
     monkeypatch.setattr(UploadFile, "read", swapped_read)
@@ -140,10 +146,12 @@ def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monke
     assert response.status_code in (200, 400)
     assert (outside / "note.txt").read_bytes() == b"original"
     if response.status_code == 200:
-        assert (dest.with_name("pinned") / "note.txt").read_bytes() == b"new"
+        actual = dest if os.name == "nt" else dest.with_name("pinned")
+        assert (actual / "note.txt").read_bytes() == b"new"
 
 
 @pytest.mark.parametrize("scope", ["project", "global"])
+@pytest.mark.skipif(os.name == "nt", reason="POSIX syscall boundary; Windows equivalent below")
 def test_symlink_swap_at_final_open_is_rejected(uploads, tmp_path, monkeypatch, scope):
     client, root, project = uploads
     dest = project if scope == "project" else root / "files"
@@ -170,16 +178,8 @@ def test_symlink_swap_at_final_open_is_rejected(uploads, tmp_path, monkeypatch, 
     assert sentinel.read_bytes() == b"original"
 
 
-def test_unsupported_platform_fails_closed(uploads, monkeypatch):
-    client, _, _ = uploads
-    monkeypatch.setattr(os, "supports_dir_fd", set())
-    response = post(client, "project")
-    assert response.status_code == 501
-    assert "saved" not in response.json()
-
-
 @pytest.mark.parametrize("component", ["workspace", "project", "intermediate"])
-def test_rejects_symlinks_in_ancestor_directories(uploads, tmp_path, component):
+def test_root_links_are_boundaries_but_nested_links_are_rejected(uploads, tmp_path, component):
     client, root, project = uploads
     target = tmp_path / "outside"
     target.mkdir()
@@ -196,7 +196,119 @@ def test_rejects_symlinks_in_ancestor_directories(uploads, tmp_path, component):
         (project / "linked").symlink_to(target, target_is_directory=True)
         path = "linked/new/nested"
     response = post(client, "project", path=path)
+    if component == "intermediate":
+        assert response.status_code == 400
+        assert "saved" not in response.json()
+        assert not list(target.rglob("note.txt"))
+        assert not (target / "new").exists()
+    else:
+        assert response.status_code == 200
+        actual = target / "proj" if component == "workspace" else target
+        assert (actual / "note.txt").read_bytes() == b"new"
+        # Even an intentional linked root must not permit a link below it.
+        outside = tmp_path / "sentinel.txt"
+        outside.write_bytes(b"original")
+        (actual / "escape.txt").symlink_to(outside)
+        assert post(client, "project", filename="escape.txt").status_code == 400
+        assert outside.read_bytes() == b"original"
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_intentionally_linked_profile_home(uploads, tmp_path, monkeypatch, scope):
+    client, root, project = uploads
+    home = root.parent
+    actual = tmp_path / "actual-profile"
+    home.rename(actual)
+    home.symlink_to(actual, target_is_directory=True)
+    assert post(client, scope, path="nested").status_code == 200
+    dest = actual / "workspace" / ("proj/nested" if scope == "project" else "files")
+    assert (dest / "note.txt").read_bytes() == b"new"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows handle contract")
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_windows_final_handle_rejects_swap(uploads, tmp_path, monkeypatch, scope):
+    client, root, project = uploads
+    dest = project if scope == "project" else root / "files"
+    dest.mkdir(exist_ok=True)
+    sentinel = tmp_path / "sentinel.txt"
+    sentinel.write_bytes(b"original")
+    real_open = routes._windows_upload_handle
+    swapped = False
+
+    def swap_then_open(path, *, directory):
+        nonlocal swapped
+        if not directory:
+            (dest / "note.txt").symlink_to(sentinel)
+            swapped = True
+        return real_open(path, directory=directory)
+
+    monkeypatch.setattr(routes, "_windows_upload_handle", swap_then_open)
+    assert post(client, scope).status_code == 400
+    assert swapped
+    assert sentinel.read_bytes() == b"original"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows junction contract")
+def test_windows_nested_junction_rejected(uploads, tmp_path):
+    client, _, project = uploads
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(project / "linked"), str(outside)],
+                   check=True, capture_output=True)
+    assert post(client, "project", path="linked").status_code == 400
+    assert not (outside / "note.txt").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows ordinary upload without dir_fd")
+def test_windows_does_not_require_posix_flags(uploads, monkeypatch):
+    client, _, project = uploads
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+    assert post(client, "project", path="nested").status_code == 200
+    assert (project / "nested/note.txt").read_bytes() == b"new"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows drive/stream path syntax")
+@pytest.mark.parametrize("path", ["C:escape", "C:/escape", "\\escape", ".. /escape", "nested.", "dir:stream"])
+def test_windows_drive_and_root_relative_paths_rejected(uploads, path):
+    client, _, _ = uploads
+    assert post(client, "project", path=path).status_code == 400
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows alternate data streams")
+def test_windows_stream_filename_rejected(uploads):
+    client, _, _ = uploads
+    assert post(client, "project", filename="note.txt:stream").status_code == 400
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_directory_cannot_be_replaced_by_file_upload(uploads, scope):
+    client, root, project = uploads
+    dest = project if scope == "project" else root / "files"
+    dest.mkdir(exist_ok=True)
+    (dest / "note.txt").mkdir()
+    (dest / "note.txt/keep.txt").write_bytes(b"original")
+    response = post(client, scope)
     assert response.status_code == 400
     assert "saved" not in response.json()
-    assert not list(target.rglob("note.txt"))
-    assert not (target / "new").exists()
+    assert (dest / "note.txt/keep.txt").read_bytes() == b"original"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX FIFO contract")
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_fifo_is_rejected_without_blocking(uploads, scope):
+    client, root, project = uploads
+    dest = project if scope == "project" else root / "files"
+    dest.mkdir(exist_ok=True)
+    os.mkfifo(dest / "note.txt")
+    # A reader lets the nonblocking write open succeed, exercising fstat before
+    # truncation/write rather than merely rejecting an unopened pipe.
+    reader = os.open(dest / "note.txt", os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        response = post(client, scope)
+        assert response.status_code == 400
+        assert "saved" not in response.json()
+        assert os.read(reader, 100) == b""
+    finally:
+        os.close(reader)
