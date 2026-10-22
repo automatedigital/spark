@@ -34,8 +34,8 @@ Native Windows job 119931403494 exposes directory rename/reparse redirection pas
 - [x] Final hosted native Windows and Linux persistence checks at 98e393d4.
 - [x] Final hosted Python, web, supply-chain and original inspector/navigation/sidebar/recovery/three-attempt longthread gates.
 - [x] Merge commit 824ea1e4 verified on main; all twenty original PRs and tracker merged.
-- [ ] macOS final-tree signed/notarized/stapled artifact and isolated packaged lifecycle.
-- [ ] Windows final-main installer and packaged lifecycle, explicitly unsigned beta.
-- [ ] Release tag/visibility/assets/hashes verified.
+- [x] macOS exact-main signed/notarized/stapled DMG and actual extracted app native lifecycle.
+- [x] Windows exact-main installer and packaged executable lifecycle, explicitly unsigned beta.
+- [x] Release desktop-v1.4.0 published; tag target and unauthenticated public asset bytes/hashes verified.
 
 The historical hosted cursor and inspector failures are separate retained failures until the final combined gate passes. Source review and test evidence do not substitute for native packaging or release evidence. Stop old servers using the former project canvas lock namespace when adopting this build.

@@ -6,9 +6,9 @@ Deliver ten independently scoped defect fixes and ten useful features, each impl
 
 ## Status
 
-**Merge complete; release builds running.** All twenty code PRs and tracker #144 merged through [#185](https://github.com/automatedigital/spark/pull/185) into main at `824ea1e4e17444e34fe1c14b6581d29d54d205e9`. GitHub confirms all twenty issues closed. Exact reviewed head `98e393d4` passed all eight hosted checks, including native Windows persistence and every retained browser gate. Desktop target: **1.4.0**; Mac and Windows builds run from that merge commit. No release is published yet.
+**Complete: all twenty code PRs merged and Desktop 1.4.0 released.** All twenty code PRs and tracker #144 merged through [#185](https://github.com/automatedigital/spark/pull/185) into main at `824ea1e4e17444e34fe1c14b6581d29d54d205e9`. GitHub confirms all twenty issues closed. Exact reviewed head `98e393d4` passed all eight hosted checks, including native Windows persistence and every retained browser gate. Desktop **1.4.0** is [published](https://github.com/automatedigital/spark/releases/tag/desktop-v1.4.0) from that merge commit. macOS is Developer ID signed/notarized/stapled; Windows is an unsigned x64 beta. All three public release downloads were retrieved without authentication and verified against local SHA-256 hashes.
 
-Publication and merge evidence are retained below. Historical failed checks are superseded by final exact-head passing acceptance, with all source repairs and test preconditions documented. Package signing/notarization/lifecycle and public asset verification remain distinct unchecked gates.
+Publication and merge evidence are retained below. Historical failed checks are superseded by final exact-head passing acceptance, with all source repairs and test preconditions documented. Package signing/notarization/lifecycle and public asset verification passed separately, as recorded below.
 
 The previous upgrade plan and its unfinished performance/native gates are preserved in [the historical plan](docs/plans/app-upgrade-2026-10-15.md). Existing issues #130, #139 and #140 retain those gates. No historical acceptance is silently carried forward.
 
@@ -296,8 +296,14 @@ The three new error-classification cases fail before and pass after; final local
 - [x] Exact accepted head `98e393d4`: all eight hosted gates pass. Windows persistence: **210 passed / 32 platform skips**.
 - [x] Final hosted browser job: **505 backend lifecycle/cache/discovery tests**, 38 mounted completion checks, composer/stash/Schedule/Mermaid flows, multi-chat/recovery, production inspector/navigation, three sidebar and three longthread attempts pass. Inspector detached scroll **1000 → 1000 px**.
 - [x] Final main merge commit verified: `824ea1e4e17444e34fe1c14b6581d29d54d205e9`. Desktop manifests agree at **1.4.0**.
-- [ ] macOS signed/notarized/stapled DMG, packaged lifecycle and hash. Build active in isolated release checkout.
-- [ ] Windows unsigned x64 beta installer and packaged lifecycle. [Run 39817219208](https://github.com/automatedigital/spark/actions/runs/39817219208) uses exact main merge SHA.
-- [ ] GitHub desktop-v1.4.0 release and public assets verified.
+- [x] macOS signed/notarized/stapled DMG; actual DMG app passes Gatekeeper and isolated native lifecycle/UI checks. SHA-256 recorded.
+- [x] Windows unsigned x64 beta installer and packaged lifecycle. [Run 39817219208](https://github.com/automatedigital/spark/actions/runs/39817219208) uses exact main merge SHA.
+- [x] GitHub desktop-v1.4.0 release published; tag target and all public asset bytes/hashes verified.
 
 Windows output browsing is honestly disabled where secure filesystem capability is absent. Existing full Ruff debt remains 298 findings outside the enforced clean families; no acceptance threshold was weakened. Unrelated dirty handoff work and all stopped child checkouts remain preserved.
+
+### Package/release completion
+Both builds succeeded from 824ea1e4. macOS DMG notarization was Accepted, stapling validates, and the app extracted from the DMG passes strict signing and Gatekeeper as Notarized Developer ID. Normal native app launch, chat/files rendering, terminal/preview/SSE checks, process suspend/resume and clean quit/relaunch persistence pass in isolated state. Windows build and packaged lifecycle pass in run 39817219208; installer remains explicitly unsigned beta. [Full release evidence](docs/reviews/october-desktop-1.4.0-release.md). Public release and checksum file are published; final download verification remains to be recorded below.
+
+### Final public verification
+Unauthenticated public downloads of Spark.dmg, Spark_1.4.0_x64-setup.exe and SHA256SUMS.txt all match their local and GitHub SHA-256 digests and byte sizes. Release desktop-v1.4.0 is published as latest, not draft/prerelease; tag resolves to the exact source build commit 824ea1e4. [Public verification](docs/reviews/october-release-public-verification.json). All original implementation and corrective sub-agent work is finished. No programme acceptance gate remains unchecked; older measurements/failures above are historical evidence, not current status. Windows retains its stated unsigned-beta/output-capability limitations.

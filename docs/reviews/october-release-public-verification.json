@@ -1,0 +1,30 @@
+{
+  "url": "https://github.com/automatedigital/spark/releases/tag/desktop-v1.4.0",
+  "published_at": "2026-10-22T17:04:39Z",
+  "tag": "desktop-v1.4.0",
+  "target": "824ea1e4e17444e34fe1c14b6581d29d54d205e9",
+  "draft": false,
+  "assets": [
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 168,
+      "sha256": "f9792b68e5b4bdda37b270557b49e45b1fc5d61f6d180c6f9c3c291732db0967",
+      "url": "https://github.com/automatedigital/spark/releases/download/desktop-v1.4.0/SHA256SUMS.txt",
+      "public_download_verified": true
+    },
+    {
+      "name": "Spark.dmg",
+      "size": 52864896,
+      "sha256": "3158593766843d12d4617b31cd8a50300ce56a3a2bc4ba4a857102f287fe3757",
+      "url": "https://github.com/automatedigital/spark/releases/download/desktop-v1.4.0/Spark.dmg",
+      "public_download_verified": true
+    },
+    {
+      "name": "Spark_1.4.0_x64-setup.exe",
+      "size": 45158332,
+      "sha256": "6d8db53b3fc960742944ef049e44fd9b9ee971ec8188a44be2a1302d9c83f3d6",
+      "url": "https://github.com/automatedigital/spark/releases/download/desktop-v1.4.0/Spark_1.4.0_x64-setup.exe",
+      "public_download_verified": true
+    }
+  ]
+}
