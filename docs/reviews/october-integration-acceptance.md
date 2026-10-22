@@ -17,6 +17,10 @@ All twenty original code heads and tracker #144 are retained as ancestors. The o
 | F05/F06/F07 Markdown | Callout/details/Mermaid integration retained; parsed code node owns completion instead of unstructured index | Final lead/hosted browser and production gates |
 | F08/F09 sounds/history | Default-off bounded sound policy and bounded dashboard-only history retained; Windows byte lock acquired before initialization | Final hosted/native gates; physical desktop audio not inferred |
 
+## Current blocking finding
+
+Native Windows job 119931403494 exposes directory rename/reparse redirection past metadata-only upload handles. New unique filenames can escape; preserving only the original outside sentinel did not prove containment. Fix and direct native boundary proof are required before merge. The earlier harness-only diagnosis is withdrawn.
+
 ## Executed local checks
 
 - [x] Non-serial, non-network Python suite: 12,692 passed, 163 skipped; then serial selection: 182 passed, 15 skipped.
