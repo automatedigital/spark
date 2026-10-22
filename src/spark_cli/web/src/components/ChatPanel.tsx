@@ -1,3 +1,4 @@
+import { buildComposerPromptHistoryEntries } from "@/lib/composerPromptHistory";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -2172,6 +2173,7 @@ export function ChatPanel({
       />
 
       <PromptBar
+        promptHistory={buildComposerPromptHistoryEntries(chatMessages)}
         input={input}
         setInput={setInput}
         streaming={streaming}
