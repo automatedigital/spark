@@ -75,6 +75,83 @@ def test_ordinary_nested_data_and_serialized_arguments_are_preserved():
     assert redact_session(source) == source
 
 
+@pytest.mark.parametrize("value", [
+    "opaque", {"value": "opaque"}, ["opaque", {"value": 123456789}],
+    123456789, 1.25, True, None,
+])
+@pytest.mark.parametrize("key", ["authorization", "PASSWORD", "apiKey", "credential"])
+def test_credential_fields_redact_whole_value_before_type_dispatch(key, value):
+    source = {key: value, "nested": [{key: value}], "ordinary": value}
+    before = copy.deepcopy(source)
+    result = redact_session(source)
+    assert result[key] == "[REDACTED]"
+    assert result["nested"] == [{key: "[REDACTED]"}]
+    assert result["ordinary"] == value
+    assert source == before
+
+
+@pytest.mark.parametrize("format_option,suffix", [("", "json"), (" --format=markdown", "md")])
+def test_cli_sqlite_credential_values_never_reach_publisher(
+    tmp_path, monkeypatch, format_option, suffix
+):
+    """Check final bytes after real SQLite persistence and CLI export dispatch."""
+    from core.cli.session_ops_mixin import _SessionOpsMixin
+
+    monkeypatch.setattr("agent.redact._REDACT_ENABLED", False)
+    monkeypatch.setattr("core.cli.render._cprint", Mock())
+    arguments = {
+        "authorization": {"value": "SYNTHETIC_OPAQUE_CREDENTIAL"},
+        "password": 123456789,
+        "secret": ["SYNTHETIC_LIST_CREDENTIAL", {"value": "SYNTHETIC_LIST_OBJECT"}],
+        "nested": [{"credential": {"value": "SYNTHETIC_NESTED_CREDENTIAL"}}],
+        "ordinary": {"count": 4, "ratio": 1.25, "enabled": True, "empty": None,
+                     "items": [False, 2, "Café 日本語"]},
+    }
+    original = copy.deepcopy(arguments)
+    expected = {
+        **arguments, "authorization": "[REDACTED]", "password": "[REDACTED]",
+        "secret": "[REDACTED]", "nested": [{"credential": "[REDACTED]"}],
+    }
+    published = []
+
+    def publish(path):
+        final_bytes = Path(path).read_bytes()
+        secrets = (
+            b"SYNTHETIC_OPAQUE_CREDENTIAL", b"123456789", b"SYNTHETIC_LIST_CREDENTIAL",
+            b"SYNTHETIC_LIST_OBJECT", b"SYNTHETIC_NESTED_CREDENTIAL",
+        )
+        assert [secret for secret in secrets if secret in final_bytes] == []
+        text = final_bytes.decode("utf-8")
+        if suffix == "json":
+            calls = json.loads(text)["messages"][0]["tool_calls"]
+        else:
+            tool_block = text.split("#### Tool calls\n\n```json\n", 1)[1].split("\n```", 1)[0]
+            calls = json.loads(tool_block)
+        assert json.loads(calls[0]["function"]["arguments"]) == expected
+        published.append(path)
+        return {"ok": True, "url": "https://example.invalid/synthetic-gist"}
+
+    monkeypatch.setattr("spark_cli.session_export.publish_export", publish)
+    db = SessionDB(db_path=tmp_path / "credentials.db")
+    try:
+        db.create_session("credential-fixture", "cli")
+        db.append_message("credential-fixture", "assistant", None, tool_calls=[{
+            "id": "call_credentials", "function": {
+                "name": "synthetic", "arguments": json.dumps(arguments, ensure_ascii=False),
+            },
+        }])
+        before = copy.deepcopy(db.export_session("credential-fixture"))
+        cli = _SessionOpsMixin()
+        cli.session_id = "credential-fixture"
+        cli._session_db = db
+        cli._handle_export_command(f"/export{format_option} --publish")
+        assert published == [str(tmp_path / "exports" / f"credential-fixture.{suffix}")]
+        assert db.export_session("credential-fixture") == before
+        assert arguments == original
+    finally:
+        db.close()
+
+
 def test_unknown_role_and_html_stay_literal():
     text = render_session_markdown({"messages": [{
         "role": "custom\n# injected", "timestamp": "2026-10-22T12:00:00Z",

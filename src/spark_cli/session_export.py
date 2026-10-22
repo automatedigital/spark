@@ -36,9 +36,10 @@ def redact_session(session: dict[str, Any]) -> dict[str, Any]:
     Raw SessionDB backup/export data is never modified.
     """
     def clean(value: Any, key: str = "") -> Any:
+        # Credential names protect the entire value, regardless of its type.
+        if _SECRET_FIELD.fullmatch(key):
+            return "[REDACTED]"
         if isinstance(value, str):
-            if _SECRET_FIELD.fullmatch(key):
-                return "[REDACTED]"
             # Parse JSON argument strings before cleaning so escaped credentials
             # and arbitrary nesting receive the same treatment as decoded data.
             try:
