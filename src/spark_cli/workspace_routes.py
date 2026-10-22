@@ -1337,12 +1337,16 @@ class RevertBody(BaseModel):
 
 
 def _run_git(project_dir: Path, args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    result = subprocess.run(
         ["git", *args],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
         timeout=timeout,
+    )
+    # Decode without universal-newline translation: CR/LF may be path bytes in
+    # NUL-delimited Git output. Git emits those paths without C-style quoting.
+    return subprocess.CompletedProcess(
+        result.args, result.returncode, os.fsdecode(result.stdout), os.fsdecode(result.stderr)
     )
 
 
@@ -1380,13 +1384,18 @@ def git_status(slug: str):
 
     # Per-file +adds/-dels for tracked changes vs HEAD.
     numstat: dict[str, tuple[int | None, int | None]] = {}
-    num_res = _run_git(project_dir, ["diff", "--numstat", "HEAD"])
+    num_res = _run_git(project_dir, ["diff", "--numstat", "-z", "HEAD"])
     if num_res.returncode == 0:
-        for line in num_res.stdout.splitlines():
-            parts = line.split("\t")
+        records = iter(num_res.stdout.split("\0"))
+        for record in records:
+            parts = record.split("\t", 2)
             if len(parts) != 3:
                 continue
             adds_s, dels_s, path = parts
+            if not path:
+                # Renames/copies use adds<TAB>dels<TAB>NULold<NULnew<NUL.
+                next(records)  # source path
+                path = next(records)
             adds = None if adds_s == "-" else int(adds_s)
             dels = None if dels_s == "-" else int(dels_s)
             numstat[path] = (adds, dels)
@@ -1394,15 +1403,15 @@ def git_status(slug: str):
     files: list[dict[str, Any]] = []
     total_adds = 0
     total_dels = 0
-    status_res = _run_git(project_dir, ["status", "--porcelain"])
-    for line in status_res.stdout.splitlines():
-        if len(line) < 3:
+    status_res = _run_git(project_dir, ["status", "--porcelain=v1", "-z"])
+    records = iter(status_res.stdout.split("\0"))
+    for record in records:
+        if len(record) < 3:
             continue
-        index, work, path = line[0], line[1], line[3:]
-        # Renames look like "old -> new"; report the new path.
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        path = path.strip().strip('"')
+        index, work, path = record[0], record[1], record[3:]
+        if index in "RC" or work in "RC":
+            # With -z the destination comes first, followed by a source record.
+            next(records)
         category = _git_category(index, work)
         adds, dels = numstat.get(path, (None, None))
         # Untracked files have no numstat entry: count their lines as additions.
