@@ -1,6 +1,9 @@
 """Tests for tools/skill_manager_tool.py — skill creation, editing, and deletion."""
 
 import json
+import os
+import stat
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
@@ -484,3 +487,59 @@ class TestSkillManageDispatcher:
             raw = skill_manage(action="create", name="test-skill", content=VALID_SKILL_CONTENT)
         result = json.loads(raw)
         assert result["success"] is True
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
+@pytest.mark.parametrize("mode", [0o755, 0o644])
+@pytest.mark.parametrize("action", ["patch", "write_file"])
+def test_public_skill_helper_edit_preserves_mode(tmp_path, mode, action):
+    with _skill_dir(tmp_path):
+        assert json.loads(skill_manage("create", "my-skill", content=VALID_SKILL_CONTENT))["success"]
+        assert json.loads(skill_manage(
+            "write_file", "my-skill", file_path="scripts/helper.sh",
+            file_content="#!/bin/sh\nprintf 'old\\n'\n",
+        ))["success"]
+        target = tmp_path / "my-skill" / "scripts" / "helper.sh"
+        target.chmod(mode)
+        result = json.loads(skill_manage(
+            action, "my-skill", file_path="scripts/helper.sh",
+            old_string="old", new_string="new",
+            file_content="#!/bin/sh\nprintf 'new\\n'\n",
+        ))
+    assert result["success"] is True
+    assert target.read_text() == "#!/bin/sh\nprintf 'new\\n'\n"
+    assert stat.S_IMODE(target.stat().st_mode) == mode
+    assert list(target.parent.iterdir()) == [target]
+    if mode == 0o755:
+        executed = subprocess.run([str(target)], capture_output=True, text=True, check=True)
+        assert executed.stdout == "new\n"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
+def test_skill_new_file_keeps_private_default(tmp_path):
+    from tools.skill_manager_tool import _atomic_write_text
+
+    target = tmp_path / "new.txt"
+    _atomic_write_text(target, "new")
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
+@pytest.mark.parametrize("failure", ["fchmod", "replace"])
+def test_skill_atomic_failure_preserves_target_and_cleans_temp(tmp_path, monkeypatch, failure):
+    from tools.skill_manager_tool import _atomic_write_text
+
+    target = tmp_path / "helper.sh"
+    target.write_text("original")
+    target.chmod(0o755)
+    original_entries = set(tmp_path.iterdir())
+
+    def fail(*args):
+        raise OSError("injected failure")
+
+    monkeypatch.setattr(f"tools.skill_manager_tool.os.{failure}", fail)
+    with pytest.raises(OSError, match="injected failure"):
+        _atomic_write_text(target, "replacement")
+    assert target.read_text() == "original"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o755
+    assert set(tmp_path.iterdir()) == original_entries
