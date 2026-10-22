@@ -6,7 +6,7 @@ Deliver ten independently scoped defect fixes and ten useful features, each impl
 
 ## Status
 
-20 packets selected; 2/20 implementation PRs created (one draft), 0/20 accepted, 0/20 merged. Placeholder rows are allocation slots, not confirmed findings. The lead alone updates this plan. PR creation, validation, merge and release are separate states; completion requires reviewed evidence, not an agent summary.
+20 packets selected; 3/20 implementation PRs created (one draft), 0/20 accepted, 0/20 merged. Placeholder rows are allocation slots, not confirmed findings. The lead alone updates this plan. PR creation, validation, merge and release are separate states; completion requires reviewed evidence, not an agent summary.
 
 The previous upgrade plan and its unfinished performance/native gates are preserved in [the historical plan](docs/plans/app-upgrade-2026-10-15.md). Existing issues #130, #139 and #140 retain those gates. No historical acceptance is silently carried forward.
 
@@ -25,7 +25,7 @@ The previous upgrade plan and its unfinished performance/native gates are preser
 | --- | --- | --- | --- | --- | --- |
 | I01 | Prevent uploads from following symlinks outside their storage root | Draft PR; Windows regression open | [#145](https://github.com/automatedigital/spark/issues/145) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I01-r1 | https://github.com/automatedigital/spark/pull/155 |
 | I02 | Preserve existing attachments when uploading duplicate filenames | Implementing | [#146](https://github.com/automatedigital/spark/issues/146) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I02-r1 | Pending |
-| I03 | Route context and brief requests to the selected backend | Implementing | [#147](https://github.com/automatedigital/spark/issues/147) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I03-r1 | Pending |
+| I03 | Route context and brief requests to the selected backend | PR open; source reviewed; lead focused checks passed | [#147](https://github.com/automatedigital/spark/issues/147) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I03-r1 | [#167](https://github.com/automatedigital/spark/pull/167) / `f60fc342a7ad` |
 | I04 | Fence stale token estimate responses after prompt or session changes | Implementing | [#148](https://github.com/automatedigital/spark/issues/148) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I04-r1 | Pending |
 | I05 | Preserve exact Unicode and quoted paths in Git Changes | Implementing | [#149](https://github.com/automatedigital/spark/issues/149) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I05-r1 | Pending |
 | I06 | List nested untracked files and reject directory discard | Implementing | [#150](https://github.com/automatedigital/spark/issues/150) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I06-r1 | Pending |
@@ -111,3 +111,7 @@ I01 portability correction is delegated in a fresh isolated worktree, starting f
 ### I08 lead verification
 
 PR [#166](https://github.com/automatedigital/spark/pull/166), head `4e8828a6ed220ed3d098030f3773ea2a27335970`: lead reviewed the two-file diff and independently ran recovery/dedup/auto-extract neighbors with isolated SPARK_HOME and this worktree src: **25 passed**, exit 0. Agent records 11 failing-before regressions, 16 focused/25 neighbors passing, scoped Ruff clean, identical 299 full-source baseline Ruff errors. CI snapshot: frontend lint/types/tests and mypy passed; remaining checks still running. No full-suite/package/provider acceptance claimed; not merged.
+
+### I03 lead review
+
+PR [#167](https://github.com/automatedigital/spark/pull/167), head `f60fc342a7adb265c8073b278149089032357b28`: lead reviewed the three-file transport/test diff and independently reran **39 focused tests**, exit 0, using verified Node v22.22.1. Agent records 13 baseline failures, **468 full frontend tests**, clean lint/TypeScript and rendered Summarize/brief fixtures passing against the selected backend with authorization. Synthetic provider responses; stale token estimate behavior belongs to I04. Hosted CI and package/bundle acceptance remain unverified.
