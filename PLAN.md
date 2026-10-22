@@ -246,3 +246,9 @@ Integrated `e368615b` from repair commit `168e89d2`: cron closes the permissive 
 ### Full Python validation complete
 
 Both required local non-network selections passed sequentially: **12,692 passed / 163 skipped** in the parallel-safe selection, then **182 passed / 15 skipped** in the serial selection (396.43s). No failures. These broad runs started before the last narrow canvas/Windows repair commits; their final affected persistence subset was rerun after integration: **210 passed / 11 Windows-only skipped**, exit 0. Final CI Ruff family gate and mypy (**137 source files**) also pass, exit 0. The full tool manifest check passes (**70 tools, 28 isolated modules, four optional guards**). Native Windows and final combined hosted gates remain separately required.
+
+### Final source repair integrated
+
+Integrated `f84744d8` from `f177392a`: each parsed code node now owns its real closing-fence flag, and memo equality includes closure. The renderer no longer indexes an independent fence list that includes disclosure contents. Agent pinned before/after probe fails then passes; **38 mounted-browser checks**, **562 frontend tests**, lint and TypeScript pass. [Exact repair evidence](docs/reviews/october-mermaid-completion-result.md). No remaining concrete source finding is left unassigned; lead final combined checks are running, followed by the final hosted native/browser gates.
+
+Hosted web-quality now retains composer/history+stash, Mermaid+disclosure completion, and Schedule override/output capability browser flows in addition to existing multi-chat/recovery/production inspector/navigation/sidebar/three-attempt longthread gates. Actionlint passes both modified workflows; no original gate or assertion was removed.
