@@ -9,14 +9,22 @@ import type {
   SkillsAnalyticsResponse,
 } from "./apiTypes";
 
+export interface SkillHistory {
+  entries: { id: string; skill_id: string; saved_at: string; before: string; after: string }[];
+  retention: number;
+  coverage: string;
+}
+
 export const skillApi = {
   getSkillsAnalytics: (limit = 20) =>
     fetchJSON<SkillsAnalyticsResponse>(`/api/analytics/skills?limit=${limit}`),
   getSkills: () => fetchJSON<SkillInfo[]>("/api/skills"),
   getSkill: (skillId: string) =>
     fetchJSON<SkillDetail>(`/api/skills/${encodeURIComponent(skillId)}`),
+  getSkillHistory: (skillId: string) =>
+    fetchJSON<SkillHistory>(`/api/skills/${encodeURIComponent(skillId)}/history`),
   saveSkill: (skillId: string, content: string) =>
-    fetchJSON<{ ok: boolean; skill: SkillDetail }>(`/api/skills/${encodeURIComponent(skillId)}`, {
+    fetchJSON<{ ok: boolean; skill: SkillDetail; history_warning?: string }>(`/api/skills/${encodeURIComponent(skillId)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),

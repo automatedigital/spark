@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import ConnectorsPage from "@/pages/ConnectorsPage";
 import EnvPage from "@/pages/EnvPage";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
+import { SkillHistoryDrawer } from "@/components/skills/SkillHistoryDrawer";
 import { SkillQualitySignals } from "@/components/skills/SkillQualitySignals";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -166,12 +167,14 @@ function SkillDetailPanel({
   onCancelDelete: () => void;
   onClose: () => void;
 }) {
-  if (!detail && !loading) return null;
+  const [historyOpen, setHistoryOpen] = useState(false);
   const canEdit = Boolean(detail?.capabilities?.editable);
   const canDelete = Boolean(detail?.capabilities?.deletable);
   const canRestore = Boolean(detail?.capabilities?.restorable);
   const confirmingDelete = deleteArmed;
   const deleteMatches = detail?.name === deleteName;
+
+  if (!detail && !loading) return null;
 
   return (
     <div className="absolute inset-0 z-30 flex justify-end bg-background/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={detail ? `${detail.name} skill details` : "Skill details"}>
@@ -204,6 +207,7 @@ function SkillDetailPanel({
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">{detail.description || "No description provided."}</p>
                 <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setHistoryOpen(true)}>History</Button>
                   {canEdit && !editing && <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={onEdit}><Pencil className="h-3.5 w-3.5" />Edit</Button>}
                   {canRestore && <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={onRestore} disabled={busy}><RefreshCw className="h-3.5 w-3.5" />Restore</Button>}
                   {canDelete && !confirmingDelete && <Button size="sm" variant="destructive" className="h-8 gap-1.5 text-xs" onClick={onArmDelete}><Trash2 className="h-3.5 w-3.5" />Delete</Button>}
@@ -245,6 +249,7 @@ function SkillDetailPanel({
           </>
         )}
       </div>
+      {historyOpen && detail && <SkillHistoryDrawer key={skillId(detail)} skillId={skillId(detail)} onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }
@@ -364,7 +369,7 @@ export default function SkillsToolsPage() {
       setDraft(response.skill.content);
       setSkills((prev) => prev.map((skill) => skillId(skill) === skillId(detail) ? response.skill : skill));
       setEditing(false);
-      showToast(`${detail.name} saved. It will apply to a future conversation context.`, "success");
+      showToast(response.history_warning ?? `${detail.name} saved. It will apply to a future conversation context.`, response.history_warning ? "error" : "success");
     } catch (error) {
       showToast(`Could not save ${detail.name}: ${errorMessage(error)}`, "error");
     } finally {
