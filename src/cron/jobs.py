@@ -439,12 +439,13 @@ def _load_jobs() -> list[dict[str, Any]]:
         try:
             with open(JOBS_FILE, encoding='utf-8') as f:
                 data = json.loads(f.read(), strict=False)
-                jobs = data.get("jobs", [])
-                if jobs:
-                    # Auto-repair: rewrite with proper escaping
-                    _save_jobs(jobs)
-                    logger.warning("Auto-repaired jobs.json (had invalid control characters)")
-                return jobs
+            jobs = data.get("jobs", [])
+            if jobs:
+                # Close the source before replacing it on Windows. The caller
+                # still holds the encompassing jobs lock through publication.
+                _save_jobs(jobs)
+                logger.warning("Auto-repaired jobs.json (had invalid control characters)")
+            return jobs
         except Exception as e:
             logger.error("Failed to auto-repair jobs.json: %s", e)
             raise RuntimeError(f"Cron database corrupted and unrepairable: {e}") from e

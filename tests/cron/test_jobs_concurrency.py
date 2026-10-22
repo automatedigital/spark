@@ -177,6 +177,49 @@ def test_write_failure_releases_lock(isolated_jobs, monkeypatch):
     assert jobs.pause_job(job["id"])["state"] == "paused"
 
 
+@pytest.mark.parametrize("replace_fails", [False, True])
+def test_control_character_repair_closes_readers_before_replace(isolated_jobs, monkeypatch, replace_fails):
+    jobs = isolated_jobs
+    job = jobs.create_job(prompt="existing", schedule="every 1h")
+    jobs.JOBS_FILE.write_text(jobs.JOBS_FILE.read_text().replace("existing", "ex\nisting"))
+    before = jobs.JOBS_FILE.read_bytes()
+    readers = []
+    original_open = open
+    original_replace = jobs.os.replace
+    replacements = []
+
+    def observed_open(path, *args, **kwargs):
+        stream = original_open(path, *args, **kwargs)
+        if path == jobs.JOBS_FILE:
+            readers.append(stream)
+        return stream
+
+    def observed_replace(source, destination):
+        assert destination == jobs.JOBS_FILE
+        assert len(readers) == 2  # Strict parse and permissive repair parse.
+        assert all(reader.closed for reader in readers)
+        assert jobs._JOBS_THREAD_LOCK.locked()
+        replacements.append(destination)
+        if replace_fails:
+            raise PermissionError("injected repair publication failure")
+        return original_replace(source, destination)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(jobs, "open", observed_open, raising=False)
+        patch.setattr(jobs.os, "replace", observed_replace)
+        if replace_fails:
+            with pytest.raises(RuntimeError, match="injected repair publication failure") as error:
+                jobs.load_jobs()
+            assert isinstance(error.value.__cause__, PermissionError)
+            assert jobs.JOBS_FILE.read_bytes() == before
+        else:
+            assert jobs.load_jobs()[0]["prompt"] == "ex\nisting"
+            assert json.loads(jobs.JOBS_FILE.read_text())["jobs"][0]["id"] == job["id"]
+    assert replacements == [jobs.JOBS_FILE]
+    assert not list(jobs.JOBS_FILE.parent.glob(".jobs_*.tmp"))
+    assert jobs.pause_job(job["id"])["state"] == "paused"
+
+
 def test_lock_timeout_does_not_mutate_and_recovers(isolated_jobs, tmp_path):
     jobs = isolated_jobs
     job = jobs.create_job(prompt="keep", schedule="every 1h")

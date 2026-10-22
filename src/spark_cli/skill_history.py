@@ -33,10 +33,6 @@ def _locked():
         if os.name == "nt":
             import msvcrt
             lock.seek(0)
-            if not lock.read(1):
-                lock.write(b"0")
-                lock.flush()
-            lock.seek(0)
             deadline = time.monotonic() + 10
             while True:
                 try:
@@ -50,6 +46,12 @@ def _locked():
             import fcntl
             fcntl.flock(lock, fcntl.LOCK_EX)
         try:
+            if os.name == "nt" and os.fstat(lock.fileno()).st_size == 0:
+                # Windows permits locks beyond EOF. Initialize only after
+                # acquisition so simultaneous first writers cannot race, and
+                # never read a byte another process may have locked.
+                lock.write(b"0")
+                lock.flush()
             yield home / "skill-history.json"
         finally:
             if os.name == "nt":

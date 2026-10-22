@@ -109,6 +109,72 @@ assert result["success"], result
     assert entries[0]["after"] == (skill / "SKILL.md").read_text()
 
 
+@pytest.mark.parametrize("initial", [b"", b"0"])
+def test_windows_lock_acquires_before_initialization_without_reading(skill, monkeypatch, initial):
+    import os
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    lock_path = get_spark_home() / "skill-history.lock"
+    lock_path.write_bytes(initial)
+    events = []
+    held = False
+    original_open = Path.open
+
+    class LockStream:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.stream.close()
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def read(self, *args):
+            raise PermissionError("another process owns the byte; content reads are forbidden")
+
+        def write(self, data):
+            assert held, "initialize only after acquiring the byte"
+            events.append("initialize")
+            return self.stream.write(data)
+
+    def open_lock(path, *args, **kwargs):
+        stream = original_open(path, *args, **kwargs)
+        return LockStream(stream) if path == lock_path and args == ("a+b",) else stream
+
+    def locking(fd, mode, count):
+        nonlocal held
+        assert count == 1 and os.lseek(fd, 0, os.SEEK_CUR) == 0
+        if mode == 1:
+            events.append("acquire")
+            if events.count("acquire") == 1:
+                raise PermissionError("contended")
+            held = True
+        else:
+            assert held
+            held = False
+            events.append("release")
+
+    # Replace only the module's OS reference, never global os.name/Path behavior.
+    monkeypatch.setattr(history, "os", SimpleNamespace(name="nt", fstat=os.fstat))
+    monkeypatch.setitem(sys.modules, "msvcrt", SimpleNamespace(LK_NBLCK=1, LK_UNLCK=2, locking=locking))
+    monkeypatch.setattr(Path, "open", open_lock)
+    monkeypatch.setattr(history.time, "sleep", lambda seconds: None)
+    with pytest.raises(ValueError, match="body failure"):
+        with history._locked() as path:
+            assert held and path == get_spark_home() / "skill-history.json"
+            events.append("body")
+            raise ValueError("body failure")
+    assert not held
+    assert events == ["acquire", "acquire"] + ([] if initial else ["initialize"]) + ["body", "release"]
+    assert lock_path.read_bytes() == b"0"
+
+
 def test_equal_timestamps_do_not_identify_or_order_edits(skill, monkeypatch):
     class Clock:
         @staticmethod
