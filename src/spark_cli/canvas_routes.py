@@ -123,9 +123,13 @@ def _canvas_reader(path: Path) -> Iterator[TextIO]:
 
 
 def _canvas_lock_path(path: Path) -> Path:
-    # The canonical owner + lexical filename is stable even across deletion and
-    # project aliases. Project Git/file operations must never own the lock inode.
-    identity = os.path.normcase(str(path.parent.resolve() / path.name))
+    # Directory identity covers symlink, case and Unicode-normalization aliases
+    # without depending on the spelling returned by resolve(). Canvas IDs are
+    # ASCII: conservatively fold filenames on every filesystem. Case-distinct
+    # files may serialize, but their data paths remain distinct. Never use the
+    # canvas inode: it changes on atomic replace and is absent after deletion.
+    owner = path.parent.stat()
+    identity = f"{owner.st_dev}:{owner.st_ino}:{path.name.casefold()}"
     key = hashlib.sha256(os.fsencode(identity)).hexdigest()
     directory = get_spark_home() / "canvas-locks"
     directory.mkdir(parents=True, exist_ok=True)

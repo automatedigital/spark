@@ -53,20 +53,21 @@ def process_save(home, revision, barrier, results, name):
 
 
 @pytest.mark.parametrize("scope", ["global", "project"])
-def test_same_revision_has_one_winner(scope, monkeypatch):
+@pytest.mark.parametrize("case_alias", [False, True])
+def test_same_revision_has_one_winner(scope, case_alias, monkeypatch):
     if scope == "project":
         project = routes.get_spark_home() / "workspace" / "project"
         project.mkdir(parents=True)
     slug = "project" if scope == "project" else None
 
-    def write(name, revision=None):
+    def write(name, revision=None, canvas_id="board"):
         try:
             return routes._write_canvas(
                 scope,
                 slug,
-                "board",
+                canvas_id,
                 routes.CanvasDoc(
-                    id="board",
+                    id=canvas_id,
                     name=name,
                     scope=scope,
                     slug=slug,
@@ -77,6 +78,12 @@ def test_same_revision_has_one_winner(scope, monkeypatch):
             return {"status": exc.status_code, "detail": exc.detail}
 
     revision = write("original")["revision"]
+    contender_id = "Board" if case_alias else "board"
+    if case_alias:
+        lower = routes._canvas_path(scope, slug, "board")
+        upper = routes._canvas_path(scope, slug, contender_id)
+        if not upper.exists() or not lower.samefile(upper):
+            pytest.skip("Canvas directory is on a case-sensitive filesystem")
     replacing = threading.Event()
     release = threading.Event()
     contender = threading.Event()
@@ -104,7 +111,7 @@ def test_same_revision_has_one_winner(scope, monkeypatch):
     ):
         a = first.submit(write, "A", revision)
         assert replacing.wait(5)
-        b = second.submit(write, "B", revision)
+        b = second.submit(write, "B", revision, contender_id)
         try:
             assert contender.wait(5)
             assert not b.done()
@@ -123,6 +130,58 @@ def test_same_revision_has_one_winner(scope, monkeypatch):
     got = routes._read_canvas(scope, slug, "board")
     assert got["name"] == "A"
     assert got["revision"] == winner["revision"] != revision
+
+
+def test_casefolded_lock_survives_create_replace_delete():
+    lower = routes._canvas_path("global", None, "board")
+    upper = routes._canvas_path("global", None, "Board")
+    metadata = routes._canvas_lock_path(lower)
+    assert metadata == routes._canvas_lock_path(upper)
+    revision = save("original")["revision"]
+    assert routes._canvas_lock_path(lower) == routes._canvas_lock_path(upper) == metadata
+    assert save("replacement", revision)["ok"]
+    assert routes._canvas_lock_path(lower) == routes._canvas_lock_path(upper) == metadata
+    assert routes._delete_canvas("global", None, "board")["ok"]
+    assert not lower.exists()
+    assert routes._canvas_lock_path(lower) == routes._canvas_lock_path(upper) == metadata
+    assert save("recreated", canvas_id="Board")["ok"]
+    assert routes._canvas_lock_path(lower) == routes._canvas_lock_path(upper) == metadata
+
+
+def test_owner_identity_survives_case_unicode_spelling_and_symlink_alias(tmp_path):
+    owner = tmp_path / "Caf\u00e9"
+    owner.mkdir()
+    alias = tmp_path / "project-alias"
+    alias.symlink_to(owner, target_is_directory=True)
+    metadata = routes._canvas_lock_path(owner / "board.canvas.json")
+    assert routes._canvas_lock_path(alias / "Board.canvas.json") == metadata
+    # Rename the same directory so even a case-sensitive, normalization-sensitive
+    # filesystem exercises different owner spellings with identical dev/inode.
+    renamed = tmp_path / "CAFE\u0301"
+    owner.rename(renamed)
+    assert routes._canvas_lock_path(renamed / "Board.canvas.json") == metadata
+    other = tmp_path / "other-owner"
+    other.mkdir()
+    assert routes._canvas_lock_path(other / "board.canvas.json") != metadata
+
+
+def test_case_distinct_data_is_preserved_when_filesystem_supports_it():
+    lower_revision = save("lower")["revision"]
+    lower = routes._canvas_path("global", None, "board")
+    upper = routes._canvas_path("global", None, "Board")
+    if upper.exists() and lower.samefile(upper):
+        # This volume has one canvas for these IDs; contention is tested above.
+        assert routes._canvas_lock_path(lower) == routes._canvas_lock_path(upper)
+        return
+    upper_revision = save("upper", canvas_id="Board")["revision"]
+    assert not lower.samefile(upper)
+    assert routes._canvas_lock_path(lower) == routes._canvas_lock_path(upper)
+    assert save("updated lower", lower_revision)["ok"]
+    assert save("updated upper", upper_revision, canvas_id="Board")["ok"]
+    assert routes._read_canvas("global", None, "board")["name"] == "updated lower"
+    assert routes._read_canvas("global", None, "Board")["name"] == "updated upper"
+    assert routes._delete_canvas("global", None, "Board")["ok"]
+    assert routes._read_canvas("global", None, "board")["name"] == "updated lower"
 
 
 def test_separate_processes_share_revision_lock():
