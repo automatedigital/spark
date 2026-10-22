@@ -23,13 +23,13 @@ The previous upgrade plan and its unfinished performance/native gates are preser
 
 | ID | Outcome | Status | Issue | Agent task | PR / evidence |
 | --- | --- | --- | --- | --- | --- |
-| I01 | Pending evidence-based selection | Research | — | — | — |
-| I02 | Pending evidence-based selection | Research | — | — | — |
-| I03 | Pending evidence-based selection | Research | — | — | — |
-| I04 | Pending evidence-based selection | Research | — | — | — |
-| I05 | Pending evidence-based selection | Research | — | — | — |
-| I06 | Pending evidence-based selection | Research | — | — | — |
-| I07 | Pending evidence-based selection | Research | — | — | — |
+| I01 | Prevent uploads from following symlinks outside their storage root | Implementing | [#145](https://github.com/automatedigital/spark/issues/145) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I01-r1 | Pending |
+| I02 | Preserve existing attachments when uploading duplicate filenames | Queued | [#146](https://github.com/automatedigital/spark/issues/146) | — | Pending |
+| I03 | Route context and brief requests to the selected backend | Queued | [#147](https://github.com/automatedigital/spark/issues/147) | — | Pending |
+| I04 | Fence stale token estimate responses after prompt or session changes | Queued | [#148](https://github.com/automatedigital/spark/issues/148) | — | Pending |
+| I05 | Preserve exact Unicode and quoted paths in Git Changes | Queued | [#149](https://github.com/automatedigital/spark/issues/149) | — | Pending |
+| I06 | List nested untracked files and reject directory discard | Queued | [#150](https://github.com/automatedigital/spark/issues/150) | — | Pending |
+| I07 | Make canvas revision checks atomic with saves and deletion | Queued | [#151](https://github.com/automatedigital/spark/issues/151) | — | Pending |
 | I08 | Pending evidence-based selection | Research | — | — | — |
 | I09 | Pending evidence-based selection | Research | — | — | — |
 | I10 | Pending evidence-based selection | Research | — | — | — |
@@ -47,7 +47,7 @@ The previous upgrade plan and its unfinished performance/native gates are preser
 ## Research and acceptance evidence
 
 - Backend and tool audit: running.
-- Web/API/gateway audit: running.
+- Web/API/gateway audit: [seven current findings](docs/reviews/spark-web-audit-2026-10-22.md); five isolated API reproductions, two frontend source traces. Browser acceptance remains open.
 - Current upstream feature comparison: running.
 
 ### Lead source checks
@@ -61,3 +61,13 @@ All use inherited Codex `gpt-6.1-sol`, medium reasoning, default service tier, r
 - backend: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-backend-r1` (running).
 - web: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-web-r1` (running).
 - features: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-features-r1` (running).
+
+## Packet scopes and dependencies
+
+- **I01**: src/spark_cli/workspace_routes.py upload handlers and a new focused upload safety test module. Dependency: none. Acceptance: finding W05 in the web audit.
+- **I02**: workspace upload handlers, upload response mapping in ChatPanel if needed, focused attachment tests. Dependency: I01: same upload handlers; launch after its PR is ready. Acceptance: finding W06 in the web audit.
+- **I03**: web/src/lib/context.ts, summarize-file call in ChatPanel.tsx, focused transport tests. Dependency: none. Acceptance: finding W01 in the web audit.
+- **I04**: web/src/hooks/useTokenEstimate.ts, optional signal parameter in context.ts, hook tests. Dependency: I03: shared context client; launch after its PR is ready. Acceptance: finding W02 in the web audit.
+- **I05**: workspace_routes.py Git status/numstat parser and focused Git route tests. Dependency: none; keep away from upload handler changes. Acceptance: finding W03 in the web audit.
+- **I06**: workspace_routes.py Git status invocation and revert validation, focused Git tests. Dependency: I05: shared Git parser; launch after its PR is ready. Acceptance: finding W04 in the web audit.
+- **I07**: src/spark_cli/canvas_routes.py and new focused concurrency tests. Dependency: none. Acceptance: finding W07 in the web audit.
