@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -68,16 +69,20 @@ def test_rejects_directory_symlink(uploads, tmp_path, scope, internal):
 
 
 @pytest.mark.parametrize("scope", ["project", "global"])
-def test_normal_upload_and_existing_file_replacement(uploads, scope):
+def test_normal_upload_keeps_existing_attachment(uploads, scope):
     client, root, project = uploads
+    saved = []
     for content in (b"first", b"second"):
         response = post(client, scope, path="nested/deeper", content=content)
         assert response.status_code == 200
-        assert response.json()["saved"][0]["filename"] == "note.txt"
-        dest = project / "nested/deeper" if scope == "project" else root / "files"
-        assert (dest / "note.txt").read_bytes() == content
-        if scope == "global":
-            assert response.json()["saved"][0]["absolute_path"] == str(dest / "note.txt")
+        item = response.json()["saved"][0]
+        saved.append(item)
+        assert item["filename"] == "note.txt"
+        assert Path(item["absolute_path"]).read_bytes() == content
+        base = project.resolve() if scope == "project" else root.resolve()
+        assert base / item["path"] == Path(item["absolute_path"])
+    assert saved[0]["path"] != saved[1]["path"]
+    assert Path(saved[0]["absolute_path"]).read_bytes() == b"first"
 
 
 @pytest.mark.parametrize("scope", ["project", "global"])
@@ -121,10 +126,13 @@ def test_final_symlink_swapped_during_upload_read(uploads, tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("scope", ["project", "global"])
-def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monkeypatch, scope):
+@pytest.mark.parametrize("collision", [False, True])
+def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monkeypatch, scope, collision):
     client, root, project = uploads
     dest = project / "nested" if scope == "project" else root / "files"
     dest.mkdir()
+    if collision:
+        (dest / "note.txt").write_bytes(b"earlier attachment")
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "note.txt").write_bytes(b"original")
@@ -147,7 +155,11 @@ def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monke
     assert (outside / "note.txt").read_bytes() == b"original"
     if response.status_code == 200:
         actual = dest if os.name == "nt" else dest.with_name("pinned")
-        assert (actual / "note.txt").read_bytes() == b"new"
+        stored = Path(response.json()["saved"][0]["absolute_path"]).name
+        assert (actual / stored).read_bytes() == b"new"
+    if collision:
+        actual = dest if os.name == "nt" else dest.with_name("pinned")
+        assert (actual / "note.txt").read_bytes() == b"earlier attachment"
 
 
 @pytest.mark.parametrize("scope", ["project", "global"])
@@ -236,12 +248,12 @@ def test_windows_final_handle_rejects_swap(uploads, tmp_path, monkeypatch, scope
     real_open = routes._windows_upload_handle
     swapped = False
 
-    def swap_then_open(path, *, directory):
+    def swap_then_open(path, *, directory, create_new=False):
         nonlocal swapped
-        if not directory:
+        if not directory and create_new and not swapped:
             (dest / "note.txt").symlink_to(sentinel)
             swapped = True
-        return real_open(path, directory=directory)
+        return real_open(path, directory=directory, create_new=create_new)
 
     monkeypatch.setattr(routes, "_windows_upload_handle", swap_then_open)
     assert post(client, scope).status_code == 400
@@ -312,3 +324,87 @@ def test_fifo_is_rejected_without_blocking(uploads, scope):
         assert os.read(reader, 100) == b""
     finally:
         os.close(reader)
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_collision_retry_rejects_generated_symlink(uploads, tmp_path, monkeypatch, scope):
+    client, root, project = uploads
+    dest = project if scope == "project" else root / "files"
+    dest.mkdir(exist_ok=True)
+    (dest / "note.txt").write_bytes(b"earlier attachment")
+    sentinel = tmp_path / "sentinel.txt"
+    sentinel.write_bytes(b"outside")
+
+    class CollisionID:
+        hex = "collision"
+
+    monkeypatch.setattr(routes.uuid, "uuid4", CollisionID)
+    (dest / "note-collision.txt").symlink_to(sentinel)
+    response = post(client, scope)
+    assert response.status_code == 400
+    assert "saved" not in response.json()
+    assert (dest / "note.txt").read_bytes() == b"earlier attachment"
+    assert sentinel.read_bytes() == b"outside"
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+@pytest.mark.skipif(os.name == "nt", reason="POSIX final syscall race")
+def test_collision_retry_final_swap_still_uses_exclusive_nofollow(uploads, tmp_path, monkeypatch, scope):
+    client, root, project = uploads
+    dest = project if scope == "project" else root / "files"
+    dest.mkdir(exist_ok=True)
+    (dest / "note.txt").write_bytes(b"earlier attachment")
+    sentinel = tmp_path / "sentinel.txt"
+    sentinel.write_bytes(b"outside")
+    real_open = os.open
+    swapped = False
+
+    def swap_candidate(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if str(path).startswith("note-") and flags & os.O_WRONLY:
+            assert flags & os.O_EXCL
+            assert kwargs["dir_fd"] is not None
+            (dest / path).symlink_to(sentinel)
+            swapped = True
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", swap_candidate)
+    response = post(client, scope)
+    assert swapped
+    assert response.status_code == 400
+    assert "saved" not in response.json()
+    assert (dest / "note.txt").read_bytes() == b"earlier attachment"
+    assert sentinel.read_bytes() == b"outside"
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory rename at final syscall")
+def test_collision_retry_directory_swap_writes_only_pinned_inode(uploads, tmp_path, monkeypatch, scope):
+    client, root, project = uploads
+    dest = project / "nested" if scope == "project" else root / "files"
+    dest.mkdir()
+    (dest / "note.txt").write_bytes(b"earlier attachment")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "note.txt").write_bytes(b"outside")
+    pinned = dest.with_name("pinned")
+    real_open = os.open
+    created = []
+
+    def swap_directory(path, flags, *args, **kwargs):
+        if str(path).startswith("note-") and flags & os.O_WRONLY:
+            assert flags & os.O_EXCL
+            dest.rename(pinned)
+            dest.symlink_to(outside, target_is_directory=True)
+            created.append(path)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", swap_directory)
+    response = post(client, scope, path="nested")
+    assert response.status_code == 400  # No false saved path through the new link.
+    assert "saved" not in response.json()
+    assert len(created) == 1
+    assert (pinned / created[0]).read_bytes() == b"new"
+    assert (pinned / "note.txt").read_bytes() == b"earlier attachment"
+    assert list(outside.iterdir()) == [outside / "note.txt"]
+    assert (outside / "note.txt").read_bytes() == b"outside"

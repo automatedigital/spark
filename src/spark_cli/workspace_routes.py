@@ -867,7 +867,7 @@ def read_project_file_raw(slug: str, path: str = Query(...)):
     return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
-def _windows_upload_handle(path: Path, *, directory: bool) -> int:
+def _windows_upload_handle(path: Path, *, directory: bool, create_new: bool = False) -> int:
     """Open without following reparse points and deny delete/rename sharing.
 
     Ancestors remain open until the upload ends. Unlike a path precheck, these
@@ -893,13 +893,17 @@ def _windows_upload_handle(path: Path, *, directory: bool) -> int:
     info = kernel.GetFileInformationByHandleEx
     info.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
     info.restype = wintypes.BOOL
-    # Share only reads: deny renames AND write handles that could install a
-    # reparse point in place. Existing incompatible handles make this open fail.
+    # Pin directories and new files against write/delete sharing. Collision
+    # inspection permits the concurrent creator to finish writing its own file,
+    # but never follows reparse points or opens the entry for writing.
     # OPEN_REPARSE_POINT opens the link itself; BACKUP_SEMANTICS permits directories.
-    handle = create(str(path), 0x80 if directory else 0x40000080, 1, None,
-                    3 if directory else 4, 0x00200000 | 0x02000000, None)
+    handle = create(str(path), 0x40000080 if create_new else 0x80,
+                    3 if not directory and not create_new else 1, None,
+                    1 if create_new else 3, 0x00200000 | 0x02000000, None)
     if handle == wintypes.HANDLE(-1).value:
         error = ctypes.get_last_error()
+        if create_new and error in (80, 183):  # ERROR_FILE_EXISTS / ALREADY_EXISTS
+            raise FileExistsError(errno.EEXIST, "Upload name already exists", str(path))
         # Directories opened for file writes, incompatible sharing (including
         # an in-flight rename), and malformed Win32 names must not be reported
         # as successful saves. Other OS failures retain their original cause.
@@ -992,11 +996,10 @@ def _upload_directory(root: Path, relative: str) -> Iterator[int | Path]:
 
 
 def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> None:
-    """Open the final basename without following a swapped-in symlink."""
-    if not filename or filename in (".", ".."):
+    """Exclusively create a basename in the pinned directory, never following links."""
+    if not filename or filename in (".", "..") or Path(filename).name != filename:
         raise HTTPException(status_code=400, detail="Invalid upload filename")
-    # Do not truncate until fstat confirms a regular file; O_NONBLOCK also avoids
-    # hanging on a FIFO supplied in place of an existing upload.
+    # CREATE_NEW / O_EXCL is authoritative even when another request races us.
     if sys.platform == "win32":
         assert isinstance(directory_fd, Path)
         import ctypes
@@ -1005,7 +1008,7 @@ def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> No
 
         if ":" in filename or filename.endswith((".", " ")):
             raise HTTPException(status_code=400, detail="Invalid upload filename")
-        handle = _windows_upload_handle(directory_fd / filename, directory=False)
+        handle = _windows_upload_handle(directory_fd / filename, directory=False, create_new=True)
         # Transfer ownership to the CRT fd, then fdopen closes it on every path.
         try:
             fd = msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
@@ -1018,14 +1021,62 @@ def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> No
     else:
         assert isinstance(directory_fd, int)
         fd = os.open(
-            filename, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+            filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK,
             0o666, dir_fd=directory_fd,
         )
     with os.fdopen(fd, "wb") as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise HTTPException(status_code=400, detail="Upload target must be a regular file")
-        stream.truncate(0)
         stream.write(content)
+
+
+def _verify_upload_directory(directory_fd: int | Path, expected: Path) -> None:
+    """Do not return a path redirected away from the pinned directory inode."""
+    if isinstance(directory_fd, int):
+        try:
+            matches = os.path.samestat(os.fstat(directory_fd), expected.stat(follow_symlinks=False))
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail="Upload directory changed") from exc
+        if not matches:
+            raise HTTPException(status_code=400, detail="Upload directory changed")
+    # Windows ancestors are already pinned against rename and reparse mutation.
+
+
+def _save_new_upload(directory_fd: int | Path, filename: str, content: bytes) -> str:
+    """Allocate an immutable storage name using only the pinned directory writer.
+
+    Existing regular files cause bounded retries. Links and non-files are errors,
+    including on generated candidates; a collision never permits an overwrite.
+    """
+    candidate = filename
+    for _ in range(100):
+        try:
+            _write_upload(directory_fd, candidate, content)
+            return candidate
+        except FileExistsError as exc:
+            if sys.platform == "win32":
+                assert isinstance(directory_fd, Path)
+                import ctypes
+                from ctypes import wintypes
+
+                # The inspector opens the existing entry itself, without write
+                # access or reparse traversal. Keep ancestors pinned throughout.
+                handle = _windows_upload_handle(directory_fd / candidate, directory=False)
+                close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+                close.argtypes = [wintypes.HANDLE]
+                close.restype = wintypes.BOOL
+                close(handle)
+            else:
+                assert isinstance(directory_fd, int)
+                try:
+                    info = os.stat(candidate, dir_fd=directory_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue  # A concurrent removal is safe to retry exclusively.
+                if not stat.S_ISREG(info.st_mode):
+                    raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
+            name = Path(filename)
+            candidate = f"{name.stem}-{uuid.uuid4().hex}{name.suffix}"
+    raise HTTPException(status_code=409, detail="Could not allocate a unique upload name")
 
 
 @router.post("/projects/{slug}/upload")
@@ -1034,15 +1085,24 @@ async def upload_files(
     files: list[UploadFile] = File(...),
     path: str = Query(default=""),
 ):
-    project_dir = _project_dir(slug)
+    project_dir = _project_dir(slug).resolve(strict=True)
+    dest_dir = project_dir / path.lstrip("/")
     saved = []
     with _upload_directory(project_dir, path) as directory_fd:
         for upload in files:
             filename = Path(upload.filename or "upload").name
             try:
                 content = await upload.read()
-                _write_upload(directory_fd, filename, content)
-                saved.append({"filename": filename, "size": len(content)})
+                _verify_upload_directory(directory_fd, dest_dir)
+                stored_name = _save_new_upload(directory_fd, filename, content)
+                _verify_upload_directory(directory_fd, dest_dir)
+                dest = dest_dir / stored_name
+                saved.append({
+                    "filename": filename,
+                    "path": dest.relative_to(project_dir).as_posix(),
+                    "absolute_path": str(dest),
+                    "size": len(content),
+                })
             except HTTPException:
                 raise
             except OSError as exc:
@@ -1058,19 +1118,22 @@ async def upload_files(
 
 @router.post("/files/upload")
 async def upload_workspace_files(files: list[UploadFile] = File(...)):
-    dest_dir = _workspace_root() / "files"
+    root = _workspace_root().resolve(strict=True)
+    dest_dir = root / "files"
     saved = []
-    with _upload_directory(_workspace_root(), "files") as directory_fd:
+    with _upload_directory(root, "files") as directory_fd:
         for upload in files:
             filename = Path(upload.filename or "upload").name
-            dest = dest_dir / filename
             try:
                 content = await upload.read()
-                _write_upload(directory_fd, filename, content)
+                _verify_upload_directory(directory_fd, dest_dir)
+                stored_name = _save_new_upload(directory_fd, filename, content)
+                _verify_upload_directory(directory_fd, dest_dir)
+                dest = dest_dir / stored_name
                 saved.append(
                     {
                         "filename": filename,
-                        "path": f"files/{filename}",
+                        "path": f"files/{stored_name}",
                         "absolute_path": str(dest),
                         "size": len(content),
                     }

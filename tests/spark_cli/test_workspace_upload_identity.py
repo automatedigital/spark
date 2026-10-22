@@ -81,7 +81,9 @@ def test_storage_collision_retry_does_not_replace_existing_candidate(tmp_path, m
             return next(candidates)
 
     monkeypatch.setattr(routes.uuid, "uuid4", UploadID)
-    dest = routes._save_new_upload(tmp_path, "report.txt", b"new")
+    with routes._upload_directory(tmp_path, "") as directory:
+        stored_name = routes._save_new_upload(directory, "report.txt", b"new")
+    dest = tmp_path / stored_name
     assert dest.name == "report-fresh.txt"
     assert dest.read_bytes() == b"new"
     assert (tmp_path / "report.txt").read_bytes() == b"original"
@@ -103,3 +105,28 @@ def test_project_response_path_with_aliased_storage_root(storage, tmp_path, monk
     saved = response.json()["saved"][0]
     assert saved["path"] == (f"{path}/report.txt" if path else "report.txt")
     assert Path(saved["absolute_path"]).read_bytes() == b"original"
+
+
+def test_exhausted_collisions_do_not_overwrite(tmp_path, monkeypatch):
+    (tmp_path / "report.txt").write_bytes(b"original")
+    (tmp_path / "report-collision.txt").write_bytes(b"prior collision")
+
+    class CollisionID:
+        hex = "collision"
+
+    monkeypatch.setattr(routes.uuid, "uuid4", CollisionID)
+    with routes._upload_directory(tmp_path, "") as directory:
+        with pytest.raises(routes.HTTPException) as error:
+            routes._save_new_upload(directory, "report.txt", b"new")
+    assert error.value.status_code == 409
+    assert (tmp_path / "report.txt").read_bytes() == b"original"
+    assert (tmp_path / "report-collision.txt").read_bytes() == b"prior collision"
+
+
+def test_explicit_project_put_can_replace_file(storage):
+    app, _, project = storage
+    with TestClient(app) as client:
+        saved = client.post("/api/workspace/projects/proj/upload", files={"files": ("report.txt", b"original")}).json()["saved"][0]
+        response = client.put("/api/workspace/projects/proj/file", params={"path": saved["path"]}, json={"content": "deliberate edit"})
+    assert response.status_code == 200, response.text
+    assert (project / saved["path"]).read_bytes() == b"deliberate edit"
