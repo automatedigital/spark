@@ -187,7 +187,7 @@ User authorized: independently review every PR, merge safe work, rebuild apps an
 - Backend: #166/#169/#175/#178 source-safe; #182 blocked by structured/numeric credential export leakage.
 - Composer: #167/#172 source-safe, #180 source-safe pending required e2e; #176 blocked by demonstrated unsent-draft loss on recall/navigation; #170 held for the unresolved hosted history gate.
 - Rendering/Schedule: #183 source-safe; #174 hosted browser failure; #184 inherited Vite audit and independent browser validation; #179 stable skill identity mismatch; #181 Windows unsupported output API exposed by UI.
-- Workspace review pending. No blanket merge of the original heads.
+- Workspace: all five original heads held for demonstrated file/lock boundary defects. No blanket merge of the original heads.
 
 Integration now retains all twenty original heads and expected conflict resolutions in a separate checkout. Upload containment/identity composition, credential redaction, composer draft preservation and cron identity/capability repairs are separately delegated. Vite exact pin updated to **7.3.7**, npm reports **zero vulnerabilities**; existing audit/security threshold retained. Added Linux/Windows persistence contract gate so native Windows upload/lock proof cannot be inferred from macOS-only checks.
 
@@ -208,3 +208,9 @@ Remaining source repairs: composer durable original draft, cron skill identity/o
 - Git non-UTF-8 rows are safely disabled; normal names remain exact; literal pathspecs and lexical symlink discard preserve unrelated targets. Combined Git/files/upload set: **118 pass / 11 Windows-only skips**, exit 0.
 - Canvas and composer source repairs remain active; no merge or release yet.
 - **Apple notarization preflight now succeeds** after the account holder accepted the agreement: service reports successfully received submission history. The earlier 403 blocker is cleared. This is credential/service readiness, not artifact notarization.
+
+### Canvas repair integrated
+
+Canvas lexical target validation and profile-owned stable lock identities integrated at `3a3e2005`. Lead independently reran concurrency/routes/tool cases: **38 passed**, exit 0. Unsafe final symlinks are rejected, reads verify file identity, and project Files/Git actions cannot remove the new profile lock sidecars. Detailed evidence: [canvas repair](docs/reviews/october-canvas-boundaries-result.md).
+
+A fresh independent storage/backend review now examines the corrected combined snapshot. Composer repair is still running. Full non-network Python suites are running sequentially (parallel-safe selection followed by serial selection). Native Windows persistence proof and final combined browser gates remain unchecked; no GitHub merge or desktop release yet.
