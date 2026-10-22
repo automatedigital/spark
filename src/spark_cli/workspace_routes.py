@@ -1403,7 +1403,7 @@ def git_status(slug: str):
     files: list[dict[str, Any]] = []
     total_adds = 0
     total_dels = 0
-    status_res = _run_git(project_dir, ["status", "--porcelain=v1", "-z"])
+    status_res = _run_git(project_dir, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])
     records = iter(status_res.stdout.split("\0"))
     for record in records:
         if len(record) < 3:
@@ -1468,6 +1468,8 @@ def git_revert(slug: str, body: RevertBody):
     if not _is_git_repo(project_dir):
         raise HTTPException(status_code=400, detail="Not a git repository")
     target = _safe_path(project_dir, body.path)
+    if target.is_dir():
+        raise HTTPException(status_code=400, detail="Revert requires a file path, not a directory")
 
     tracked = _run_git(project_dir, ["ls-files", "--error-unmatch", "--", body.path])
     if tracked.returncode == 0:
