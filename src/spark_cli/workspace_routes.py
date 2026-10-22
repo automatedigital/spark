@@ -896,8 +896,12 @@ def _windows_upload_handle(path: Path, *, directory: bool, create_new: bool = Fa
     # Pin directories and new files against write/delete sharing. Collision
     # inspection permits the concurrent creator to finish writing its own file,
     # but never follows reparse points or opens the entry for writing.
+    # FILE_READ_ATTRIBUTES alone is excluded from sharing checks (MS-FSA
+    # 2.1.5.1.2.2). FILE_LIST_DIRECTORY (the directory meaning of bit 0x1)
+    # makes our no-write/no-delete sharing effective for the pinned ancestors.
+    access = 0x81 if directory else (0x40000080 if create_new else 0x80)
     # OPEN_REPARSE_POINT opens the link itself; BACKUP_SEMANTICS permits directories.
-    handle = create(str(path), 0x40000080 if create_new else 0x80,
+    handle = create(str(path), access,
                     3 if not directory and not create_new else 1, None,
                     1 if create_new else 3, 0x00200000 | 0x02000000, None)
     if handle == wintypes.HANDLE(-1).value:

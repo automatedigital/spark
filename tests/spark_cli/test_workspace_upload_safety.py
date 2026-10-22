@@ -2,7 +2,10 @@
 
 import os
 import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from fastapi import FastAPI
@@ -204,6 +207,9 @@ def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monke
     monkeypatch.setattr(UploadFile, "read", swapped_read)
     response = post(client, scope, path="nested")
     assert response.status_code in (200, 400)
+    assert {p.relative_to(outside): p.read_bytes() for p in outside.rglob("*")} == {
+        Path("note.txt"): b"original",
+    }
     assert (outside / "note.txt").read_bytes() == b"original"
     if response.status_code == 200:
         stored = Path(response.json()["saved"][0]["absolute_path"]).name
@@ -285,6 +291,97 @@ def test_intentionally_linked_profile_home(uploads, tmp_path, monkeypatch, scope
     assert post(client, scope, path="nested").status_code == 200
     dest = actual / "workspace" / ("proj/nested" if scope == "project" else "files")
     assert (dest / "note.txt").read_bytes() == b"new"
+
+
+@pytest.mark.parametrize("directory,create_new,access,share,disposition", [
+    (True, False, 0x81, 1, 3),
+    (False, True, 0x40000080, 1, 1),
+    (False, False, 0x80, 3, 3),
+])
+def test_windows_upload_handle_access_contract(
+    tmp_path, monkeypatch, directory, create_new, access, share, disposition,
+):
+    """Portable API contract only; native tests below prove OS enforcement."""
+    import ctypes
+
+    path = tmp_path / "target"
+
+    def attributes(handle, kind, output, size):
+        output._obj.attributes = 0x10 if directory else 0
+        return True
+
+    kernel = SimpleNamespace(
+        CreateFileW=Mock(return_value=42), CloseHandle=Mock(),
+        GetFileInformationByHandleEx=Mock(side_effect=attributes),
+    )
+    monkeypatch.setattr(ctypes, "WinDLL", Mock(return_value=kernel), raising=False)
+    with monkeypatch.context() as platform_patch:
+        platform_patch.setattr(routes.sys, "platform", "win32")
+        assert routes._windows_upload_handle(
+            path, directory=directory, create_new=create_new,
+        ) == 42
+    kernel.CreateFileW.assert_called_once_with(
+        str(path), access, share, None, disposition, 0x02200000, None,
+    )
+    kernel.CloseHandle.assert_not_called()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows directory sharing contract")
+@pytest.mark.parametrize("operation", ["rename", "write_handle"])
+def test_windows_directory_handle_blocks_other_process_until_closed(tmp_path, operation):
+    """Rename needs DELETE; reparse mutation needs a write-capable handle."""
+    import ctypes
+    from ctypes import wintypes
+
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    moved = tmp_path / "moved"
+    script = """
+import ctypes
+import os
+import sys
+from ctypes import wintypes
+try:
+    if sys.argv[1] == "rename":
+        os.rename(sys.argv[2], sys.argv[3])
+    else:
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        create = kernel.CreateFileW
+        create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                           wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        create.restype = wintypes.HANDLE
+        handle = create(sys.argv[2], 0x40000000, 7, None, 3, 0x02200000, None)
+        if handle == wintypes.HANDLE(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        close = kernel.CloseHandle
+        close.argtypes = [wintypes.HANDLE]
+        close.restype = wintypes.BOOL
+        assert close(handle)
+except OSError as exc:
+    print(exc.winerror)
+else:
+    print(0)
+"""
+
+    def attempt():
+        result = subprocess.run(
+            [sys.executable, "-c", script, operation, str(directory), str(moved)],
+            check=True, capture_output=True, text=True, timeout=10,
+        )
+        return int(result.stdout.strip())
+
+    handle = routes._windows_upload_handle(directory, directory=True)
+    close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    try:
+        assert attempt() == 32  # ERROR_SHARING_VIOLATION, not an unrelated denial.
+        assert directory.is_dir()
+        assert not moved.exists()
+    finally:
+        assert close(handle)
+    assert attempt() == 0  # Same caller/operation must succeed once unpinned.
+    assert (moved if operation == "rename" else directory).is_dir()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows handle contract")
