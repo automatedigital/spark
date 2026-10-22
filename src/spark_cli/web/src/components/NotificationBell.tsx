@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, CheckCircle, MessageSquare, XCircle, X } from "lucide-react";
-import { getDashboardToken } from "@/lib/api";
+import { api, getDashboardToken, sseUrl } from "@/lib/api";
 import { nativeNotify } from "@/lib/desktop";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
-import { notificationIdentity, shouldNotify } from "@/lib/notificationPolicy";
+import { getNotificationPreferences, notificationIdentity, shouldNotify } from "@/lib/notificationPolicy";
 import {
   dismissSessionNotification,
   clearAllSessionNotifications,
@@ -13,6 +13,9 @@ import {
   subscribeToUnreadSessions,
   type SessionNotification,
 } from "@/lib/unreadSessionStore";
+
+import { notificationSound, soundKindForEvent, soundEventIdentity } from "@/lib/notificationSound";
+import { NotificationSoundSettings } from "./NotificationSoundSettings";
 
 interface JobNotification {
   id: string;
@@ -42,19 +45,40 @@ export function NotificationBell() {
 
   useEffect(() => {
     const token = getDashboardToken();
+    const topics = "notifications,chat.turn_done,chat.approval_requested,chat.input_requested";
     const url = token
-      ? `/api/events?topics=notifications&dashboard_token=${encodeURIComponent(token)}`
-      : "/api/events?topics=notifications";
-    const es = new EventSource(url);
+      ? `/api/events?topics=${topics}&dashboard_token=${encodeURIComponent(token)}`
+      : `/api/events?topics=${topics}`;
+    const es = new EventSource(sseUrl(url));
 
     es.onmessage = (e) => {
       try {
         const env = JSON.parse(e.data);
-        if (!env.topic?.startsWith("notifications.")) return;
+        if (!soundKindForEvent(env.topic, env.data || {}) && !env.topic?.startsWith("notifications.")) return;
         const eventKey = notificationIdentity(env);
         if (seenEvents.current.has(eventKey)) return;
         seenEvents.current.add(eventKey);
+        if (seenEvents.current.size > 512) seenEvents.current.delete(seenEvents.current.values().next().value!);
         const d = env.data;
+        const kind = soundKindForEvent(env.topic, d);
+        if (kind) {
+          const prefs = getNotificationPreferences();
+          const soundEnabled = kind === "completion" ? prefs.completionSound : prefs.inputSound;
+          if (soundEnabled) {
+            const play = async () => {
+              let project = d.project_slug ?? d.turn_outcome?.workspace_slug;
+              if (project === undefined && prefs.mutedProjects.length) {
+                if (!env.session_id) return;
+                const outcome = await api.getConversationTurnOutcome(env.session_id);
+                if (!outcome) return; // Unknown project ownership: keep muted work silent.
+                project = outcome.workspace_slug;
+              }
+              await notificationSound.notify(soundEventIdentity(env, eventKey), kind, project);
+            };
+            void play().catch(() => {});
+          }
+        }
+        if (!env.topic.startsWith("notifications.")) return;
         const note: JobNotification = {
           id: `${env.ts}-${d.job_id}`,
           job_id: d.job_id,
@@ -137,6 +161,7 @@ export function NotificationBell() {
             )}
           </div>
           <div className="max-h-[400px] overflow-y-auto">
+            <NotificationSoundSettings />
             {notifications.length === 0 && sessionNotifications.length === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                 No notifications yet
