@@ -6,6 +6,8 @@ Deliver ten independently scoped defect fixes and ten useful features, each impl
 
 ## Status
 
+**Merge/release phase active:** independent reviews are checking the published heads. Main is unchanged while concrete source blockers and shared-file integration are repaired. Desktop target: `1.4.0` (minor release for the ten features); no release is published yet.
+
 **Delivery complete: 20/20 code PRs are published on GitHub — ten fixes and ten features.** All twenty branch heads match their GitHub PR heads and all are linked to the parent T3 thread. All assigned implementation/review workers have ended. No PR has been merged or release published. Validation and remaining acceptance gates are recorded below; publication does not imply every CI/native gate passed.
 
 The previous upgrade plan and its unfinished performance/native gates are preserved in [the historical plan](docs/plans/app-upgrade-2026-10-15.md). Existing issues #130, #139 and #140 retain those gates. No historical acceptance is silently carried forward.
@@ -177,3 +179,16 @@ F05 #184 publishes lazy strict Mermaid rendering with source/copy/error fallback
 - Other hosted checks may still be queued/running; the manifest is a snapshot, not a monitoring claim. F03 manifest-import timeout and baseline lint/type/audit findings remain disclosed in reports.
 - Independent PRs require integration/rebase in recorded order: I01→I02 upload handlers, I03→I04 context transport, I05→I06 Git status, F06→F07 Markdown parser; retain F05 diagram dispatch alongside both. F01/F04 composer and F02/F10 Schedule page hunks also need reconciliation. Source PRs do not include a combined production bundle.
 - No full integrated branch/browser/package/rollout acceptance is claimed. These PRs are delivered for review; merging and release remain separate work.
+
+## Merge and release review — 2026-10-22
+
+User authorized: independently review every PR, merge safe work, rebuild apps and release. Four review agents cover all twenty actual heads; lead owns the isolated combined branch and all bundle/lockfile/version writes.
+
+- Backend: #166/#169/#175/#178 source-safe; #182 blocked by structured/numeric credential export leakage.
+- Composer: #167/#172 source-safe, #180 source-safe pending required e2e; #176 blocked by demonstrated unsent-draft loss on recall/navigation; #170 held for the unresolved hosted history gate.
+- Rendering/Schedule: #183 source-safe; #174 hosted browser failure; #184 inherited Vite audit and independent browser validation; #179 stable skill identity mismatch; #181 Windows unsupported output API exposed by UI.
+- Workspace review pending. No blanket merge of the original heads.
+
+Integration now retains all twenty original heads and expected conflict resolutions in a separate checkout. Upload containment/identity composition, credential redaction, composer draft preservation and cron identity/capability repairs are separately delegated. Vite exact pin updated to **7.3.7**, npm reports **zero vulnerabilities**; existing audit/security threshold retained. Added Linux/Windows persistence contract gate so native Windows upload/lock proof cannot be inferred from macOS-only checks.
+
+Apple agreement: service returned 403; account holder reports agreement accepted. Immediate recheck still returned 403 for team GW2S46PJR7. Recheck at notarization stage; do not distribute an ad-hoc or unnotarized Mac release as signed/notarized.
