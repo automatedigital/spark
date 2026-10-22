@@ -2178,6 +2178,7 @@ export function ChatPanel({
       />
 
       <PromptBar
+        stashScope={draft.stashScope}
         input={input}
         setInput={setInput}
         streaming={streaming}
