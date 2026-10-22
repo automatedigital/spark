@@ -17,6 +17,9 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useEventBus } from "@/hooks/useEventBus";
 import type { SparkEventEnvelope } from "@/hooks/useEventBus";
 
+// Unsupported byte names have no action path; their escaped label is display-only.
+type GitFileRow = WorkspaceGitFile & { display_path?: string; unsupported_reason?: string };
+
 function StatusIcon({ status }: { status: WorkspaceGitFile["status"] }) {
   if (status === "added") return <FilePlus2 className="h-3.5 w-3.5 shrink-0 text-emerald-400/80" />;
   if (status === "deleted") return <FileX2 className="h-3.5 w-3.5 shrink-0 text-red-400/80" />;
@@ -43,13 +46,14 @@ function DiffView({ diff }: { diff: string }) {
   );
 }
 
-function ChangeRow({ slug, file, onReverted, requestedOpen }: { slug: string; file: WorkspaceGitFile; onReverted: () => void; requestedOpen?: boolean }) {
+export function ChangeRow({ slug, file, onReverted, requestedOpen }: { slug: string; file: GitFileRow; onReverted: () => void; requestedOpen?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [diff, setDiff] = useState<string | null>(null);
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [confirmRevert, setConfirmRevert] = useState(false);
 
   const toggle = async () => {
+    if (file.unsupported_reason || !file.path) return;
     const next = !expanded;
     setExpanded(next);
     if (next && diff === null) {
@@ -72,6 +76,7 @@ function ChangeRow({ slug, file, onReverted, requestedOpen }: { slug: string; fi
   }, [requestedOpen]);
 
   const revert = async () => {
+    if (file.unsupported_reason || !file.path) return;
     try {
       await api.revertWorkspaceGitFile(slug, file.path);
       onReverted();
@@ -84,13 +89,14 @@ function ChangeRow({ slug, file, onReverted, requestedOpen }: { slug: string; fi
     <div className="border-b border-border/40">
       <div
         className="group flex cursor-pointer items-center gap-1.5 px-2 py-1 text-[11px] transition hover:bg-secondary/50"
+        title={file.unsupported_reason}
         onClick={() => void toggle()}
       >
         <span className="text-muted-foreground/50">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </span>
         <StatusIcon status={file.status} />
-        <span className="min-w-0 flex-1 truncate font-mono-ui text-muted-foreground">{file.path}</span>
+        <span className="min-w-0 flex-1 truncate font-mono-ui text-muted-foreground">{file.display_path ?? file.path}</span>
         <span className="shrink-0 font-mono-ui text-[10px]">
           {file.adds != null && file.adds > 0 && <span className="text-emerald-400/80">+{file.adds}</span>}
           {file.adds != null && file.dels != null && (file.adds > 0 || file.dels > 0) && " "}
@@ -99,13 +105,15 @@ function ChangeRow({ slug, file, onReverted, requestedOpen }: { slug: string; fi
         </span>
         <button
           type="button"
-          title="Revert file"
+          disabled={!!file.unsupported_reason || !file.path}
+          title={file.unsupported_reason ?? "Revert file"}
           className="hidden text-muted-foreground/50 transition hover:text-destructive group-hover:block"
           onClick={(e) => { e.stopPropagation(); setConfirmRevert(true); }}
         >
           <RotateCcw className="h-3 w-3" />
         </button>
       </div>
+      {file.unsupported_reason && <p className="px-2 pb-1 text-[10px] text-muted-foreground">{file.unsupported_reason}</p>}
       {expanded && (
         loadingDiff ? (
           <div className="flex items-center justify-center py-3"><Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /></div>
@@ -116,7 +124,7 @@ function ChangeRow({ slug, file, onReverted, requestedOpen }: { slug: string; fi
       <ConfirmDialog
         open={confirmRevert}
         title="Revert changes?"
-        body={<span>Discard all uncommitted changes to <span className="font-mono-ui text-foreground">{file.path}</span>.</span>}
+        body={<span>Discard all uncommitted changes to <span className="font-mono-ui text-foreground">{file.display_path ?? file.path}</span>.</span>}
         confirmLabel="Revert"
         destructive
         onConfirm={() => void revert()}
@@ -173,7 +181,7 @@ export function WorkspaceChangesPanel({ slug }: { slug: string }) {
   }, []);
 
   const grouped = useMemo(() => {
-    const map = new Map<WorkspaceGitFile["status"], WorkspaceGitFile[]>();
+    const map = new Map<WorkspaceGitFile["status"], GitFileRow[]>();
     for (const f of status?.files ?? []) {
       const arr = map.get(f.status) ?? [];
       arr.push(f);
@@ -229,7 +237,7 @@ export function WorkspaceChangesPanel({ slug }: { slug: string }) {
                   {label} · {files.length}
                 </div>
                 {files.map((f) => (
-                  <ChangeRow key={f.path} slug={slug} file={f} requestedOpen={requestedPath === f.path} onReverted={() => void load()} />
+                  <ChangeRow key={JSON.stringify([f.path, f.display_path])} slug={slug} file={f} requestedOpen={requestedPath === f.path} onReverted={() => void load()} />
                 ))}
               </div>
             );

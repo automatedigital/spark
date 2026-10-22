@@ -1420,6 +1420,31 @@ def _run_git(project_dir: Path, args: list[str], timeout: float = 10.0) -> subpr
     )
 
 
+def _git_display_text(value: str) -> str:
+    """Escape undecodable bytes for display only, never for a path argument."""
+    return value.encode("utf-8", errors="backslashreplace").decode("utf-8")
+
+
+def _git_file_path(project_dir: Path, path: str) -> Path:
+    """Validate an exact file name without resolving its final symlink."""
+    try:
+        path.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise HTTPException(status_code=400, detail="Filename is not valid UTF-8; use Git directly") from exc
+    relative = Path(path)
+    if not path or "\0" in path or relative.is_absolute() or ".." in relative.parts:
+        raise HTTPException(status_code=400, detail="Git action requires a project-relative file path")
+    target = project_dir / relative
+    # Reject symlink parents, including internal ones: Git addresses the link,
+    # never a file reached through it. A final symlink is itself a valid entry.
+    for parent in relative.parents:
+        if parent != Path(".") and (project_dir / parent).is_symlink():
+            raise HTTPException(status_code=400, detail="Git file path must not traverse a symlink directory")
+    if target.is_dir() and not target.is_symlink():
+        raise HTTPException(status_code=400, detail="Git action requires a file path, not a directory")
+    return target
+
+
 def _is_git_repo(project_dir: Path) -> bool:
     try:
         res = _run_git(project_dir, ["rev-parse", "--is-inside-work-tree"])
@@ -1450,7 +1475,7 @@ def git_status(slug: str):
         return {"is_repo": False, "branch": None, "files": [], "total_adds": 0, "total_dels": 0}
 
     branch_res = _run_git(project_dir, ["rev-parse", "--abbrev-ref", "HEAD"])
-    branch = branch_res.stdout.strip() or None
+    branch = _git_display_text(branch_res.stdout.strip()) or None
 
     # Per-file +adds/-dels for tracked changes vs HEAD.
     numstat: dict[str, tuple[int | None, int | None]] = {}
@@ -1488,14 +1513,25 @@ def git_status(slug: str):
         if adds is None and dels is None and (index == "?" or work == "?"):
             target = project_dir / path
             try:
-                if target.is_file():
+                if not target.is_symlink() and target.is_file():
                     adds = sum(1 for _ in target.open("rb"))
                     dels = 0
             except OSError:
                 _log.debug("Ignoring error in git_status()", exc_info=True)
         total_adds += adds or 0
         total_dels += dels or 0
-        files.append({"path": path, "status": category, "adds": adds, "dels": dels})
+        row: dict[str, Any] = {"path": path, "status": category, "adds": adds, "dels": dels}
+        try:
+            path.encode("utf-8")
+        except UnicodeEncodeError:
+            # Empty action path cannot alias any real filename. The escaped
+            # byte representation is only a label and must never be submitted.
+            row.update(
+                path="",
+                display_path=repr(os.fsencode(path)),
+                unsupported_reason="Filename is not valid UTF-8; use Git directly",
+            )
+        files.append(row)
 
     files.sort(key=lambda f: f["path"])
     return {
@@ -1515,20 +1551,20 @@ def git_diff(slug: str, path: str = Query(default="")):
         raise HTTPException(status_code=400, detail="Not a git repository")
 
     if path:
-        _safe_path(project_dir, path)  # reject traversal
+        _git_file_path(project_dir, path)
         # Tracked changes vs HEAD.
-        res = _run_git(project_dir, ["diff", "HEAD", "--", path])
+        res = _run_git(project_dir, ["--literal-pathspecs", "diff", "HEAD", "--", path])
         diff = res.stdout
         # Untracked files have no HEAD entry; synthesize an add-diff.
         if not diff.strip():
-            untracked = _run_git(project_dir, ["ls-files", "--others", "--exclude-standard", "--", path])
+            untracked = _run_git(project_dir, ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "-z", "--", path])
             if untracked.stdout.strip():
                 nores = _run_git(project_dir, ["diff", "--no-index", "--", os.devnull, path])
                 diff = nores.stdout
-        return {"path": path, "diff": diff}
+        return {"path": path, "diff": _git_display_text(diff)}
 
     res = _run_git(project_dir, ["diff", "HEAD"])
-    return {"path": None, "diff": res.stdout}
+    return {"path": None, "diff": _git_display_text(res.stdout)}
 
 
 @router.post("/projects/{slug}/git/revert")
@@ -1537,16 +1573,14 @@ def git_revert(slug: str, body: RevertBody):
     project_dir = _project_dir(slug)
     if not _is_git_repo(project_dir):
         raise HTTPException(status_code=400, detail="Not a git repository")
-    target = _safe_path(project_dir, body.path)
-    if target.is_dir():
-        raise HTTPException(status_code=400, detail="Revert requires a file path, not a directory")
+    target = _git_file_path(project_dir, body.path)
 
-    tracked = _run_git(project_dir, ["ls-files", "--error-unmatch", "--", body.path])
+    tracked = _run_git(project_dir, ["--literal-pathspecs", "ls-files", "--error-unmatch", "--", body.path])
     if tracked.returncode == 0:
-        res = _run_git(project_dir, ["checkout", "HEAD", "--", body.path])
+        res = _run_git(project_dir, ["--literal-pathspecs", "checkout", "HEAD", "--", body.path])
         if res.returncode != 0:
-            raise HTTPException(status_code=500, detail=res.stderr.strip() or "git checkout failed")
-    elif target.exists():
+            raise HTTPException(status_code=500, detail=_git_display_text(res.stderr.strip()) or "git checkout failed")
+    elif target.is_symlink() or target.exists():
         try:
             target.unlink()
         except OSError as exc:
