@@ -156,14 +156,16 @@ try {
 
   await page.goto(base);
   await page.getByText("Mermaid Alpha", { exact: true }).first().click();
-  // Landing may already follow the latest row. Establish a detached scroll
-  // state before requiring the conditional user-facing jump action.
-  const chatScroll = page.locator('[data-session-id="mermaid-a"] [data-testid="chat-scroll"]');
-  await chatScroll.waitFor();
-  await page.locator('[data-session-id="mermaid-a"] [data-row-id]').first().waitFor();
-  await chatScroll.hover();
-  await page.mouse.wheel(0, -1500);
-  await page.getByTitle("Jump to latest", { exact: true }).click();
+  // A reopened virtualized chat may restore an earlier viewport. Exercise
+  // the real jump control before asserting diagrams at the latest rows.
+  const revealLatestAlpha = async () => {
+    const panel = page.locator('[data-testid="chat-panel"][data-session-id="mermaid-a"]');
+    await panel.locator('[data-row-id]').first().waitFor();
+    await panel.locator('[data-testid="chat-scroll"]').hover();
+    await page.mouse.wheel(0, -1500);
+    await panel.getByTitle("Jump to latest", { exact: true }).click();
+  };
+  await revealLatestAlpha();
   await page.locator('[role="img"][aria-label="Rendered Mermaid diagram"] svg').waitFor();
   await page.getByText("Mermaid Beta", { exact: true }).first().click();
   await page.locator('[data-testid="chat-panel"][data-session-id="mermaid-b"] [role="img"] svg').waitFor();
@@ -191,8 +193,9 @@ try {
   await page.waitForTimeout(2500);
   await page.getByText("Mermaid Alpha", { exact: true }).first().click();
   await page.locator('[data-testid="chat-panel"][data-session-id="mermaid-a"]').waitFor();
-  await page.waitForFunction(() => document.querySelectorAll('[role="img"] svg').length === 2);
-  checks.push("switch away during provider-free fake diagram stream and return to completed SVG");
+  await revealLatestAlpha();
+  await page.waitForFunction(() => document.querySelectorAll('[data-session-id="mermaid-a"] [role="img"] svg').length === 2);
+  checks.push("switch away during provider-free fake diagram stream, return and jump to latest completed SVGs");
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ checks, errors, base, output, home }, null, 2));
   await writeFile(path.join(output, "result.json"), JSON.stringify({ checks, errors, base, output, home }, null, 2));

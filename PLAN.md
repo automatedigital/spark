@@ -256,3 +256,9 @@ Hosted web-quality now retains composer/history+stash, Mermaid+disclosure comple
 ### Final integrated frontend and bundle
 
 Lead final source run under Node **22.22.1** passes **562 tests**, frontend lint, TypeScript, canonical production build/budget and **38 mounted completion checks**, all exit 0. Tracked production bundle regenerated from the repaired parser source. Persisted Mermaid gate reached the final switch-away/return stage with no page errors; its snapshot showed the restored earlier viewport, where virtualized latest diagram nodes are absent. The harness now invokes the actual Jump to latest control after returning before requiring two completed SVGs, retaining both exact count and stream/navigation assertions. This is a viewport precondition correction, not a source-failure waiver.
+
+### Final candidate pushed for hosted acceptance
+
+All concrete source findings from both independent review rounds are repaired. Lead final persisted Mermaid gate now passes **10 checks**, including two complete SVGs after switching away during the synthetic stream, returning and using the actual Jump to latest control; no page errors. Earlier harness failures and their viewport preconditions remain in the evidence. Final canonical bundle, **562 frontend tests**, lint/types/build/budget, **38 completion-browser checks**, **210 persistence tests** (11 native Windows skips locally), CI Ruff, mypy, manifest and both broad Python selections pass.
+
+PR #185 retains all twenty original heads and tracker ancestry. Source fixes are ready for final hosted acceptance; the candidate remains draft until final native Windows/Linux, Python, supply-chain and all browser gates pass. Main remains unchanged; no app release is claimed.
