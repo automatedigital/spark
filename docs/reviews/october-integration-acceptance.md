@@ -17,9 +17,9 @@ All twenty original code heads and tracker #144 are retained as ancestors. The o
 | F05/F06/F07 Markdown | Callout/details/Mermaid integration retained; parsed code node owns completion instead of unstructured index | Final lead/hosted browser and production gates |
 | F08/F09 sounds/history | Default-off bounded sound policy and bounded dashboard-only history retained; Windows byte lock acquired before initialization | Final hosted/native gates; physical desktop audio not inferred |
 
-## Current blocking finding
+## Native finding resolved
 
-Native Windows job 119931403494 exposes directory rename/reparse redirection past metadata-only upload handles. New unique filenames can escape; preserving only the original outside sentinel did not prove containment. Handle-relative creation/descent/collision repair is integrated at 39aabc9c, with whole-tree assertions and actual FSCTL native tests. Lead 127 neighboring tests, CI Ruff and mypy pass; exact-head direct native boundary proof is still required before merge. The earlier harness-only diagnosis is withdrawn.
+Native Windows job 119931403494 exposes directory rename/reparse redirection past metadata-only upload handles. New unique filenames can escape; preserving only the original outside sentinel did not prove containment. Handle-relative creation/descent/collision repair is integrated at 39aabc9c, with whole-tree assertions and actual FSCTL native tests. Lead 127 neighboring tests, CI Ruff and mypy pass; exact-head native Windows proof now passes: 210 tests, 32 platform skips, job 119944868932. The earlier harness-only diagnosis is withdrawn.
 
 ## Executed local checks
 
@@ -31,9 +31,9 @@ Native Windows job 119931403494 exposes directory rename/reparse redirection pas
 - [x] Lead real-browser composer/stash/persisted Mermaid flows; independent real Schedule flows.
 - [x] Final parser repair agent: 562 tests, lint/types, 38 mounted browser cases; pinned before/after reproducer verified.
 - [x] Lead final frontend at integrated parser source: 562 tests, lint, TypeScript/build/budget and 38 mounted completion browser checks pass. Canonical bundle regenerated. Persisted-chat return-scroll harness correction is verified separately before push.
-- [ ] Final hosted native Windows and Linux persistence checks.
-- [ ] Final hosted Python, web, supply-chain and original inspector/navigation/sidebar/recovery/three-attempt longthread gates.
-- [ ] Merge commit verified on main, all original PR states reconciled.
+- [x] Final hosted native Windows and Linux persistence checks at 98e393d4.
+- [x] Final hosted Python, web, supply-chain and original inspector/navigation/sidebar/recovery/three-attempt longthread gates.
+- [x] Merge commit 824ea1e4 verified on main; all twenty original PRs and tracker merged.
 - [ ] macOS final-tree signed/notarized/stapled artifact and isolated packaged lifecycle.
 - [ ] Windows final-main installer and packaged lifecycle, explicitly unsigned beta.
 - [ ] Release tag/visibility/assets/hashes verified.
