@@ -119,4 +119,7 @@ async def delete_cron_job(job_id: str):
 
 
 def register_cron_routes(app) -> None:
+    from spark_cli.cron_output_routes import router as output_router
+
+    app.include_router(output_router, prefix="/api/cron", tags=["cron"])
     app.include_router(router)
