@@ -112,16 +112,16 @@ function JobAdvanced({ id, value, onChange }: {
   id: string; value: Overrides; onChange: (value: Overrides) => void;
 }) {
   const [providers, setProviders] = useState<{ id: string; label: string }[]>([]);
-  const [installed, setInstalled] = useState<string[]>([]);
+  const [installed, setInstalled] = useState<{ id: string; name: string; enabled: boolean; reason?: string }[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   useEffect(() => {
     let active = true;
-    Promise.all([api.getCronProviders(), api.getSkills()]).then(([p, skills]) => {
+    Promise.all([api.getCronProviders(), api.getCronSkills()]).then(([p, skills]) => {
       if (!active) return;
       setProviders(p);
-      setInstalled(skills.filter((skill) => skill.enabled).map((skill) => skill.name));
+      setInstalled(skills);
     }).catch(() => { if (active) setError("Could not load providers and installed skills. Reopen Advanced to retry."); });
     return () => { active = false; };
   }, []);
@@ -154,11 +154,12 @@ function JobAdvanced({ id, value, onChange }: {
     <Label htmlFor={`${id}-skill`}>Add installed skill</Label>
     <Select id={`${id}-skill`} value="" onValueChange={(skill) => { if (skill) onChange({ ...value, skills: [...value.skills, skill] }); }}>
       <option value="">Choose a skill</option>
-      <>{installed.filter((skill) => !value.skills.includes(skill)).map((skill) => <option key={skill} value={skill}>{skill}</option>)}</>
+      <>{installed.filter((skill) => skill.enabled && !value.skills.includes(skill.id)).map((skill) => <option key={skill.id} value={skill.id}>{`${skill.name} (${skill.id})`}</option>)}</>
     </Select>
+    {installed.filter((skill) => !skill.enabled).map((skill) => <p key={skill.id} className="text-xs text-muted-foreground">{skill.name} ({skill.id}): {skill.reason || "Unavailable on this profile/platform"}</p>)}
     <ol className="grid gap-2">
       {value.skills.map((skill, index) => <li key={skill} className="flex flex-wrap items-center gap-2 text-sm">
-        <span>{index + 1}. {skill}{installed.includes(skill) ? "" : " (unavailable)"}</span>
+        <span>{index + 1}. {skill}{installed.some((item) => item.id === skill && item.enabled) ? "" : " (unavailable)"}</span>
         <Button size="sm" variant="outline" disabled={index === 0} aria-label={`Move ${skill} up`} onClick={() => {
           const skills = [...value.skills];
           [skills[index - 1], skills[index]] = [skills[index], skills[index - 1]];
@@ -172,6 +173,13 @@ function JobAdvanced({ id, value, onChange }: {
 }
 
 export default function CronPage() {
+  const [outputCapability, setOutputCapability] = useState({ supported: false, reason: "Checking saved output availability…" as string | null });
+  useEffect(() => {
+    let active = true;
+    api.getCronOutputCapability().then((capability) => { if (active) setOutputCapability(capability); })
+      .catch(() => { if (active) setOutputCapability({ supported: false, reason: "Could not verify saved output availability. Reload to retry." }); });
+    return () => { active = false; };
+  }, []);
   const [outputJob, setOutputJob] = useState<CronJob | null>(null);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -537,6 +545,8 @@ export default function CronPage() {
           {t.cron.scheduledJobs} ({jobs.length})
         </h2>
 
+        {!outputCapability.supported && <p id="cron-output-unavailable" className="text-xs text-muted-foreground">{outputCapability.reason}</p>}
+
         {jobs.length === 0 && (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
@@ -686,7 +696,7 @@ export default function CronPage() {
 
               {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
-                <Button variant="ghost" onClick={() => setOutputJob(job)}>Outputs</Button>
+                <Button variant="ghost" disabled={!outputCapability.supported} aria-describedby={!outputCapability.supported ? "cron-output-unavailable" : undefined} onClick={() => setOutputJob(job)}>Outputs</Button>
                 {isEditing ? (
                   <>
                     <Button

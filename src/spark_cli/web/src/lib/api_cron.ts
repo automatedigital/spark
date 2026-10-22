@@ -18,6 +18,8 @@ type CronJobFields = {
 };
 
 export const cronApi = {
+  getCronSkills: () => fetchJSON<{ id: string; name: string; enabled: boolean; reason?: string }[]>("/api/cron/skills"),
+  getCronOutputCapability: () => fetchJSON<{ supported: boolean; reason: string | null }>("/api/cron/output-capability"),
   getCronProviders: () => fetchJSON<{ id: string; label: string }[]>("/api/cron/providers"),
   getCronJobs: () => fetchJSON<CronJob[]>("/api/cron/jobs"),
   createCronJob: (job: CronJobFields) =>

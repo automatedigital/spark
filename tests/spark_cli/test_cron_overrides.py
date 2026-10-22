@@ -99,3 +99,78 @@ def test_provider_options_resolve_saved_and_authenticated_only(client):
     options = response.json()
     assert {item["id"] for item in options} == {"default", "saved", "authenticated", "custom:legacy-endpoint"}
     assert "secret" not in response.text and "private" not in response.text
+
+
+def test_real_skill_catalog_save_reload_and_scheduler(tmp_path):
+    """Fresh process: real configured roots, loader, storage and prompt assembly.
+
+    No skills mocks or provider calls; API construction never starts the runtime.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = r'''
+import json
+import os
+from pathlib import Path
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from spark_cli.cron_routes import register_cron_routes
+from cron.scheduler import _build_job_prompt
+
+home = Path(os.environ["SPARK_HOME"])
+for folder, name, body in [
+    ("folder-slug", "FriendlySkill", "REAL_FRIENDLY_INSTRUCTION"),
+    ("group/first", "Duplicate", "REAL_FIRST_INSTRUCTION"),
+    ("group/second", "Duplicate", "REAL_SECOND_INSTRUCTION"),
+    ("one/shared", "One", "ONE"), ("two/shared", "Two", "TWO"),
+]:
+    directory = home / "skills" / folder
+    directory.mkdir(parents=True)
+    (directory / "SKILL.md").write_text(f"---\nname: {name}\ndescription: fixture\n---\n{body}\n")
+external = home / "external"
+(external / "folder-slug").mkdir(parents=True)
+(external / "folder-slug/SKILL.md").write_text("---\nname: Shadow\n---\nSHADOW\n")
+app = FastAPI()
+register_cron_routes(app)
+client = TestClient(app)
+catalog = client.get("/api/cron/skills").json()
+assert {item["id"] for item in catalog} == {"folder-slug", "group/first", "group/second", "one/shared", "two/shared"}, catalog
+assert len([item for item in catalog if item["name"] == "Duplicate"]) == 2
+job = client.post("/api/cron/jobs", json={"prompt": "fixture", "schedule": "0 9 * * *", "skills": ["group/second", "folder-slug", "group/first", "folder-slug"]}).json()
+assert job["skills"] == ["group/second", "folder-slug", "group/first"], job
+saved = client.get(f"/api/cron/jobs/{job['id']}").json()
+assert saved["skills"] == job["skills"]
+assert json.loads((home / "cron/jobs.json").read_text())["jobs"][0]["skills"] == job["skills"]
+prompt = _build_job_prompt(saved)
+assert prompt.index("REAL_SECOND_INSTRUCTION") < prompt.index("REAL_FRIENDLY_INSTRUCTION") < prompt.index("REAL_FIRST_INSTRUCTION"), prompt
+assert "were skipped" not in prompt
+# Old uniquely named strings canonicalize; old actual folder strings still run.
+legacy = client.put(f"/api/cron/jobs/{job['id']}", json={"updates": {"skills": ["FriendlySkill"]}})
+assert legacy.json()["skills"] == ["folder-slug"], legacy.text
+assert "REAL_FRIENDLY_INSTRUCTION" in _build_job_prompt({"prompt": "old", "skill": "folder-slug"})
+legacy_update = client.put(f"/api/cron/jobs/{job['id']}", json={"updates": {"skill": "FriendlySkill"}})
+assert legacy_update.json()["skills"] == ["folder-slug"], legacy_update.text
+for ambiguous in ("Duplicate", "shared"):
+    legacy_rejected = client.put(f"/api/cron/jobs/{job['id']}", json={"updates": {"skill": ambiguous}})
+    assert legacy_rejected.status_code == 400 and "Ambiguous" in legacy_rejected.text, legacy_rejected.text
+    rejected = client.put(f"/api/cron/jobs/{job['id']}", json={"updates": {"skills": [ambiguous]}})
+    assert rejected.status_code == 400 and "Ambiguous" in rejected.text, rejected.text
+# Same relative path in another configured root cannot silently choose first match.
+(home / "config.yaml").write_text("skills:\n  external_dirs:\n    - " + external.as_posix() + "\n")
+catalog = client.get("/api/cron/skills").json()
+collision = next(item for item in catalog if item["id"] == "folder-slug")
+assert collision["enabled"] is False and "Ambiguous" in collision["reason"], catalog
+rejected = client.post("/api/cron/jobs", json={"prompt": "fixture", "schedule": "0 9 * * *", "skills": ["folder-slug"]})
+assert rejected.status_code == 400 and "Ambiguous" in rejected.text, rejected.text
+cleared = client.put(f"/api/cron/jobs/{job['id']}", json={"updates": {"skills": [], "skill": "folder-slug", "model": None, "provider": ""}}).json()
+assert cleared["skills"] == [] and cleared["skill"] is None
+assert cleared["model"] is None and cleared["provider"] is None
+print("PASS real catalog -> save -> disk/reload -> scheduler, duplicate labels/paths, legacy, clear")
+'''
+    env = {**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path),
+           "SPARK_HOME": str(tmp_path), "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src")}
+    result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, timeout=25)
+    assert result.returncode == 0, result.stdout + result.stderr

@@ -5,8 +5,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from spark_cli.cron_output_routes import MAX_READ_BYTES
+from spark_cli.cron_output_routes import MAX_READ_BYTES, saved_output_capability
 from spark_cli.cron_routes import register_cron_routes
+
+posix_output = pytest.mark.skipif(
+    not saved_output_capability()["supported"], reason="Requires POSIX descriptor-relative no-follow output access"
+)
 
 JOB = "abcdef123456"
 NEW = "2026-10-22_09-00-00.md"
@@ -25,6 +29,7 @@ def output_api(tmp_path, monkeypatch):
     return TestClient(app), directory
 
 
+@posix_output
 def test_newest_first_keyset_paging_and_pruning(output_api):
     client, directory = output_api
     (directory / NEW).write_text("# New\n✓", encoding="utf-8")
@@ -55,6 +60,7 @@ def test_invalid_job_ids(output_api, job_id):
     assert client.get(f"/api/cron/jobs/{job_id}/outputs").status_code in (400, 404)
 
 
+@posix_output
 def test_bounded_read_and_plain_text(output_api):
     client, directory = output_api
     (directory / NEW).write_bytes(b"<script>alert(1)</script>" + b"a" * MAX_READ_BYTES)
@@ -65,6 +71,7 @@ def test_bounded_read_and_plain_text(output_api):
 
 
 @pytest.mark.parametrize("level", ["file", "job", "output", "cron"])
+@posix_output
 def test_symlinks_are_never_followed(output_api, tmp_path, level):
     client, directory = output_api
     outside = tmp_path / "outside"
@@ -82,6 +89,7 @@ def test_symlinks_are_never_followed(output_api, tmp_path, level):
     assert listing.status_code == 403 or listing.json()["files"] == []
 
 
+@posix_output
 def test_profile_isolation_at_request_time(output_api, tmp_path, monkeypatch):
     client, directory = output_api
     (directory / NEW).write_text("profile one")
@@ -92,13 +100,51 @@ def test_profile_isolation_at_request_time(output_api, tmp_path, monkeypatch):
     assert client.get(f"/api/cron/jobs/{JOB}/outputs/{NEW}").status_code == 404
 
 
-def test_exact_filename_and_nonregular_files(output_api):
+def test_exact_filename_validation(output_api):
     client, directory = output_api
     base = f"/api/cron/jobs/{JOB}/outputs/"
     for name in ("notes.md", "2026-10-22_09-00-00.md.bak", "2026-99-99_00-00-00.md", "%2e%2e%2fsecret.md"):
         assert client.get(base + name).status_code in (400, 404)
+
+
+@posix_output
+def test_nonregular_files(output_api):
+    client, directory = output_api
+    base = f"/api/cron/jobs/{JOB}/outputs/"
     (directory / NEW).mkdir()
     assert client.get(base + NEW).status_code == 403
     (directory / NEW).rmdir()
     os.mkfifo(directory / NEW)
     assert client.get(base + NEW).status_code == 403
+
+
+def test_output_capability_matches_host_and_fails_closed(output_api):
+    client, _ = output_api
+    expected = saved_output_capability()
+    assert client.get("/api/cron/output-capability").json() == expected
+    if os.name == "nt":
+        assert expected["supported"] is False
+    if not expected["supported"]:
+        for suffix in ("", "/" + NEW):
+            response = client.get(f"/api/cron/jobs/{JOB}/outputs" + suffix)
+            assert response.status_code == 503
+            assert response.json()["detail"] == expected["reason"]
+
+
+@pytest.mark.parametrize("missing", ["dir_fd", "nofollow", "scandir_fd", "directory", "nonblock"])
+def test_unsupported_output_capability_and_no_access(output_api, monkeypatch, missing):
+    client, directory = output_api
+    (directory / NEW).write_text("must not be opened")
+    if missing == "dir_fd":
+        monkeypatch.setattr(os, "supports_dir_fd", set())
+    elif missing == "scandir_fd":
+        monkeypatch.setattr(os, "supports_fd", set())
+    else:
+        flag = {"nofollow": "O_NOFOLLOW", "directory": "O_DIRECTORY", "nonblock": "O_NONBLOCK"}[missing]
+        monkeypatch.delattr(os, flag, raising=False)
+    capability = client.get("/api/cron/output-capability").json()
+    assert capability == {"supported": False, "reason": "Safe saved output access is unavailable on this platform"}
+    for suffix in ("", "/" + NEW):
+        response = client.get(f"/api/cron/jobs/{JOB}/outputs" + suffix)
+        assert response.status_code == 503
+        assert response.json()["detail"] == capability["reason"]

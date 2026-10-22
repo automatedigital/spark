@@ -14,10 +14,25 @@ from fastapi import APIRouter, HTTPException, Query
 
 from core.spark_constants import get_spark_home
 
-router = APIRouter(prefix="/jobs/{job_id}/outputs")
+router = APIRouter()
 MAX_READ_BYTES = 256 * 1024
 _ID = re.compile(r"[0-9a-f]{12}")
 _NAME = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.md")
+
+
+def saved_output_capability() -> dict:
+    supported = (
+        all(hasattr(os, flag) for flag in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK"))
+        and os.open in os.supports_dir_fd
+        and os.scandir in os.supports_fd
+    )
+    return {"supported": supported, "reason": None if supported else
+            "Safe saved output access is unavailable on this platform"}
+
+
+@router.get("/output-capability")
+def get_output_capability():
+    return saved_output_capability()
 
 
 def _filename(value: str) -> str:
@@ -39,8 +54,9 @@ def _directory(job_id: str):
     # its paths are import-time constants, whereas this API follows the profile.
     descriptors = []
     try:
-        if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
-            raise HTTPException(503, "Safe saved output access is unavailable on this platform")
+        capability = saved_output_capability()
+        if not capability["supported"]:
+            raise HTTPException(503, capability["reason"])
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         descriptors.append(os.open(get_spark_home(), flags))
         for part in ("cron", "output", job_id):
@@ -57,7 +73,7 @@ def _directory(job_id: str):
             os.close(descriptor)
 
 
-@router.get("")
+@router.get("/jobs/{job_id}/outputs")
 def list_saved_outputs(job_id: str, limit: int = Query(20, ge=1, le=50), before: str | None = None):
     if before is not None:
         _filename(before)
@@ -82,7 +98,7 @@ def list_saved_outputs(job_id: str, limit: int = Query(20, ge=1, le=50), before:
     return {"files": names[:limit], "next_before": names[limit - 1] if len(names) > limit else None}
 
 
-@router.get("/{filename}")
+@router.get("/jobs/{job_id}/outputs/{filename}")
 def read_saved_output(job_id: str, filename: str):
     _filename(filename)
     with _directory(job_id) as directory:

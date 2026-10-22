@@ -53,7 +53,7 @@ try {
   }
   await writeFile(path.join(output, "2026-10-01_09-00-00.md"), "A".repeat(300000));
   const backend = path.join(temp, "backend.py");
-  await writeFile(backend, "from fastapi import FastAPI\nfrom spark_cli.cron_routes import register_cron_routes\napp = FastAPI()\nregister_cron_routes(app)\n");
+  await writeFile(backend, "from fastapi import FastAPI\nfrom spark_cli.cron_routes import register_cron_routes\napp = FastAPI()\nregister_cron_routes(app)\n@app.post('/fixture/disable-outputs')\ndef disable_outputs():\n    import os\n    os.supports_dir_fd = set()\n    return {}\n");
   const env = { ...process.env, HOME: home, USERPROFILE: home, SPARK_HOME: profile, PYTHONPATH: `${repo}/src` };
   start(python, ["-m", "uvicorn", "backend:app", "--app-dir", temp, "--port", String(apiPort), "--host", "127.0.0.1"], env);
   // The fixture mounts the real page and translation provider, excluding shell
@@ -73,6 +73,8 @@ createRoot(document.getElementById('root')).render(React.createElement(I18nProvi
   const context = await browser.newContext({ viewport: { width: 1200, height: 900 }, permissions: ["clipboard-read", "clipboard-write"] });
   const page = await context.newPage();
   await page.goto(`http://127.0.0.1:${webPort}/.cron-output-fixture.html`);
+  const capability = await (await fetch(`http://127.0.0.1:${apiPort}/api/cron/output-capability`)).json();
+  if (capability.supported) {
   await page.getByRole("button", { name: "Outputs", exact: true }).first().click();
   const drawer = page.getByRole("dialog", { name: "Saved output history" });
   await drawer.getByText("Saved fixture ✓", { exact: false }).waitFor();
@@ -100,6 +102,22 @@ createRoot(document.getElementById('root')).render(React.createElement(I18nProvi
   await page.getByRole("button", { name: "Outputs", exact: true }).nth(1).click();
   await page.getByText("No saved outputs. Files may have been pruned.", { exact: true }).waitFor();
   console.log(`PASS: newest/read/copy, older page, truncated read/copy, pruned/recovery, mobile drawer, Escape/focus, empty history; screenshot=${screenshot}`);
+  } else {
+    console.log("Host lacks secure POSIX output access; supported-flow cases require a POSIX host.");
+  }
+  // Actual backend capability -> actual mounted UI, including Windows hosts.
+  await fetch(`http://127.0.0.1:${apiPort}/fixture/disable-outputs`, { method: "POST" });
+  await page.reload();
+  await page.getByText("Safe saved output access is unavailable on this platform", { exact: true }).first().waitFor();
+  const buttons = page.getByRole("button", { name: "Outputs", exact: true });
+  assert.equal(await buttons.count(), 2);
+  for (const button of await buttons.all()) assert.equal(await button.isDisabled(), true);
+  assert.equal(await page.getByRole("dialog", { name: "Saved output history" }).count(), 0);
+  const unavailable = await fetch(`http://127.0.0.1:${apiPort}/api/cron/jobs/abcdef123456/outputs`);
+  assert.equal(unavailable.status, 503);
+  assert.equal((await unavailable.json()).detail, "Safe saved output access is unavailable on this platform");
+  await page.screenshot({ path: process.env.UNSUPPORTED_SCREENSHOT || path.join(os.tmpdir(), "spark-F10-output-unsupported.png"), fullPage: true });
+  console.log("PASS: real backend unsupported capability, disabled Outputs, visible reason, fail-closed 503");
 } finally {
   await browser?.close();
   for (const child of children) child.kill("SIGTERM");
