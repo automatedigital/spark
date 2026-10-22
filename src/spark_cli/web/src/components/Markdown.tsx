@@ -1,4 +1,5 @@
 import { memo, useMemo, useState, type MouseEvent } from "react";
+import { MarkdownDetails } from "./MarkdownDetails";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -472,6 +473,17 @@ function Block({
         </MarkdownCallout>
       );
     }
+    case "literal":
+      return <div className="whitespace-pre-wrap break-words">{block.content}{showCursor ? <StreamingCursor /> : null}</div>;
+    case "details":
+      return (
+        <MarkdownDetails summary={block.summary} open={block.open}>
+          {parseBlocks(block.content).map((child, i) => (
+            <MemoBlock key={i} block={child} highlightTerms={highlightTerms} live={false} safeMode={safeMode} defaultWrap={defaultWrap} />
+          ))}
+          {showCursor ? <StreamingCursor /> : null}
+        </MarkdownDetails>
+      );
     case "code":
       return <CodeBlock lang={block.lang} content={block.content} live={live} showCursor={showCursor} safeMode={safeMode} defaultWrap={defaultWrap} />;
 

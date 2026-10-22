@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Markdown details fixture</title></head>
+<body>
+<div id="root"></div>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { Markdown } from "/src/components/Markdown.tsx";
+  import "/src/index.css";
+  const root = createRoot(document.getElementById("root"));
+  const closed = '<details>\n<summary>Supporting evidence</summary>\nSearchable supporting sentence.\n\n```text\ncopy this evidence\n```\n</details>';
+  const opened = '<details open>\n<summary>Initially open</summary>\nInitially visible evidence.\n</details>';
+  window.renderDetailsFixture = (mode = "complete") => {
+    const content = mode === "partial" ? closed.slice(0, -10) : mode === "malicious"
+      ? closed.replace("<details>", '<details onclick="window.injected=true">') : closed;
+    root.render(React.createElement("main", { "data-mode": mode },
+      React.createElement("h1", {}, "Chat Markdown disclosure fixture"),
+      React.createElement("section", { id: "closed" }, React.createElement(Markdown, { content, streaming: mode === "partial", safeMode: mode === "safe" })),
+      React.createElement("section", { id: "open" }, React.createElement(Markdown, { content: opened })),
+      React.createElement("section", { id: "other" }, React.createElement(Markdown, { content: "Unrelated transcript entry." }))));
+  };
+  window.renderDetailsFixture();
+</script>
+</body>
+</html>

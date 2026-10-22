@@ -13,6 +13,8 @@
 export type CalloutKind = "NOTE" | "TIP" | "IMPORTANT" | "WARNING" | "CAUTION";
 
 export type BlockNode =
+  | { type: "literal"; content: string }
+  | { type: "details"; summary: string; content: string; open: boolean }
   | { type: "code"; lang: string; content: string }
   | { type: "heading"; level: number; content: string }
   | { type: "hr" }
@@ -87,6 +89,44 @@ export function parseCallout(content: string): Extract<BlockNode, { type: "callo
   };
 }
 
+// Intentionally line-based and case-sensitive. No general HTML parsing, attributes,
+// nested disclosures, or markup in summaries. Bodies use the existing Markdown.
+const DETAILS_START = /^<details(?:\s|>|$)/;
+const DETAILS_OPEN = /^<details( open)?>$/;
+const DETAILS_CLOSE = "</details>";
+const DETAILS_MAX_CHARS = 6_000;
+
+function readDetails(lines: string[], start: number): { block: BlockNode; end: number } {
+  let depth = 1;
+  let fence = false;
+  let nested = false;
+  let extraSummary = false;
+  let end = start + 1;
+  for (; end < lines.length; end++) {
+    const line = lines[end];
+    if (line.startsWith("```")) fence = !fence;
+    if (fence || line.startsWith("```")) continue;
+    if (end > start + 1 && /^<\/?summary(?:\s|>|$)/.test(line)) extraSummary = true;
+    if (DETAILS_START.test(line)) { depth++; nested = true; }
+    if (line === DETAILS_CLOSE) {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  const closed = end < lines.length;
+  const source = lines.slice(start, closed ? end + 1 : end).join("\n");
+  const summary = lines[start + 1]?.match(/^<summary>([^<>]+)<\/summary>$/)?.[1];
+  const body = lines.slice(start + 2, end).join("\n");
+  const valid = closed && !nested && DETAILS_OPEN.test(lines[start]) &&
+    summary?.trim() && source.length <= DETAILS_MAX_CHARS && !extraSummary;
+  return {
+    block: valid
+      ? { type: "details", summary: summary!, content: body, open: lines[start] === "<details open>" }
+      : { type: "literal", content: source },
+    end: closed ? end + 1 : end,
+  };
+}
+
 export function parseBlocks(text: string): BlockNode[] {
   const lines = text.split("\n");
   const blocks: BlockNode[] = [];
@@ -107,6 +147,13 @@ export function parseBlocks(text: string): BlockNode[] {
       }
       i++; // skip closing ```
       blocks.push({ type: "code", lang, content: codeLines.join("\n") });
+      continue;
+    }
+
+    if (DETAILS_START.test(line)) {
+      const details = readDetails(lines, i);
+      blocks.push(details.block);
+      i = details.end;
       continue;
     }
 
@@ -190,6 +237,7 @@ export function parseBlocks(text: string): BlockNode[] {
       !lines[i].match(/^\d+[.)]\s/) &&
       !lines[i].match(/^[-*_]{3,}\s*$/) &&
       !lines[i].match(/^>\s?/) &&
+      !DETAILS_START.test(lines[i]) &&
       !isTableStart(lines, i)
     ) {
       paraLines.push(lines[i]);
@@ -206,46 +254,33 @@ export function parseBlocks(text: string): BlockNode[] {
 /**
  * Split point between the stable committed prefix and the live streaming tail.
  * The boundary is the position just after the last blank line that sits OUTSIDE
- * any fenced code block, so `parseBlocks(prefix) ++ parseBlocks(tail)` is always
+ * any fenced code block or details candidate, so `parseBlocks(prefix) ++ parseBlocks(tail)` is always
  * equivalent to `parseBlocks(content)` (blank lines are the only block separator
- * this parser uses, and fenced code is the only construct that spans them).
+ * this parser uses, and fences/details can span them).
  * Single O(n) pass — no per-frame rescans.
  */
 export function findStableBoundary(content: string): number {
-  let safe = 0;
-  let insideFence = false;
-  let lineStart = 0;
-  for (let i = 0; i <= content.length; i++) {
-    if (i === content.length || content[i] === "\n") {
-      const line = content.slice(lineStart, i);
-      if (line === "" && !insideFence) {
-        safe = i + 1;
-      } else if (line.startsWith("```")) {
-        insideFence = !insideFence;
-      }
-      lineStart = i + 1;
-    }
-  }
-  return safe > content.length ? content.length : safe;
+  return stableBlankBoundaries(content).at(-1) ?? 0;
 }
 
 function stableBlankBoundaries(content: string): number[] {
   const boundaries: number[] = [];
   let insideFence = false;
+  let detailsDepth = 0;
   let lineStart = 0;
 
   for (let i = 0; i <= content.length; i++) {
     if (i !== content.length && content[i] !== "\n") continue;
-
     const line = content.slice(lineStart, i);
     if (line.startsWith("```")) {
       insideFence = !insideFence;
-    } else if (line === "" && !insideFence) {
-      boundaries.push(Math.min(content.length, i + 1));
+    } else if (!insideFence) {
+      if (DETAILS_START.test(line)) detailsDepth++;
+      else if (line === DETAILS_CLOSE) detailsDepth = Math.max(0, detailsDepth - 1);
+      else if (line === "" && detailsDepth === 0) boundaries.push(Math.min(content.length, i + 1));
     }
     lineStart = i + 1;
   }
-
   return boundaries;
 }
 
@@ -321,14 +356,20 @@ export function splitStableMarkdownSegments(
  */
 export function stabilizeLiveTail(tail: string): string {
   let insideFence = false;
+  let detailsDepth = 0;
   let lineStart = 0;
   for (let i = 0; i <= tail.length; i++) {
     if (i === tail.length || tail[i] === "\n") {
-      if (tail.slice(lineStart, i).startsWith("```")) insideFence = !insideFence;
+      const line = tail.slice(lineStart, i);
+      if (line.startsWith("```")) insideFence = !insideFence;
+      else if (!insideFence) {
+        if (DETAILS_START.test(line)) detailsDepth++;
+        else if (line === DETAILS_CLOSE) detailsDepth = Math.max(0, detailsDepth - 1);
+      }
       lineStart = i + 1;
     }
   }
-  return insideFence ? `${tail}\n\`\`\`` : tail;
+  return insideFence && detailsDepth === 0 ? `${tail}\n\`\`\`` : tail;
 }
 
 export function buildMarkdownRenderSegments(
@@ -456,6 +497,11 @@ function blocksEqual(a: BlockNode, b: BlockNode): boolean {
       const bb = b as typeof a;
       return a.kind === bb.kind && a.content === bb.content;
     }
+    case "details": {
+      const bb = b as typeof a;
+      return a.summary === bb.summary && a.content === bb.content && a.open === bb.open;
+    }
+    case "literal":
     case "blockquote":
     case "paragraph": {
       const bb = b as typeof a;
