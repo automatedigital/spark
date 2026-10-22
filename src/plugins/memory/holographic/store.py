@@ -136,10 +136,16 @@ class MemoryStore:
         try:
             self._init_db()
         except sqlite3.DatabaseError as exc:
-            # The on-disk file exists but is not a valid SQLite database (e.g.
-            # truncated/corrupted by an unclean shutdown — "file is not a
-            # database"). Quarantine it and rebuild from scratch so memory
-            # degrades to "empty" rather than failing on every turn.
+            # Extended result codes retain the primary code in the low byte.
+            # Lock contention, I/O failures and errors without a confirmed
+            # corruption code must never quarantine a potentially healthy DB.
+            code = getattr(exc, "sqlite_errorcode", None)
+            if not isinstance(code, int) or (code & 0xFF) not in (
+                sqlite3.SQLITE_CORRUPT,
+                sqlite3.SQLITE_NOTADB,
+            ):
+                self._conn.close()
+                raise
             self._recover_corrupt_db(exc)
 
     def _recover_corrupt_db(self, exc: Exception) -> None:
