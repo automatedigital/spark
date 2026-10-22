@@ -242,3 +242,7 @@ Lead Mermaid browser gate now passes all ten fixture/persisted-chat/stream-navig
 ### Windows persistence repair integrated
 
 Integrated `e368615b` from repair commit `168e89d2`: cron closes the permissive source reader before atomic repair publication while retaining its encompassing mutation lock; skill history acquires its Windows byte lock before initializing the lock byte and never reads a potentially locked byte. Four portable regressions fail against the pinned old source and pass after; agent broader checks **296 passed**, scoped/CI Ruff and CI mypy pass. [Evidence](docs/reviews/october-windows-persistence-result.md). Native Windows rerun remains pending final source/bundle push; no native success inferred from macOS tests.
+
+### Full Python validation complete
+
+Both required local non-network selections passed sequentially: **12,692 passed / 163 skipped** in the parallel-safe selection, then **182 passed / 15 skipped** in the serial selection (396.43s). No failures. These broad runs started before the last narrow canvas/Windows repair commits; their final affected persistence subset was rerun after integration: **210 passed / 11 Windows-only skipped**, exit 0. Final CI Ruff family gate and mypy (**137 source files**) also pass, exit 0. The full tool manifest check passes (**70 tools, 28 isolated modules, four optional guards**). Native Windows and final combined hosted gates remain separately required.
