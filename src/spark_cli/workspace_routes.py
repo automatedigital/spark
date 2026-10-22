@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import base64
+import errno
 import ipaddress
 import json
 import logging
@@ -16,6 +17,7 @@ import shlex
 import shutil
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -24,6 +26,8 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -863,6 +867,63 @@ def read_project_file_raw(slug: str, path: str = Query(...)):
     return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
+@contextmanager
+def _upload_directory(destination: Path) -> Iterator[int]:
+    """Pin every directory below the trusted profile home without following links.
+
+    Resolving/checking a pathname before writing is insufficient: any component
+    can be replaced while the multipart body is read. Relative descriptor-based
+    opens retain the directory we actually checked, even after a rename.
+    """
+    if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
+        # A pathname fallback would reintroduce the race (notably on Windows).
+        raise HTTPException(status_code=501, detail="Safe uploads unavailable on this platform")
+    home = get_spark_home().absolute()
+    parts = destination.absolute().relative_to(home).parts
+    if ".." in parts:
+        raise HTTPException(status_code=400, detail="Path traversal detected")
+    directory_fd = None
+    try:
+        directory_fd = os.open(home, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        for part in parts:
+            try:
+                os.mkdir(part, dir_fd=directory_fd)
+            except FileExistsError:
+                pass
+            child_fd = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd
+            )
+            os.close(directory_fd)
+            directory_fd = child_fd
+        yield directory_fd
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+            raise HTTPException(
+                status_code=400, detail="Upload path must not contain symlinks or non-directories"
+            ) from exc
+        raise
+    finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+
+def _write_upload(directory_fd: int, filename: str, content: bytes) -> None:
+    """Open the final basename without following a swapped-in symlink."""
+    if not filename or filename in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid upload filename")
+    # Do not truncate until fstat confirms a regular file; O_NONBLOCK also avoids
+    # hanging on a FIFO supplied in place of an existing upload.
+    fd = os.open(
+        filename, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+        0o666, dir_fd=directory_fd,
+    )
+    with os.fdopen(fd, "wb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise HTTPException(status_code=400, detail="Upload target must be a regular file")
+        stream.truncate(0)
+        stream.write(content)
+
+
 @router.post("/projects/{slug}/upload")
 async def upload_files(
     slug: str,
@@ -870,23 +931,26 @@ async def upload_files(
     path: str = Query(default=""),
 ):
     project_dir = _project_dir(slug)
-    dest_dir = _safe_path(project_dir, path) if path else project_dir
-    if not dest_dir.exists():
-        dest_dir.mkdir(parents=True, exist_ok=True)
-    if not dest_dir.is_dir():
-        raise HTTPException(status_code=400, detail="Upload path is not a directory")
-
+    # Keep the lexical components: _safe_path resolves links and would hide them
+    # from the no-follow directory walk.
+    dest_dir = project_dir / path.lstrip("/")
     saved = []
-    for upload in files:
-        filename = Path(upload.filename or "upload").name
-        dest = dest_dir / filename
-        try:
-            content = await upload.read()
-            dest.write_bytes(content)
-            saved.append({"filename": filename, "size": len(content)})
-        except Exception as exc:
-            _log.warning("Upload failed for %s: %s", filename, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
+    with _upload_directory(dest_dir) as directory_fd:
+        for upload in files:
+            filename = Path(upload.filename or "upload").name
+            try:
+                content = await upload.read()
+                _write_upload(directory_fd, filename, content)
+                saved.append({"filename": filename, "size": len(content)})
+            except HTTPException:
+                raise
+            except OSError as exc:
+                if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+                    raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
+                _log.warning("Upload failed for %s: %s", filename, exc)
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to save {filename}: {exc}"
+                ) from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "saved": saved}
 
@@ -894,26 +958,31 @@ async def upload_files(
 @router.post("/files/upload")
 async def upload_workspace_files(files: list[UploadFile] = File(...)):
     dest_dir = _workspace_root() / "files"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
     saved = []
-    for upload in files:
-        filename = Path(upload.filename or "upload").name
-        dest = dest_dir / filename
-        try:
-            content = await upload.read()
-            dest.write_bytes(content)
-            saved.append(
-                {
-                    "filename": filename,
-                    "path": f"files/{filename}",
-                    "absolute_path": str(dest),
-                    "size": len(content),
-                }
-            )
-        except Exception as exc:
-            _log.warning("Upload failed for %s: %s", filename, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
+    with _upload_directory(dest_dir) as directory_fd:
+        for upload in files:
+            filename = Path(upload.filename or "upload").name
+            dest = dest_dir / filename
+            try:
+                content = await upload.read()
+                _write_upload(directory_fd, filename, content)
+                saved.append(
+                    {
+                        "filename": filename,
+                        "path": f"files/{filename}",
+                        "absolute_path": str(dest),
+                        "size": len(content),
+                    }
+                )
+            except HTTPException:
+                raise
+            except OSError as exc:
+                if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+                    raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
+                _log.warning("Upload failed for %s: %s", filename, exc)
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to save {filename}: {exc}"
+                ) from exc
     return {"ok": True, "saved": saved}
 
 

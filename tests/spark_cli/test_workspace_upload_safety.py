@@ -1,0 +1,202 @@
+"""Multipart upload containment, using only disposable profile/home storage."""
+
+import os
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from starlette.datastructures import UploadFile
+
+from spark_cli import workspace_routes as routes
+
+
+@pytest.fixture
+def uploads(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    root = routes.get_spark_home() / "workspace"
+    project = root / "proj"
+    project.mkdir(parents=True)
+    app = FastAPI()
+    app.include_router(routes.router)
+    with TestClient(app) as client:
+        yield client, root, project
+
+
+def post(client, scope, filename="note.txt", path="", content=b"new"):
+    url = "/api/workspace/files/upload" if scope == "global" else (
+        "/api/workspace/projects/proj/upload"
+    )
+    return client.post(url, params={"path": path}, files={"files": (filename, content)})
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+@pytest.mark.parametrize("target_kind", ["external", "internal", "dangling"])
+def test_rejects_final_symlink(uploads, tmp_path, scope, target_kind):
+    client, root, project = uploads
+    dest = project if scope == "project" else root / "files"
+    dest.mkdir(exist_ok=True)
+    target = (dest if target_kind == "internal" else tmp_path) / "sentinel.txt"
+    if target_kind != "dangling":
+        target.write_bytes(b"original")
+    (dest / "note.txt").symlink_to(target)
+    response = post(client, scope)
+    assert response.status_code == 400
+    assert "saved" not in response.json()
+    if target_kind == "dangling":
+        assert not target.exists()
+    else:
+        assert target.read_bytes() == b"original"
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+@pytest.mark.parametrize("internal", [False, True])
+def test_rejects_directory_symlink(uploads, tmp_path, scope, internal):
+    client, root, project = uploads
+    target = (project if internal else tmp_path) / "target"
+    target.mkdir()
+    (target / "note.txt").write_bytes(b"original")
+    link = project / "linked" if scope == "project" else root / "files"
+    link.symlink_to(target, target_is_directory=True)
+    response = post(client, scope, path="linked")
+    assert response.status_code == 400
+    assert "saved" not in response.json()
+    assert (target / "note.txt").read_bytes() == b"original"
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_normal_upload_and_existing_file_replacement(uploads, scope):
+    client, root, project = uploads
+    for content in (b"first", b"second"):
+        response = post(client, scope, path="nested/deeper", content=content)
+        assert response.status_code == 200
+        assert response.json()["saved"][0]["filename"] == "note.txt"
+        dest = project / "nested/deeper" if scope == "project" else root / "files"
+        assert (dest / "note.txt").read_bytes() == content
+        if scope == "global":
+            assert response.json()["saved"][0]["absolute_path"] == str(dest / "note.txt")
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_filename_traversal_is_reduced_to_basename(uploads, tmp_path, scope):
+    client, root, project = uploads
+    sentinel = tmp_path / "sentinel.txt"
+    sentinel.write_bytes(b"original")
+    response = post(client, scope, filename="../../sentinel.txt")
+    assert response.status_code == 200
+    assert sentinel.read_bytes() == b"original"
+    dest = project if scope == "project" else root / "files"
+    assert (dest / "sentinel.txt").read_bytes() == b"new"
+
+
+def test_directory_traversal_rejected(uploads, tmp_path):
+    client, _, _ = uploads
+    response = post(client, "project", path="../../escape")
+    assert response.status_code == 400
+    assert not (tmp_path / "escape").exists()
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_final_symlink_swapped_during_upload_read(uploads, tmp_path, monkeypatch, scope):
+    client, root, project = uploads
+    dest = project if scope == "project" else root / "files"
+    dest.mkdir(exist_ok=True)
+    sentinel = tmp_path / "sentinel.txt"
+    sentinel.write_bytes(b"original")
+    original_read = UploadFile.read
+
+    async def swapped_read(self, *args):
+        content = await original_read(self, *args)
+        (dest / "note.txt").symlink_to(sentinel)
+        return content
+
+    monkeypatch.setattr(UploadFile, "read", swapped_read)
+    response = post(client, scope)
+    assert response.status_code == 400
+    assert "saved" not in response.json()
+    assert sentinel.read_bytes() == b"original"
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monkeypatch, scope):
+    client, root, project = uploads
+    dest = project / "nested" if scope == "project" else root / "files"
+    dest.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "note.txt").write_bytes(b"original")
+    original_read = UploadFile.read
+
+    async def swapped_read(self, *args):
+        content = await original_read(self, *args)
+        dest.rename(dest.with_name("pinned"))
+        dest.symlink_to(outside, target_is_directory=True)
+        return content
+
+    monkeypatch.setattr(UploadFile, "read", swapped_read)
+    response = post(client, scope, path="nested")
+    assert response.status_code in (200, 400)
+    assert (outside / "note.txt").read_bytes() == b"original"
+    if response.status_code == 200:
+        assert (dest.with_name("pinned") / "note.txt").read_bytes() == b"new"
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_symlink_swap_at_final_open_is_rejected(uploads, tmp_path, monkeypatch, scope):
+    client, root, project = uploads
+    dest = project if scope == "project" else root / "files"
+    dest.mkdir(exist_ok=True)
+    sentinel = tmp_path / "sentinel.txt"
+    sentinel.write_bytes(b"original")
+    real_open = os.open
+    swapped = False
+
+    def swap_then_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if path == "note.txt" and flags & os.O_WRONLY:
+            swapped = True
+            (dest / "note.txt").symlink_to(sentinel)
+        return real_open(path, flags, *args, **kwargs)
+
+    # Keep the capability catalog accurate while instrumenting the syscall.
+    monkeypatch.setattr(os, "supports_dir_fd", os.supports_dir_fd | {swap_then_open})
+    monkeypatch.setattr(os, "open", swap_then_open)
+    response = post(client, scope)
+    assert swapped
+    assert response.status_code == 400
+    assert "saved" not in response.json()
+    assert sentinel.read_bytes() == b"original"
+
+
+def test_unsupported_platform_fails_closed(uploads, monkeypatch):
+    client, _, _ = uploads
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    response = post(client, "project")
+    assert response.status_code == 501
+    assert "saved" not in response.json()
+
+
+@pytest.mark.parametrize("component", ["workspace", "project", "intermediate"])
+def test_rejects_symlinks_in_ancestor_directories(uploads, tmp_path, component):
+    client, root, project = uploads
+    target = tmp_path / "outside"
+    target.mkdir()
+    path = ""
+    if component == "workspace":
+        project.rmdir()
+        root.rmdir()
+        root.symlink_to(target, target_is_directory=True)
+        (target / "proj").mkdir()
+    elif component == "project":
+        project.rmdir()
+        project.symlink_to(target, target_is_directory=True)
+    else:
+        (project / "linked").symlink_to(target, target_is_directory=True)
+        path = "linked/new/nested"
+    response = post(client, "project", path=path)
+    assert response.status_code == 400
+    assert "saved" not in response.json()
+    assert not list(target.rglob("note.txt"))
+    assert not (target / "new").exists()
