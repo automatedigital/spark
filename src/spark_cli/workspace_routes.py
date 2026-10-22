@@ -863,6 +863,25 @@ def read_project_file_raw(slug: str, path: str = Query(...)):
     return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
+def _save_new_upload(dest_dir: Path, filename: str, content: bytes) -> Path:
+    """Never replace a prior upload, even when concurrent requests share a name.
+
+    Exclusive creation is portable and also refuses existing final-file symlinks.
+    """
+    dest = dest_dir / filename
+    for _ in range(10):
+        try:
+            with dest.open("xb") as target:
+                target.write(content)
+            return dest
+        except FileExistsError:
+            # Keep recognizable names and extensions without exceeding common
+            # filesystem component limits when adding the collision suffix.
+            name = Path(filename)
+            dest = dest_dir / f"{name.stem[:40]}-{uuid.uuid4().hex}{name.suffix[:20]}"
+    raise FileExistsError("Could not allocate a distinct upload path")
+
+
 @router.post("/projects/{slug}/upload")
 async def upload_files(
     slug: str,
@@ -879,11 +898,15 @@ async def upload_files(
     saved = []
     for upload in files:
         filename = Path(upload.filename or "upload").name
-        dest = dest_dir / filename
         try:
             content = await upload.read()
-            dest.write_bytes(content)
-            saved.append({"filename": filename, "size": len(content)})
+            dest = _save_new_upload(dest_dir, filename, content)
+            saved.append({
+                "filename": filename,
+                "path": dest.resolve().relative_to(project_dir.resolve()).as_posix(),
+                "absolute_path": str(dest),
+                "size": len(content),
+            })
         except Exception as exc:
             _log.warning("Upload failed for %s: %s", filename, exc)
             raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
@@ -899,14 +922,13 @@ async def upload_workspace_files(files: list[UploadFile] = File(...)):
     saved = []
     for upload in files:
         filename = Path(upload.filename or "upload").name
-        dest = dest_dir / filename
         try:
             content = await upload.read()
-            dest.write_bytes(content)
+            dest = _save_new_upload(dest_dir, filename, content)
             saved.append(
                 {
                     "filename": filename,
-                    "path": f"files/{filename}",
+                    "path": f"files/{dest.name}",
                     "absolute_path": str(dest),
                     "size": len(content),
                 }
