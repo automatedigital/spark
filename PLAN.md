@@ -200,3 +200,11 @@ All twenty original heads independently reviewed. Workspace review holds #155/#1
 Integrated anchored/exclusive upload allocation (`a38698e`), structured credential-field redaction (`a0662f6`), and lead upload permission/byte-budget fix. New permission/multibyte tests fail **3/3 before** and focused upload set passes **51 / 11 Windows skips** after; an ancestor substitution at root-open is rejected. First combined frontend checks pass **548 tests**, lint and TypeScript. Standard mypy with explicit checkout PYTHONPATH passes **137 files**; an initial run lacking checkout import ownership produced unrelated import-scope errors and is not acceptance.
 
 Remaining source repairs: composer durable original draft, cron skill identity/output capability, Git unsupported-name/exact-discard boundaries, canvas lexical target and profile-owned lock identity. Native Linux/Windows persistence contracts and final integrated browser/runtime checks remain required before merge.
+
+### Integrated repair checkpoint
+
+- Anchored immutable uploads and structured export credential redaction integrated. Lead added UTF-8 byte-budget collision allocation and restored search-only ancestor compatibility with inode confirmation.
+- Scheduler-resolvable skill identities and honest saved-output capability/UI integrated; **100 backend tests pass** independently.
+- Git non-UTF-8 rows are safely disabled; normal names remain exact; literal pathspecs and lexical symlink discard preserve unrelated targets. Combined Git/files/upload set: **118 pass / 11 Windows-only skips**, exit 0.
+- Canvas and composer source repairs remain active; no merge or release yet.
+- **Apple notarization preflight now succeeds** after the account holder accepted the agreement: service reports successfully received submission history. The earlier 403 blocker is cleared. This is credential/service readiness, not artifact notarization.
