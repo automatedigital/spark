@@ -4444,19 +4444,37 @@ async def get_skill_detail(skill_id: str):
     }
 
 
+@app.get("/api/skills/{skill_id}/history")
+async def get_skill_history(skill_id: str):
+    _skill_record_or_404(skill_id)
+    from starlette.concurrency import run_in_threadpool
+
+    from spark_cli.skill_history import read_history
+
+    try:
+        return await run_in_threadpool(read_history, skill_id)
+    except (OSError, ValueError) as err:
+        raise HTTPException(status_code=503, detail="Skill history is unavailable.") from err
+
+
 @app.put("/api/skills/{skill_id}")
 async def save_skill(skill_id: str, body: SkillSave):
     record = _skill_record_or_404(skill_id)
     if not record["capabilities"].get("editable"):
         raise HTTPException(status_code=403, detail="External skills are read-only.")
-    from tools.skill_manager_tool import save_skill_content
+    from starlette.concurrency import run_in_threadpool
 
-    result = save_skill_content(record["_path"], body.content)
+    from spark_cli.skill_history import save_with_history
+
+    try:
+        result = await run_in_threadpool(save_with_history, skill_id, record["_path"], body.content)
+    except (OSError, ValueError) as err:
+        raise HTTPException(status_code=503, detail="Skill history unavailable; save was not started.") from err
     if not result.get("success"):
         status = 422 if "limit" not in str(result.get("error", "")).lower() else 413
         raise HTTPException(status_code=status, detail=result.get("error", "Skill save failed."))
     _publish_event("skills.updated", {"skill_id": skill_id, "action": "edit", "future_context": True})
-    return {"ok": True, "skill": (await get_skill_detail(skill_id))}
+    return {"ok": True, "skill": (await get_skill_detail(skill_id)), "history_warning": result.get("history_warning")}
 
 
 @app.delete("/api/skills/{skill_id}")

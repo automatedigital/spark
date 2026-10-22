@@ -32,6 +32,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
@@ -1324,11 +1325,22 @@ class NativeFileOperations(ShellFileOperations):
         temp_name = None
         try:
             parent.mkdir(parents=True, exist_ok=True)
+            existing_mode = None
+            if os.name == "posix":
+                try:
+                    target_stat = resolved.stat()
+                except FileNotFoundError:
+                    pass
+                else:
+                    if stat.S_ISREG(target_stat.st_mode):
+                        existing_mode = stat.S_IMODE(target_stat.st_mode)
             encoded = content.encode("utf-8")
             with tempfile.NamedTemporaryFile(mode="wb", dir=str(parent), prefix=f".{resolved.name}.", suffix=".tmp", delete=False) as handle:
                 temp_name = handle.name
                 handle.write(encoded)
                 handle.flush()
+                if existing_mode is not None:
+                    os.fchmod(handle.fileno(), existing_mode)
                 os.fsync(handle.fileno())
             os.replace(temp_name, resolved)
             temp_name = None

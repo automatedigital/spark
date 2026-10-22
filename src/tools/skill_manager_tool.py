@@ -37,6 +37,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -267,6 +268,15 @@ def _atomic_write_text(file_path: Path, content: str, encoding: str = "utf-8") -
         encoding: Text encoding (default: utf-8)
     """
     file_path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode = None
+    if os.name == "posix":
+        try:
+            target_stat = file_path.stat()
+        except FileNotFoundError:
+            pass
+        else:
+            if stat.S_ISREG(target_stat.st_mode):
+                existing_mode = stat.S_IMODE(target_stat.st_mode)
     fd, temp_path = tempfile.mkstemp(
         dir=str(file_path.parent),
         prefix=f".{file_path.name}.tmp.",
@@ -275,6 +285,9 @@ def _atomic_write_text(file_path: Path, content: str, encoding: str = "utf-8") -
     try:
         with os.fdopen(fd, "w", encoding=encoding) as f:
             f.write(content)
+            f.flush()
+            if existing_mode is not None:
+                os.fchmod(f.fileno(), existing_mode)
         os.replace(temp_path, file_path)
     except Exception:
         # Clean up temp file on error

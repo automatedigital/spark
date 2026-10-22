@@ -1,0 +1,688 @@
+{
+  "date": "2026-10-22",
+  "scope": "10 fixes and 10 features; publication verified, acceptance separate",
+  "pull_requests": [
+    {
+      "packet": "I01",
+      "number": 155,
+      "url": "https://github.com/automatedigital/spark/pull/155",
+      "title": "fix: prevent upload symlink escapes (I01)",
+      "branch": "fix/upload-symlink-containment",
+      "head": "6ef55a4ef7ea53924c94ed962f776cd9db582151",
+      "draft": true,
+      "checks": [
+        {
+          "name": "lint-types-tests",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39799419775/job/119895920517"
+        },
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39799419719/job/119895899069"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "QUEUED",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39799419719/job/119895899504"
+        },
+        {
+          "name": "e2e",
+          "status": "QUEUED",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39799419775/job/119895921542"
+        },
+        {
+          "name": "pytest",
+          "status": "QUEUED",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39799419719/job/119895899422"
+        }
+      ]
+    },
+    {
+      "packet": "I02",
+      "number": 171,
+      "url": "https://github.com/automatedigital/spark/pull/171",
+      "title": "fix: preserve existing attachments on duplicate filename uploads",
+      "branch": "fix/attachment-upload-identity",
+      "head": "10ba28f595c5c39e6c1918b01e2b3dab214d614a",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789784376/job/119862427045"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789784103/job/119862424961"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789784376/job/119862427195"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789784103/job/119862425268"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789784376/job/119862427166"
+        }
+      ]
+    },
+    {
+      "packet": "I03",
+      "number": 167,
+      "url": "https://github.com/automatedigital/spark/pull/167",
+      "title": "fix(web): route context requests to selected backend",
+      "branch": "fix/context-selected-backend",
+      "head": "f60fc342a7adb265c8073b278149089032357b28",
+      "draft": false,
+      "checks": [
+        {
+          "name": "lint-types-tests",
+          "status": "IN_PROGRESS",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789427105/job/119861172817"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789427105/job/119861172214"
+        }
+      ]
+    },
+    {
+      "packet": "I04",
+      "number": 172,
+      "url": "https://github.com/automatedigital/spark/pull/172",
+      "title": "fix(web): fence stale token estimate responses (I04)",
+      "branch": "fix/token-estimate-races",
+      "head": "810b8f62dbb87091642a26570132bdd852f7b1bb",
+      "draft": false,
+      "checks": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789810746/job/119862524580"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789810746/job/119862524575"
+        }
+      ]
+    },
+    {
+      "packet": "I05",
+      "number": 168,
+      "url": "https://github.com/automatedigital/spark/pull/168",
+      "title": "fix: preserve exact Unicode and quoted Git Changes paths",
+      "branch": "fix/git-path-parsing",
+      "head": "797c0667b6c6bfd2c58232d94374d55c97d2c126",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789554492/job/119861606088"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789549619/job/119861592997"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789554492/job/119861605556"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789549619/job/119861593283"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789554492/job/119861605961"
+        }
+      ]
+    },
+    {
+      "packet": "I06",
+      "number": 173,
+      "url": "https://github.com/automatedigital/spark/pull/173",
+      "title": "fix: make nested untracked Changes rows actionable (I06)",
+      "branch": "fix/untracked-directory-changes",
+      "head": "f3c76d3a6df859df9d1218bf7f50da7e896c3963",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789849834/job/119862668181"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789849823/job/119862667816"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789849834/job/119862668743"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789849823/job/119862668201"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789849834/job/119862668761"
+        }
+      ]
+    },
+    {
+      "packet": "I07",
+      "number": 177,
+      "url": "https://github.com/automatedigital/spark/pull/177",
+      "title": "fix: make canvas revision checks atomic with saves and deletion",
+      "branch": "fix/canvas-save-revision-lock",
+      "head": "64ced2ca82718903da24cb53f4c34eaaa5c9f022",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39797798236/job/119889599915"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39797797920/job/119889599374"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39797797920/job/119889599756"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39797798236/job/119889599466"
+        },
+        {
+          "name": "pytest",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39797798236/job/119889600015"
+        }
+      ]
+    },
+    {
+      "packet": "I08",
+      "number": 166,
+      "url": "https://github.com/automatedigital/spark/pull/166",
+      "title": "fix(memory): preserve healthy SQLite databases during lock contention",
+      "branch": "fix/memory-sqlite-lock-recovery",
+      "head": "4e8828a6ed220ed3d098030f3773ea2a27335970",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39788660770/job/119858494141"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39788660953/job/119858495503"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39788660770/job/119858493599"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39788660953/job/119858494954"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39788660770/job/119858494164"
+        }
+      ]
+    },
+    {
+      "packet": "I09",
+      "number": 169,
+      "url": "https://github.com/automatedigital/spark/pull/169",
+      "title": "fix(cron): serialize cross-process job mutations",
+      "branch": "fix/cron-mutation-locking",
+      "head": "4231e200ea55d77abb17698d2ef4e24e69ebe9cd",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789714950/job/119862177504"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789714961/job/119862179150"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "CANCELLED",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789714961/job/119862178452"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789714950/job/119862178281"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789714950/job/119862178071"
+        }
+      ]
+    },
+    {
+      "packet": "I10",
+      "number": 175,
+      "url": "https://github.com/automatedigital/spark/pull/175",
+      "title": "fix: preserve file modes during atomic file and skill edits",
+      "branch": "fix/atomic-edit-file-modes",
+      "head": "0d3caa4cb1410f8d1ae115b6360676c3b201bff2",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789909020/job/119862889913"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789909023/job/119862887797"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789909020/job/119862889670"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789909023/job/119862888235"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789909020/job/119862889077"
+        }
+      ]
+    },
+    {
+      "packet": "F01",
+      "number": 176,
+      "url": "https://github.com/automatedigital/spark/pull/176",
+      "title": "feat(web): recall loaded prompts from composer history",
+      "branch": "feat/recall-sent-prompts-from-composer-history",
+      "head": "a667b806b3b24e7d875f39cd49b1b28a694a3844",
+      "draft": false,
+      "checks": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789941506/job/119863005744"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789941506/job/119863005419"
+        }
+      ]
+    },
+    {
+      "packet": "F02",
+      "number": 179,
+      "url": "https://github.com/automatedigital/spark/pull/179",
+      "title": "feat: configure per-job provider, model and skills in Schedule",
+      "branch": "feat/configure-per-job-models-providers-and-skills-in-schedule",
+      "head": "eb31f7fbfc02e8ba2b78d6c3c09de894fc36ab4e",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798397304/job/119891801805"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798397082/job/119891801071"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798397082/job/119891800523"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798397304/job/119891802024"
+        },
+        {
+          "name": "pytest",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798397304/job/119891801134"
+        }
+      ]
+    },
+    {
+      "packet": "F03",
+      "number": 182,
+      "url": "https://github.com/automatedigital/spark/pull/182",
+      "title": "feat: export readable redacted Markdown sessions",
+      "branch": "feat/export-sessions-as-readable-redacted-markdown",
+      "head": "314b876c4bde42f7696235461c4729ce80d94472",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798619884/job/119892607727"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798620109/job/119892608034"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798620109/job/119892608598"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798619884/job/119892607788"
+        },
+        {
+          "name": "pytest",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798619884/job/119892607488"
+        }
+      ]
+    },
+    {
+      "packet": "F04",
+      "number": 170,
+      "url": "https://github.com/automatedigital/spark/pull/170",
+      "title": "feat: save and restore a bounded prompt stash",
+      "branch": "feat/save-and-restore-a-bounded-prompt-stash",
+      "head": "a94d5487b6f747a612a11591b0a9fac1c0350fbf",
+      "draft": false,
+      "checks": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789747849/job/119862296584"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789747849/job/119862296942"
+        }
+      ]
+    },
+    {
+      "packet": "F05",
+      "number": 184,
+      "url": "https://github.com/automatedigital/spark/pull/184",
+      "title": "feat: render safe Mermaid diagrams in chat",
+      "branch": "feat/render-safe-mermaid-diagrams-in-chat",
+      "head": "2a64ae895e089a5867376ec037ac9781d693d01c",
+      "draft": false,
+      "checks": [
+        {
+          "name": "pinned-and-lockfile",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39799616281/job/119896267138"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "QUEUED",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39799616412/job/119896269019"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39799616412/job/119896268631"
+        }
+      ]
+    },
+    {
+      "packet": "F06",
+      "number": 174,
+      "url": "https://github.com/automatedigital/spark/pull/174",
+      "title": "feat: render accessible GitHub-style Markdown callouts",
+      "branch": "feat/render-github-style-markdown-callouts",
+      "head": "752034ee380b03e8d64de172543900582915e38c",
+      "draft": false,
+      "checks": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789900554/job/119862856057"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39789900554/job/119862856805"
+        }
+      ]
+    },
+    {
+      "packet": "F07",
+      "number": 183,
+      "url": "https://github.com/automatedigital/spark/pull/183",
+      "title": "feat: render safe collapsible details in chat Markdown",
+      "branch": "feat/render-safe-collapsible-details-in-chat-markdown",
+      "head": "bab15418550385c1ca73a3480900733a6f98a962",
+      "draft": false,
+      "checks": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798669221/job/119892798452"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798669221/job/119892799045"
+        }
+      ]
+    },
+    {
+      "packet": "F08",
+      "number": 180,
+      "url": "https://github.com/automatedigital/spark/pull/180",
+      "title": "feat: add opt-in notification sounds with preview",
+      "branch": "feat/add-opt-in-notification-sounds-with-preview",
+      "head": "7dcdcc106b988afd252c3aeb4a4d9ab50e4c51ee",
+      "draft": false,
+      "checks": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798452030/job/119891997853"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798452030/job/119891998588"
+        }
+      ]
+    },
+    {
+      "packet": "F09",
+      "number": 178,
+      "url": "https://github.com/automatedigital/spark/pull/178",
+      "title": "feat: browse bounded dashboard skill edit history",
+      "branch": "feat/browse-bounded-history-of-dashboard-skill-edits",
+      "head": "5b125dccd1208cb326bb0ad8cdab8eae308799a0",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798111558/job/119890743738"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798111584/job/119890744886"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798111584/job/119890744113"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798111558/job/119890744194"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798111558/job/119890743871"
+        }
+      ]
+    },
+    {
+      "packet": "F10",
+      "number": 181,
+      "url": "https://github.com/automatedigital/spark/pull/181",
+      "title": "feat: browse saved scheduled job output history",
+      "branch": "feat/browse-saved-scheduled-job-output",
+      "head": "e4081d9053b004e375eca472c86aaa00027ddce9",
+      "draft": false,
+      "checks": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798541732/job/119892328482"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798541614/job/119892327674"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798541614/job/119892327916"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798541732/job/119892328606"
+        },
+        {
+          "name": "pytest",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "detailsUrl": "https://github.com/automatedigital/spark/actions/runs/39798541732/job/119892329022"
+        }
+      ]
+    }
+  ]
+}

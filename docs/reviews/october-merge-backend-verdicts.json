@@ -1,0 +1,107 @@
+{
+  "repository": "automatedigital/spark",
+  "review_date": "2026-10-22",
+  "isolated_worktree": "/tmp/spark-backend-review-20261022",
+  "scope": "Read-only independent review of five actual GitHub PR heads; no merge/push/release",
+  "recommendation": "Merge 166,169,175,178 after ordinary integrated checks; hold 182 for P1 redaction repair. App releases require separate package acceptance.",
+  "pull_requests": [
+    {
+      "number": 166,
+      "url": "https://github.com/automatedigital/spark/pull/166",
+      "head": "4e8828a6ed220ed3d098030f3773ea2a27335970",
+      "base": "64af0d26976714b747dd4f1cc5b495c47c7f7567",
+      "verdict": "SAFE",
+      "findings": [],
+      "installed_package_evidence": false,
+      "windows_execution_verified": false,
+      "t3_linked": true,
+      "tests": 25,
+      "merge_conditions": [
+        "Lead must reconcile overlapping changes and run integrated checks; do not infer installed app readiness."
+      ]
+    },
+    {
+      "number": 169,
+      "url": "https://github.com/automatedigital/spark/pull/169",
+      "head": "4231e200ea55d77abb17698d2ef4e24e69ebe9cd",
+      "base": "64af0d26976714b747dd4f1cc5b495c47c7f7567",
+      "verdict": "SAFE",
+      "findings": [],
+      "installed_package_evidence": false,
+      "windows_execution_verified": false,
+      "t3_linked": true,
+      "tests": 71,
+      "merge_conditions": [
+        "Lead must reconcile overlapping changes and run integrated checks; do not infer installed app readiness.",
+        "The cancelled web E2E gate was cancelled during Chromium installation; no source failure established. Re-run if required by branch protection, without code changes based solely on this cancellation."
+      ]
+    },
+    {
+      "number": 175,
+      "url": "https://github.com/automatedigital/spark/pull/175",
+      "head": "0d3caa4cb1410f8d1ae115b6360676c3b201bff2",
+      "base": "64af0d26976714b747dd4f1cc5b495c47c7f7567",
+      "verdict": "SAFE",
+      "findings": [],
+      "installed_package_evidence": false,
+      "windows_execution_verified": false,
+      "t3_linked": true,
+      "tests": 71,
+      "merge_conditions": [
+        "Lead must reconcile overlapping changes and run integrated checks; do not infer installed app readiness."
+      ]
+    },
+    {
+      "number": 182,
+      "url": "https://github.com/automatedigital/spark/pull/182",
+      "head": "314b876c4bde42f7696235461c4729ce80d94472",
+      "base": "64af0d26976714b747dd4f1cc5b495c47c7f7567",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "severity": "P1",
+          "path": "src/spark_cli/session_export.py",
+          "line": 39,
+          "end_line": 56,
+          "title": "Credential fields leak non-string secrets in shareable exports",
+          "trigger": "Persist tool arguments containing authorization: {value: SYNTHETIC_OPAQUE_CREDENTIAL} or password: 123456789, then export as JSON or Markdown. Both secrets survive in final bytes.",
+          "classification": "Missing essential redaction acceptance in the new recursive sanitizer and Markdown export; existing JSON export also lacked this protection, so not a newly introduced JSON regression.",
+          "remediation": "Apply credential-field policy before type dispatch, redact the entire value of matching credential fields (including objects/lists/numbers), and add real SessionDB final-byte regressions for JSON/Markdown with publishing stubbed and input immutability asserted.",
+          "evidence": "182-redaction-repro.log"
+        }
+      ],
+      "installed_package_evidence": false,
+      "windows_execution_verified": false,
+      "t3_linked": true,
+      "tests": 166,
+      "merge_conditions": [
+        "Lead must reconcile overlapping changes and run integrated checks; do not infer installed app readiness.",
+        "Fix P1 and validate new head; sampled web workflow was still in progress, so do not claim all checks complete."
+      ]
+    },
+    {
+      "number": 178,
+      "url": "https://github.com/automatedigital/spark/pull/178",
+      "head": "5b125dccd1208cb326bb0ad8cdab8eae308799a0",
+      "base": "64af0d26976714b747dd4f1cc5b495c47c7f7567",
+      "verdict": "SAFE",
+      "findings": [],
+      "installed_package_evidence": false,
+      "windows_execution_verified": false,
+      "t3_linked": true,
+      "tests": 65,
+      "merge_conditions": [
+        "Lead must reconcile overlapping changes and run integrated checks; do not infer installed app readiness."
+      ],
+      "browser": {
+        "status": "passed",
+        "head": "5b125dccd1208cb326bb0ad8cdab8eae308799a0",
+        "workflow": "python src/spark_cli/web/e2e/skill-history.py",
+        "node": "22.23.4",
+        "report": "178-browser-final/report.json",
+        "screenshot": "178-browser-final/history.png",
+        "page_errors": []
+      }
+    }
+  ]
+}

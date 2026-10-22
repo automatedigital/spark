@@ -23,15 +23,22 @@ A canvas document looks like::
 
 from __future__ import annotations
 
+import errno
+import hashlib
 import json
 import logging
+import os
 import queue as _queue
 import re
+import stat
+import tempfile
 import threading as _threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TextIO, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -77,11 +84,93 @@ def _scope_dir(scope: str, slug: str | None) -> Path:
 
 def _canvas_path(scope: str, slug: str | None, canvas_id: str) -> Path:
     _check_id(canvas_id)
-    return _scope_dir(scope, slug) / f"{canvas_id}{_CANVAS_EXT}"
+    # Project roots may intentionally be symlinks. Resolve only the owner, never
+    # the final filename: replace/unlink must act on our lexical destination.
+    path = _scope_dir(scope, slug).resolve() / f"{canvas_id}{_CANVAS_EXT}"
+    _canvas_stat(path)
+    return path
+
+
+def _canvas_stat(path: Path) -> os.stat_result | None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(info.st_mode):
+        raise HTTPException(status_code=400, detail="Canvas must be a regular file, not a symlink")
+    return info
+
+
+@contextmanager
+def _canvas_reader(path: Path) -> Iterator[TextIO]:
+    # O_NOFOLLOW closes the check/open race on POSIX. On platforms without it,
+    # verify the opened identity against lstat before reading any bytes.
+    _canvas_stat(path)
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise HTTPException(status_code=400, detail="Canvas must not be a symlink") from exc
+        raise
+    with os.fdopen(fd, encoding="utf-8") as fh:
+        current = _canvas_stat(path)
+        opened = os.fstat(fh.fileno())
+        if current is None or not stat.S_ISREG(opened.st_mode) or (
+            opened.st_dev, opened.st_ino
+        ) != (current.st_dev, current.st_ino):
+            raise HTTPException(status_code=400, detail="Canvas changed while opening")
+        yield fh
+
+
+def _canvas_lock_path(path: Path) -> Path:
+    # Directory identity covers symlink, case and Unicode-normalization aliases
+    # without depending on the spelling returned by resolve(). Canvas IDs are
+    # ASCII: conservatively fold filenames on every filesystem. Case-distinct
+    # files may serialize, but their data paths remain distinct. Never use the
+    # canvas inode: it changes on atomic replace and is absent after deletion.
+    owner = path.parent.stat()
+    identity = f"{owner.st_dev}:{owner.st_ino}:{path.name.casefold()}"
+    key = hashlib.sha256(os.fsencode(identity)).hexdigest()
+    directory = get_spark_home() / "canvas-locks"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"{key}.lock"
+
+
+@contextmanager
+def _canvas_lock(path: Path) -> Iterator[None]:
+    """Serialize API access across threads/processes, including after deletion.
+
+    Keep the profile metadata inode: unlinking it would let waiters lock a retired file
+    while new requests acquire a different lock for the same canonical canvas.
+    """
+    with _canvas_lock_path(path).open("a+b") as lock:
+        if os.name == "nt":
+            import msvcrt
+
+            if os.fstat(lock.fileno()).st_size == 0:
+                lock.write(b"\0")
+                lock.flush()
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined]
+        else:
+            import fcntl
+
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
+            else:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def _revision(path: Path) -> str:
-    return str(path.stat().st_mtime_ns)
+    info = _canvas_stat(path)
+    if info is None:
+        raise FileNotFoundError(path)
+    return str(info.st_mtime_ns)
 
 
 def _summary(path: Path, scope: str, slug: str | None) -> dict[str, Any]:
@@ -89,22 +178,36 @@ def _summary(path: Path, scope: str, slug: str | None) -> dict[str, Any]:
     name = canvas_id
     error: str | None = None
     try:
-        with path.open(encoding="utf-8") as fh:
+        with _canvas_reader(path) as fh:
             doc = json.load(fh)
         name = doc.get("name") or canvas_id
+    except HTTPException:
+        raise
     except Exception:  # noqa: BLE001 — a corrupt file shouldn't break the listing
         error = "Failed to read canvas JSON"
+    info = _canvas_stat(path)
+    if info is None:
+        raise FileNotFoundError(path)
     summary = {
         "id": canvas_id,
         "name": name,
         "scope": scope,
         "slug": slug,
-        "updatedAt": datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat(),
+        "updatedAt": datetime.fromtimestamp(info.st_mtime, tz=UTC).isoformat(),
         "revision": _revision(path),
     }
     if error:
         summary["error"] = error
     return summary
+
+
+def _append_summary(canvases: list[dict[str, Any]], path: Path, scope: str, slug: str | None) -> None:
+    try:
+        with _canvas_lock(path):
+            canvases.append(_summary(path, scope, slug))
+    except (HTTPException, FileNotFoundError):
+        # Unsafe entries and files removed during enumeration are not canvases.
+        return
 
 
 class CanvasDoc(BaseModel):
@@ -157,14 +260,14 @@ def list_canvases() -> dict[str, Any]:
 
     global_dir = _global_dir()
     for path in sorted(global_dir.glob(f"*{_CANVAS_EXT}")):
-        canvases.append(_summary(path, "global", None))
+        _append_summary(canvases, path, "global", None)
 
     workspace = _workspace_root()
     for project in sorted(p for p in workspace.iterdir() if p.is_dir()):
         if project.name == "files" or not _SLUG_RE.match(project.name):
             continue
         for path in sorted(project.glob(f"*{_CANVAS_EXT}")):
-            canvases.append(_summary(path, "project", project.name))
+            _append_summary(canvases, path, "project", project.name)
 
     return {"canvases": canvases}
 
@@ -201,29 +304,24 @@ def delete_project_canvas(slug: str, canvas_id: str) -> dict[str, Any]:
 
 def _read_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, Any]:
     path = _canvas_path(scope, slug, canvas_id)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Canvas not found: {canvas_id!r}")
-    try:
-        with path.open(encoding="utf-8") as fh:
-            doc = json.load(fh)
-        doc["revision"] = _revision(path)
-        return cast("dict[str, Any]", doc)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Failed to read canvas: {exc}") from exc
+    with _canvas_lock(path):
+        if _canvas_stat(path) is None:
+            raise HTTPException(status_code=404, detail=f"Canvas not found: {canvas_id!r}")
+        try:
+            with _canvas_reader(path) as fh:
+                doc = json.load(fh)
+                revision = str(os.fstat(fh.fileno()).st_mtime_ns)
+            doc["revision"] = revision
+            return cast("dict[str, Any]", doc)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"Failed to read canvas: {exc}") from exc
 
 
 def _write_canvas(scope: str, slug: str | None, canvas_id: str, doc: CanvasDoc) -> dict[str, Any]:
     path = _canvas_path(scope, slug, canvas_id)
     _validate_canvas_doc(scope, slug, doc)
-    if doc.expectedRevision and path.exists() and doc.expectedRevision != _revision(path):
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "revision_conflict",
-                "message": "Canvas was modified since it was loaded",
-                "currentRevision": _revision(path),
-            },
-        )
     payload = doc.model_dump()
     payload["id"] = canvas_id
     payload["scope"] = scope
@@ -233,33 +331,66 @@ def _write_canvas(scope: str, slug: str | None, canvas_id: str, doc: CanvasDoc) 
     payload.pop("revision", None)
     serialized = json.dumps(payload, indent=2)
     if len(serialized.encode("utf-8")) > _MAX_CANVAS_BYTES:
-        raise HTTPException(status_code=400, detail=f"Canvas document is too large (max {_MAX_CANVAS_BYTES} bytes)")
-    tmp = path.with_suffix(f".tmp-{int(time.time() * 1000)}")
-    try:
-        tmp.write_text(serialized, encoding="utf-8")
-        tmp.replace(path)
-    except Exception as exc:  # noqa: BLE001
-        tmp.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Failed to write canvas: {exc}") from exc
-    return {
-        "ok": True,
-        "id": canvas_id,
-        "scope": scope,
-        "slug": slug,
-        "updatedAt": payload["updatedAt"],
-        "revision": _revision(path),
-    }
+        raise HTTPException(
+            status_code=400, detail=f"Canvas document is too large (max {_MAX_CANVAS_BYTES} bytes)"
+        )
+    with _canvas_lock(path):
+        current_revision = _revision(path) if _canvas_stat(path) is not None else None
+        if doc.expectedRevision and doc.expectedRevision != current_revision:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "revision_conflict",
+                    "message": "Canvas was modified since it was loaded",
+                    "currentRevision": current_revision,
+                },
+            )
+        tmp: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as fh:
+                tmp = Path(fh.name)
+                fh.write(serialized)
+            # Preserve distinct revisions even on coarse filesystem clocks.
+            if current_revision is not None and tmp.stat().st_mtime_ns <= int(current_revision):
+                stamp = max(time.time_ns(), int(current_revision) + 1)
+                os.utime(tmp, ns=(stamp, stamp))
+            _canvas_stat(path)
+            tmp.replace(path)
+            revision = _revision(path)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"Failed to write canvas: {exc}") from exc
+        finally:
+            if tmp is not None:
+                tmp.unlink(missing_ok=True)
+        return {
+            "ok": True,
+            "id": canvas_id,
+            "scope": scope,
+            "slug": slug,
+            "updatedAt": payload["updatedAt"],
+            "revision": revision,
+        }
 
 
 def _delete_canvas(scope: str, slug: str | None, canvas_id: str) -> dict[str, Any]:
     path = _canvas_path(scope, slug, canvas_id)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Canvas not found: {canvas_id!r}")
-    try:
-        path.unlink()
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Failed to delete canvas: {exc}") from exc
-    return {"ok": True, "deleted": canvas_id}
+    with _canvas_lock(path):
+        if _canvas_stat(path) is None:
+            raise HTTPException(status_code=404, detail=f"Canvas not found: {canvas_id!r}")
+        try:
+            path.unlink()
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"Failed to delete canvas: {exc}") from exc
+        return {"ok": True, "deleted": canvas_id}
 
 
 # ── Widget interaction (canvas → agent) ──────────────────────────────────────

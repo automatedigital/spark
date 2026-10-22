@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp, Box, Brain, Check, ChevronDown, FolderOpen, Loader2, Settings, Square } from "lucide-react";
 import { api } from "@/lib/api";
@@ -14,8 +14,18 @@ import { ContextWindowMeter } from "@/components/chat/ContextWindowMeter";
 import { ComposerAttachmentMenu } from "@/components/chat/ComposerAttachmentMenu";
 import { ComposerMoreMenu } from "@/components/chat/ComposerMoreMenu";
 import { COMPOSER_A11Y_LABELS, COMPOSER_WIDE_ONLY, COMPOSER_WIDE_ONLY_BLOCK } from "@/components/chat/composerContracts";
+import { canNavigateComposerHistory, readComposerRecovery, saveComposerRecovery, recallComposerPrompt, stepComposerPromptHistory, type ComposerPromptHistoryBrowse, type ComposerPromptHistoryEntry } from "@/lib/composerPromptHistory";
+
+import { subscribeDraft } from "@/lib/draftStore";
+
+import { PromptStashChooser } from "./PromptStashChooser";
+import { promptStashKey, type PromptStashScope } from "@/lib/promptStashStore";
 
 interface PromptBarProps {
+  promptHistory?: readonly ComposerPromptHistoryEntry[];
+  draftScopeKey?: string;
+  panelOwnerToken?: number;
+  stashScope?: PromptStashScope | null;
   input: string;
   setInput: (v: string) => void;
   streaming: boolean;
@@ -652,6 +662,7 @@ function ModelQuickSettings({
 // ── PromptBar ─────────────────────────────────────────────────────────────────
 
 export function PromptBar({
+  stashScope,
   input,
   setInput,
   streaming,
@@ -669,7 +680,31 @@ export function PromptBar({
   selectedProjectSlug,
   onProjectChange,
   placeholder,
+  promptHistory = [],
+  draftScopeKey,
+  panelOwnerToken,
 }: PromptBarProps) {
+  const historyOwner = JSON.stringify([draftScopeKey, panelOwnerToken, workspaceSlug ?? null, sessionId ?? null]);
+  const recovery = useSyncExternalStore(subscribeDraft, () => draftScopeKey ? readComposerRecovery(draftScopeKey) : null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyBrowse, setHistoryBrowse] = useState<ComposerPromptHistoryBrowse | null>(null);
+  const [historyMenuOwner, setHistoryMenuOwner] = useState<string | null>(null);
+  const historyOpen = historyMenuOwner === historyOwner;
+  const activeBrowse = historyBrowse?.owner === historyOwner ? historyBrowse : null;
+  const pendingHistoryCaret = useRef<{ owner: string; position: number } | null>(null);
+  // Retire even on A → B → A; an old browse session must never revive.
+  useLayoutEffect(() => {
+    setHistoryBrowse(null);
+    setHistoryMenuOwner(null);
+    setHistoryError(null);
+    pendingHistoryCaret.current = null;
+  }, [historyOwner]);
+  const historyMenuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (historyOpen) historyMenuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }, [historyOpen]);
+  const [stashOwner, setStashOwner] = useState<string | null>(null);
+  const stashKey = stashScope ? promptStashKey(stashScope) : null;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -723,7 +758,58 @@ export function PromptBar({
     }
   };
 
+  useLayoutEffect(() => {
+    const pending = pendingHistoryCaret.current;
+    pendingHistoryCaret.current = null;
+    if (pending?.owner !== historyOwner) return;
+    textareaRef.current?.focus();
+    textareaRef.current?.setSelectionRange(pending.position, pending.position);
+    setCursorPos(pending.position);
+  }, [input, historyOwner, historyBrowse]);
+
+  const preserveRecovery = (text: string) => {
+    if (!draftScopeKey || !saveComposerRecovery(draftScopeKey, text)) {
+      setHistoryError("Could not save draft recovery. Your current text is unchanged.");
+      return false;
+    }
+    setHistoryError(null);
+    return true;
+  };
+  const applyHistoryPrompt = (prompt: string, browse: ComposerPromptHistoryBrowse | null) => {
+    // Restoring swaps the two drafts, preserving edited recalls too. Selecting
+    // another history entry may replace an edit only after explicit confirmation.
+    if (!browse) {
+      if (!preserveRecovery(input)) return;
+    } else if (!activeBrowse) {
+      if (recovery !== null && recovery !== input && !window.confirm("Start another history browse? Replace the previous recovery draft with your current text? Copy or save the previous recovery first if you want to keep it.")) return;
+      if (!preserveRecovery(input)) return;
+    } else if (input && input !== activeBrowse.entries[activeBrowse.index]?.prompt
+      && !window.confirm("Replace current text with a history prompt? Your saved recovery draft will remain available. Copy or save any current edits first.")) return;
+    setHistoryBrowse(browse);
+    setHistoryMenuOwner(null);
+    setShowMenu(false);
+    setShowAtMenu(false);
+    setInput(prompt);
+    pendingHistoryCaret.current = { owner: historyOwner, position: prompt.length };
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (canNavigateComposerHistory({
+      key: e.key, text: input,
+      start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd,
+      menuOpen: showMenu || showAtMenu || showSettings || historyOpen || stashOwner === stashKey && stashKey !== null,
+      modified: e.shiftKey || e.altKey || e.ctrlKey || e.metaKey,
+      composing: e.nativeEvent.isComposing,
+    })) {
+      const next = stepComposerPromptHistory(historyOwner, activeBrowse, promptHistory, input,
+        e.key === "ArrowUp" ? "backward" : "forward");
+      if (next) {
+        e.preventDefault();
+        applyHistoryPrompt(next.browse ? next.prompt : recovery ?? next.prompt, next.browse);
+        return;
+      }
+    }
+    if (e.nativeEvent.isComposing) return;
     const policy = promptBarKeyPolicy({
       key: e.key,
       shiftKey: e.shiftKey,
@@ -738,6 +824,7 @@ export function PromptBar({
       setShowMenu(false);
       setShowAtMenu(false);
       setShowSettings(false);
+      setHistoryMenuOwner(null);
     }
   };
 
@@ -747,6 +834,8 @@ export function PromptBar({
       setShowHint(false);
       try { localStorage.setItem("spark-prompt-hint-dismissed", "1"); } catch { /* Draft remains editable without storage. */ }
     }
+    setHistoryBrowse(null);
+    setHistoryMenuOwner(null);
     onSend();
   };
 
@@ -934,6 +1023,22 @@ export function PromptBar({
         />
       )}
 
+      {historyError && <p role="alert" className="mb-2 text-sm text-destructive">{historyError}</p>}
+      {historyOpen && (
+        <div ref={historyMenuRef} role="dialog" aria-label="Loaded prompt history" className="mb-2 max-h-60 overflow-y-auto rounded-lg border border-border bg-popover p-2"
+          onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setHistoryMenuOwner(null); textareaRef.current?.focus(); } }}>
+          <p className="px-2 py-1 text-xs text-muted-foreground">Loaded user prompts only · text only</p>
+          {[...promptHistory].reverse().map((entry, reverseIndex) => (
+            <button key={entry.id} type="button" disabled={inputBlocked} title={entry.prompt} className="block w-full truncate rounded px-2 py-1 text-left text-sm hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                const browse = recallComposerPrompt(historyOwner, promptHistory, promptHistory.length - 1 - reverseIndex, recovery ?? activeBrowse?.draft ?? input);
+                if (browse) applyHistoryPrompt(entry.prompt, browse);
+              }}>{entry.prompt}</button>
+          ))}
+          <button type="button" onClick={() => { setHistoryMenuOwner(null); textareaRef.current?.focus(); }}>Close history</button>
+        </div>
+      )}
+
       {/* Unified card — no focus ring */}
       <div className={`relative rounded-2xl border border-border/80 bg-background/80 shadow-xl shadow-black/15 backdrop-blur-xl ${inputBlocked ? "opacity-60" : ""}`}>
         {/* Textarea */}
@@ -987,6 +1092,16 @@ export function PromptBar({
               />
             </>
           )}
+
+          <button type="button" disabled={inputBlocked || promptHistory.length === 0}
+            aria-label="Loaded prompt history" aria-haspopup="dialog" aria-expanded={historyOpen}
+            title="Recall loaded user prompts (Up at start, Down at end)"
+            className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-40"
+            onClick={() => { setShowMenu(false); setShowAtMenu(false); setShowSettings(false); setHistoryMenuOwner(historyOpen ? null : historyOwner); }}>
+            History
+          </button>
+          {(recovery !== null || activeBrowse) && <button type="button" disabled={inputBlocked} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-secondary"
+            title="Restore saved text and keep current text as the recovery draft" onClick={() => applyHistoryPrompt(recovery ?? activeBrowse!.draft, null)}>Restore draft</button>}
 
           {/* Model + reasoning pill */}
           {modelLabel && (
@@ -1043,6 +1158,8 @@ export function PromptBar({
             />
           )}
 
+          {stashScope && <button type="button" disabled={inputBlocked} onClick={() => setStashOwner(stashKey)} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/7 disabled:opacity-40">Saved prompts</button>}
+          {stashScope && stashOwner === stashKey && <PromptStashChooser key={stashKey} scope={stashScope} input={input} onRestore={(text) => { setHistoryBrowse(null); setHistoryMenuOwner(null); pendingHistoryCaret.current = null; setInput(text); textareaRef.current?.focus(); }} onClose={() => { setStashOwner(null); textareaRef.current?.focus(); }} />}
           <div className="flex-1" />
 
           {/* Token budget indicator */}

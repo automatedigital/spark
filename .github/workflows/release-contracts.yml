@@ -1,0 +1,49 @@
+name: Release persistence contracts
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/**/*.py"
+      - "tests/**/*.py"
+      - ".github/workflows/release-contracts.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  persistence-contracts:
+    name: Persistence contracts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      SPARK_HOME: ${{ github.workspace }}/.spark-contracts/profile
+      HOME: ${{ github.workspace }}/.spark-contracts/home
+      USERPROFILE: ${{ github.workspace }}/.spark-contracts/home
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Prepare isolated profile
+        run: python -c "import os; from pathlib import Path; [Path(os.environ[key]).mkdir(parents=True, exist_ok=True) for key in ('SPARK_HOME', 'HOME', 'USERPROFILE')]"
+      - name: Install test dependencies
+        run: python -m pip install -e ".[dev,web]"
+      - name: Verify upload, file, and concurrent persistence contracts
+        run: >-
+          python -m pytest
+          tests/spark_cli/test_workspace_upload_safety.py
+          tests/spark_cli/test_workspace_upload_identity.py
+          tests/spark_cli/test_canvas_concurrency.py
+          tests/cron/test_jobs_concurrency.py
+          tests/plugins/memory/test_holographic_recovery.py
+          tests/tools/test_native_file_operations.py
+          tests/tools/test_skill_manager_tool.py
+          tests/spark_cli/test_skill_history.py
+          tests/test_cron_output_routes.py
+          -m "not integration and not network" -q -n 0

@@ -1,0 +1,181 @@
+{
+  "date": "2026-10-22",
+  "repository": "automatedigital/spark",
+  "reviewer": "workspace review sub-agent",
+  "overall_recommendation": "HOLD_ALL_FIVE_CURRENT_HEADS",
+  "source_changed": false,
+  "merged": false,
+  "published": false,
+  "native_windows_executed": false,
+  "pr_polling_or_watching": false,
+  "worktree": "/tmp/spark-workspace-review-20261022",
+  "report": "/tmp/spark-merge-review-20261022/workspace.md",
+  "pull_requests": [
+    {
+      "number": 155,
+      "head": "6ef55a4ef7ea53924c94ed962f776cd9db582151",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "id": "WS155-P2-1",
+          "priority": "P2",
+          "path": "src/spark_cli/workspace_routes.py",
+          "line": 966,
+          "trigger": "Writable project beneath execute-only ancestor (0111)",
+          "finding": "O_RDONLY ancestor traversal introduces EACCES although previous pathname write succeeds",
+          "introduced": true,
+          "evidence": "workspace-evidence/155-permission-probe.log",
+          "minimum_remediation": "Preserve search-only POSIX traversal safely and add actual permission regression"
+        }
+      ],
+      "validation_gaps": [
+        "11 native Windows tests skipped; Windows handle/junction/share/cleanup runtime proof required"
+      ],
+      "tests": {
+        "passed": 52,
+        "skipped": 11
+      },
+      "ci_snapshot": "Ruff success, remaining jobs pending; previous exact failing mypy job inspected and superseded by typing fix",
+      "url": "https://github.com/automatedigital/spark/pull/155",
+      "t3_linked": true,
+      "installed_package_evidence": false
+    },
+    {
+      "number": 171,
+      "head": "10ba28f595c5c39e6c1918b01e2b3dab214d614a",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "id": "WS171-P2-1",
+          "priority": "P2",
+          "path": "src/spark_cli/workspace_routes.py",
+          "line": 881,
+          "trigger": "Duplicate filename with 40 emoji stem and 20 emoji extension; 241 bytes initially",
+          "finding": "Character truncation allocates 270 UTF-8 bytes, causing Linux ENAMETOOLONG and route 500",
+          "introduced": true,
+          "evidence": "workspace-evidence/171-linux-probe-final.log",
+          "minimum_remediation": "Budget allocation by filesystem component bytes/units; actual multibyte collision regression"
+        }
+      ],
+      "dependencies": [
+        155
+      ],
+      "integration": "Merge collision allocation into pinned no-follow/exclusive writer, preserving allocated response paths",
+      "tests": {
+        "passed": 19,
+        "skipped": 0
+      },
+      "ci_snapshot": "All five jobs successful",
+      "url": "https://github.com/automatedigital/spark/pull/171",
+      "t3_linked": true,
+      "installed_package_evidence": false
+    },
+    {
+      "number": 168,
+      "head": "797c0667b6c6bfd2c58232d94374d55c97d2c126",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "id": "WS168-P2-1",
+          "priority": "P2",
+          "path": "src/spark_cli/workspace_routes.py",
+          "line": 1179,
+          "trigger": "Git tree entry with raw byte 0xff in filename, absent from worktree",
+          "finding": "Surrogateescaped NUL path reaches UTF-8 JSON response and whole status route returns 500; base returns quoted row",
+          "introduced": true,
+          "evidence": "workspace-evidence/168-probes.log",
+          "minimum_remediation": "Response-safe path display and reversible action identity or explicitly unsupported row; retain neighboring rows and add real Git tree regression"
+        }
+      ],
+      "baseline_hazards": [
+        "Git pathspec wildcard revert may discard neighboring file edits",
+        "Staged rename destination revert remains unsupported"
+      ],
+      "tests": {
+        "passed": 41,
+        "skipped": 0
+      },
+      "ci_snapshot": "All five jobs successful",
+      "url": "https://github.com/automatedigital/spark/pull/168",
+      "t3_linked": true,
+      "installed_package_evidence": false
+    },
+    {
+      "number": 173,
+      "head": "f3c76d3a6df859df9d1218bf7f50da7e896c3963",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "id": "WS173-P1-1",
+          "priority": "P1",
+          "path": "src/spark_cli/workspace_routes.py",
+          "line": 1227,
+          "related_lines": [
+            1291,
+            1302
+          ],
+          "trigger": "New individually listed nested untracked symlink points to valuable internal file; discard selected link row",
+          "finding": "Revert deletes target and leaves dangling selected link",
+          "introduced": false,
+          "new_exposure": true,
+          "attribution": "Target-following backend defect pre-exists; --untracked-files=all newly exposes destructive per-file UI flow",
+          "evidence": "workspace-evidence/173-probes.log",
+          "minimum_remediation": "Lexical final-entry identity, lstat and unlink selected symlink or explicit rejection; retain ancestor containment; real status-to-revert tests"
+        }
+      ],
+      "dependencies": [
+        168
+      ],
+      "integration": "Preserve --porcelain=v1 -z parser and add --untracked-files=all",
+      "tests": {
+        "passed": 28,
+        "skipped": 0
+      },
+      "ci_snapshot": "All five jobs successful",
+      "url": "https://github.com/automatedigital/spark/pull/173",
+      "t3_linked": true,
+      "installed_package_evidence": false
+    },
+    {
+      "number": 177,
+      "head": "64ced2ca82718903da24cb53f4c34eaaa5c9f022",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "id": "WS177-P1-1",
+          "priority": "P1",
+          "path": "src/spark_cli/canvas_routes.py",
+          "line": 84,
+          "trigger": "Final canvas filename symlinks outside scope",
+          "finding": "Save overwrites outside target and delete removes it; exact base preserves outside target",
+          "introduced": true,
+          "evidence": "workspace-evidence/177-probes.log",
+          "baseline_evidence": "workspace-evidence/base-canvas-probes.log",
+          "minimum_remediation": "Separate canonical directory/lock key from final data identity; enforce final-link policy and race-safe containment; actual save/delete/swap regressions"
+        },
+        {
+          "id": "WS177-P1-2",
+          "priority": "P1",
+          "path": "src/spark_cli/canvas_routes.py",
+          "line": 95,
+          "trigger": "Git revert or Files delete removes project lock sidecar while lock holder/waiters exist",
+          "finding": "New sidecar inode allows save to acquire different lock before original is released",
+          "introduced": true,
+          "evidence": "workspace-evidence/177-probes.log",
+          "minimum_remediation": "Stable lock storage outside mutable project files or full lifetime enforcement across mutation paths; process interleaving tests"
+        }
+      ],
+      "validation_gaps": [
+        "Native Windows msvcrt contention/initialization/unlock/replace behavior not executed"
+      ],
+      "tests": {
+        "passed": 26,
+        "skipped": 0
+      },
+      "ci_snapshot": "All five jobs successful",
+      "url": "https://github.com/automatedigital/spark/pull/177",
+      "t3_linked": true,
+      "installed_package_evidence": false
+    }
+  ]
+}

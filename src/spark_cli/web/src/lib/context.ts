@@ -1,4 +1,4 @@
-import { getDashboardToken } from "@/lib/api";
+import { fetchJSON } from "./apiHelpers";
 
 export type ContextScope = "one_turn" | "pinned";
 
@@ -41,47 +41,43 @@ export interface ContextEstimate {
   buckets: ContextBucket[];
 }
 
-function authHeaders(): Headers {
-  const h = new Headers({ "Content-Type": "application/json" });
-  const tok = getDashboardToken();
-  if (tok) h.set("Authorization", `Bearer ${tok}`);
-  return h;
-}
-
-async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, headers: authHeaders() });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`${res.status}: ${text}`);
-  }
-  return res.json();
-}
+const jsonHeaders = { "Content-Type": "application/json" };
 
 export const contextApi = {
   listItems: (sessionId: string) =>
     fetchJSON<{ items: ContextItem[] }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/context`,
+      { headers: jsonHeaders },
     ),
 
   upsertItem: (sessionId: string, item: ContextItem) =>
     fetchJSON<{ ok: boolean; item: ContextItem }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/context/${encodeURIComponent(item.id)}`,
-      { method: "PUT", body: JSON.stringify(item) },
+      { method: "PUT", headers: jsonHeaders, body: JSON.stringify(item) },
     ),
 
   removeItem: (sessionId: string, itemId: string) =>
     fetchJSON<{ ok: boolean }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/context/${encodeURIComponent(itemId)}`,
-      { method: "DELETE" },
+      { method: "DELETE", headers: jsonHeaders },
     ),
+
+  summarizeFile: (path: string, workspaceSlug?: string) =>
+    fetchJSON<{ summary: string }>("/api/summarize-file", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ path, workspace_slug: workspaceSlug }),
+    }),
 
   estimateTokens: (params: {
     sessionId?: string;
     promptText: string;
     contextItems: ContextItem[];
-  }) =>
+  }, signal?: AbortSignal) =>
     fetchJSON<ContextEstimate>("/api/estimate-tokens", {
       method: "POST",
+      headers: jsonHeaders,
+      signal,
       body: JSON.stringify({
         session_id: params.sessionId ?? null,
         prompt: params.promptText,
@@ -94,11 +90,12 @@ export const briefApi = {
   get: (sessionId: string) =>
     fetchJSON<{ session_id: string; text: string }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/brief`,
+      { headers: jsonHeaders },
     ),
   set: (sessionId: string, text: string) =>
     fetchJSON<{ session_id: string; text: string }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/brief`,
-      { method: "PUT", body: JSON.stringify({ text }) },
+      { method: "PUT", headers: jsonHeaders, body: JSON.stringify({ text }) },
     ),
 };
 

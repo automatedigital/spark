@@ -75,7 +75,7 @@ export const workspaceApi = {
       const text = await res.text().catch(() => res.statusText);
       throw new Error(`${res.status}: ${text}`);
     }
-    return res.json() as Promise<{ ok: boolean; saved: Array<{ filename: string; size: number }> }>;
+    return res.json() as Promise<{ ok: boolean; saved: Array<{ filename: string; path: string; absolute_path: string; size: number }> }>;
   },
   listWorkspaceDir: (slug: string, path = "", showHidden = false) => {
     const qs = new URLSearchParams();

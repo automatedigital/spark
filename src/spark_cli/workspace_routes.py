@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import base64
+import errno
 import ipaddress
 import json
 import logging
@@ -16,6 +17,7 @@ import shlex
 import shutil
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -24,6 +26,8 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -863,57 +867,380 @@ def read_project_file_raw(slug: str, path: str = Query(...)):
     return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
+def _windows_upload_handle(
+    path: Path, *, directory: bool, create_new: bool = False,
+    root_handle: int | None = None, open_if: bool = False,
+) -> int:
+    """Open without following reparse points and deny delete/rename sharing.
+
+    Ancestors remain open until the upload ends to prevent rename. Below the
+    volume root, use single-component NT relative opens: sharing alone cannot
+    prevent FILE_WRITE_ATTRIBUTES-only reparse mutation on an empty directory.
+    """
+    if sys.platform != "win32":
+        raise RuntimeError("Windows upload handles require Windows")
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                       wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+
+    class AttributeTag(ctypes.Structure):
+        _fields_ = [("attributes", wintypes.DWORD), ("tag", wintypes.DWORD)]
+
+    info = kernel.GetFileInformationByHandleEx
+    info.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    info.restype = wintypes.BOOL
+    # Pin directories and new files against write/delete sharing. Collision
+    # inspection permits the concurrent creator to finish writing its own file,
+    # but never follows reparse points or opens the entry for writing.
+    # FILE_READ_ATTRIBUTES alone is excluded from sharing checks (MS-FSA
+    # 2.1.5.1.2.2). FILE_LIST_DIRECTORY (the directory meaning of bit 0x1)
+    # makes our no-write/no-delete sharing effective for the pinned ancestors.
+    access = 0x81 if directory else (0x40000080 if create_new else 0x80)
+    # OPEN_REPARSE_POINT opens the link itself; BACKUP_SEMANTICS permits directories.
+    share = 3 if not directory and not create_new else 1
+    if root_handle is None:
+        handle = create(str(path), access, share, None,
+                        1 if create_new else 3, 0x00200000 | 0x02000000, None)
+        error = ctypes.get_last_error() if handle == wintypes.HANDLE(-1).value else 0
+    else:
+        name = str(path)
+        if not name or name in (".", "..") or any(c in name for c in "\\/:"):
+            raise HTTPException(status_code=400, detail="Invalid upload component")
+
+        class UnicodeString(ctypes.Structure):
+            _fields_ = [("Length", wintypes.USHORT), ("MaximumLength", wintypes.USHORT),
+                        ("Buffer", wintypes.LPWSTR)]
+
+        class ObjectAttributes(ctypes.Structure):
+            _fields_ = [("Length", wintypes.ULONG), ("RootDirectory", wintypes.HANDLE),
+                        ("ObjectName", ctypes.POINTER(UnicodeString)),
+                        ("Attributes", wintypes.ULONG), ("SecurityDescriptor", wintypes.LPVOID),
+                        ("SecurityQualityOfService", wintypes.LPVOID)]
+
+        class IoStatusBlock(ctypes.Structure):
+            _fields_ = [("Status", ctypes.c_void_p), ("Information", ctypes.c_size_t)]
+
+        buffer = ctypes.create_unicode_buffer(name)
+        length = len(name.encode("utf-16-le"))
+        unicode_name = UnicodeString(length, length + 2, ctypes.cast(buffer, wintypes.LPWSTR))
+        attributes = ObjectAttributes(
+            ctypes.sizeof(ObjectAttributes), root_handle, ctypes.pointer(unicode_name),
+            0x40, None, None,  # OBJ_CASE_INSENSITIVE
+        )
+        ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+        nt_create = ntdll.NtCreateFile
+        nt_create.argtypes = [ctypes.POINTER(wintypes.HANDLE), wintypes.DWORD,
+                              ctypes.POINTER(ObjectAttributes), ctypes.POINTER(IoStatusBlock),
+                              wintypes.LPVOID, wintypes.ULONG, wintypes.ULONG, wintypes.ULONG,
+                              wintypes.ULONG, wintypes.LPVOID, wintypes.ULONG]
+        nt_create.restype = wintypes.LONG
+        result = wintypes.HANDLE()
+        io = IoStatusBlock()
+        # FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT, and explicit
+        # DIRECTORY/NON_DIRECTORY. SYNCHRONIZE is required for synchronous CRT IO.
+        status = nt_create(
+            ctypes.byref(result), access | 0x100000, ctypes.byref(attributes),
+            ctypes.byref(io), None, 0x80, share,
+            3 if open_if else (2 if create_new else 1),  # OPEN_IF / CREATE / OPEN
+            0x00200000 | 0x20 | (1 if directory else 0x40), None, 0,
+        )
+        error = 0
+        if status < 0:
+            translate = ntdll.RtlNtStatusToDosError
+            translate.argtypes = [wintypes.LONG]
+            translate.restype = wintypes.ULONG
+            error = translate(status)
+        handle = result.value
+    if error:
+        if create_new and error in (80, 183):
+            raise FileExistsError(errno.EEXIST, "Upload name already exists", str(path))
+        if error in (5, 32, 123, 267, 4390, 1920, 1921):
+            raise HTTPException(status_code=400, detail="Unsafe or unavailable upload target")
+        raise ctypes.WinError(error)
+    owned = True
+    try:
+        attrs = AttributeTag()
+        if not info(handle, 9, ctypes.byref(attrs), ctypes.sizeof(attrs)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if attrs.attributes & 0x400 or bool(attrs.attributes & 0x10) != directory:
+            raise HTTPException(status_code=400, detail="Unsafe upload target")
+        owned = False
+        # HANDLE uses c_void_p restype, which yields a Python integer here.
+        return cast(int, handle)
+    finally:
+        if owned:
+            close(handle)
+
+
+@contextmanager
+def _upload_directory(root: Path, relative: str) -> Iterator[int]:
+    """Pin the actual project root; intentional root/profile links are supported.
+
+    Below that boundary links are forbidden. POSIX uses relative no-follow opens;
+    Windows pins canonical ancestors against rename and opens all descendants
+    relative to directory handles, including newly created directories.
+    """
+    rel = Path(relative.lstrip("/"))
+    parts = rel.parts
+    if ".." in parts or rel.drive or rel.root:
+        raise HTTPException(status_code=400, detail="Path traversal detected")
+    root = root.resolve(strict=True)
+    if sys.platform == "win32":
+        # Win32 normalizes trailing dots/spaces and interprets colons as streams.
+        if any(part.endswith((".", " ")) or ":" in part for part in parts):
+            raise HTTPException(status_code=400, detail="Invalid upload path")
+        import ctypes
+        from ctypes import wintypes
+
+        close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+        close.argtypes = [wintypes.HANDLE]
+        close.restype = wintypes.BOOL
+        handles = []
+        try:
+            current = Path(root.anchor)
+            handles.append(_windows_upload_handle(current, directory=True))
+            for part in root.parts[1:]:
+                current /= part
+                handles.append(_windows_upload_handle(
+                    Path(part), directory=True, root_handle=handles[-1],
+                ))
+            for part in parts:
+                current /= part
+                handles.append(_windows_upload_handle(
+                    Path(part), directory=True, root_handle=handles[-1], open_if=True,
+                ))
+            yield handles[-1]
+        finally:
+            for handle in reversed(handles):
+                close(handle)
+        return
+    directory_fd = None
+    try:
+        # Search permission is sufficient on ancestors; requiring a readable
+        # descriptor for every ancestor rejects otherwise writable projects.
+        # Confirm the opened root is the inode selected before the open, even
+        # if an ancestor was substituted during that boundary.
+        expected_root = root.stat()
+        directory_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        if not os.path.samestat(expected_root, os.fstat(directory_fd)):
+            raise HTTPException(status_code=400, detail="Upload root changed")
+        for part in parts:
+            try:
+                os.mkdir(part, dir_fd=directory_fd)
+            except FileExistsError:
+                pass
+            child_fd = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd
+            )
+            os.close(directory_fd)
+            directory_fd = child_fd
+        yield directory_fd
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+            raise HTTPException(
+                status_code=400, detail="Upload path must not contain symlinks or non-directories"
+            ) from exc
+        raise
+    finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+
+def _write_upload(directory_fd: int, filename: str, content: bytes) -> None:
+    """Exclusively create a basename in the pinned directory, never following links."""
+    if not filename or filename in (".", "..") or Path(filename).name != filename:
+        raise HTTPException(status_code=400, detail="Invalid upload filename")
+    # CREATE_NEW / O_EXCL is authoritative even when another request races us.
+    if sys.platform == "win32":
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        if ":" in filename or filename.endswith((".", " ")):
+            raise HTTPException(status_code=400, detail="Invalid upload filename")
+        handle = _windows_upload_handle(
+            Path(filename), directory=False, create_new=True, root_handle=directory_fd,
+        )
+        # Transfer ownership to the CRT fd, then fdopen closes it on every path.
+        try:
+            fd = msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+        except OSError:
+            close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+            close.argtypes = [wintypes.HANDLE]
+            close.restype = wintypes.BOOL
+            close(handle)
+            raise
+    else:
+        assert isinstance(directory_fd, int)
+        fd = os.open(
+            filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK,
+            0o666, dir_fd=directory_fd,
+        )
+    with os.fdopen(fd, "wb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise HTTPException(status_code=400, detail="Upload target must be a regular file")
+        stream.write(content)
+
+
+def _verify_upload_directory(directory_fd: int, expected: Path) -> None:
+    """Do not return a path redirected away from the pinned directory inode."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        close = kernel.CloseHandle
+        close.argtypes = [wintypes.HANDLE]
+        close.restype = wintypes.BOOL
+        info = kernel.GetFileInformationByHandleEx
+        info.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+        info.restype = wintypes.BOOL
+
+        def identity(handle: int) -> bytes:
+            # FILE_ID_INFO: volume serial (64 bits) plus FILE_ID_128.
+            value = ctypes.create_string_buffer(24)
+            if not info(handle, 18, value, 24):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return value.raw
+
+        # A reparse on this directory is rejected by the opener; a reparse on
+        # an ancestor is detected by identity. This is an acknowledgement check,
+        # not the containment boundary: every child open is handle-relative.
+        expected_handle = _windows_upload_handle(expected, directory=True)
+        try:
+            if identity(directory_fd) != identity(expected_handle):
+                raise HTTPException(status_code=400, detail="Upload directory changed")
+        finally:
+            close(expected_handle)
+    else:
+        try:
+            matches = os.path.samestat(os.fstat(directory_fd), expected.stat(follow_symlinks=False))
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail="Upload directory changed") from exc
+        if not matches:
+            raise HTTPException(status_code=400, detail="Upload directory changed")
+
+
+def _save_new_upload(directory_fd: int, filename: str, content: bytes) -> str:
+    """Allocate an immutable storage name using only the pinned directory writer.
+
+    Existing regular files cause bounded retries. Links and non-files are errors,
+    including on generated candidates; a collision never permits an overwrite.
+    """
+    candidate = filename
+    for _ in range(100):
+        try:
+            _write_upload(directory_fd, candidate, content)
+            return candidate
+        except FileExistsError as exc:
+            if sys.platform == "win32":
+                import ctypes
+                from ctypes import wintypes
+
+                # The inspector opens the existing entry itself, without write
+                # access or reparse traversal. Keep ancestors pinned throughout.
+                handle = _windows_upload_handle(
+                    Path(candidate), directory=False, root_handle=directory_fd,
+                )
+                close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+                close.argtypes = [wintypes.HANDLE]
+                close.restype = wintypes.BOOL
+                close(handle)
+            else:
+                assert isinstance(directory_fd, int)
+                try:
+                    info = os.stat(candidate, dir_fd=directory_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue  # A concurrent removal is safe to retry exclusively.
+                if not stat.S_ISREG(info.st_mode):
+                    raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
+            name = Path(filename)
+            # The display filename is separate. Bound storage components by
+            # UTF-8 bytes, not characters (Linux commonly permits 255 bytes).
+            suffix = name.suffix.encode("utf-8")[:20].decode("utf-8", errors="ignore")
+            tail = f"-{uuid.uuid4().hex}{suffix}"
+            stem_bytes = max(0, 240 - len(tail.encode("utf-8")))
+            stem = name.stem.encode("utf-8")[:stem_bytes].decode("utf-8", errors="ignore")
+            candidate = f"{stem}{tail}"
+    raise HTTPException(status_code=409, detail="Could not allocate a unique upload name")
+
+
 @router.post("/projects/{slug}/upload")
 async def upload_files(
     slug: str,
     files: list[UploadFile] = File(...),
     path: str = Query(default=""),
 ):
-    project_dir = _project_dir(slug)
-    dest_dir = _safe_path(project_dir, path) if path else project_dir
-    if not dest_dir.exists():
-        dest_dir.mkdir(parents=True, exist_ok=True)
-    if not dest_dir.is_dir():
-        raise HTTPException(status_code=400, detail="Upload path is not a directory")
-
+    project_dir = _project_dir(slug).resolve(strict=True)
+    dest_dir = project_dir / path.lstrip("/")
     saved = []
-    for upload in files:
-        filename = Path(upload.filename or "upload").name
-        dest = dest_dir / filename
-        try:
-            content = await upload.read()
-            dest.write_bytes(content)
-            saved.append({"filename": filename, "size": len(content)})
-        except Exception as exc:
-            _log.warning("Upload failed for %s: %s", filename, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
+    with _upload_directory(project_dir, path) as directory_fd:
+        for upload in files:
+            filename = Path(upload.filename or "upload").name
+            try:
+                content = await upload.read()
+                _verify_upload_directory(directory_fd, dest_dir)
+                stored_name = _save_new_upload(directory_fd, filename, content)
+                _verify_upload_directory(directory_fd, dest_dir)
+                dest = dest_dir / stored_name
+                saved.append({
+                    "filename": filename,
+                    "path": dest.relative_to(project_dir).as_posix(),
+                    "absolute_path": str(dest),
+                    "size": len(content),
+                })
+            except HTTPException:
+                raise
+            except OSError as exc:
+                if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+                    raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
+                _log.warning("Upload failed for %s: %s", filename, exc)
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to save {filename}: {exc}"
+                ) from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "saved": saved}
 
 
 @router.post("/files/upload")
 async def upload_workspace_files(files: list[UploadFile] = File(...)):
-    dest_dir = _workspace_root() / "files"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
+    root = _workspace_root().resolve(strict=True)
+    dest_dir = root / "files"
     saved = []
-    for upload in files:
-        filename = Path(upload.filename or "upload").name
-        dest = dest_dir / filename
-        try:
-            content = await upload.read()
-            dest.write_bytes(content)
-            saved.append(
-                {
-                    "filename": filename,
-                    "path": f"files/{filename}",
-                    "absolute_path": str(dest),
-                    "size": len(content),
-                }
-            )
-        except Exception as exc:
-            _log.warning("Upload failed for %s: %s", filename, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
+    with _upload_directory(root, "files") as directory_fd:
+        for upload in files:
+            filename = Path(upload.filename or "upload").name
+            try:
+                content = await upload.read()
+                _verify_upload_directory(directory_fd, dest_dir)
+                stored_name = _save_new_upload(directory_fd, filename, content)
+                _verify_upload_directory(directory_fd, dest_dir)
+                dest = dest_dir / stored_name
+                saved.append(
+                    {
+                        "filename": filename,
+                        "path": f"files/{stored_name}",
+                        "absolute_path": str(dest),
+                        "size": len(content),
+                    }
+                )
+            except HTTPException:
+                raise
+            except OSError as exc:
+                if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+                    raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
+                _log.warning("Upload failed for %s: %s", filename, exc)
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to save {filename}: {exc}"
+                ) from exc
     return {"ok": True, "saved": saved}
 
 
@@ -1167,13 +1494,42 @@ class RevertBody(BaseModel):
 
 
 def _run_git(project_dir: Path, args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    result = subprocess.run(
         ["git", *args],
         cwd=str(project_dir),
         capture_output=True,
-        text=True,
         timeout=timeout,
     )
+    # Decode without universal-newline translation: CR/LF may be path bytes in
+    # NUL-delimited Git output. Git emits those paths without C-style quoting.
+    return subprocess.CompletedProcess(
+        result.args, result.returncode, os.fsdecode(result.stdout), os.fsdecode(result.stderr)
+    )
+
+
+def _git_display_text(value: str) -> str:
+    """Escape undecodable bytes for display only, never for a path argument."""
+    return value.encode("utf-8", errors="backslashreplace").decode("utf-8")
+
+
+def _git_file_path(project_dir: Path, path: str) -> Path:
+    """Validate an exact file name without resolving its final symlink."""
+    try:
+        path.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise HTTPException(status_code=400, detail="Filename is not valid UTF-8; use Git directly") from exc
+    relative = Path(path)
+    if not path or "\0" in path or relative.is_absolute() or ".." in relative.parts:
+        raise HTTPException(status_code=400, detail="Git action requires a project-relative file path")
+    target = project_dir / relative
+    # Reject symlink parents, including internal ones: Git addresses the link,
+    # never a file reached through it. A final symlink is itself a valid entry.
+    for parent in relative.parents:
+        if parent != Path(".") and (project_dir / parent).is_symlink():
+            raise HTTPException(status_code=400, detail="Git file path must not traverse a symlink directory")
+    if target.is_dir() and not target.is_symlink():
+        raise HTTPException(status_code=400, detail="Git action requires a file path, not a directory")
+    return target
 
 
 def _is_git_repo(project_dir: Path) -> bool:
@@ -1206,17 +1562,22 @@ def git_status(slug: str):
         return {"is_repo": False, "branch": None, "files": [], "total_adds": 0, "total_dels": 0}
 
     branch_res = _run_git(project_dir, ["rev-parse", "--abbrev-ref", "HEAD"])
-    branch = branch_res.stdout.strip() or None
+    branch = _git_display_text(branch_res.stdout.strip()) or None
 
     # Per-file +adds/-dels for tracked changes vs HEAD.
     numstat: dict[str, tuple[int | None, int | None]] = {}
-    num_res = _run_git(project_dir, ["diff", "--numstat", "HEAD"])
+    num_res = _run_git(project_dir, ["diff", "--numstat", "-z", "HEAD"])
     if num_res.returncode == 0:
-        for line in num_res.stdout.splitlines():
-            parts = line.split("\t")
+        records = iter(num_res.stdout.split("\0"))
+        for record in records:
+            parts = record.split("\t", 2)
             if len(parts) != 3:
                 continue
             adds_s, dels_s, path = parts
+            if not path:
+                # Renames/copies use adds<TAB>dels<TAB>NULold<NULnew<NUL.
+                next(records)  # source path
+                path = next(records)
             adds = None if adds_s == "-" else int(adds_s)
             dels = None if dels_s == "-" else int(dels_s)
             numstat[path] = (adds, dels)
@@ -1224,29 +1585,40 @@ def git_status(slug: str):
     files: list[dict[str, Any]] = []
     total_adds = 0
     total_dels = 0
-    status_res = _run_git(project_dir, ["status", "--porcelain"])
-    for line in status_res.stdout.splitlines():
-        if len(line) < 3:
+    status_res = _run_git(project_dir, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+    records = iter(status_res.stdout.split("\0"))
+    for record in records:
+        if len(record) < 3:
             continue
-        index, work, path = line[0], line[1], line[3:]
-        # Renames look like "old -> new"; report the new path.
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        path = path.strip().strip('"')
+        index, work, path = record[0], record[1], record[3:]
+        if index in "RC" or work in "RC":
+            # With -z the destination comes first, followed by a source record.
+            next(records)
         category = _git_category(index, work)
         adds, dels = numstat.get(path, (None, None))
         # Untracked files have no numstat entry: count their lines as additions.
         if adds is None and dels is None and (index == "?" or work == "?"):
             target = project_dir / path
             try:
-                if target.is_file():
+                if not target.is_symlink() and target.is_file():
                     adds = sum(1 for _ in target.open("rb"))
                     dels = 0
             except OSError:
                 _log.debug("Ignoring error in git_status()", exc_info=True)
         total_adds += adds or 0
         total_dels += dels or 0
-        files.append({"path": path, "status": category, "adds": adds, "dels": dels})
+        row: dict[str, Any] = {"path": path, "status": category, "adds": adds, "dels": dels}
+        try:
+            path.encode("utf-8")
+        except UnicodeEncodeError:
+            # Empty action path cannot alias any real filename. The escaped
+            # byte representation is only a label and must never be submitted.
+            row.update(
+                path="",
+                display_path=repr(os.fsencode(path)),
+                unsupported_reason="Filename is not valid UTF-8; use Git directly",
+            )
+        files.append(row)
 
     files.sort(key=lambda f: f["path"])
     return {
@@ -1266,20 +1638,20 @@ def git_diff(slug: str, path: str = Query(default="")):
         raise HTTPException(status_code=400, detail="Not a git repository")
 
     if path:
-        _safe_path(project_dir, path)  # reject traversal
+        _git_file_path(project_dir, path)
         # Tracked changes vs HEAD.
-        res = _run_git(project_dir, ["diff", "HEAD", "--", path])
+        res = _run_git(project_dir, ["--literal-pathspecs", "diff", "HEAD", "--", path])
         diff = res.stdout
         # Untracked files have no HEAD entry; synthesize an add-diff.
         if not diff.strip():
-            untracked = _run_git(project_dir, ["ls-files", "--others", "--exclude-standard", "--", path])
+            untracked = _run_git(project_dir, ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "-z", "--", path])
             if untracked.stdout.strip():
                 nores = _run_git(project_dir, ["diff", "--no-index", "--", os.devnull, path])
                 diff = nores.stdout
-        return {"path": path, "diff": diff}
+        return {"path": path, "diff": _git_display_text(diff)}
 
     res = _run_git(project_dir, ["diff", "HEAD"])
-    return {"path": None, "diff": res.stdout}
+    return {"path": None, "diff": _git_display_text(res.stdout)}
 
 
 @router.post("/projects/{slug}/git/revert")
@@ -1288,14 +1660,14 @@ def git_revert(slug: str, body: RevertBody):
     project_dir = _project_dir(slug)
     if not _is_git_repo(project_dir):
         raise HTTPException(status_code=400, detail="Not a git repository")
-    target = _safe_path(project_dir, body.path)
+    target = _git_file_path(project_dir, body.path)
 
-    tracked = _run_git(project_dir, ["ls-files", "--error-unmatch", "--", body.path])
+    tracked = _run_git(project_dir, ["--literal-pathspecs", "ls-files", "--error-unmatch", "--", body.path])
     if tracked.returncode == 0:
-        res = _run_git(project_dir, ["checkout", "HEAD", "--", body.path])
+        res = _run_git(project_dir, ["--literal-pathspecs", "checkout", "HEAD", "--", body.path])
         if res.returncode != 0:
-            raise HTTPException(status_code=500, detail=res.stderr.strip() or "git checkout failed")
-    elif target.exists():
+            raise HTTPException(status_code=500, detail=_git_display_text(res.stderr.strip()) or "git checkout failed")
+    elif target.is_symlink() or target.exists():
         try:
             target.unlink()
         except OSError as exc:

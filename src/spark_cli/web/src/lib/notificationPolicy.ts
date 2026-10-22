@@ -1,10 +1,12 @@
 export type NotificationKind = "approval" | "question" | "failure" | "completion";
 export interface NotificationPreferences {
   approvals: boolean; questions: boolean; failures: boolean; completions: boolean;
+  completionSound: boolean; inputSound: boolean;
   quietStart: string; quietEnd: string; mutedProjects: string[];
 }
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   approvals: true, questions: true, failures: true, completions: false,
+  completionSound: false, inputSound: false,
   quietStart: "22:00", quietEnd: "07:00", mutedProjects: [],
 };
 const KEY = "spark-notification-preferences";
@@ -25,6 +27,12 @@ export function shouldNotify(kind: NotificationKind, projectSlug?: string | null
   const key = ({ approval: "approvals", question: "questions", failure: "failures", completion: "completions" } as const)[kind];
   return prefs[key];
 }
-export function notificationIdentity(event: { id?: string; topic?: string; ts?: number; data?: { job_id?: string } }): string {
-  return event.id || `${event.topic || "event"}:${event.data?.job_id || ""}:${event.ts || ""}`;
+export function notificationIdentity(event: { id?: string; sequence?: number; server_epoch?: string; topic?: string; ts?: number; data?: { job_id?: string } }): string {
+  return event.id || (event.server_epoch && event.sequence ? `${event.server_epoch}:${event.sequence}` : "") || `${event.topic || "event"}:${event.data?.job_id || ""}:${event.ts || ""}`;
+}
+
+// Quiet hours silence all audio, including decisions that still warrant a visual alert.
+export function shouldPlayNotificationSound(kind: NotificationKind, projectSlug?: string | null, prefs = getNotificationPreferences(), now?: Date): boolean {
+  const enabled = kind === "completion" ? prefs.completionSound : (kind === "approval" || kind === "question") && prefs.inputSound;
+  return enabled === true && !isQuietHours(now, prefs) && shouldNotify(kind, projectSlug, prefs, now);
 }

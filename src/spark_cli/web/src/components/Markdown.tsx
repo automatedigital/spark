@@ -1,4 +1,5 @@
 import { memo, useMemo, useState, type MouseEvent } from "react";
+import { MarkdownDetails } from "./MarkdownDetails";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -17,6 +18,8 @@ import { api, mediaFileUrl, openExternal } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { isTauri } from "@/sidecar";
 import { isDirectPreviewUrl } from "@/lib/previewUrl";
+import { MarkdownCallout } from "./MarkdownCallout";
+import { MermaidBlock } from "./MermaidBlock";
 import {
   type BlockNode,
   type BlockProps,
@@ -207,17 +210,24 @@ const MemoMarkdownSegment = memo(function MarkdownSegment({
   const total = blocks.length;
   return (
     <>
-      {blocks.map((block, i) => (
-        <MemoBlock
-          key={i}
-          block={block}
-          highlightTerms={safeMode ? undefined : highlightTerms}
-          live={segment.live && i === total - 1}
-          showCursor={Boolean(showCursor && segment.live && i === total - 1)}
-          safeMode={safeMode}
-          defaultWrap={defaultWrap}
-        />
-      ))}
+      {blocks.map((block, i) => {
+        // Live tails may contain a virtual closing fence added by the parser.
+        // Wait until that segment commits before loading the diagram renderer.
+        if (block.type === "code" && block.lang.toLowerCase() === "mermaid" && block.closed && !segment.live && !safeMode) {
+          return <MermaidBlock key={i} source={block.content} />;
+        }
+        return (
+          <MemoBlock
+            key={i}
+            block={block}
+            highlightTerms={safeMode ? undefined : highlightTerms}
+            live={segment.live && i === total - 1}
+            showCursor={Boolean(showCursor && segment.live && i === total - 1)}
+            safeMode={safeMode}
+            defaultWrap={defaultWrap}
+          />
+        );
+      })}
     </>
   );
 }, (prev, next) => (
@@ -446,6 +456,7 @@ function Block({
   showCursor,
   safeMode,
   defaultWrap,
+  calloutDepth = 0,
 }: {
   block: BlockNode;
   highlightTerms?: string[];
@@ -453,8 +464,34 @@ function Block({
   showCursor?: boolean;
   safeMode?: boolean;
   defaultWrap?: boolean;
+  calloutDepth?: number;
 }) {
   switch (block.type) {
+    case "callout": {
+      // Bound recursion for pathological model output; keep the remaining source readable.
+      const children = calloutDepth < 8 ? parseBlocks(block.content) : null;
+      return (
+        <MarkdownCallout kind={block.kind}>
+          {children ? children.map((child, index) => (
+            <Block key={index} block={child} highlightTerms={highlightTerms} live={live}
+              showCursor={showCursor && index === children.length - 1} safeMode={safeMode}
+              defaultWrap={defaultWrap} calloutDepth={calloutDepth + 1} />
+          )) : <p className="whitespace-pre-wrap">{block.content}</p>}
+          {showCursor && children?.length === 0 ? <StreamingCursor /> : null}
+        </MarkdownCallout>
+      );
+    }
+    case "literal":
+      return <div className="whitespace-pre-wrap break-words">{block.content}{showCursor ? <StreamingCursor /> : null}</div>;
+    case "details":
+      return (
+        <MarkdownDetails summary={block.summary} open={block.open}>
+          {parseBlocks(block.content).map((child, i) => (
+            <MemoBlock key={i} block={child} highlightTerms={highlightTerms} live={false} safeMode={safeMode} defaultWrap={defaultWrap} />
+          ))}
+          {showCursor ? <StreamingCursor /> : null}
+        </MarkdownDetails>
+      );
     case "code":
       return <CodeBlock lang={block.lang} content={block.content} live={live} showCursor={showCursor} safeMode={safeMode} defaultWrap={defaultWrap} />;
 

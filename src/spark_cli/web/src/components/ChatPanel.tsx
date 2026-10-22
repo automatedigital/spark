@@ -1,3 +1,4 @@
+import { buildComposerPromptHistoryEntries } from "@/lib/composerPromptHistory";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -41,7 +42,7 @@ import { RecoveryCard } from "@/components/chat/RecoveryCard";
 import { recoveryCardState } from "@/lib/chatRecovery";
 import { MessageRowSkeleton } from "@/components/Skeleton";
 import { setTrayStatus } from "@/lib/desktop";
-import { makeFileContextItem, briefApi } from "@/lib/context";
+import { makeFileContextItem, briefApi, contextApi } from "@/lib/context";
 import { uploadDraftFiles } from "@/lib/attachmentStaging";
 import type { ContextItem, InclusionMode, ContextScope } from "@/lib/context";
 import {
@@ -1025,13 +1026,7 @@ export function ChatPanel({
     const item = contextItems.find((i) => i.id === id);
     if (!item?.source_path) return;
     try {
-      const res = await fetch("/api/summarize-file", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: item.source_path, workspace_slug: workspaceSlug }),
-      });
-      if (!res.ok) return;
-      const { summary } = await res.json() as { summary: string };
+      const { summary } = await contextApi.summarizeFile(item.source_path, workspaceSlug);
       updateContextMode(id, "summary");
       setContextItems((prev) => prev.map((i) => i.id === id ? { ...i, content: summary, inclusion_mode: "summary" } : i));
     } catch {
@@ -2178,6 +2173,10 @@ export function ChatPanel({
       />
 
       <PromptBar
+        draftScopeKey={draft.ready ? draft.scopeKey : undefined}
+        panelOwnerToken={owner.ownerToken}
+        promptHistory={buildComposerPromptHistoryEntries(chatMessages)}
+        stashScope={draft.stashScope}
         input={input}
         setInput={setInput}
         streaming={streaming}

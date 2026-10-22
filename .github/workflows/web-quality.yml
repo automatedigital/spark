@@ -127,6 +127,31 @@ jobs:
           PYTHON: python
         run: npm run test:e2e
 
+      - name: Composer history and stash integration
+        env:
+          PYTHON: python
+          COMPOSER_HISTORY_OUTPUT: /tmp/spark-browser-gates/composer-history
+          STASH_OUTPUT: /tmp/spark-browser-gates/prompt-stash
+        run: |
+          node ./e2e/composer-history.mjs
+          node ./e2e/prompt-stash.mjs
+
+      - name: Mermaid and disclosure completion integration
+        env:
+          PYTHON: python
+          MERMAID_OUTPUT: /tmp/spark-browser-gates/mermaid
+          MERMAID_COMPLETION_OUTPUT: /tmp/spark-browser-gates/mermaid-completion
+        run: |
+          node ./e2e/mermaid.mjs
+          node ./e2e/mermaid-completion.mjs
+
+      - name: Scheduled overrides and output capability integration
+        env:
+          PYTHON: python
+        run: |
+          node ./e2e/cron-overrides.mjs
+          node ./e2e/cron-outputs.mjs
+
       - name: Chat contracts end-to-end
         env:
           PYTHON: python

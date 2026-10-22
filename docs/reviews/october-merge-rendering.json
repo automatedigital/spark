@@ -1,0 +1,237 @@
+{
+  "review_date": "2026-10-22",
+  "repository": "automatedigital/spark",
+  "scope": [
+    174,
+    183,
+    184,
+    179,
+    181
+  ],
+  "overall_recommendation": "Do not batch merge these five. PR 183 is source-review SAFE; hold 174/184 for unresolved existing gates and 179/181 for P2 source contracts. Revalidate resolved integration before packaging/release.",
+  "worktree": "/tmp/spark-rendering-review",
+  "source_changes": false,
+  "pull_requests": [
+    {
+      "pr": 174,
+      "url": "https://github.com/automatedigital/spark/pull/174",
+      "head": "752034ee380b03e8d64de172543900582915e38c",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "kind": "validation",
+          "priority": "P2",
+          "path": "src/spark_cli/web/e2e/subagent-controls.py",
+          "line": 261,
+          "trigger": "Hosted production inspector switches among three live chats and restores detached scroll.",
+          "detail": "Exact-head hosted job 119862856805 fails assertion with (1000, 1410). No callout source defect established; unchanged fixture contains no callout markers. Local baseline/candidate passes do not resolve hosted failure.",
+          "remediation": "Run unchanged Linux hosted inspector on matched baseline and candidate; establish cause and restore the gate without weakening the assertion."
+        }
+      ],
+      "ci_at_initial_read": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39789900554/job/119862856057"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39789900554/job/119862856805"
+        }
+      ]
+    },
+    {
+      "pr": 183,
+      "url": "https://github.com/automatedigital/spark/pull/183",
+      "head": "bab15418550385c1ca73a3480900733a6f98a962",
+      "verdict": "SAFE",
+      "findings": [],
+      "ci_at_initial_read": [
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798669221/job/119892798452"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798669221/job/119892799045"
+        }
+      ]
+    },
+    {
+      "pr": 184,
+      "url": "https://github.com/automatedigital/spark/pull/184",
+      "head": "2a64ae895e089a5867376ec037ac9781d693d01c",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "kind": "baseline_security_gate",
+          "priority": "P2",
+          "path": "src/spark_cli/web/package.json",
+          "line": 75,
+          "trigger": "Dependency-changing PR runs npm audit --audit-level=high in pinned-and-lockfile.",
+          "detail": "Job 119896267138 fails on Vite 7.3.6 advisories. Vite is 7.3.6 in base and head, and no existing lockfile package version changed. This is inherited debt exposed by the gate, not a new Mermaid vulnerability.",
+          "remediation": "Integrate a separately reviewed exact-pin Vite/security remediation, regenerate lockfile and rerun existing dependency, build and browser gates. Keep the audit threshold."
+        },
+        {
+          "kind": "validation",
+          "priority": "P2",
+          "path": "src/spark_cli/web/e2e/mermaid.mjs",
+          "line": 188,
+          "trigger": "Switch away during provider-free stream and return to virtualized long Alpha history.",
+          "detail": "Fresh actual-head browser run times out waiting for two mounted SVGs. Nine earlier groups pass; errors=[]; screenshot shows History 0/1 and Jump to latest. Potential viewport/fixture precondition, not attributed source regression.",
+          "remediation": "Verify the user-visible Jump to latest and both completed persisted diagrams after return; separately validate intended scroll ownership. Keep safety assertions."
+        }
+      ],
+      "ci_at_initial_read": [
+        {
+          "name": "pinned-and-lockfile",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39799616281/job/119896267138"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39799616412/job/119896269019"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39799616412/job/119896268631"
+        }
+      ]
+    },
+    {
+      "pr": 179,
+      "url": "https://github.com/automatedigital/spark/pull/179",
+      "head": "eb31f7fbfc02e8ba2b78d6c3c09de894fc36ab4e",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "kind": "introduced_source_contract",
+          "priority": "P2",
+          "path": "src/spark_cli/web/src/pages/CronPage.tsx",
+          "line": 123,
+          "trigger": "Installed skill frontmatter name differs from its folder/path, or multiple records share a display name.",
+          "detail": "New picker persists skill.name; scheduler calls skill_view(name), which searches paths/folder names. Real temporary Friendly Skill in folder-slug is listed but skipped in _build_job_prompt. New test mocks skill_view and therefore hides the defect.",
+          "remediation": "Use a scheduler-resolvable stable skill identity/path with compatible handling for old string jobs; resolve explicitly and reject ambiguity. Add real filesystem catalog -> save/reload -> prompt test without mocking skill_view."
+        }
+      ],
+      "ci_at_initial_read": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798397304/job/119891801805"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798397082/job/119891801071"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798397304/job/119891802024"
+        },
+        {
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798397082/job/119891800523"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798397304/job/119891801134"
+        }
+      ]
+    },
+    {
+      "pr": 181,
+      "url": "https://github.com/automatedigital/spark/pull/181",
+      "head": "e4081d9053b004e375eca472c86aaa00027ddce9",
+      "verdict": "BLOCKED",
+      "findings": [
+        {
+          "kind": "introduced_platform_functionality",
+          "priority": "P2",
+          "path": "src/spark_cli/cron_output_routes.py",
+          "line": 42,
+          "trigger": "User opens new Outputs control on Windows, which lacks POSIX O_NOFOLLOW/dir_fd support.",
+          "detail": "Every request returns 503 by construction while CronPage.tsx:601 offers Outputs unconditionally. Simulated capability absence reproduces exact 503. Safe fail-closed behavior, but broken advertised Windows feature.",
+          "remediation": "Implement secure Windows access with reparse-point/race containment and tests, or expose server capability and disable/hide Outputs with a clear unsupported reason. Do not replace it with a racy resolve-then-open check."
+        }
+      ],
+      "ci_at_initial_read": [
+        {
+          "name": "ruff-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798541732/job/119892328482"
+        },
+        {
+          "name": "lint-types-tests",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798541614/job/119892327674"
+        },
+        {
+          "name": "e2e",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798541614/job/119892327916"
+        },
+        {
+          "name": "mypy-ratchet",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798541732/job/119892328606"
+        },
+        {
+          "name": "pytest",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/automatedigital/spark/actions/runs/39798541732/job/119892329022"
+        }
+      ]
+    }
+  ],
+  "installed_package_evidence": "No installed macOS or Windows verification performed. This is a release evidence gap distinct from the concrete Windows source defect in PR 181.",
+  "integration_concerns": [
+    "174/183 overlap BlockNode/parser/memo dispatch; retain both variants and boundary rules.",
+    "184 dispatches Mermaid only at top-level Markdown segments; fences within callout/details children remain ordinary code after a straightforward union. Decide expected nested behavior and test combined parsing/streaming.",
+    "179 and 181 share CronPage and cron route registration; preserve both advanced fields and output router with existing locking from PR 169."
+  ],
+  "limitations": [
+    "No merge/push/release/delegation/watcher.",
+    "CI snapshot is the initial actual-head read; in-progress checks were not polled.",
+    "No fresh Linux baseline inspector rerun or installed-package validation."
+  ],
+  "fresh_checks": {
+    "callout_tests": "9 passed",
+    "details_tests": "16 passed",
+    "cron_override_route_tests": "6 passed",
+    "output_api_tests": "18 passed",
+    "mermaid_policy_tests": "22 passed",
+    "mermaid_browser": {
+      "exit_code": 1,
+      "stop": "e2e/mermaid.mjs:188",
+      "prior_check_groups_passed": 9,
+      "page_errors": [],
+      "evidence": "/tmp/spark-merge-review-20261022/mermaid-browser/failure.json"
+    }
+  }
+}

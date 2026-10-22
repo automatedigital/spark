@@ -1,0 +1,116 @@
+{
+  "reviewedsha": "3a3e2005f1988c80bf870ed44c1be35f61592358",
+  "verdict": "BLOCKED",
+  "scope_prs": [
+    155,
+    171,
+    168,
+    173,
+    177,
+    166,
+    169,
+    175,
+    178,
+    182
+  ],
+  "worktree": "/tmp/spark-storage-r2-review-20261022",
+  "findingsresolved": [
+    {
+      "id": "155-search-only-ancestor",
+      "evidence": "workspace_routes.py:969-975 opens selected root directly and verifies fstat identity; permission regression passes."
+    },
+    {
+      "id": "171-utf8-collision-budget",
+      "evidence": "workspace_routes.py:1080-1086 bounds generated names to 240 UTF-8 bytes; exclusive descriptor/handle creation composes with immutable paths."
+    },
+    {
+      "id": "168-nonutf8-status",
+      "evidence": "workspace_routes.py:1526-1537 returns display-only disabled rows with empty action paths; UI blocks diff/discard, ordinary exact paths retained."
+    },
+    {
+      "id": "173-symlink-discard",
+      "evidence": "workspace_routes.py:1428-1446,1576-1587 validates lexical path and unlinks final links; literal Git pathspecs preserve neighboring files; real symlink discard regressions pass."
+    },
+    {
+      "id": "177-final-symlink",
+      "evidence": "canvas_routes.py:85-122,360-361,386 reject final links and retain lexical replace/unlink; global/project final-link route regressions pass."
+    },
+    {
+      "id": "177-project-sidecar-removal",
+      "evidence": "canvas_routes.py:125-142 moves lock inodes outside project to profile canvas-locks; real alias/Git-removal process test passes. New case-alias identity regression remains below."
+    },
+    {
+      "id": "182-object-numeric-export",
+      "evidence": "session_export.py:39-42 applies whole-field redaction before type dispatch; both real SQLite publisher-byte regressions pass."
+    }
+  ],
+  "findingsunresolved": [
+    {
+      "id": "STORAGE-R2-001",
+      "severity": "P1",
+      "pr": 177,
+      "status": "unresolved",
+      "file": "src/spark_cli/canvas_routes.py",
+      "line_start": 125,
+      "line_end": 132,
+      "title": "Case aliases receive different canvas locks on case-insensitive macOS filesystems",
+      "cause": "os.path.normcase is a no-op on macOS; final basename is lexical and hash differs for board and Board even when both names identify the same data inode.",
+      "reproduction": "Create global board, record revision, pause writer A for board at Path.replace while it holds its real lock; save Board with the same expectedRevision; B succeeds while A is paused, then A succeeds and overwrites B.",
+      "observed": {
+        "same_data_inode": true,
+        "distinct_lock_paths": true,
+        "both_same_revision_writes_ok": true,
+        "second_completed_while_first_holds_lock": true,
+        "final_name": "A"
+      },
+      "probe": "/tmp/spark-merge-review-20261022/storage-r2-case-probe.py",
+      "log": "/tmp/spark-merge-review-20261022/storage-r2-case-probe.log",
+      "probe_exit": 1,
+      "remediation": "Derive stable lock identity according to the owning filesystem equivalence rules, including aliases when data does not exist, and preserve that identity across deletion/recreation. Add a real case-insensitive same-revision contention regression. Do not unconditionally merge case-distinct files on case-sensitive filesystems."
+    }
+  ],
+  "checks": [
+    {
+      "name": "targeted repaired boundaries",
+      "exit": 0,
+      "result": "18 passed, 161 deselected in 5.87s",
+      "log": "/tmp/spark-merge-review-20261022/storage-r2-targeted.log",
+      "command": "python -m pytest tests/spark_cli/test_session_export_markdown.py tests/spark_cli/test_workspace_upload_safety.py tests/spark_cli/test_workspace_upload_identity.py tests/spark_cli/test_workspace_git.py tests/spark_cli/test_canvas_concurrency.py -q -n 0 -m 'not integration and not network' -k 'credential_values_never_reach_publisher or search_only_ancestor or utf8 or non_utf8 or symlink_discard or final_symlinks_rejected or git_revert_and_project_alias or collision_name'"
+    },
+    {
+      "name": "case-alias CAS probe",
+      "exit": 1,
+      "result": "Expected safety assertion fails: two same-revision writers succeed on same inode",
+      "log": "/tmp/spark-merge-review-20261022/storage-r2-case-probe.log"
+    },
+    {
+      "name": "git diff --check 97fb8373^ HEAD",
+      "exit": 0
+    },
+    {
+      "name": "git status --short",
+      "exit": 0,
+      "result": "clean detached worktree"
+    }
+  ],
+  "limitations": [
+    "Bounded review covers the ten assigned storage/backend PRs in the combined SHA; no claim about the other ten PRs.",
+    "Full runtime suite is lead-owned and was not duplicated. Lead-reported upload 51/11 skipped, neighbors 118/11 skipped and canvas 38 were not independently rerun wholesale.",
+    "Native Windows containment/locking remains unexecuted here. release-contracts.yml adds native Windows/Linux suites but existence of workflow, skipped macOS cases and static typing are not native proof. Require successful exact release-candidate CI results.",
+    "No browser acceptance, frontend build, generated web_dist, installed package, signing/notarization or publication evidence produced here; require lead release gates independently.",
+    "Canvas repair hardens final component, not hostile canonical ancestor directory replacement; no parent descriptor is held. Generic external/File/Git writers do not honor canvas CAS locks. Stop old servers using legacy sidecar locks before adoption.",
+    "No edits to repository source, commits, push, merge, release, external publication, agents or watchers. Only review files outside source were written; all ten scoped PRs T3-linked and final inventory watching=false.",
+    "First probe wrapper used zsh read-only variable status and exited 1 after the Python assertion; bounded rerun corrected wrapper to probe_exit and independently confirmed Python exit 1. This setup error is not a source finding."
+  ],
+  "otherwise_safe_subject_to_gates": [
+    155,
+    171,
+    168,
+    173,
+    166,
+    169,
+    175,
+    178,
+    182
+  ]
+}

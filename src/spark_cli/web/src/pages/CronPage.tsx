@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clock, Edit3, Pause, Play, Plus, Trash2, X, Zap } from "lucide-react";
+import { CronOutputDrawer } from "@/components/CronOutputDrawer";
 import { api } from "@/lib/api";
 import type { CronJob } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
@@ -104,7 +105,82 @@ function jobScheduleExpr(job: CronJob): string {
   return job.schedule?.expr || job.schedule_display || "";
 }
 
+type Overrides = { provider: string; model: string; skills: string[] };
+const defaultOverrides = (): Overrides => ({ provider: "", model: "", skills: [] });
+
+function JobAdvanced({ id, value, onChange }: {
+  id: string; value: Overrides; onChange: (value: Overrides) => void;
+}) {
+  const [providers, setProviders] = useState<{ id: string; label: string }[]>([]);
+  const [installed, setInstalled] = useState<{ id: string; name: string; enabled: boolean; reason?: string }[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
+  useEffect(() => {
+    let active = true;
+    Promise.all([api.getCronProviders(), api.getCronSkills()]).then(([p, skills]) => {
+      if (!active) return;
+      setProviders(p);
+      setInstalled(skills);
+    }).catch(() => { if (active) setError("Could not load providers and installed skills. Reopen Advanced to retry."); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    setModels([]);
+    setWarning("");
+    (value.provider ? Promise.resolve(value.provider) : api.getModelInfo().then((info) => info.provider))
+      .then((provider) => api.getAvailableModels(provider)).then((result) => {
+      if (active) { setModels(result.models); setWarning(result.warning || ""); }
+    }).catch(() => { if (active) setWarning("Could not load models. Reopen Advanced to retry."); });
+    return () => { active = false; };
+  }, [value.provider]);
+  return <div className="grid gap-3 rounded-md border p-3">
+    <p className="text-xs text-muted-foreground">Leave provider and model empty to use profile defaults. Skills run in the order shown.</p>
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    <Label htmlFor={`${id}-provider`}>Provider</Label>
+    <Select id={`${id}-provider`} value={value.provider} onValueChange={(provider) => onChange({ ...value, provider, model: "" })}>
+      <option value="">Profile default</option>
+      {value.provider && !providers.some((p) => p.id === value.provider) && <option value={value.provider}>{value.provider} (unavailable)</option>}
+      <>{providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</>
+    </Select>
+    <Label htmlFor={`${id}-model`}>Model</Label>
+    <Select id={`${id}-model`} value={value.model} onValueChange={(model) => onChange({ ...value, model })}>
+      <option value="">Profile default</option>
+      {value.model && !models.includes(value.model) && <option value={value.model}>{value.model} (saved)</option>}
+      <>{models.map((model) => <option key={model} value={model}>{model}</option>)}</>
+    </Select>
+    {warning && <p role="status" className="text-xs text-muted-foreground">{warning}</p>}
+    <Label htmlFor={`${id}-skill`}>Add installed skill</Label>
+    <Select id={`${id}-skill`} value="" onValueChange={(skill) => { if (skill) onChange({ ...value, skills: [...value.skills, skill] }); }}>
+      <option value="">Choose a skill</option>
+      <>{installed.filter((skill) => skill.enabled && !value.skills.includes(skill.id)).map((skill) => <option key={skill.id} value={skill.id}>{`${skill.name} (${skill.id})`}</option>)}</>
+    </Select>
+    {installed.filter((skill) => !skill.enabled).map((skill) => <p key={skill.id} className="text-xs text-muted-foreground">{skill.name} ({skill.id}): {skill.reason || "Unavailable on this profile/platform"}</p>)}
+    <ol className="grid gap-2">
+      {value.skills.map((skill, index) => <li key={skill} className="flex flex-wrap items-center gap-2 text-sm">
+        <span>{index + 1}. {skill}{installed.some((item) => item.id === skill && item.enabled) ? "" : " (unavailable)"}</span>
+        <Button size="sm" variant="outline" disabled={index === 0} aria-label={`Move ${skill} up`} onClick={() => {
+          const skills = [...value.skills];
+          [skills[index - 1], skills[index]] = [skills[index], skills[index - 1]];
+          onChange({ ...value, skills });
+        }}>Move up</Button>
+        <Button size="sm" variant="outline" aria-label={`Remove ${skill}`} onClick={() => onChange({ ...value, skills: value.skills.filter((_, i) => i !== index) })}>Remove</Button>
+      </li>)}
+    </ol>
+    <Button variant="outline" onClick={() => onChange(defaultOverrides())}>Clear overrides</Button>
+  </div>;
+}
+
 export default function CronPage() {
+  const [outputCapability, setOutputCapability] = useState({ supported: false, reason: "Checking saved output availability…" as string | null });
+  useEffect(() => {
+    let active = true;
+    api.getCronOutputCapability().then((capability) => { if (active) setOutputCapability(capability); })
+      .catch(() => { if (active) setOutputCapability({ supported: false, reason: "Could not verify saved output availability. Reload to retry." }); });
+    return () => { active = false; };
+  }, []);
+  const [outputJob, setOutputJob] = useState<CronJob | null>(null);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
@@ -116,6 +192,10 @@ export default function CronPage() {
   const [prompt, setPrompt] = useState("");
   const [name, setName] = useState("");
   const [deliver, setDeliver] = useState("local");
+  const [overrides, setOverrides] = useState<Overrides>(defaultOverrides);
+  const [editOverrides, setEditOverrides] = useState<Overrides>(defaultOverrides);
+  const [advanced, setAdvanced] = useState(false);
+  const [editAdvanced, setEditAdvanced] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [savingJobId, setSavingJobId] = useState<string | null>(null);
@@ -190,6 +270,8 @@ export default function CronPage() {
   const startEdit = (job: CronJob) => {
     const picker = cronToPicker(jobScheduleExpr(job));
     setEditingJobId(job.id);
+    setEditAdvanced(false);
+    setEditOverrides({ provider: job.provider || "", model: job.model || "", skills: job.skills ?? (job.skill ? [job.skill] : []) });
     setEditName(job.name || "");
     setEditPrompt(job.prompt);
     setEditDeliver(job.deliver || "local");
@@ -218,8 +300,13 @@ export default function CronPage() {
         schedule: resolvedSchedule,
         name: name.trim() || undefined,
         deliver,
+        ...overrides,
+        provider: overrides.provider || null,
+        model: overrides.model || null,
       });
       showToast(t.common.create + " ✓", "success");
+      setOverrides(defaultOverrides());
+      setAdvanced(false);
       setPrompt("");
       setName("");
       setDeliver("local");
@@ -262,6 +349,9 @@ export default function CronPage() {
         schedule: resolvedEditSchedule,
         name: editName.trim(),
         deliver: editDeliver,
+        ...editOverrides,
+        provider: editOverrides.provider || null,
+        model: editOverrides.model || null,
       });
       showToast(`${t.common.save} ✓`, "success");
       cancelEdit();
@@ -306,6 +396,7 @@ export default function CronPage() {
   return (
     <div className="flex flex-col gap-6">
       <Toast toast={toast} />
+      {outputJob && <CronOutputDrawer key={outputJob.id} jobId={outputJob.id} name={outputJob.name || outputJob.id} onClose={() => setOutputJob(null)} />}
 
       {/* Create new job form */}
       <Card>
@@ -338,6 +429,8 @@ export default function CronPage() {
               />
             </div>
 
+            <Button variant="outline" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>Advanced</Button>
+            {advanced && <JobAdvanced id="cron" value={overrides} onChange={setOverrides} />}
             {/* Friendly schedule picker */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
@@ -452,6 +545,8 @@ export default function CronPage() {
           {t.cron.scheduledJobs} ({jobs.length})
         </h2>
 
+        {!outputCapability.supported && <p id="cron-output-unavailable" className="text-xs text-muted-foreground">{outputCapability.reason}</p>}
+
         {jobs.length === 0 && (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
@@ -550,6 +645,8 @@ export default function CronPage() {
                         </Select>
                       </div>
                     </div>
+                    <Button variant="outline" aria-expanded={editAdvanced} onClick={() => setEditAdvanced(!editAdvanced)}>Advanced</Button>
+                    {editAdvanced && <JobAdvanced id={`cron-${job.id}`} value={editOverrides} onChange={setEditOverrides} />}
                     {resolvedEditSchedule && editFreq !== "custom" && (
                       <p className="text-xs text-muted-foreground">
                         Schedule: <code className="font-mono">{resolvedEditSchedule}</code>
@@ -586,6 +683,10 @@ export default function CronPage() {
                     {t.cron.next}: {formatNextRun(job.next_run_at)}
                   </span>
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Provider: {job.provider || "Profile default"} · Model: {job.model || "Profile default"}
+                  {" · Skills: "}{(job.skills ?? (job.skill ? [job.skill] : [])).join(" → ") || "None"}
+                </p>
                 {job.last_error && (
                   <p className="text-xs text-destructive mt-1">{job.last_error}</p>
                 )}
@@ -595,6 +696,7 @@ export default function CronPage() {
 
               {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
+                <Button variant="ghost" disabled={!outputCapability.supported} aria-describedby={!outputCapability.supported ? "cron-output-unavailable" : undefined} onClick={() => setOutputJob(job)}>Outputs</Button>
                 {isEditing ? (
                   <>
                     <Button
