@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import base64
+import errno
 import ipaddress
 import json
 import logging
@@ -16,6 +17,7 @@ import shlex
 import shutil
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -24,6 +26,8 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -863,6 +867,167 @@ def read_project_file_raw(slug: str, path: str = Query(...)):
     return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
 
+def _windows_upload_handle(path: Path, *, directory: bool) -> int:
+    """Open without following reparse points and deny delete/rename sharing.
+
+    Ancestors remain open until the upload ends. Unlike a path precheck, these
+    handles prevent a concurrent junction/directory replacement on Windows.
+    """
+    if sys.platform != "win32":
+        raise RuntimeError("Windows upload handles require Windows")
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                       wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+
+    class AttributeTag(ctypes.Structure):
+        _fields_ = [("attributes", wintypes.DWORD), ("tag", wintypes.DWORD)]
+
+    info = kernel.GetFileInformationByHandleEx
+    info.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    info.restype = wintypes.BOOL
+    # Share only reads: deny renames AND write handles that could install a
+    # reparse point in place. Existing incompatible handles make this open fail.
+    # OPEN_REPARSE_POINT opens the link itself; BACKUP_SEMANTICS permits directories.
+    handle = create(str(path), 0x80 if directory else 0x40000080, 1, None,
+                    3 if directory else 4, 0x00200000 | 0x02000000, None)
+    if handle == wintypes.HANDLE(-1).value:
+        error = ctypes.get_last_error()
+        # Directories opened for file writes, incompatible sharing (including
+        # an in-flight rename), and malformed Win32 names must not be reported
+        # as successful saves. Other OS failures retain their original cause.
+        if error in (5, 32, 123, 267):
+            raise HTTPException(status_code=400, detail="Unsafe or unavailable upload target")
+        raise ctypes.WinError(error)
+    owned = True
+    try:
+        attrs = AttributeTag()
+        if not info(handle, 9, ctypes.byref(attrs), ctypes.sizeof(attrs)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if attrs.attributes & 0x400 or bool(attrs.attributes & 0x10) != directory:
+            raise HTTPException(status_code=400, detail="Unsafe upload target")
+        owned = False
+        # HANDLE uses c_void_p restype, which yields a Python integer here.
+        return cast(int, handle)
+    finally:
+        if owned:
+            close(handle)
+
+
+@contextmanager
+def _upload_directory(root: Path, relative: str) -> Iterator[int | Path]:
+    """Pin the actual project root; intentional root/profile links are supported.
+
+    Below that boundary links are forbidden. POSIX uses relative no-follow opens;
+    Windows pins all canonical ancestors without delete sharing, so path-based
+    child opens cannot be redirected by renaming/replacing a directory.
+    """
+    rel = Path(relative.lstrip("/"))
+    parts = rel.parts
+    if ".." in parts or rel.drive or rel.root:
+        raise HTTPException(status_code=400, detail="Path traversal detected")
+    root = root.resolve(strict=True)
+    if sys.platform == "win32":
+        # Win32 normalizes trailing dots/spaces and interprets colons as streams.
+        if any(part.endswith((".", " ")) or ":" in part for part in parts):
+            raise HTTPException(status_code=400, detail="Invalid upload path")
+        import ctypes
+        from ctypes import wintypes
+
+        close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+        close.argtypes = [wintypes.HANDLE]
+        close.restype = wintypes.BOOL
+        handles = []
+        try:
+            current = Path(root.anchor)
+            handles.append(_windows_upload_handle(current, directory=True))
+            for part in root.parts[1:]:
+                current /= part
+                handles.append(_windows_upload_handle(current, directory=True))
+            for part in parts:
+                current /= part
+                current.mkdir(exist_ok=True)
+                handles.append(_windows_upload_handle(current, directory=True))
+            yield current
+        finally:
+            for handle in reversed(handles):
+                close(handle)
+        return
+    directory_fd = None
+    try:
+        directory_fd = os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        for part in root.parts[1:]:
+            child_fd = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd
+            )
+            os.close(directory_fd)
+            directory_fd = child_fd
+        for part in parts:
+            try:
+                os.mkdir(part, dir_fd=directory_fd)
+            except FileExistsError:
+                pass
+            child_fd = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd
+            )
+            os.close(directory_fd)
+            directory_fd = child_fd
+        yield directory_fd
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+            raise HTTPException(
+                status_code=400, detail="Upload path must not contain symlinks or non-directories"
+            ) from exc
+        raise
+    finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+
+def _write_upload(directory_fd: int | Path, filename: str, content: bytes) -> None:
+    """Open the final basename without following a swapped-in symlink."""
+    if not filename or filename in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid upload filename")
+    # Do not truncate until fstat confirms a regular file; O_NONBLOCK also avoids
+    # hanging on a FIFO supplied in place of an existing upload.
+    if sys.platform == "win32":
+        assert isinstance(directory_fd, Path)
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        if ":" in filename or filename.endswith((".", " ")):
+            raise HTTPException(status_code=400, detail="Invalid upload filename")
+        handle = _windows_upload_handle(directory_fd / filename, directory=False)
+        # Transfer ownership to the CRT fd, then fdopen closes it on every path.
+        try:
+            fd = msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+        except OSError:
+            close = ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle
+            close.argtypes = [wintypes.HANDLE]
+            close.restype = wintypes.BOOL
+            close(handle)
+            raise
+    else:
+        assert isinstance(directory_fd, int)
+        fd = os.open(
+            filename, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+            0o666, dir_fd=directory_fd,
+        )
+    with os.fdopen(fd, "wb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise HTTPException(status_code=400, detail="Upload target must be a regular file")
+        stream.truncate(0)
+        stream.write(content)
+
+
 @router.post("/projects/{slug}/upload")
 async def upload_files(
     slug: str,
@@ -870,23 +1035,23 @@ async def upload_files(
     path: str = Query(default=""),
 ):
     project_dir = _project_dir(slug)
-    dest_dir = _safe_path(project_dir, path) if path else project_dir
-    if not dest_dir.exists():
-        dest_dir.mkdir(parents=True, exist_ok=True)
-    if not dest_dir.is_dir():
-        raise HTTPException(status_code=400, detail="Upload path is not a directory")
-
     saved = []
-    for upload in files:
-        filename = Path(upload.filename or "upload").name
-        dest = dest_dir / filename
-        try:
-            content = await upload.read()
-            dest.write_bytes(content)
-            saved.append({"filename": filename, "size": len(content)})
-        except Exception as exc:
-            _log.warning("Upload failed for %s: %s", filename, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
+    with _upload_directory(project_dir, path) as directory_fd:
+        for upload in files:
+            filename = Path(upload.filename or "upload").name
+            try:
+                content = await upload.read()
+                _write_upload(directory_fd, filename, content)
+                saved.append({"filename": filename, "size": len(content)})
+            except HTTPException:
+                raise
+            except OSError as exc:
+                if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+                    raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
+                _log.warning("Upload failed for %s: %s", filename, exc)
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to save {filename}: {exc}"
+                ) from exc
     _publish_workspace_event("workspace.files.changed", {"slug": slug})
     return {"ok": True, "saved": saved}
 
@@ -894,26 +1059,31 @@ async def upload_files(
 @router.post("/files/upload")
 async def upload_workspace_files(files: list[UploadFile] = File(...)):
     dest_dir = _workspace_root() / "files"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
     saved = []
-    for upload in files:
-        filename = Path(upload.filename or "upload").name
-        dest = dest_dir / filename
-        try:
-            content = await upload.read()
-            dest.write_bytes(content)
-            saved.append(
-                {
-                    "filename": filename,
-                    "path": f"files/{filename}",
-                    "absolute_path": str(dest),
-                    "size": len(content),
-                }
-            )
-        except Exception as exc:
-            _log.warning("Upload failed for %s: %s", filename, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to save {filename}: {exc}") from exc
+    with _upload_directory(_workspace_root(), "files") as directory_fd:
+        for upload in files:
+            filename = Path(upload.filename or "upload").name
+            dest = dest_dir / filename
+            try:
+                content = await upload.read()
+                _write_upload(directory_fd, filename, content)
+                saved.append(
+                    {
+                        "filename": filename,
+                        "path": f"files/{filename}",
+                        "absolute_path": str(dest),
+                        "size": len(content),
+                    }
+                )
+            except HTTPException:
+                raise
+            except OSError as exc:
+                if exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EISDIR):
+                    raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
+                _log.warning("Upload failed for %s: %s", filename, exc)
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to save {filename}: {exc}"
+                ) from exc
     return {"ok": True, "saved": saved}
 
 
