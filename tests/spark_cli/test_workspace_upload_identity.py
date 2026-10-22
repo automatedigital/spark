@@ -11,6 +11,25 @@ from starlette.testclient import TestClient
 from spark_cli import workspace_routes as routes
 
 
+@pytest.mark.parametrize("project_upload", [False, True])
+def test_multibyte_collision_storage_name_has_portable_byte_budget(storage, project_upload):
+    app, _, _ = storage
+    filename = "😀" * 40 + "." + "😀" * 20
+    assert len(filename.encode("utf-8")) == 241
+    url = "/api/workspace/projects/proj/upload?path=files" if project_upload else "/api/workspace/files/upload"
+    with TestClient(app) as client:
+        first = client.post(url, files={"files": (filename, b"first")})
+        second = client.post(url, files={"files": (filename, b"second")})
+    assert first.status_code == second.status_code == 200
+    old = first.json()["saved"][0]
+    new = second.json()["saved"][0]
+    assert old["filename"] == new["filename"] == filename
+    assert old["absolute_path"] != new["absolute_path"]
+    assert len(Path(new["absolute_path"]).name.encode("utf-8")) <= 240
+    assert Path(old["absolute_path"]).read_bytes() == b"first"
+    assert Path(new["absolute_path"]).read_bytes() == b"second"
+
+
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
     for key in ("HOME", "USERPROFILE", "SPARK_HOME"):

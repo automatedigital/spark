@@ -966,13 +966,14 @@ def _upload_directory(root: Path, relative: str) -> Iterator[int | Path]:
         return
     directory_fd = None
     try:
-        directory_fd = os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        for part in root.parts[1:]:
-            child_fd = os.open(
-                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd
-            )
-            os.close(directory_fd)
-            directory_fd = child_fd
+        # Search permission is sufficient on ancestors; requiring a readable
+        # descriptor for every ancestor rejects otherwise writable projects.
+        # Confirm the opened root is the inode selected before the open, even
+        # if an ancestor was substituted during that boundary.
+        expected_root = root.stat()
+        directory_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        if not os.path.samestat(expected_root, os.fstat(directory_fd)):
+            raise HTTPException(status_code=400, detail="Upload root changed")
         for part in parts:
             try:
                 os.mkdir(part, dir_fd=directory_fd)
@@ -1075,7 +1076,13 @@ def _save_new_upload(directory_fd: int | Path, filename: str, content: bytes) ->
                 if not stat.S_ISREG(info.st_mode):
                     raise HTTPException(status_code=400, detail="Unsafe upload target") from exc
             name = Path(filename)
-            candidate = f"{name.stem}-{uuid.uuid4().hex}{name.suffix}"
+            # The display filename is separate. Bound storage components by
+            # UTF-8 bytes, not characters (Linux commonly permits 255 bytes).
+            suffix = name.suffix.encode("utf-8")[:20].decode("utf-8", errors="ignore")
+            tail = f"-{uuid.uuid4().hex}{suffix}"
+            stem_bytes = max(0, 240 - len(tail.encode("utf-8")))
+            stem = name.stem.encode("utf-8")[:stem_bytes].decode("utf-8", errors="ignore")
+            candidate = f"{stem}{tail}"
     raise HTTPException(status_code=409, detail="Could not allocate a unique upload name")
 
 

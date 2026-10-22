@@ -12,6 +12,55 @@ from starlette.datastructures import UploadFile
 from spark_cli import workspace_routes as routes
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX search-only ancestor permissions")
+def test_upload_under_search_only_ancestor(tmp_path):
+    ancestor = tmp_path / "search-only"
+    project = ancestor / "project"
+    project.mkdir(parents=True)
+    ancestor.chmod(0o111)
+    try:
+        # Establish that the OS permits the original pathname operation.
+        (project / "before.txt").write_bytes(b"before")
+        with routes._upload_directory(project, "") as directory:
+            routes._write_upload(directory, "after.txt", b"after")
+        assert (project / "before.txt").read_bytes() == b"before"
+        assert (project / "after.txt").read_bytes() == b"after"
+    finally:
+        ancestor.chmod(0o700)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX substitution at root-open boundary")
+def test_upload_root_ancestor_swap_is_rejected(uploads, tmp_path, monkeypatch):
+    client, root, project = uploads
+    outside = tmp_path / "outside"
+    (outside / "proj").mkdir(parents=True)
+    sentinel = outside / "proj" / "note.txt"
+    sentinel.write_bytes(b"outside")
+    moved = root.with_name("pinned-workspace")
+    real_open = os.open
+    swapped = False
+
+    def swap_ancestor(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if Path(path) == project and not swapped:
+            root.rename(moved)
+            root.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", swap_ancestor)
+    try:
+        response = post(client, "project")
+        assert response.status_code == 400
+        assert swapped
+        assert sentinel.read_bytes() == b"outside"
+        assert not (moved / "proj" / "note.txt").exists()
+    finally:
+        if swapped:
+            root.unlink()
+            moved.rename(root)
+
+
 @pytest.fixture
 def uploads(tmp_path, monkeypatch):
     home = tmp_path / "home"
