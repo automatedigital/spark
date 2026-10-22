@@ -121,6 +121,65 @@ def test_revert_untracked_file_deletes_it(client):
     assert not (project / "junk.txt").exists()
 
 
+def test_nested_untracked_files_status_diff_and_revert(client):
+    project = _make_repo()
+    (project / ".gitignore").write_text("*.ignored\n")
+    _git(project, "add", ".gitignore")
+    _git(project, "commit", "-qm", "ignore fixture files")
+    contents = {"newdir/child.txt": "first\nsecond\n", "newdir/nested/leaf.txt": "leaf\n"}
+    for path, content in contents.items():
+        target = project / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    ignored = project / "newdir/keep.ignored"
+    ignored.write_text("keep me\n")
+
+    status = client.get("/api/workspace/projects/repo/git/status")
+    assert status.status_code == 200
+    assert status.json()["files"] == [
+        {"path": path, "status": "added", "adds": len(content.splitlines()), "dels": 0}
+        for path, content in contents.items()
+    ]
+    assert status.json()["total_adds"] == 3
+    assert status.json()["total_dels"] == 0
+
+    for path, content in contents.items():
+        diff = client.get("/api/workspace/projects/repo/git/diff", params={"path": path})
+        assert diff.status_code == 200
+        for line in content.splitlines():
+            assert f"+{line}\n" in diff.json()["diff"]
+        response = client.post("/api/workspace/projects/repo/git/revert", json={"path": path})
+        assert response.status_code == 200
+        assert not (project / path).exists()
+        for sibling, sibling_content in contents.items():
+            if sibling > path:
+                assert (project / sibling).read_text() == sibling_content
+        assert ignored.read_text() == "keep me\n"
+    assert client.get("/api/workspace/projects/repo/git/status").json()["files"] == []
+    assert (project / "newdir/nested").is_dir()
+
+
+@pytest.mark.parametrize("path", ["newdir", "newdir/", "tracked", "", "."])
+def test_revert_rejects_directories_without_changing_contents(client, path):
+    project = _make_repo()
+    tracked = project / "tracked/child.txt"
+    tracked.parent.mkdir()
+    tracked.write_text("original\n")
+    _git(project, "add", "tracked")
+    _git(project, "commit", "-qm", "tracked directory")
+    tracked.write_text("edited\n")
+    untracked = project / "newdir/nested/child.txt"
+    untracked.parent.mkdir(parents=True)
+    untracked.write_text("untracked\n")
+
+    response = client.post("/api/workspace/projects/repo/git/revert", json={"path": path})
+
+    assert response.status_code == 400
+    assert "file path" in response.json()["detail"]
+    assert tracked.read_text() == "edited\n"
+    assert untracked.read_text() == "untracked\n"
+
+
 def test_diff_non_git_400(client):
     _make_plain_project()
     res = client.get("/api/workspace/projects/plain/git/diff", params={"path": "f.txt"})
