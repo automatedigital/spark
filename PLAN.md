@@ -6,7 +6,7 @@ Deliver ten independently scoped defect fixes and ten useful features, each impl
 
 ## Status
 
-20 packets selected; 1/20 implementation PRs created (draft), 0/20 accepted, 0/20 accepted, 0/20 merged. Placeholder rows are allocation slots, not confirmed findings. The lead alone updates this plan. PR creation, validation, merge and release are separate states; completion requires reviewed evidence, not an agent summary.
+20 packets selected; 1/20 implementation PRs created (draft), 0/20 accepted, 0/20 merged. Placeholder rows are allocation slots, not confirmed findings. The lead alone updates this plan. PR creation, validation, merge and release are separate states; completion requires reviewed evidence, not an agent summary.
 
 The previous upgrade plan and its unfinished performance/native gates are preserved in [the historical plan](docs/plans/app-upgrade-2026-10-15.md). Existing issues #130, #139 and #140 retain those gates. No historical acceptance is silently carried forward.
 
@@ -24,25 +24,25 @@ The previous upgrade plan and its unfinished performance/native gates are preser
 | ID | Outcome | Status | Issue | Agent task | PR / evidence |
 | --- | --- | --- | --- | --- | --- |
 | I01 | Prevent uploads from following symlinks outside their storage root | Draft PR; Windows regression open | [#145](https://github.com/automatedigital/spark/issues/145) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I01-r1 | https://github.com/automatedigital/spark/pull/155 |
-| I02 | Preserve existing attachments when uploading duplicate filenames | Queued | [#146](https://github.com/automatedigital/spark/issues/146) | — | Pending |
+| I02 | Preserve existing attachments when uploading duplicate filenames | Implementing | [#146](https://github.com/automatedigital/spark/issues/146) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I02-r1 | Pending |
 | I03 | Route context and brief requests to the selected backend | Implementing | [#147](https://github.com/automatedigital/spark/issues/147) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I03-r1 | Pending |
-| I04 | Fence stale token estimate responses after prompt or session changes | Queued | [#148](https://github.com/automatedigital/spark/issues/148) | — | Pending |
-| I05 | Preserve exact Unicode and quoted paths in Git Changes | Queued | [#149](https://github.com/automatedigital/spark/issues/149) | — | Pending |
-| I06 | List nested untracked files and reject directory discard | Queued | [#150](https://github.com/automatedigital/spark/issues/150) | — | Pending |
-| I07 | Make canvas revision checks atomic with saves and deletion | Queued | [#151](https://github.com/automatedigital/spark/issues/151) | — | Pending |
+| I04 | Fence stale token estimate responses after prompt or session changes | Implementing | [#148](https://github.com/automatedigital/spark/issues/148) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I04-r1 | Pending |
+| I05 | Preserve exact Unicode and quoted paths in Git Changes | Implementing | [#149](https://github.com/automatedigital/spark/issues/149) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I05-r1 | Pending |
+| I06 | List nested untracked files and reject directory discard | Implementing | [#150](https://github.com/automatedigital/spark/issues/150) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I06-r1 | Pending |
+| I07 | Make canvas revision checks atomic with saves and deletion | Implementing | [#151](https://github.com/automatedigital/spark/issues/151) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I07-r1 | Pending |
 | I08 | Preserve healthy memory databases during SQLite lock contention | Implementing | [#152](https://github.com/automatedigital/spark/issues/152) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I08-r1 | Pending |
-| I09 | Prevent lost cron updates with cross-process mutation locking | Queued | [#153](https://github.com/automatedigital/spark/issues/153) | — | Pending |
-| I10 | Preserve file permissions during atomic file and skill edits | Queued | [#154](https://github.com/automatedigital/spark/issues/154) | — | Pending |
-| F01 | Recall sent prompts from composer history | Queued | [#156](https://github.com/automatedigital/spark/issues/156) | — | Pending |
-| F02 | Configure per-job models providers and skills in Schedule | Queued | [#157](https://github.com/automatedigital/spark/issues/157) | — | Pending |
-| F03 | Export sessions as readable redacted Markdown | Queued | [#158](https://github.com/automatedigital/spark/issues/158) | — | Pending |
-| F04 | Save and restore a bounded prompt stash | Queued | [#159](https://github.com/automatedigital/spark/issues/159) | — | Pending |
-| F05 | Render safe Mermaid diagrams in chat | Queued | [#160](https://github.com/automatedigital/spark/issues/160) | — | Pending |
-| F06 | Render GitHub-style Markdown callouts | Queued | [#161](https://github.com/automatedigital/spark/issues/161) | — | Pending |
-| F07 | Render safe collapsible details in chat Markdown | Queued | [#162](https://github.com/automatedigital/spark/issues/162) | — | Pending |
-| F08 | Add opt-in notification sounds with preview | Queued | [#163](https://github.com/automatedigital/spark/issues/163) | — | Pending |
-| F09 | Browse bounded history of dashboard skill edits | Queued | [#164](https://github.com/automatedigital/spark/issues/164) | — | Pending |
-| F10 | Browse saved scheduled-job output | Queued | [#165](https://github.com/automatedigital/spark/issues/165) | — | Pending |
+| I09 | Prevent lost cron updates with cross-process mutation locking | Implementing | [#153](https://github.com/automatedigital/spark/issues/153) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I09-r1 | Pending |
+| I10 | Preserve file permissions during atomic file and skill edits | Implementing | [#154](https://github.com/automatedigital/spark/issues/154) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I10-r1 | Pending |
+| F01 | Recall sent prompts from composer history | Implementing | [#156](https://github.com/automatedigital/spark/issues/156) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F01-r1 | Pending |
+| F02 | Configure per-job models providers and skills in Schedule | Implementing | [#157](https://github.com/automatedigital/spark/issues/157) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F02-r1 | Pending |
+| F03 | Export sessions as readable redacted Markdown | Implementing | [#158](https://github.com/automatedigital/spark/issues/158) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F03-r1 | Pending |
+| F04 | Save and restore a bounded prompt stash | Implementing | [#159](https://github.com/automatedigital/spark/issues/159) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F04-r1 | Pending |
+| F05 | Render safe Mermaid diagrams in chat | Implementing | [#160](https://github.com/automatedigital/spark/issues/160) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F05-r1 | Pending |
+| F06 | Render GitHub-style Markdown callouts | Implementing | [#161](https://github.com/automatedigital/spark/issues/161) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F06-r1 | Pending |
+| F07 | Render safe collapsible details in chat Markdown | Implementing | [#162](https://github.com/automatedigital/spark/issues/162) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F07-r1 | Pending |
+| F08 | Add opt-in notification sounds with preview | Implementing | [#163](https://github.com/automatedigital/spark/issues/163) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F08-r1 | Pending |
+| F09 | Browse bounded history of dashboard skill edits | Implementing | [#164](https://github.com/automatedigital/spark/issues/164) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F09-r1 | Pending |
+| F10 | Browse saved scheduled-job output | Implementing | [#165](https://github.com/automatedigital/spark/issues/165) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F10-r1 | Pending |
 
 ## Research and acceptance evidence
 
@@ -101,3 +101,9 @@ All use inherited Codex `gpt-6.1-sol`, medium reasoning, default service tier, r
 ### I01 draft review
 
 PR #155 at `4ab637f8087e683a0c5ce9afcc2db2ac4ffb33b0`: 25 focused and 69 combined neighbor tests pass; 13 regression tests failed before repair. Scoped Ruff passes; full-source 299 errors match baseline. Browser-origin multipart smoke passes, shipped UI unverified. **Unaccepted:** unsupported platforms including Windows return 501 for normal uploads; lead requires a portability correction before acceptance.
+
+### Implementation delegation
+
+All **20 dedicated implementation agents have been created**: I01–I10 and F01–F10, each in an isolated worktree with its own scoped branch/PR assignment. The three completed research agents are additional. Agent tasks preserve inherited Codex gpt-6.1-sol, medium reasoning and default service tier. Concurrent shared-file hunks are reviewed/rebased in the recorded integration order; only F05 may write the npm lockfile. No agent may write the tracker or production bundle.
+
+I01 portability correction is delegated in a fresh isolated worktree, starting from PR155 head; it updates that same PR and must preserve normal Windows uploads rather than returning blanket 501.
