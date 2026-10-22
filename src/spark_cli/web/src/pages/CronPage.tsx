@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clock, Edit3, Pause, Play, Plus, Trash2, X, Zap } from "lucide-react";
+import { CronOutputDrawer } from "@/components/CronOutputDrawer";
 import { api } from "@/lib/api";
 import type { CronJob } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
@@ -171,6 +172,7 @@ function JobAdvanced({ id, value, onChange }: {
 }
 
 export default function CronPage() {
+  const [outputJob, setOutputJob] = useState<CronJob | null>(null);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
@@ -386,6 +388,7 @@ export default function CronPage() {
   return (
     <div className="flex flex-col gap-6">
       <Toast toast={toast} />
+      {outputJob && <CronOutputDrawer key={outputJob.id} jobId={outputJob.id} name={outputJob.name || outputJob.id} onClose={() => setOutputJob(null)} />}
 
       {/* Create new job form */}
       <Card>
@@ -683,6 +686,7 @@ export default function CronPage() {
 
               {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
+                <Button variant="ghost" onClick={() => setOutputJob(job)}>Outputs</Button>
                 {isEditing ? (
                   <>
                     <Button
