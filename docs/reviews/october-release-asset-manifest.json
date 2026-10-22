@@ -1,0 +1,12 @@
+{
+  "Spark.dmg": {
+    "sha256": "3158593766843d12d4617b31cd8a50300ce56a3a2bc4ba4a857102f287fe3757",
+    "size": 52864896,
+    "path": "/tmp/spark-review-release-20261022/src/spark_cli/web/src-tauri/target/release/bundle/dmg/Spark.dmg"
+  },
+  "Spark_1.4.0_x64-setup.exe": {
+    "sha256": "6d8db53b3fc960742944ef049e44fd9b9ee971ec8188a44be2a1302d9c83f3d6",
+    "size": 45158332,
+    "path": "/tmp/spark-release-assets-1.4.0/windows/Spark_1.4.0_x64-setup.exe"
+  }
+}
