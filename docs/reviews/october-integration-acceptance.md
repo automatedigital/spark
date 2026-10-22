@@ -19,7 +19,7 @@ All twenty original code heads and tracker #144 are retained as ancestors. The o
 
 ## Current blocking finding
 
-Native Windows job 119931403494 exposes directory rename/reparse redirection past metadata-only upload handles. New unique filenames can escape; preserving only the original outside sentinel did not prove containment. Fix and direct native boundary proof are required before merge. The earlier harness-only diagnosis is withdrawn.
+Native Windows job 119931403494 exposes directory rename/reparse redirection past metadata-only upload handles. New unique filenames can escape; preserving only the original outside sentinel did not prove containment. Handle-relative creation/descent/collision repair is integrated at 39aabc9c, with whole-tree assertions and actual FSCTL native tests. Lead 127 neighboring tests, CI Ruff and mypy pass; exact-head direct native boundary proof is still required before merge. The earlier harness-only diagnosis is withdrawn.
 
 ## Executed local checks
 
