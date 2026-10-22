@@ -6,7 +6,7 @@ Deliver ten independently scoped defect fixes and ten useful features, each impl
 
 ## Status
 
-Research underway; 0/20 implementation PRs created, 0/20 accepted, 0/20 merged. Placeholder rows are allocation slots, not confirmed findings. The lead alone updates this plan. PR creation, validation, merge and release are separate states; completion requires reviewed evidence, not an agent summary.
+10 fixes selected, feature research underway; 0/20 implementation PRs created, 0/20 accepted, 0/20 merged. Placeholder rows are allocation slots, not confirmed findings. The lead alone updates this plan. PR creation, validation, merge and release are separate states; completion requires reviewed evidence, not an agent summary.
 
 The previous upgrade plan and its unfinished performance/native gates are preserved in [the historical plan](docs/plans/app-upgrade-2026-10-15.md). Existing issues #130, #139 and #140 retain those gates. No historical acceptance is silently carried forward.
 
@@ -30,9 +30,9 @@ The previous upgrade plan and its unfinished performance/native gates are preser
 | I05 | Preserve exact Unicode and quoted paths in Git Changes | Queued | [#149](https://github.com/automatedigital/spark/issues/149) | — | Pending |
 | I06 | List nested untracked files and reject directory discard | Queued | [#150](https://github.com/automatedigital/spark/issues/150) | — | Pending |
 | I07 | Make canvas revision checks atomic with saves and deletion | Queued | [#151](https://github.com/automatedigital/spark/issues/151) | — | Pending |
-| I08 | Pending evidence-based selection | Research | — | — | — |
-| I09 | Pending evidence-based selection | Research | — | — | — |
-| I10 | Pending evidence-based selection | Research | — | — | — |
+| I08 | Preserve healthy memory databases during SQLite lock contention | Implementing | [#152](https://github.com/automatedigital/spark/issues/152) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I08-r1 | Pending |
+| I09 | Prevent lost cron updates with cross-process mutation locking | Queued | [#153](https://github.com/automatedigital/spark/issues/153) | — | Pending |
+| I10 | Preserve file permissions during atomic file and skill edits | Queued | [#154](https://github.com/automatedigital/spark/issues/154) | — | Pending |
 | F01 | Pending evidence-based selection | Research | — | — | — |
 | F02 | Pending evidence-based selection | Research | — | — | — |
 | F03 | Pending evidence-based selection | Research | — | — | — |
@@ -46,7 +46,7 @@ The previous upgrade plan and its unfinished performance/native gates are preser
 
 ## Research and acceptance evidence
 
-- Backend and tool audit: running.
+- Backend/tool audit: [six confirmed defects](docs/reviews/spark-backend-audit-2026-10-22.md), with 149 existing focused tests passing. B1, B2 and B5 selected for I08–I10; B3/B4/B6 retained as follow-up findings outside the requested ten fixes.
 - Web/API/gateway audit: [seven current findings](docs/reviews/spark-web-audit-2026-10-22.md); five isolated API reproductions, two frontend source traces. Browser acceptance remains open.
 - Current upstream feature comparison: running.
 
@@ -71,3 +71,9 @@ All use inherited Codex `gpt-6.1-sol`, medium reasoning, default service tier, r
 - **I05**: workspace_routes.py Git status/numstat parser and focused Git route tests. Dependency: none; keep away from upload handler changes. Acceptance: finding W03 in the web audit.
 - **I06**: workspace_routes.py Git status invocation and revert validation, focused Git tests. Dependency: I05: shared Git parser; launch after its PR is ready. Acceptance: finding W04 in the web audit.
 - **I07**: src/spark_cli/canvas_routes.py and new focused concurrency tests. Dependency: none. Acceptance: finding W07 in the web audit.
+
+- **I08**: src/plugins/memory/holographic/store.py and tests/plugins/memory/test_holographic_recovery.py. Dependency: none. Acceptance: finding B1 in the backend audit.
+
+- **I09**: src/cron/jobs.py and focused tests/cron concurrency tests. Dependency: none. Acceptance: finding B2 in the backend audit.
+
+- **I10**: src/tools/file_operations.py, src/tools/skill_manager_tool.py and their focused tests. Dependency: none. Acceptance: finding B5 in the backend audit.
