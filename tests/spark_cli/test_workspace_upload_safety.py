@@ -186,15 +186,18 @@ def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monke
     outside.mkdir()
     (outside / "note.txt").write_bytes(b"original")
     original_read = UploadFile.read
+    stored_directory = dest
 
     async def swapped_read(self, *args):
+        nonlocal stored_directory
         content = await original_read(self, *args)
         try:
             dest.rename(dest.with_name("pinned"))
         except PermissionError:
-            # Windows directory handles deny renames for the upload lifetime.
+            # Windows may deny renames while directory handles are pinned.
             assert os.name == "nt"
         else:
+            stored_directory = dest.with_name("pinned")
             dest.symlink_to(outside, target_is_directory=True)
         return content
 
@@ -203,12 +206,10 @@ def test_directory_swap_at_write_cannot_redirect_upload(uploads, tmp_path, monke
     assert response.status_code in (200, 400)
     assert (outside / "note.txt").read_bytes() == b"original"
     if response.status_code == 200:
-        actual = dest if os.name == "nt" else dest.with_name("pinned")
         stored = Path(response.json()["saved"][0]["absolute_path"]).name
-        assert (actual / stored).read_bytes() == b"new"
+        assert (stored_directory / stored).read_bytes() == b"new"
     if collision:
-        actual = dest if os.name == "nt" else dest.with_name("pinned")
-        assert (actual / "note.txt").read_bytes() == b"earlier attachment"
+        assert (stored_directory / "note.txt").read_bytes() == b"earlier attachment"
 
 
 @pytest.mark.parametrize("scope", ["project", "global"])

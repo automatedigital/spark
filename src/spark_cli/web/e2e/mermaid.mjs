@@ -156,7 +156,13 @@ try {
 
   await page.goto(base);
   await page.getByText("Mermaid Alpha", { exact: true }).first().click();
-  // Long history is virtualized; explicitly exercise the user-facing jump action.
+  // Landing may already follow the latest row. Establish a detached scroll
+  // state before requiring the conditional user-facing jump action.
+  const chatScroll = page.locator('[data-session-id="mermaid-a"] [data-testid="chat-scroll"]');
+  await chatScroll.waitFor();
+  await page.locator('[data-session-id="mermaid-a"] [data-row-id]').first().waitFor();
+  await chatScroll.hover();
+  await page.mouse.wheel(0, -1500);
   await page.getByTitle("Jump to latest", { exact: true }).click();
   await page.locator('[role="img"][aria-label="Rendered Mermaid diagram"] svg').waitFor();
   await page.getByText("Mermaid Beta", { exact: true }).first().click();
