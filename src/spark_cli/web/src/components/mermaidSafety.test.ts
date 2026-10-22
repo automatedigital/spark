@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { completedCodeFences, mermaidSourceError } from "./mermaidSafety";
-import { buildMarkdownRenderSegments } from "./markdownParse";
+import { mermaidSourceError } from "./mermaidSafety";
+import { blockPropsEqual, buildMarkdownRenderSegments, parseBlocks } from "./markdownParse";
 
 describe("passive Mermaid source policy", () => {
   it.each([
@@ -34,21 +34,56 @@ describe("passive Mermaid source policy", () => {
   });
 });
 
+// Completion belongs to the parser's actual code nodes, not fences hidden in
+// details/literal bodies. Keep the original independent-fence assertions.
+const codeBlocks = (text: string) => parseBlocks(text).filter((block) => block.type === "code");
+const completionFlags = (text: string) => codeBlocks(text).map((block) => block.closed);
+
 describe("completed fence dispatch", () => {
+  const details = (body: string) => `<details>\n<summary>Evidence</summary>\n${body}\n</details>`;
+  const ordinary = "```text\nplain\n```";
+  const partial = "```mermaid\ngraph LR\nA-->B";
+
+  it.each([
+    details(ordinary),
+    details(ordinary).replace("<details>", '<details onclick="evil()">'),
+    details(details(ordinary)),
+    "> [!NOTE]\n> ```text\n> plain\n> ```",
+    details("> [!TIP]\n> ```text\n> plain\n> ```"),
+  ])("owns completion independently of preceding nested/literal fences: %s", (prefix) => {
+    for (const [ending, closed] of [["", false], ["\n```bad", false], ["\n```", true], ["\n``` \t", true]] as const) {
+      const blocks = codeBlocks(`${prefix}\n\n${partial}${ending}`);
+      expect(blocks).toEqual([{ type: "code", lang: "mermaid", content: "graph LR\nA-->B", closed }]);
+    }
+  });
+
+  it("retains ordinary code content and malformed-closing parse boundaries", () => {
+    expect(parseBlocks("```js\nconst x = 1\n```bad\nafter")).toEqual([
+      { type: "code", lang: "js", content: "const x = 1", closed: false },
+      { type: "paragraph", content: "after" },
+    ]);
+  });
+
+  it("updates memo equality when only the owned closing fence changes", () => {
+    const block = codeBlocks(partial)[0];
+    expect(blockPropsEqual({ block, live: false }, { block: { ...block }, live: false })).toBe(true);
+    expect(blockPropsEqual({ block, live: false }, { block: codeBlocks(partial + "\n```")[0], live: false })).toBe(false);
+  });
+
   it("tracks independent fences, including duplicate source and ordinary code", () => {
-    expect(completedCodeFences("```js\nconst x = 1\n```\n```mermaid\ngraph LR\n```\n```mermaid\ngraph LR"))
+    expect(completionFlags("```js\nconst x = 1\n```\n```mermaid\ngraph LR\n```\n```mermaid\ngraph LR"))
       .toEqual([true, true, false]);
   });
   it("does not treat a malformed closing line as an eligible closing fence", () => {
-    expect(completedCodeFences("```mermaid\ngraph LR\n```bad")).toEqual([false]);
+    expect(completionFlags("```mermaid\ngraph LR\n```bad")).toEqual([false]);
   });
   it("keeps virtually closed streaming tails ineligible until commit", () => {
     const partial = "```mermaid\ngraph LR\nA-->B";
     const [tail] = buildMarkdownRenderSegments(partial, true);
     expect(tail.live).toBe(true);
-    expect(completedCodeFences(tail.text)).toEqual([true]);
+    expect(completionFlags(tail.text)).toEqual([true]);
     const [committed] = buildMarkdownRenderSegments(partial, false);
     expect(committed.live).toBe(false);
-    expect(completedCodeFences(committed.text)).toEqual([false]);
+    expect(completionFlags(committed.text)).toEqual([false]);
   });
 });

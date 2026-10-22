@@ -15,7 +15,7 @@ export type CalloutKind = "NOTE" | "TIP" | "IMPORTANT" | "WARNING" | "CAUTION";
 export type BlockNode =
   | { type: "literal"; content: string }
   | { type: "details"; summary: string; content: string; open: boolean }
-  | { type: "code"; lang: string; content: string }
+  | { type: "code"; lang: string; content: string; closed?: boolean }
   | { type: "heading"; level: number; content: string }
   | { type: "hr" }
   | { type: "list"; ordered: boolean; items: string[]; start?: number }
@@ -145,8 +145,11 @@ export function parseBlocks(text: string): BlockNode[] {
         codeLines.push(lines[i]);
         i++;
       }
+      // Preserve the existing parse boundary for malformed closing lines, but
+      // only a bare closing fence makes this specific block diagram-eligible.
+      const closed = i < lines.length && /^```\s*$/.test(lines[i]);
       i++; // skip closing ```
-      blocks.push({ type: "code", lang, content: codeLines.join("\n") });
+      blocks.push({ type: "code", lang, content: codeLines.join("\n"), closed });
       continue;
     }
 
@@ -487,7 +490,7 @@ function blocksEqual(a: BlockNode, b: BlockNode): boolean {
       return true;
     case "code": {
       const bb = b as typeof a;
-      return a.lang === bb.lang && a.content === bb.content;
+      return a.lang === bb.lang && a.content === bb.content && a.closed === bb.closed;
     }
     case "heading": {
       const bb = b as typeof a;

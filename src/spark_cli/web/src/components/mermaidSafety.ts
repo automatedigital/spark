@@ -14,16 +14,3 @@ export function mermaidSourceError(source: string): string | null {
   }
   return null;
 }
-
-/** Mirror the existing parser's fence recognition without changing its contract. */
-export function completedCodeFences(text: string): boolean[] {
-  const completed: boolean[] = [];
-  const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (!/^```(\w*)/.test(lines[i])) continue;
-    i++;
-    while (i < lines.length && !lines[i].startsWith("```")) i++;
-    completed.push(i < lines.length && /^```\s*$/.test(lines[i]));
-  }
-  return completed;
-}

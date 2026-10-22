@@ -20,7 +20,6 @@ import { isTauri } from "@/sidecar";
 import { isDirectPreviewUrl } from "@/lib/previewUrl";
 import { MarkdownCallout } from "./MarkdownCallout";
 import { MermaidBlock } from "./MermaidBlock";
-import { completedCodeFences } from "./mermaidSafety";
 import {
   type BlockNode,
   type BlockProps,
@@ -208,16 +207,13 @@ const MemoMarkdownSegment = memo(function MarkdownSegment({
   defaultWrap?: boolean;
 }) {
   const blocks = useMemo(() => parseBlocks(segment.text), [segment.text]);
-  const fences = useMemo(() => completedCodeFences(segment.text), [segment.text]);
-  let fenceIndex = 0;
   const total = blocks.length;
   return (
     <>
       {blocks.map((block, i) => {
-        const closed = block.type === "code" ? fences[fenceIndex++] : false;
         // Live tails may contain a virtual closing fence added by the parser.
         // Wait until that segment commits before loading the diagram renderer.
-        if (block.type === "code" && block.lang.toLowerCase() === "mermaid" && closed && !segment.live && !safeMode) {
+        if (block.type === "code" && block.lang.toLowerCase() === "mermaid" && block.closed && !segment.live && !safeMode) {
           return <MermaidBlock key={i} source={block.content} />;
         }
         return (
