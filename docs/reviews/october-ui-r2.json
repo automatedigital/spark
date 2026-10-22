@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "reviewed_sha": "2424ad77afe3a293c529569b7a0ca39a3606858d",
+  "verdict": "BLOCKED",
+  "scope": "Combined UI source: F01,F02,F04,F05,F06,F07,F08,F09,F10,I03,I04. F03 backend verdict owned by other reviewer.",
+  "checkout": "/Users/joe/.t3/worktrees/spark/t3-f9ed1dc3",
+  "report": "/tmp/spark-merge-review-20261022/ui-r2.md",
+  "findings": [
+    {
+      "id": "UI-R2-01",
+      "priority": "P2",
+      "title": "Bind Mermaid fence completion to the parsed code node",
+      "path": "src/spark_cli/web/src/components/Markdown.tsx",
+      "line_start": 211,
+      "line_end": 220,
+      "primary_line": 217,
+      "cause": "Completion scan counts fences inside details nodes; renderer increments completion index only for top-level code nodes.",
+      "trigger": "Nonstreaming Markdown: closed details containing a text fence, then an incomplete or malformed Mermaid fence in the same segment.",
+      "expected_diagrams": 0,
+      "actual_diagrams": 1,
+      "control_incomplete_without_details_diagrams": 0,
+      "reproducer": "/tmp/spark-merge-review-20261022/ui-r2-mermaid-probe.mjs",
+      "evidence": ["ui-r2-mermaid-probe.json", "ui-r2-mermaid-probe.log", "ui-r2-mermaid-failure.png"],
+      "security_claim": "No sanitization bypass or code execution demonstrated. Completed-fence dispatch contract is violated."
+    }
+  ],
+  "prior_source_blockers": {
+    "176_original_draft_loss": "DISCHARGED on reviewed SHA: source + fresh real ChatPanel/SQLite/browser acceptance including A/B/A,reload,send,stash",
+    "179_skill_identifier": "DISCHARGED on reviewed SHA: relative ID payload, duplicate labels,nested paths,scheduler instruction order",
+    "181_unsupported_outputs": "DISCHARGED on reviewed SHA: backend capability,disabled Outputs,visible reason,fail-closed 503",
+    "184_vite_advisory": "Patched Vite 7.3.7 pin present; fresh frozen install reports zero vulnerabilities. Final hosted security gate still required."
+  },
+  "checks": [
+    {"name":"detach own checkout at requested SHA","exit":0},
+    {"name":"Node version and executable","exit":0,"version":"v22.22.1","executable":"/Users/joe/.nvm/versions/node/v22.22.1/bin/node"},
+    {"name":"npm ci --ignore-scripts --prefix src/spark_cli/web","exit":0,"log":"ui-r2-npm-ci.log"},
+    {"name":"focused UI vitest","exit":0,"files":9,"tests":104,"log":"ui-r2-focused.log"},
+    {"name":"focused cron overrides/output/skill history pytest, -n 0, not integration and not network","exit":0,"tests":36,"log":"ui-r2-python.log"},
+    {"name":"composer-history real backend browser","exit":0,"log":"ui-r2-composer.log","result":"ui-r2-composer/result.json","page_errors":0,"explicit_fixture_sends":2},
+    {"name":"cron-overrides browser","exit":0,"log":"ui-r2-cron-overrides.log"},
+    {"name":"cron-outputs supported and unsupported backend browser","exit":0,"log":"ui-r2-cron-outputs.log"},
+    {"name":"T3 preview combined parser/control probe","status":"REPRODUCED","expected":0,"actual":1},
+    {"name":"independent executable Mermaid integration probe","exit":1,"expected_finding_reproduction":true,"log":"ui-r2-mermaid-probe.log"},
+    {"name":"initial Vite command with doubled relative path","exit":1,"classification":"setup error; corrected"},
+    {"name":"corrected isolated Vite start on 5297","status":"READY"},
+    {"name":"git diff --check","exit":0},
+    {"name":"git status --short","exit":0,"output":""}
+  ],
+  "open_gates": [
+    "Fix UI-R2-01 and verify combined parser/completion ownership regression coverage",
+    "PR185 final hosted required CI/browser/security gates",
+    "F04 historical duplicate history cursor before_id=2401 remains unverified/unresolved",
+    "F06 historical inspector scroll 1000 to 1410 remains unverified/unresolved",
+    "Lead full frontend/Python/lint/type/build validation",
+    "Verified generated production bundle",
+    "Separate native Windows and macOS package/install/release evidence"
+  ],
+  "limits": [
+    "Review only; no tracked source edits,commits,push,merge,publication,hosted reruns,watchers or delegation",
+    "Shared .venv active; checkout PYTHONPATH; synthetic HOME,USERPROFILE,SPARK_HOME; no real providers",
+    "Did not duplicate lead full test/lint/type/build runs",
+    "No source claim that historical hosted failures were fixed or baseline debt",
+    "No native Windows or installed package/audio acceptance",
+    "No independent full F03 export verdict"
+  ]
+}
