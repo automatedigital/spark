@@ -6,21 +6,27 @@ Output is saved to ~/.spark/cron/output/{job_id}/{timestamp}.md
 """
 
 import copy
+import errno
 import json
 import logging
 import os
 import re
+import sys
 import tempfile
+import threading
+import time
 import uuid
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
+from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 
 from core.spark_constants import get_spark_home
+from core.spark_time import now as _spark_now
 
 logger = logging.getLogger(__name__)
-
-from core.spark_time import now as _spark_now
 
 try:
     from croniter import croniter
@@ -339,7 +345,86 @@ def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -
 # Job CRUD Operations
 # =============================================================================
 
+# Serialize threads as well as processes (OS file-lock semantics vary by platform).
+_JOBS_THREAD_LOCK = threading.Lock()
+_LOCK_TIMEOUT = 10.0
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+@contextmanager
+def _jobs_lock() -> Iterator[None]:
+    """Lock a stable inode, never jobs.json itself: atomic saves replace that inode.
+
+    Keep this separate from the scheduler tick lock. API/CLI/tool processes must
+    share this lock too. A failed acquisition raises without reading or writing.
+    """
+    if not _JOBS_THREAD_LOCK.acquire(timeout=_LOCK_TIMEOUT):
+        raise TimeoutError("Timed out waiting for cron mutation lock")
+    try:
+        ensure_dirs()
+        lock_path = JOBS_FILE.with_name(".jobs.lock")
+        with open(lock_path, "a+b") as lock_file:
+            _secure_file(lock_path)
+            if sys.platform == "win32":
+                import msvcrt
+
+                # Windows byte-range locking needs a byte at offset zero.
+                lock_file.seek(0, os.SEEK_END)
+                if lock_file.tell() == 0:
+                    lock_file.write(b"\0")
+                    lock_file.flush()
+            else:
+                import fcntl
+
+            deadline = time.monotonic() + _LOCK_TIMEOUT
+            while True:
+                try:
+                    if sys.platform == "win32":
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError as exc:
+                    if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("Timed out waiting for cron mutation lock") from exc
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                if sys.platform == "win32":
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
+    finally:
+        _JOBS_THREAD_LOCK.release()
+
+
+def _locked_jobs(func: Callable[_P, _R]) -> Callable[_P, _R]:
+    @wraps(func)
+    def locked(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        with _jobs_lock():
+            return func(*args, **kwargs)
+    return locked
+
+
+@_locked_jobs
 def load_jobs() -> list[dict[str, Any]]:
+    """Read jobs, including any control-character repair, under the storage lock."""
+    return _load_jobs()
+
+
+@_locked_jobs
+def save_jobs(jobs: list[dict[str, Any]]):
+    """Replace the complete snapshot; use mutation APIs for read-modify-write."""
+    _save_jobs(jobs)
+
+
+def _load_jobs() -> list[dict[str, Any]]:
     """Load all jobs from storage."""
     ensure_dirs()
     if not JOBS_FILE.exists():
@@ -357,7 +442,7 @@ def load_jobs() -> list[dict[str, Any]]:
                 jobs = data.get("jobs", [])
                 if jobs:
                     # Auto-repair: rewrite with proper escaping
-                    save_jobs(jobs)
+                    _save_jobs(jobs)
                     logger.warning("Auto-repaired jobs.json (had invalid control characters)")
                 return jobs
         except Exception as e:
@@ -368,7 +453,7 @@ def load_jobs() -> list[dict[str, Any]]:
         raise RuntimeError(f"Failed to read cron database: {e}") from e
 
 
-def save_jobs(jobs: list[dict[str, Any]]):
+def _save_jobs(jobs: list[dict[str, Any]]):
     """Save all jobs to storage."""
     ensure_dirs()
     fd, tmp_path = tempfile.mkstemp(dir=str(JOBS_FILE.parent), suffix='.tmp', prefix='.jobs_')
@@ -383,10 +468,11 @@ def save_jobs(jobs: list[dict[str, Any]]):
         try:
             os.unlink(tmp_path)
         except OSError:
-            logger.debug("Ignoring error in save_jobs()", exc_info=True)
+            logger.debug("Ignoring error in _save_jobs()", exc_info=True)
         raise
 
 
+@_locked_jobs
 def create_job(
     prompt: str,
     schedule: str,
@@ -482,9 +568,9 @@ def create_job(
         "origin": origin,  # Tracks where job was created for "origin" delivery
     }
 
-    jobs = load_jobs()
+    jobs = _load_jobs()
     jobs.append(job)
-    save_jobs(jobs)
+    _save_jobs(jobs)
 
     return job
 
@@ -506,9 +592,15 @@ def list_jobs(include_disabled: bool = False) -> list[dict[str, Any]]:
     return jobs
 
 
+@_locked_jobs
 def update_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+    """Apply a patch to the latest snapshot in one storage transaction."""
+    return _update_job(job_id, updates)
+
+
+def _update_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     """Update a job by ID, refreshing derived schedule fields when needed."""
-    jobs = load_jobs()
+    jobs = _load_jobs()
     for i, job in enumerate(jobs):
         if job["id"] != job_id:
             continue
@@ -534,7 +626,7 @@ def update_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
             updated["next_run_at"] = compute_next_run(updated["schedule"])
 
         jobs[i] = updated
-        save_jobs(jobs)
+        _save_jobs(jobs)
         return _apply_skill_fields(jobs[i])
     return None
 
@@ -552,14 +644,15 @@ def pause_job(job_id: str, reason: str | None = None) -> dict[str, Any] | None:
     )
 
 
+@_locked_jobs
 def resume_job(job_id: str) -> dict[str, Any] | None:
     """Resume a paused job and compute the next future run from now."""
-    job = get_job(job_id)
+    job = next((job for job in _load_jobs() if job["id"] == job_id), None)
     if not job:
         return None
 
     next_run_at = compute_next_run(job["schedule"])
-    return update_job(
+    return _update_job(
         job_id,
         {
             "enabled": True,
@@ -573,9 +666,6 @@ def resume_job(job_id: str) -> dict[str, Any] | None:
 
 def trigger_job(job_id: str) -> dict[str, Any] | None:
     """Schedule a job to run on the next scheduler tick."""
-    job = get_job(job_id)
-    if not job:
-        return None
     return update_job(
         job_id,
         {
@@ -588,17 +678,19 @@ def trigger_job(job_id: str) -> dict[str, Any] | None:
     )
 
 
+@_locked_jobs
 def remove_job(job_id: str) -> bool:
     """Remove a job by ID."""
-    jobs = load_jobs()
+    jobs = _load_jobs()
     original_len = len(jobs)
     jobs = [j for j in jobs if j["id"] != job_id]
     if len(jobs) < original_len:
-        save_jobs(jobs)
+        _save_jobs(jobs)
         return True
     return False
 
 
+@_locked_jobs
 def mark_job_run(job_id: str, success: bool, error: str | None = None,
                  delivery_error: str | None = None):
     """
@@ -610,7 +702,7 @@ def mark_job_run(job_id: str, success: bool, error: str | None = None,
     ``delivery_error`` is tracked separately from the agent error — a job
     can succeed (agent produced output) but fail delivery (platform down).
     """
-    jobs = load_jobs()
+    jobs = _load_jobs()
     for i, job in enumerate(jobs):
         if job["id"] == job_id:
             now = _spark_now().isoformat()
@@ -630,7 +722,7 @@ def mark_job_run(job_id: str, success: bool, error: str | None = None,
                 if times is not None and times > 0 and completed >= times:
                     # Remove the job (limit reached)
                     jobs.pop(i)
-                    save_jobs(jobs)
+                    _save_jobs(jobs)
                     return
 
             # Compute next run
@@ -643,12 +735,13 @@ def mark_job_run(job_id: str, success: bool, error: str | None = None,
             elif job.get("state") != "paused":
                 job["state"] = "scheduled"
 
-            save_jobs(jobs)
+            _save_jobs(jobs)
             return
 
     logger.warning("mark_job_run: job_id %s not found, skipping save", job_id)
 
 
+@_locked_jobs
 def advance_next_run(job_id: str) -> bool:
     """Preemptively advance next_run_at for a recurring job before execution.
 
@@ -661,7 +754,7 @@ def advance_next_run(job_id: str) -> bool:
 
     Returns True if next_run_at was advanced, False otherwise.
     """
-    jobs = load_jobs()
+    jobs = _load_jobs()
     for job in jobs:
         if job["id"] == job_id:
             kind = job.get("schedule", {}).get("kind")
@@ -671,12 +764,13 @@ def advance_next_run(job_id: str) -> bool:
             new_next = compute_next_run(job["schedule"], now)
             if new_next and new_next != job.get("next_run_at"):
                 job["next_run_at"] = new_next
-                save_jobs(jobs)
+                _save_jobs(jobs)
                 return True
             return False
     return False
 
 
+@_locked_jobs
 def get_due_jobs() -> list[dict[str, Any]]:
     """Get all jobs that are due to run now.
 
@@ -686,7 +780,7 @@ def get_due_jobs() -> list[dict[str, Any]]:
     immediately.  This prevents a burst of missed jobs on gateway restart.
     """
     now = _spark_now()
-    raw_jobs = load_jobs()
+    raw_jobs = _load_jobs()
     jobs = [_apply_skill_fields(j) for j in copy.deepcopy(raw_jobs)]
     due = []
     needs_save = False
@@ -751,7 +845,7 @@ def get_due_jobs() -> list[dict[str, Any]]:
             due.append(job)
 
     if needs_save:
-        save_jobs(raw_jobs)
+        _save_jobs(raw_jobs)
 
     return due
 
