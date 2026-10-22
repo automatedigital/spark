@@ -16,8 +16,12 @@ import { ComposerMoreMenu } from "@/components/chat/ComposerMoreMenu";
 import { COMPOSER_A11Y_LABELS, COMPOSER_WIDE_ONLY, COMPOSER_WIDE_ONLY_BLOCK } from "@/components/chat/composerContracts";
 import { canNavigateComposerHistory, recallComposerPrompt, stepComposerPromptHistory, type ComposerPromptHistoryBrowse, type ComposerPromptHistoryEntry } from "@/lib/composerPromptHistory";
 
+import { PromptStashChooser } from "./PromptStashChooser";
+import { promptStashKey, type PromptStashScope } from "@/lib/promptStashStore";
+
 interface PromptBarProps {
   promptHistory?: readonly ComposerPromptHistoryEntry[];
+  stashScope?: PromptStashScope | null;
   input: string;
   setInput: (v: string) => void;
   streaming: boolean;
@@ -654,6 +658,7 @@ function ModelQuickSettings({
 // ── PromptBar ─────────────────────────────────────────────────────────────────
 
 export function PromptBar({
+  stashScope,
   input,
   setInput,
   streaming,
@@ -689,6 +694,8 @@ export function PromptBar({
   useLayoutEffect(() => {
     if (historyOpen) historyMenuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, [historyOpen]);
+  const [stashOwner, setStashOwner] = useState<string | null>(null);
+  const stashKey = stashScope ? promptStashKey(stashScope) : null;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1124,6 +1131,8 @@ export function PromptBar({
             />
           )}
 
+          {stashScope && <button type="button" disabled={inputBlocked} onClick={() => setStashOwner(stashKey)} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/7 disabled:opacity-40">Saved prompts</button>}
+          {stashScope && stashOwner === stashKey && <PromptStashChooser key={stashKey} scope={stashScope} input={input} onRestore={(text) => { setInput(text); textareaRef.current?.focus(); }} onClose={() => { setStashOwner(null); textareaRef.current?.focus(); }} />}
           <div className="flex-1" />
 
           {/* Token budget indicator */}

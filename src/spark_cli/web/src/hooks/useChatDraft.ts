@@ -52,7 +52,7 @@ export function useChatDraft(project: string | null, thread: string | null) {
   }, [key]);
   return {
     input: ready ? entry.draft.text : "", contextItems: ready ? entry.draft.contextItems : [],
-    setInput, setContextItems, capture, ready, isCurrent, scopeKey: key,
+    setInput, setContextItems, capture, ready, isCurrent, scopeKey: key, stashScope: ready ? identity : null,
     status: ready ? entry.status : "checking" as const,
     discard: () => discardDraft(key),
     keepMine: () => resolveDraftConflict(key, "mine"),

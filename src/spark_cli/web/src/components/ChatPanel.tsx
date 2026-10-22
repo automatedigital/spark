@@ -2174,6 +2174,7 @@ export function ChatPanel({
 
       <PromptBar
         promptHistory={buildComposerPromptHistoryEntries(chatMessages)}
+        stashScope={draft.stashScope}
         input={input}
         setInput={setInput}
         streaming={streaming}
