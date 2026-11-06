@@ -191,6 +191,7 @@ def _quality_metadata(
     skill_dir: Path,
     *,
     artifacts: tuple[dict[str, list[dict[str, Any]]], dict[str, tuple[str, str | None]]] | None = None,
+    metadata_only: bool = False,
 ) -> dict[str, Any]:
     """Return stable API quality signals for one skill."""
     audit_by_name, eval_by_name = artifacts or _load_quality_artifacts()
@@ -238,7 +239,7 @@ def _quality_metadata(
         "source": source,
         "invocation_type": invocation["invocation_policy"],
         "index_token_cost": index_token_cost,
-        "supporting_file_count": _supporting_file_count(skill_dir),
+        "supporting_file_count": None if metadata_only else _supporting_file_count(skill_dir),
         "eval_status": eval_status,
         "eval_date": eval_date,
         "overlap_warning": overlap_warning,
@@ -367,7 +368,9 @@ def _find_bundled_source(name: str) -> Path | None:
     for skill_md in bundled.rglob("SKILL.md"):
         if skill_md.parent.name != name:
             continue
-        parsed = _parse_frontmatter(skill_md.read_text(encoding="utf-8", errors="replace")[:100_000])
+        from tools.skills_index import read_header
+
+        parsed = _parse_frontmatter(read_header(skill_md))
         if str(parsed.get("name") or skill_md.parent.name) == name:
             return skill_md.parent
     return None
@@ -432,6 +435,7 @@ def resolve_skill(
     *,
     root_kind: str | None = None,
     artifacts: tuple[dict[str, list[dict[str, Any]]], dict[str, tuple[str, str | None]]] | None = None,
+    metadata_only: bool = False,
 ) -> dict[str, Any] | None:
     """Resolve one already-discovered directory to the canonical API record."""
     try:
@@ -451,7 +455,12 @@ def resolve_skill(
         if matched is None:
             return None
         kind, root = matched
-        content = skill_md.read_text(encoding="utf-8")
+        if metadata_only:
+            from tools.skills_index import read_header
+
+            content = read_header(skill_md)
+        else:
+            content = skill_md.read_text(encoding="utf-8")
         frontmatter = _parse_frontmatter(content[:100_000])
         from agent.skill_utils import get_skill_invocation_metadata
 
@@ -464,9 +473,9 @@ def resolve_skill(
         manifest = _manifest()
         artifacts = artifacts or _load_quality_artifacts()
         modified = False
-        if provenance == SkillProvenance.BUNDLED.value and manifest.get(name):
+        if not metadata_only and provenance == SkillProvenance.BUNDLED.value and manifest.get(name):
             modified = _dir_hash(skill_dir) != manifest[name]
-        elif provenance == SkillProvenance.HUB_INSTALLED.value and hub:
+        elif not metadata_only and provenance == SkillProvenance.HUB_INSTALLED.value and hub:
             expected_hash = str(hub.get("content_hash") or "")
             try:
                 from tools.skills_guard import content_hash
@@ -502,12 +511,12 @@ def resolve_skill(
             "name": name,
             "description": description,
             **invocation,
-            **_quality_metadata(name, frontmatter, provenance, skill_dir, artifacts=artifacts),
+            **_quality_metadata(name, frontmatter, provenance, skill_dir, artifacts=artifacts, metadata_only=metadata_only),
             "category": category,
             "provenance": provenance,
             "provenance_detail": detail,
             "trust_level": str((hub or {}).get("trust_level") or ("builtin" if provenance == "bundled" else "external" if provenance == "external" else "user")),
-            "modified": modified,
+            "modified": None if metadata_only else modified,
             "location": _display_location(kind, root, skill_dir, provenance),
             "capabilities": capabilities,
             "enabled": True,

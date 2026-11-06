@@ -11,7 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { SkillDetail, SkillInfo, ToolsetInfo } from "@/lib/api";
+import { getSkillIndex, type DiscoveredSkill } from "@/lib/skillDiscovery";
+import type { SkillDetail, SkillInfo as BaseSkillInfo, ToolsetInfo } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
 import { useEventBus } from "@/hooks/useEventBus";
 import { Toast } from "@/components/Toast";
@@ -23,6 +24,8 @@ import EnvPage from "@/pages/EnvPage";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { SkillHistoryDrawer } from "@/components/skills/SkillHistoryDrawer";
 import { SkillQualitySignals } from "@/components/skills/SkillQualitySignals";
+
+type SkillInfo = BaseSkillInfo & Partial<Pick<DiscoveredSkill, "scope" | "readiness" | "requirements">>;
 
 const CATEGORY_LABELS: Record<string, string> = {
   mlops: "MLOps",
@@ -117,6 +120,8 @@ function SkillRow({
           {skill.modified && <span className="text-[10px] text-amber-300">Modified</span>}
         </div>
         <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{skill.description || "No description provided."}</p>
+        {skill.readiness && <p className="mt-1 text-[11px] text-muted-foreground">{({ available: "Available", disabled: "Disabled (name-wide)", missing_requirements: "Missing requirements", unsupported: "Unsupported platform", unknown: "Optional feature readiness unknown" })[skill.readiness]} · {skill.scope}</p>}
+        {skill.requirements?.length ? <p className="mt-1 text-[11px] text-muted-foreground">{skill.requirements.map((requirement) => `${requirement.name}: ${requirement.status}${requirement.optional ? " (optional)" : ""}`).join(" · ")}</p> : null}
         <SkillQualitySignals skill={skill} />
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground/70">
           <span>{prettyCategory(skill.category)}</span>
@@ -274,19 +279,19 @@ export default function SkillsToolsPage() {
   const [deleteArmed, setDeleteArmed] = useState(false);
   const { toast, showToast } = useToast();
 
-  const load = useCallback(() => {
+  const load = useCallback((refresh = false) => {
     setLoading(true);
-    Promise.all([api.getSkills(), api.getToolsets()]).then(([nextSkills, nextToolsets]) => {
+    Promise.all([getSkillIndex(refresh), tab === "toolsets" ? api.getToolsets() : Promise.resolve([])]).then(([nextSkills, nextToolsets]) => {
       setSkills(nextSkills);
       setToolsets(nextToolsets);
     }).catch((error) => showToast(`Failed to load skills: ${errorMessage(error)}`, "error")).finally(() => setLoading(false));
-  }, [showToast]);
+  }, [showToast, tab]);
 
   useEffect(() => load(), [load]);
 
   useEventBus((env) => {
     if (env.topic !== "skills.updated") return;
-    api.getSkills().then(setSkills).catch(() => {});
+    getSkillIndex().then(setSkills).catch(() => {});
   });
 
   useEffect(() => {
@@ -451,7 +456,7 @@ export default function SkillsToolsPage() {
         <div className="flex items-center gap-5">
           {(["skills", "toolsets", "tools", "keys"] as Tab[]).map((value) => <button key={value} type="button" className={tabClass(tab === value)} onClick={() => setTab(value)}>{value === "toolsets" ? "Toolsets" : value.charAt(0).toUpperCase() + value.slice(1)}</button>)}
         </div>
-        {tab !== "tools" && <div className="flex items-center gap-2"><div className="relative"><Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><input className="h-8 w-48 rounded-md border-none bg-transparent pl-8 pr-7 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:bg-foreground/5" placeholder={tab === "skills" ? "Search skills…" : "Search toolsets…"} value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button type="button" className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearch("")} aria-label="Clear search"><X className="h-3.5 w-3.5" /></button>}</div><button type="button" className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/6 hover:text-foreground" title="Refresh" aria-label="Refresh" onClick={load}><RefreshCw className="h-3.5 w-3.5" /></button></div>}
+        {tab !== "tools" && <div className="flex items-center gap-2"><div className="relative"><Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><input className="h-8 w-48 rounded-md border-none bg-transparent pl-8 pr-7 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:bg-foreground/5" placeholder={tab === "skills" ? "Search skills…" : "Search toolsets…"} value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button type="button" className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearch("")} aria-label="Clear search"><X className="h-3.5 w-3.5" /></button>}</div><button type="button" className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition hover:bg-foreground/6 hover:text-foreground" title="Refresh" aria-label="Refresh" onClick={() => load(true)}><RefreshCw className="h-3.5 w-3.5" /></button></div>}
       </div>
 
       {tab === "skills" && <>

@@ -4406,6 +4406,18 @@ async def toggle_skill(body: SkillToggle):
     return {"ok": True, "name": name, "skill_id": body.skill_id, "enabled": body.enabled}
 
 
+@app.get("/api/skills/index")
+async def get_skill_index(refresh: bool = False, query: str = "", scope: str = "all"):
+    """Discover metadata without syncing, setup, instruction or supporting-file reads."""
+    from starlette.concurrency import run_in_threadpool
+
+    from tools.skills_index import list_skill_index
+
+    if len(query) > 256 or scope not in {"all", "profile", "external"}:
+        raise HTTPException(status_code=422, detail="Invalid skill search.")
+    return await run_in_threadpool(list_skill_index, refresh=refresh, query=query, scope=scope)
+
+
 @app.get("/api/skills/{skill_id}")
 async def get_skill_detail(skill_id: str):
     """Return one skill's bounded detail by opaque server-generated ID."""
