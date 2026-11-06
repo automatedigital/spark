@@ -103,24 +103,27 @@
       "id": "SP10",
       "title": "Use one provider catalogue across settings and chat",
       "issue": "https://github.com/automatedigital/spark/issues/197",
-      "state": "published_integration_correction_running",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp10-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/217",
       "base": "53d527d7f61a094ae258ac5afc6c4f8c61c2e3a5",
       "prBase": "fix/sp09-chat-bundle-budget",
-      "head": "ac29be47daac59dfbadb7a468820b39a319b907b",
+      "head": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
       "leadFinding": "UpdatedModelPicker hasno callers; liveUI isPromptBar.ModelQuickSettings. SettingsCombobox retainsuseEffect(load) contradictingexplicitRefreshonlyreport. Bothcorrections assigned toSP11agent first onSAME217, beforeseparateSP11PR. No acceptanceclosure.",
-      "correctionTaskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp11-20261106-r1"
+      "correctionTaskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp11-20261106-r1",
+      "correctionVerified": "Parent reviewed actualPromptBar ModelQuickSettings catalogueintegration, removalofSettingsmount-time load effect, realmodelstatus refreshafterselection, labelrawIDfallback/non-inference frommodelnamespace. Dedicatedbuiltactualcomponents fixture reportszero modelavailablecalls onbothopens; local571tests andbrowserspass. T3eventall7hostedchecks pass9acb185. Priorreportedgaps closed; no merge/release/liveprovider/nativeclaim.",
+      "hostedVerification": "All7checks passed on9acb185aeba859fade1b83b8171db85bf5b0b6c0 perT3completionevent."
     },
     {
       "id": "SP11",
       "title": "Make model search fast and immune to stale responses",
       "issue": "https://github.com/automatedigital/spark/issues/198",
-      "state": "running_predecessor_correction",
+      "state": "running",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp11-20261106-r1",
       "pr": null,
-      "base": "ac29be47daac59dfbadb7a468820b39a319b907b",
-      "prBase": "feat/sp10-provider-catalogue"
+      "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
+      "prBase": "feat/sp10-provider-catalogue",
+      "predecessorCorrection": "SP10correction completed andall7checks green; sameagentcontinuesseparateSP11PR asassigned."
     },
     {
       "id": "SP12",
@@ -268,7 +271,7 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "FiveSolLow implementationtasks active: SP02repair,SP11(SP10correction+search),SP18history,SP20gatediagnostic,SP23MCPreadiness.15packetsnotdispatched.5implementationPRs published, no merges/releases. PR214boundedmac/Linuxdiagcompleteinconclusive; retainhostedgateOPEN, no repeatwithoutnewcausalevidence. Do not claimdebugreportclosedacceptance.",
+  "dispatchNotes": "SP10liveUI/discoverygaps correctedon217 at9acb185, all7hostedchecks green; watchremovedafterrecord. FiveSolLow tasks continueSP02/SP11/SP18/SP20/SP23.5implementationPRs published; no merges/releases. PR214hostedinspectorunresolved, boundeddiagnostics archived/no speculativefix.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",
