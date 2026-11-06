@@ -39,49 +39,51 @@
       "id": "SP03",
       "title": "Keep expensive chat preparation off the API event loop",
       "issue": "https://github.com/automatedigital/spark/issues/190",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp03-20261106-ownership-r2",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/227",
       "base": "1c2ae85bff12cfd5215c5abe3cfc461e225b1086",
       "prBase": "feat/sp01-submission-acceptance",
       "priorTaskIds": [
         "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp03-20261106-r1"
       ],
-      "publicationBlocker": "Physical cachedDBownership probe fails create runtimeworker/use turnworker/close mainthread. Expanded narrow lifetime scope authorised; regression passes are insufficient."
+      "publicationBlocker": "Physical cachedDBownership probe fails create runtimeworker/use turnworker/close mainthread. Expanded narrow lifetime scope authorised; regression passes are insufficient.",
+      "head": "0057bccf2e24d70076caafe9bc7c94a38ddcf314"
     },
     {
       "id": "SP04",
       "title": "Cancel obsolete reads across navigation and connection changes",
       "issue": "https://github.com/automatedigital/spark/issues/191",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp04-20261106-r1",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/228",
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
-      "prBase": "feat/sp02-recovery-snapshot-final"
+      "prBase": "feat/sp02-recovery-snapshot-final",
+      "head": "c88a0b4dd885411b6b7c8bd19c5d399ad6d73374"
     },
     {
       "id": "SP05",
       "title": "Share reference-data reads and retire redundant polling",
       "issue": "https://github.com/automatedigital/spark/issues/192",
-      "state": "pending",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp05-20261106-r1",
       "pr": null
     },
     {
       "id": "SP06",
       "title": "Update only the active tail during token streaming",
       "issue": "https://github.com/automatedigital/spark/issues/193",
-      "state": "pending",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp06-20261106-r1",
       "pr": null
     },
     {
       "id": "SP07",
       "title": "Retrieve large tool results in bounded chunks",
       "issue": "https://github.com/automatedigital/spark/issues/194",
-      "state": "publication_resume_prepared",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-recovery-r2",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/226",
       "base": "dd136b9a54af5379eb11b546bb5883190726487a",
       "prBase": "feat/sp02-recovery-snapshot-final",
       "scheduling": "Independent bounded result read/domain client before SP04 explicitly authorised; no SessionDB/shared API/controller writer.",
@@ -90,14 +92,15 @@
         "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-r1"
       ],
       "localHead": "dd136b9a54af5379eb11b546bb5883190726487a",
-      "publicationBlocker": "Local141backend/573frontend and exact large-result refresh/navigation/browser gates pass after SP02 integration. Required feat/sp02-recovery-snapshot-final branch not yet published; retain readyhead without rerunning gates."
+      "publicationBlocker": "Local141backend/573frontend and exact large-result refresh/navigation/browser gates pass after SP02 integration. Required feat/sp02-recovery-snapshot-final branch not yet published; retain readyhead without rerunning gates.",
+      "head": "3a3889ca"
     },
     {
       "id": "SP08",
       "title": "Make warmed-agent retention cost-aware",
       "issue": "https://github.com/automatedigital/spark/issues/195",
-      "state": "pending",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp08-20261106-r1",
       "pr": null
     },
     {
@@ -166,32 +169,32 @@
       "id": "SP13",
       "title": "Jump directly to the message found by search",
       "issue": "https://github.com/automatedigital/spark/issues/200",
-      "state": "pending",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp13-20261106-r1",
       "pr": null
     },
     {
       "id": "SP14",
       "title": "Explain context pressure and make compaction controllable",
       "issue": "https://github.com/automatedigital/spark/issues/201",
-      "state": "pending",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp14-20261106-r1",
       "pr": null
     },
     {
       "id": "SP15",
       "title": "Show where a slow turn spent its time",
       "issue": "https://github.com/automatedigital/spark/issues/202",
-      "state": "pending",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp15-20261106-r1",
       "pr": null
     },
     {
       "id": "SP16",
       "title": "Make retry waits visible, bounded and cancellable",
       "issue": "https://github.com/automatedigital/spark/issues/203",
-      "state": "pending",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp16-20261106-r1",
       "pr": null
     },
     {
@@ -292,7 +295,7 @@
       "id": "SP23",
       "title": "Show integration readiness and bounded MCP tests",
       "issue": "https://github.com/automatedigital/spark/issues/210",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-acceptance-r3",
       "pr": "https://github.com/automatedigital/spark/pull/223",
       "base": "c549bc6fcd53458f6391c8cdc16f10d8756b3b0f",
@@ -306,14 +309,15 @@
       "localHead": "c549bc6fcd53458f6391c8cdc16f10d8756b3b0f",
       "publicationBlocker": "Final source changed after earlier checks; host load194-250 and one-second ps cleanup preflight failures reported. Root observed load104.78 at18:49. No final immutable-source browser/full Python evidence, no publication. Do not infer environment alone proves correctness.",
       "head": "1c2c74954fab875ebf97c5d66429f16fe6f7ab04",
-      "leadVerification": "Reviewed isolated stdin config/SDK transport/deadline/bounded structured output and no raw exception disclosure. Independently3 cancellation/owner bounds-profile-revision/secret-safe passive-read tests passed. Child reports79focused/12754parallel191serial/571frontend andbrowser gates pass. Hosted CI pending; process/native/integration acceptance not inferred."
+      "leadVerification": "Reviewed isolated stdin config/SDK transport/deadline/bounded structured output and no raw exception disclosure. Independently3 cancellation/owner bounds-profile-revision/secret-safe passive-read tests passed. Child reports79focused/12754parallel191serial/571frontend andbrowser gates pass. Hosted CI pending; process/native/integration acceptance not inferred.",
+      "hostedVerification": "T3 event confirms all7 hostedchecks passed1c2c74954fab875ebf97c5d66429f16fe6f7ab04. Parent3focusedowner/cancel/secret-safe tests passed. No merge/release/packetclosure."
     },
     {
       "id": "SP24",
       "title": "Explain Auto model choices before users need logs",
       "issue": "https://github.com/automatedigital/spark/issues/211",
-      "state": "pending",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp24-20261106-r1",
       "pr": null
     },
     {
@@ -349,5 +353,6 @@
   "sharedInspectorRepairResult": "ecea250635b22d5ad23d9584ed22d459046306aa report only; no cause proven, no new runtime checks or fix. Hosted pre-switch keyed geometry absent. No more untriggered A/B or diagnostic CI reruns planned.",
   "validationDirection": "User explicitly stopped excessive repeated local testing. Active agents steered to stop own broad batches, focused changed-behavior tests + relevant lint/types/build + affected browser flow; full matrix once inCI. Preserve assertions and reuse immutable evidence.",
   "userDeadlineUtc": "2026-11-06T21:35:58Z",
-  "deadlineDirection": "User imposed one-hour delivery window at20:35:58UTC. Active agents steered to finish/publish promptly with focused checks; no full local suites/audit expansion. Report exact delivered and incomplete state at deadline."
+  "deadlineDirection": "User imposed one-hour delivery window at20:35:58UTC. Active agents steered to finish/publish promptly with focused checks; no full local suites/audit expansion. Report exact delivered and incomplete state at deadline.",
+  "integrationBase": "70eb460290b3182108b7fad351793270240d8017 integration/sp-foundations-20261106: existingSP12+SP04+SP02+SP03 featurebranches only; no PR merged to main"
 }
