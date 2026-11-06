@@ -1,3 +1,4 @@
+import { getProviderCatalog, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
 import { lazy, useState, useEffect, useMemo, useRef } from "react";
 import {
   X,
@@ -65,52 +66,6 @@ const SkillsToolsPage = lazy(() => import("@/pages/SkillsToolsPage"));
 /*  Memory & Context / Voice sections.                                 */
 /* ------------------------------------------------------------------ */
 
-/* Provider list — must mirror the model_provider select options in
- * web_server.py (_SCHEMA_OVERRIDES). */
-const PROVIDER_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "(none)" },
-  { value: "openai-codex", label: "OpenAI Codex (ChatGPT)" },
-  { value: "openrouter", label: "OpenRouter" },
-  { value: "anthropic", label: "Anthropic (Claude)" },
-  { value: "qwen-oauth", label: "Qwen (OAuth)" },
-  { value: "github-copilot", label: "GitHub Copilot" },
-  { value: "copilot-acp", label: "Copilot (ACP)" },
-  { value: "zai", label: "Z.AI" },
-  { value: "kimi-for-coding", label: "Kimi for Coding" },
-  { value: "deepseek", label: "DeepSeek" },
-  { value: "alibaba", label: "Alibaba" },
-  { value: "minimax", label: "MiniMax" },
-  { value: "minimax-cn", label: "MiniMax (CN)" },
-  { value: "xai", label: "xAI" },
-  { value: "ollama", label: "Ollama (local)" },
-  { value: "custom", label: "Custom (OpenAI-compatible)" },
-];
-
-// Providers whose models are reached over an HTTP base URL the user controls.
-const BASE_URL_PROVIDERS = new Set(["ollama", "custom", "openrouter"]);
-// Providers with a single canonical endpoint — always set on selection,
-// overwriting whatever was there (e.g. OpenRouter only has one host).
-const PROVIDER_FIXED_BASE_URL: Record<string, string> = {
-  openrouter: "https://openrouter.ai/api/v1",
-};
-// Default base URLs pre-filled only when the field is empty or still holds a
-// canonical default (so a user's custom LAN address isn't clobbered).
-const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
-  ollama: "http://localhost:11434",
-};
-const _CANONICAL_BASE_URLS = new Set([
-  ...Object.values(PROVIDER_FIXED_BASE_URL),
-  ...Object.values(PROVIDER_DEFAULT_BASE_URL),
-]);
-// Providers that authenticate with an API key stored in .env (key → env var).
-const PROVIDER_API_KEY_ENV: Record<string, string> = {
-  openrouter: "OPENROUTER_API_KEY",
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  deepseek: "DEEPSEEK_API_KEY",
-  xai: "XAI_API_KEY",
-};
-
 /* Searchable model dropdown that pulls the live catalog from the provider.
  * Always a dropdown (never a bare text box); a typed query that doesn't match
  * can still be applied as a custom model name. */
@@ -129,6 +84,7 @@ function ModelCombobox({
   const [models, setModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [live, setLive] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
@@ -139,6 +95,7 @@ function ModelCombobox({
       return;
     }
     setLoading(true);
+    setAttempted(true);
     api
       .getAvailableModels(provider, baseUrl || undefined)
       .then((r) => {
@@ -152,7 +109,8 @@ function ModelCombobox({
       .finally(() => setLoading(false));
   };
 
-  // Refetch whenever the provider or base URL changes.
+  // Browsing settings must not connect to an inference provider.
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -196,7 +154,7 @@ function ModelCombobox({
       </div>
       <span className="text-xs text-muted-foreground/70">
         {provider
-          ? live
+          ? !attempted ? "Model discovery has not run. Type a model ID or refresh." : live
             ? `Pulled live from ${provider}.`
             : loading
               ? "Loading models…"
@@ -351,49 +309,35 @@ function ModelProviderBlock({
   const setKey = (key: string, v: unknown) =>
     setConfig((c) => (c ? setNestedValue(c, key, v) : c));
 
-  const onProviderChange = (next: string) => {
-    setConfig((c) => {
-      if (!c) return c;
-      let updated = setNestedValue(c, "model_provider", next);
-      const currentBase = String(getNestedValue(c, "model_base_url") ?? "");
-      const isCanonical = _CANONICAL_BASE_URLS.has(currentBase);
-      const fixed = PROVIDER_FIXED_BASE_URL[next];
-      const fallback = PROVIDER_DEFAULT_BASE_URL[next];
-      if (fixed) {
-        // Single-endpoint provider — always pin to its canonical URL.
-        updated = setNestedValue(updated, "model_base_url", fixed);
-      } else if (fallback && (!currentBase || isCanonical)) {
-        // Fill a default only when empty or still a canonical default, so a
-        // custom LAN address (e.g. a remote Ollama host) is preserved.
-        updated = setNestedValue(updated, "model_base_url", fallback);
-      } else if (!BASE_URL_PROVIDERS.has(next) && isCanonical) {
-        // Switching to a hosted provider that needs no base URL — clear stale
-        // canonical values (but leave custom ones alone).
-        updated = setNestedValue(updated, "model_base_url", "");
-      }
-      return updated;
-    });
-  };
-
-  const apiKeyEnv = PROVIDER_API_KEY_ENV[provider];
+  const [catalog, setCatalog] = useState<ProviderCatalogEntry[]>([]);
+  const [catalogError, setCatalogError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    getProviderCatalog().then((result) => { if (active) setCatalog(result.providers); })
+      .catch(() => { if (active) setCatalogError(true); });
+    return () => { active = false; };
+  }, []);
+  const onProviderChange = (next: string) => setKey("model_provider", next);
+  const selected = catalog.find((entry) => entry.id === provider);
+  const apiKeyEnv = selected?.credential.env_vars[0];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-1.5">
         <Label className="text-sm">Provider</Label>
         <span className="text-xs text-muted-foreground/70">
-          SMART model provider. Selecting Ollama or OpenRouter pulls the available models below.
+          Provider metadata comes from Spark. Model discovery runs only when you refresh.
         </span>
         <Select value={provider} onValueChange={onProviderChange}>
-          {PROVIDER_OPTIONS.map((opt) => (
-            <SelectOption key={opt.value} value={opt.value}>
-              {opt.label}
-            </SelectOption>
+          {[{ id: "", label: "(none)" },
+            ...(provider && !selected ? [{ id: provider, label: provider }] : []),
+            ...catalog].map((opt) => (
+            <SelectOption key={opt.id} value={opt.id}>{opt.label}</SelectOption>
           ))}
         </Select>
       </div>
 
-      {BASE_URL_PROVIDERS.has(provider) && (
+      {provider && (
         <div className="grid gap-1.5">
           <Label className="text-sm">Base URL</Label>
           <span className="text-xs text-muted-foreground/70">
@@ -402,14 +346,17 @@ function ModelProviderBlock({
           <Input
             value={baseUrl}
             onChange={(e) => setKey("model_base_url", e.target.value)}
-            placeholder="http://localhost:11434"
+            placeholder={selected?.base_url.default || "Endpoint URL"}
           />
         </div>
       )}
 
+      {catalogError && <p role="status">Provider catalogue unavailable. Saved values are preserved.</p>}
+      {selected && <p className="text-xs text-muted-foreground">Availability: {selected.availability}; model capabilities unverified.</p>}
       {apiKeyEnv && <ProviderApiKeyField envVar={apiKeyEnv} />}
 
       <ModelCombobox
+        key={JSON.stringify([provider, baseUrl])}
         value={model}
         provider={provider}
         baseUrl={baseUrl}

@@ -1,3 +1,4 @@
+import { getProviderCatalog, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { ConversationModelEntry } from "@/lib/api";
@@ -12,6 +13,16 @@ export function ModelPicker({
   disabled?: boolean;
 }) {
   const [models, setModels] = useState<ConversationModelEntry[]>([]);
+
+  const [provider, setProvider] = useState<ProviderCatalogEntry>();
+
+  useEffect(() => {
+    let active = true;
+    getProviderCatalog().then((catalog) => {
+      if (active) setProvider(catalog.providers.find((entry) => entry.id === catalog.selected_provider));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     api
@@ -41,6 +52,7 @@ export function ModelPicker({
           ))}
         </select>
       </div>
+      {provider && <span className="text-[10px] text-muted-foreground">{provider.label} · availability {provider.availability}</span>}
       <input
         type="text"
         className="w-full rounded border border-input bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
