@@ -1,6 +1,8 @@
+import { paletteScope } from "./paletteClient";
+
 export type GlobalNavTarget =
   | { type: "project"; id: string }
-  | { type: "thread"; id: string }
+  | { type: "thread"; id: string; messageId?: string }
   | { type: "task"; id: string }
   | { type: "scheduled-task"; id: string }
   | { type: "skill"; id: string }
@@ -23,6 +25,8 @@ export function pageForGlobalNavTarget(target: GlobalNavTarget) {
 }
 
 export function setGlobalNavTarget(target: GlobalNavTarget): void {
+  pendingMessageAnchor = target.type === "thread" && target.messageId
+    ? { target, scope: paletteScope() } : null;
   localStorage.setItem(GLOBAL_NAV_TARGET_KEY, JSON.stringify(target));
   window.dispatchEvent(new CustomEvent<GlobalNavTarget>(GLOBAL_NAV_EVENT, { detail: target }));
 }
@@ -39,4 +43,15 @@ export function takeGlobalNavTarget<T extends GlobalNavTarget["type"]>(type: T):
     localStorage.removeItem(GLOBAL_NAV_TARGET_KEY);
     return null;
   }
+}
+
+// Separate from the shell target: the session store consumes that target before
+// a newly selected panel mounts. Never carry an anchor across backend/profile.
+let pendingMessageAnchor: { target: GlobalNavTargetFor<"thread">; scope: string } | null = null;
+export function takeMessageAnchor(sessionId: string): string | null {
+  if (pendingMessageAnchor?.scope !== paletteScope()) pendingMessageAnchor = null;
+  if (pendingMessageAnchor?.target.id !== sessionId) return null;
+  const id = pendingMessageAnchor.target.messageId ?? null;
+  pendingMessageAnchor = null;
+  return id;
 }

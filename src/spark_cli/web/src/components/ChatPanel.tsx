@@ -1,3 +1,4 @@
+import { MessageAnchorView } from "@/components/chat/MessageAnchorView";
 import { buildComposerPromptHistoryEntries } from "@/lib/composerPromptHistory";
 import { shouldRefreshRetryStatus } from "@/lib/retryStatus";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -226,6 +227,7 @@ export function ChatPanel({
     onSessionUpdated,
   });
   const {
+    messageAnchor,
     chatMessages,
     setChatMessages,
     activeSessionId,
@@ -260,6 +262,7 @@ export function ChatPanel({
     fetchExactAssistant,
   } = controller;
 
+  const anchorOpen = Boolean(messageAnchor.window || messageAnchor.loading || messageAnchor.error);
   const recoverySignalBudgetRef = useRef(initialRecoverySignalBudget());
   const resyncTurnStateRef = useRef<((options?: { allowIdle?: boolean }) => Promise<void>) | null>(null);
   const lastPresentedStreamMessagesRef = useRef<readonly ChatMessage[] | null>(null);
@@ -2013,8 +2016,14 @@ export function ChatPanel({
       )}
 
       <div className="relative min-h-0 flex-1">
+        {anchorOpen && (
+          <MessageAnchorView window={messageAnchor.window} loading={messageAnchor.loading} error={messageAnchor.error}
+            onPage={messageAnchor.page} onLatest={() => { messageAnchor.close(); jumpToLatest(); requestAnimationFrame(() => scrollContainerRef.current?.focus({ preventScroll: true })); }} />
+        )}
         <div
+          inert={anchorOpen}
           data-testid="chat-scroll"
+          tabIndex={-1}
           className="h-full overflow-y-auto px-4 py-5 pr-8"
           style={{ overflowAnchor: "none" }}
           ref={scrollContainerRef}
@@ -2107,13 +2116,13 @@ export function ChatPanel({
             </>
           )}
         </div>
-        <TimelineMinimap
+        {!anchorOpen && <TimelineMinimap
           landmarks={turnLandmarks}
           visibleStartTurnIndex={visibleStartIndex}
           visibleEndTurnIndex={visibleEndIndex}
           onJumpToTurn={jumpToIndex}
-        />
-        {detachedFromBottom && timelineTurns.length > 0 && (
+        />}
+        {!anchorOpen && detachedFromBottom && timelineTurns.length > 0 && (
           <Button
             type="button"
             variant="outline"

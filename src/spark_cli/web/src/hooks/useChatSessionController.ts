@@ -1,3 +1,4 @@
+import { useMessageAnchor } from "./useMessageAnchor";
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
 import { api, type ChatRecoveryResponse, type SessionMessage } from "@/lib/api";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
@@ -124,6 +125,7 @@ export function useChatSessionController({
     };
   }, []);
   const isOwnerCurrent = useCallback(() => mountedRef.current && owner.isCurrent() && isChatPanelScopeCurrent(owner), [owner]);
+  const messageAnchor = useMessageAnchor(sessionId, isOwnerCurrent);
   const readOwnerRef = useRef<ReadOwner | null>(null);
   useEffect(() => {
     const reads = new ReadOwner(isOwnerCurrent);
@@ -567,6 +569,7 @@ export function useChatSessionController({
   }, [isOwnerCurrent, loadExactMessages, owner]);
 
   return {
+    messageAnchor,
     chatMessages,
     setChatMessages,
     activeSessionId,
