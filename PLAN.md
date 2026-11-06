@@ -441,3 +441,13 @@ runs the full matrix once per published PR; reruns require a specific diagnosed
 failure or material new change. Preserve meaningful tests/assertions and required
 behavioral acceptance; do not delete tests, skip failures, or weaken thresholds.
 This supersedes earlier blanket full-local-matrix delegation requirements.
+
+## Additional parallel lanes — one-hour window
+
+User authorises more agents. SP06 may work on timeline projection/rendering from
+published SP02 while SP04 owns transport/read controllers; do not overlap those
+function slices. SP05 may implement reference-resource sharing from SP21 using
+existing signal-capable reads, retaining SP04 adoption as explicit integration.
+SP14 owns compressor/checkpoint/context controls and context-only API handlers;
+SP03 retains agent preparation/DB lifetime helpers, SP06 timeline projection and
+scroll code. Preserve these separate ownership boundaries when integrating.

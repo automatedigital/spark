@@ -3,7 +3,7 @@
   "provider": "codex",
   "model": "gpt-6.1-sol",
   "reasoningEffort": "low",
-  "maxConcurrentAgents": 5,
+  "maxConcurrentAgents": 8,
   "packets": [
     {
       "id": "SP01",
@@ -276,16 +276,17 @@
       "id": "SP22",
       "title": "Make skills easy to choose without loading every instruction",
       "issue": "https://github.com/automatedigital/spark/issues/209",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp22-20261106-invocation-r2",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/225",
       "base": "ae027cef24f3b3480259c31907ae76bb02518284",
       "prBase": "feat/sp21-memory-browsing",
       "priorTaskIds": [
         null
       ],
       "localCheckpoint": "a09cfd5a410be96d9b70ceb0e13137ad69a07663",
-      "scopeClarification": "Stable-ID setup-free formatter and validated context augmentation authorised; preserve receipt hash and target fencing. Prior run mistakenly based ondocs1c92, ancestryverifiedfalse; scoped dirtywork committed and must replay ontoactualae027featurebase."
+      "scopeClarification": "Stable-ID setup-free formatter and validated context augmentation authorised; preserve receipt hash and target fencing. Prior run mistakenly based ondocs1c92, ancestryverifiedfalse; scoped dirtywork committed and must replay ontoactualae027featurebase.",
+      "head": "3224c032a542900edc79ada36e9aaf24d82d1a42"
     },
     {
       "id": "SP23",
