@@ -5937,6 +5937,30 @@ def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
         _log.debug("computer_use web tool refresh failed", exc_info=True)
 
 
+def _run_web_agent_turn_with_db(
+    agent: Any, message: str, history: list[dict[str, Any]] | None = None,
+    items: list | None = None,
+    stopped: Callable[[], bool] | None = None,
+) -> Any:
+    """Lease a real SessionDB for this worker, never for the idle cache."""
+    from core.spark_state import SessionDB
+
+    db_path = getattr(agent, "_web_session_db_path", None)
+    if db_path is None:
+        # Compatibility for injected agents that do not use web-owned storage.
+        return _run_web_agent_turn(agent, message, history, items)
+    db = SessionDB(db_path)
+    agent._session_db = db
+    try:
+        if stopped is not None and stopped():
+            raise InterruptedError("Chat preparation stopped")
+        return _run_web_agent_turn(agent, message, history, items)
+    finally:
+        if agent._session_db is db:
+            agent._session_db = None
+        db.close()
+
+
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
@@ -6100,16 +6124,11 @@ def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
 
 
 def _close_web_agent(session_id: str) -> None:
-    agent = _web_agents.pop(session_id, None)
+    _web_agents.pop(session_id, None)
     _web_agent_signatures.pop(session_id, None)
     _web_agent_last_used.pop(session_id, None)
-    db = getattr(agent, "_session_db", None)
-    close = getattr(db, "close", None)
-    if callable(close):
-        try:
-            close()
-        except Exception:
-            _log.debug("Ignoring error in _close_web_agent()", exc_info=True)
+    # Cached agents are connectionless. A running worker owns its attached DB
+    # until its finally block, even when another thread retires the cache entry.
 
 
 def _default_web_chat_model() -> str:
@@ -6207,33 +6226,39 @@ def _new_web_agent(
 
     _close_web_agent(session_id)
     runtime = runtime or {}
-    agent = AIAgent(
-        session_id=session_id,
-        model=model,
-        max_iterations=_web_max_iterations(),
-        api_key=runtime.get("api_key"),
-        base_url=runtime.get("base_url"),
-        provider=runtime.get("provider"),
-        api_mode=runtime.get("api_mode"),
-        command=runtime.get("command"),
-        args=list(runtime.get("args") or []),
-        credential_pool=runtime.get("credential_pool"),
-        request_overrides=request_overrides,
-        stream_delta_callback=token_callback,
-        tool_start_callback=tool_start_callback,
-        tool_complete_callback=tool_complete_callback,
-        reasoning_callback=reasoning_callback,
-        status_callback=status_callback,
-        session_migrated_callback=session_migrated_callback,
-        subagent_event_callback=subagent_event_callback,
-        clarify_callback=lambda question, choices=None: _web_clarify_callback(
-            question, choices, session_id=session_id
-        ),
-        quiet_mode=True,
-        platform="web",
-        session_db=SessionDB(),
-        working_dir=working_dir,
-    )
+    db = SessionDB()
+    try:
+        agent: Any = AIAgent(
+            session_id=session_id,
+            model=model,
+            max_iterations=_web_max_iterations(),
+            api_key=runtime.get("api_key"),
+            base_url=runtime.get("base_url"),
+            provider=runtime.get("provider"),
+            api_mode=runtime.get("api_mode"),
+            command=runtime.get("command"),
+            args=list(runtime.get("args") or []),
+            credential_pool=runtime.get("credential_pool"),
+            request_overrides=request_overrides,
+            stream_delta_callback=token_callback,
+            tool_start_callback=tool_start_callback,
+            tool_complete_callback=tool_complete_callback,
+            reasoning_callback=reasoning_callback,
+            status_callback=status_callback,
+            session_migrated_callback=session_migrated_callback,
+            subagent_event_callback=subagent_event_callback,
+            clarify_callback=lambda question, choices=None: _web_clarify_callback(
+                question, choices, session_id=session_id
+            ),
+            quiet_mode=True,
+            platform="web",
+            session_db=db,
+            working_dir=working_dir,
+        )
+    finally:
+        db.close()
+    agent._web_session_db_path = db.db_path
+    agent._session_db = None
     _store_web_agent(session_id, agent, signature)
     return agent
 
@@ -6270,21 +6295,27 @@ def _maybe_auto_title_web(
         final = _extract_final_response(result)
         if not final:
             return
-        session_db = getattr(agent, "_session_db", None)
-        if session_db is None:
+        db_path = getattr(agent, "_web_session_db_path", None)
+        if db_path is None:
             return
         messages = result.get("messages", []) if isinstance(result, dict) else []
+        if sum(m.get("role") == "user" for m in messages) > 2:
+            return
 
-        from agent.title_generator import maybe_auto_title
+        def title_in_worker():
+            from agent.title_generator import auto_title_session
+            from core.spark_state import SessionDB
 
-        maybe_auto_title(
-            session_db,
-            session_id,
-            user_message,
-            final,
-            messages,
-            on_titled=lambda _title: _emit_web_session_updated(session_id),
-        )
+            db = SessionDB(db_path)
+            try:
+                auto_title_session(
+                    db, session_id, user_message, final,
+                    on_titled=lambda _title: _emit_web_session_updated(session_id),
+                )
+            finally:
+                db.close()
+
+        get_async_runtime().submit_blocking(title_in_worker)
     except Exception:
         _log.debug("web auto-title failed session=%s", session_id, exc_info=True)
 
@@ -7193,7 +7224,10 @@ def _dispatch_prepared_turn(turn, cancelled, agent, message, history, items):
     # an agent's interrupt flag by entering run_conversation after Stop.
     if cancelled.is_set() or turn.interrupt_requested:
         raise InterruptedError("Chat preparation stopped")
-    return _run_web_agent_turn(agent, message, history, items)
+    return _run_web_agent_turn_with_db(
+        agent, message, history, items,
+        stopped=lambda: cancelled.is_set() or turn.interrupt_requested,
+    )
 
 
 @app.post("/api/conversations")
@@ -8342,7 +8376,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             _publish_web_status(session_id, "api_call_started", "Retrying model call…", phase="api")
             result = await _run_web_turn_in_executor(
                 loop,
-                lambda: _run_web_agent_turn(agent, user_msg, conv_hist),
+                lambda: _run_web_agent_turn_with_db(agent, user_msg, conv_hist),
             )
         except asyncio.CancelledError:
             # CancelledError is a BaseException, so `except Exception` below
@@ -9067,7 +9101,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 result = await _run_web_turn_in_executor(
-                    loop, lambda: _run_web_agent_turn(agent, message, None, _items)
+                    loop, lambda: _run_web_agent_turn_with_db(agent, message, None, _items)
                 )
         except asyncio.CancelledError:
             # CancelledError is a BaseException, so `except Exception` below

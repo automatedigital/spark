@@ -1,6 +1,6 @@
-"""Probe the unresolved cached-agent physical-worker DB ownership requirement.
+"""Probe every physical DB lifetime of a cached web agent.
 
-This exits 1 when construction/use/disposal occur on different threads. It is a
+This exits 1 when any connection is used or closed outside its opening worker. It is a
 standalone acceptance probe, not an expected-failure pytest test. No live model
 or user profile is used.
 """
@@ -27,6 +27,8 @@ opened = {}
 trace = []
 original_init = SessionDB.__init__
 original_close = SessionDB.close
+original_get_session = SessionDB.get_session
+agent_databases = set()
 agent_database = None
 
 
@@ -40,9 +42,19 @@ def db_init(db, *args, **kwargs):
 
 
 def db_close(db):
-    if db is agent_database:
-        trace.append({"stage": "close", **thread()})
+    if db in agent_databases:
+        trace.append({"stage": "close", "db": id(db), **thread()})
     return original_close(db)
+
+
+def db_get_session(db, *args, **kwargs):
+    # Track the exact real connection supplied to the provider, including a
+    # fresh lease on a reused cached agent. No object-wide affinity assumption.
+    if db not in agent_databases:
+        agent_databases.add(db)
+        trace.append({"stage": "create", "db": id(db), **opened[db]})
+    trace.append({"stage": "use", "db": id(db), **thread()})
+    return original_get_session(db, *args, **kwargs)
 
 
 class FixtureAgent:
@@ -51,17 +63,18 @@ class FixtureAgent:
         self.session_id = kwargs["session_id"]
         self._session_db = kwargs["session_db"]
         agent_database = self._session_db
-        trace.append({"stage": "create", **opened[agent_database]})
+        agent_databases.add(agent_database)
+        trace.append({"stage": "create", "db": id(agent_database), **opened[agent_database]})
 
 
 def provider(agent, message, history, items):
     assert agent._session_db.get_session(agent.session_id) is not None
-    trace.append({"stage": "use", **thread()})
     return {"final_response": "fixture answer"}
 
 
 SessionDB.__init__ = db_init
 SessionDB.close = db_close
+SessionDB.get_session = db_get_session
 run_agent.AIAgent = FixtureAgent
 web._resolve_web_turn_route = lambda *a, **k: {
     "model": "fixture",
@@ -89,11 +102,18 @@ async def main():
     )
     web._close_web_agent(accepted["session_id"])
     result = {
-        "single_worker": len({event["id"] for event in trace}) == 1,
+        "single_worker": all(
+            len({event["id"] for event in trace if event["db"] == id(db)}) == 1
+            for db in agent_databases
+        ),
         "trace": trace,
         "stages": [event["stage"] for event in trace],
     }
-    assert result["stages"] == ["create", "use", "close"]
+    assert any(event["stage"] == "use" for event in trace)
+    for db in agent_databases:
+        stages = [event["stage"] for event in trace if event["db"] == id(db)]
+        assert stages[0] == "create" and stages[-1] == "close"
+        assert stages.count("create") == stages.count("close") == 1
     Path(args.output).write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
     return 0 if result["single_worker"] else 1
