@@ -354,7 +354,13 @@ AbortController plus a dedicated domain client. Their original SP10/SP04 links
 remain integration ordering/compatibility checks, not hard implementation blockers.
 SP17 reuses existing runtime/provider resolution (no new catalogue); SP19/SP20
 must not invent a competing generic transport. SP20 owns workspace tree/list routes
-and a new file-tree client; SP19 must not edit workspace routes or api_workspace.
+and a new file-tree client; SP19 leaves api_workspace unchanged. A real-process
+acceptance failure demonstrated that terminal Stop reports stopped while zsh
+survives. SP19 is now additionally authorised to own only terminal worker/Stop
+functions in workspace_routes plus a separate process-lifecycle helper; SP20
+must keep changes to tree/list/search functions. These non-overlapping function
+slices require explicit integration/rebase and rerunning workspace neighbours;
+neither agent may reformat or extract the whole shared module.
 SP17 owns cron modules/routes/page/client. All three leave shared api.ts/apiTypes,
 SessionDB, web_server, SettingsPanel, config, manifests, lockfiles and bundles to
 their existing owners. SP04/SP10 later retain these domain contracts when integrated.
