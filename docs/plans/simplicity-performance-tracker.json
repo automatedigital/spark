@@ -240,12 +240,16 @@
       "id": "SP23",
       "title": "Show integration readiness and bounded MCP tests",
       "issue": "https://github.com/automatedigital/spark/issues/210",
-      "state": "returned_unimplemented_needs_resume",
-      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-r1",
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-implement-r2",
       "pr": null,
       "base": "ac29be47daac59dfbadb7a468820b39a319b907b",
       "prBase": "feat/sp10-provider-catalogue",
-      "lastResult": "No sourcechange/no environmentblocker. IdentifiedunsafeunboundedCLIprobe; structuredadapter implementation remainsassignedscope, notacceptedblocker."
+      "lastResult": "No sourcechange/no environmentblocker. IdentifiedunsafeunboundedCLIprobe; structuredadapter implementation remainsassignedscope, notacceptedblocker.",
+      "priorTaskIds": [
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-r1"
+      ],
+      "resumeReason": "Previousagentreturnednoimplementation/noenvironmentblocker. Safe structuredisolatedprobe adapter is requiredimplementation, notblocker. ParentconfirmedexistinghelperstopsprocessglobalMCPloop: isolateprobechild toprotectliveconnections/toolsets."
     },
     {
       "id": "SP24",
