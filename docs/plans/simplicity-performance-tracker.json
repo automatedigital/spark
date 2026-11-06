@@ -32,10 +32,10 @@
       ],
       "localHead": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
       "publicationBlocker": "Final serial failed/interrupted during measuredload200 on12cores. Same source parallel12712 passed; no acceptance superseded by earlier passes. Resume exact remaining serial first at currentquieterload, no needless repeatparallel ifsourceunchanged.",
-      "head": "acef64b5b0d4d40f824552db31e121e8ecec945e",
+      "head": "95fd191c62ad1501538071a4ba46ad230fc1ab1d",
       "leadVerification": "Reviewed narrow cached transcript restoration dependency correction; child reproduced1000-to0 beforefix, final production inspector1000-to1091 within unchanged<100 tolerance. This does not establish cause/repair of214/220 historical1000-to1410. Qualified199serial and20real-scanner tests pass; inherited synthetic scan fixture removed. Frontend571 andbrowser gates pass. Hosted pending.",
       "ciFailure": "e2e42289307299/job128138239116 chat-contracts Fork result visible timeout. Mockforkack/legacymessages have no authoritativeDBsession; parentseededrealfixture, affectedflowverificationrunning.",
-      "ciRepair": "Seeded durable mocked fork session for authoritative recovery; complete affectedchat-contracts browserflowpassed against verifiedownbackend. Originalassertionsunchanged. CorrectedheadCIpending."
+      "ciRepair": "Durableforkfixture+Mermaiddetachmentprecondition fixes; originalassertions/timeouts preserved. Completechat-contracts andMermaid10checks pass locally. CIpending."
     },
     {
       "id": "SP03",
@@ -61,8 +61,8 @@
       "pr": "https://github.com/automatedigital/spark/pull/228",
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
       "prBase": "feat/sp02-recovery-snapshot-final",
-      "head": "35d01bc9",
-      "ciRepair": "MergedSP02durableforkfixturefix toavoidknowninheritede2efailure; correctedheadCIpending."
+      "head": "4a19f40b",
+      "ciRepair": "MergedSP02Mermaidfixturefix aftersamehostedfailure; actualSP04Mermaidflow10checks/zeroerrors pass. CIpending."
     },
     {
       "id": "SP05",
@@ -79,8 +79,9 @@
       "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp06-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/230",
-      "head": "bbda96ddd181c8a9ee4adf2bda9f68a9e9e0e27a",
-      "leadVerification": "Reviewed presentationhook: framebatches assistanttextonly, immediatelypresents session/metadata/tool/decision/terminalchanges, stablecallbackowner via latestcommittedref. Reportbaseline10kprojectionmedian1.751to0.364ms,79.2%lower; browserzero settledrowcommits and0pxanchor movement. Parent focusedprojection/presentation tests run; CIpending."
+      "head": "b76eeef4",
+      "leadVerification": "Reviewed presentationhook: framebatches assistanttextonly, immediatelypresents session/metadata/tool/decision/terminalchanges, stablecallbackowner via latestcommittedref. Reportbaseline10kprojectionmedian1.751to0.364ms,79.2%lower; browserzero settledrowcommits and0pxanchor movement. Parent focusedprojection/presentation tests run; CIpending.",
+      "ciRepair": "Hostedlarge10kreplay exceeded5s testtimeout. Kept10kmessages/12steps/fulloracle, useNodeisDeepStrictEqual;15focusedtests+ESLintpass, exactcase1.57sto0.913slocally. MergedbaseMermaidfixturefix. CIpending."
     },
     {
       "id": "SP07",
@@ -98,8 +99,8 @@
       ],
       "localHead": "dd136b9a54af5379eb11b546bb5883190726487a",
       "publicationBlocker": "Local141backend/573frontend and exact large-result refresh/navigation/browser gates pass after SP02 integration. Required feat/sp02-recovery-snapshot-final branch not yet published; retain readyhead without rerunning gates.",
-      "head": "99ba1903",
-      "ciRepair": "MypyLockType/RLock mismatchfixed and8focusedtests/cleanmodulemypy/Ruffpass; mergedSP02forkfixturefix. Currenthead99ba1903 pendingCI."
+      "head": "8e59333e",
+      "ciRepair": "RLockcontractfixed; partialstreamtestbarrierpreservesassertions/deadlines (3focusedpass). MergedSP02Mermaidfix. CIpending."
     },
     {
       "id": "SP08",
@@ -194,8 +195,9 @@
       "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp15-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/229",
-      "head": "aaadb7610e33b3fa250b0c5b5e996c5366b8763f",
-      "leadVerification": "Reviewed bounded monotonic timing helper/unknown usage/actual routing field contract; parent independently11 timing regressions passed0.64s. Existing route scores typedint, preserved. Childreports0.12%syntheticreplayoverhead andreal2chatrefreshdetailsflowpass. Hostedpending; no integration/nativeclaim."
+      "head": "67f675b7",
+      "leadVerification": "Reviewed bounded monotonic timing helper/unknown usage/actual routing field contract; parent independently11 timing regressions passed0.64s. Existing route scores typedint, preserved. Childreports0.12%syntheticreplayoverhead andreal2chatrefreshdetailsflowpass. Hostedpending; no integration/nativeclaim.",
+      "ciRepair": "Hostedminimalturnstub lackedlock/timing fields. Updated2StopteststouseactualWebActiveTurn;19DB-lifetime/timingtests andRuffpass. Mergedsharedfixturefixes; Mermaid10checks pass. CIpending."
     },
     {
       "id": "SP16",
@@ -325,9 +327,11 @@
       "id": "SP24",
       "title": "Explain Auto model choices before users need logs",
       "issue": "https://github.com/automatedigital/spark/issues/211",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp24-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/231",
+      "head": "76cf5a72e8bc235e10fd50ab9ac2271e47f3e6f3",
+      "leadVerification": "Read actualrole-config/recordeddecision report; SP15contract communicated andconsumed, combinedproductionwriterintegration remainsopen. Reportedcronmypydebt not reproduced by parent clean targetedcron check; cleanwhole-domaincheck and22routingtests running. No liveproviderclaim."
     },
     {
       "id": "SP25",
