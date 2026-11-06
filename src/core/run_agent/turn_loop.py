@@ -40,7 +40,13 @@ from agent.prompt_caching import apply_anthropic_cache_control
 from agent.trajectory import has_incomplete_scratchpad
 from agent.usage_pricing import estimate_usage_cost, normalize_usage
 from core.run_agent.iteration_budget import IterationBudget as IterationBudget
-from core.run_agent.retry_policy import jittered_backoff
+from core.run_agent.retry_policy import (
+    RetryBudget,
+    call_with_retry_budget,
+    jittered_backoff,
+    retry_after_seconds,
+    wait_for_retry,
+)
 from core.run_agent.sanitize import _sanitize_messages_non_ascii as _sanitize_messages_non_ascii
 from core.run_agent.sanitize import _sanitize_messages_surrogates as _sanitize_messages_surrogates
 from core.run_agent.sanitize import _sanitize_structure_non_ascii as _sanitize_structure_non_ascii
@@ -1225,6 +1231,7 @@ class _TurnLoopMixin:
             api_start_time = time.time()
             retry_count = 0
             max_retries = 3
+            retry_budget = RetryBudget(seconds=(max_retries - 1) * 120.0)
             primary_recovery_attempted = False
             max_compression_attempts = 3
             codex_auth_retry_attempted=False
@@ -1239,7 +1246,27 @@ class _TurnLoopMixin:
             response = None  # Guard against UnboundLocalError if all retries fail
             api_kwargs = None  # Guard against UnboundLocalError in except handler
 
+            def retry_exit(
+                outcome: str, saved_messages=messages, saved_history=conversation_history, calls=api_call_count,
+            ) -> dict:
+                cancelled = outcome == "interrupted"
+                message = "Operation interrupted during retry wait." if cancelled else "Elapsed retry budget exhausted."
+                self._emit_status(message)
+                self._persist_session(saved_messages, saved_history)
+                if cancelled:
+                    self.clear_interrupt()
+                return {
+                    "final_response": message, "messages": saved_messages,
+                    "api_calls": calls, "completed": False,
+                    **({"interrupted": True} if cancelled else {"failed": True, "error": message}),
+                }
+
             while retry_count < max_retries:
+                # Fence the dispatch too: Stop can arrive just after backoff.
+                if self._interrupt_requested:
+                    return retry_exit("interrupted")
+                if retry_budget.exhausted:
+                    return retry_exit("exhausted")
                 try:
                     self._reset_stream_delivery_tracking()
                     api_kwargs = self._build_api_kwargs(api_messages)
@@ -1307,8 +1334,9 @@ class _TurnLoopMixin:
 
                     if _use_streaming:
                         try:
-                            response = self._interruptible_streaming_api_call(
-                                api_kwargs, on_first_delta=_stop_spinner
+                            response = call_with_retry_budget(
+                                self, retry_budget, self._interruptible_streaming_api_call,
+                                api_kwargs, on_first_delta=_stop_spinner,
                             )
                         except InterruptedError:
                             raise
@@ -1325,9 +1353,13 @@ class _TurnLoopMixin:
                                 raise InterruptedError(
                                     "Agent interrupted before non-streaming fallback"
                                 ) from None
-                            response = self._interruptible_api_call(api_kwargs)
+                            response = call_with_retry_budget(
+                                self, retry_budget, self._interruptible_api_call, api_kwargs,
+                            )
                     else:
-                        response = self._interruptible_api_call(api_kwargs)
+                        response = call_with_retry_budget(
+                            self, retry_budget, self._interruptible_api_call, api_kwargs,
+                        )
 
                     api_duration = time.time() - api_start_time
 
@@ -1514,30 +1546,12 @@ class _TurnLoopMixin:
                         self._vprint(f"{self.log_prefix}⏳ Retrying in {wait_time:.1f}s ({_failure_hint})...", force=True)
                         logging.warning(f"Invalid API response (retry {retry_count}/{max_retries}): {', '.join(error_details)} | Provider: {provider_name}")
 
-                        # Sleep in small increments to stay responsive to interrupts
-                        sleep_end = time.time() + wait_time
-                        _backoff_touch_counter = 0
-                        while time.time() < sleep_end:
-                            if self._interrupt_requested:
-                                self._vprint(f"{self.log_prefix}⚡ Interrupt detected during retry wait, aborting.", force=True)
-                                self._persist_session(messages, conversation_history)
-                                self.clear_interrupt()
-                                return {
-                                    "final_response": f"Operation interrupted during retry ({_failure_hint}, attempt {retry_count}/{max_retries}).",
-                                    "messages": messages,
-                                    "api_calls": api_call_count,
-                                    "completed": False,
-                                    "interrupted": True,
-                                }
-                            time.sleep(0.2)
-                            # Touch activity every ~30s so the gateway's inactivity
-                            # monitor knows we're alive during backoff waits.
-                            _backoff_touch_counter += 1
-                            if _backoff_touch_counter % 150 == 0:  # 150 × 0.2s = 30s
-                                self._touch_activity(
-                                    f"retry backoff ({retry_count}/{max_retries}), "
-                                    f"{int(sleep_end - time.time())}s remaining"
-                                )
+                        outcome = wait_for_retry(
+                            self, retry_budget, reason="invalid_response", attempt=retry_count + 1,
+                            max_attempts=max_retries, delay=wait_time,
+                        )
+                        if outcome != "ready":
+                            return retry_exit(outcome)
                         continue  # Retry the API call
 
                     # Check finish_reason before proceeding
@@ -2006,6 +2020,19 @@ class _TurnLoopMixin:
                         classified.should_rotate_credential, classified.should_fallback,
                     )
 
+                    retry_budget.start()
+                    if getattr(self, "_current_streamed_assistant_text", ""):
+                        # Visible partial output is uncertain. Never replay the
+                        # request or let recovery duplicate already-delivered text.
+                        message = "Provider stream failed after partial output; response interrupted."
+                        self._emit_status(message)
+                        self._persist_session(messages, conversation_history)
+                        return {"final_response": self._current_streamed_assistant_text, "messages": messages,
+                                "api_calls": api_call_count, "completed": False,
+                                "failed": True, "partial": True, "interrupted": True, "error": message}
+                    if retry_budget.exhausted:
+                        return retry_exit("exhausted")
+
                     recovered_with_pool, has_retried_429 = self._recover_with_credential_pool(
                         status_code=status_code,
                         has_retried_429=has_retried_429,
@@ -2470,8 +2497,9 @@ class _TurnLoopMixin:
                     if is_client_error:
                         # Try fallback before aborting — a different provider
                         # may not have the same issue (rate limit, auth, etc.)
-                        self._emit_status(f"⚠️ Non-retryable error (HTTP {status_code}) — trying fallback...")
-                        if self._try_activate_fallback():
+                        if not classified.is_auth:
+                            self._emit_status(f"⚠️ Non-retryable error (HTTP {status_code}) — trying fallback...")
+                        if not classified.is_auth and self._try_activate_fallback():
                             retry_count = 0
                             compression_attempts = 0
                             primary_recovery_attempted = False
@@ -2612,59 +2640,20 @@ class _TurnLoopMixin:
                             "error": _final_summary,
                         }
 
-                    # For rate limits, respect the Retry-After header if present
-                    _retry_after = None
-                    if is_rate_limited:
-                        _resp_headers = getattr(getattr(api_error, "response", None), "headers", None)
-                        if _resp_headers and hasattr(_resp_headers, "get"):
-                            _ra_raw = _resp_headers.get("retry-after") or _resp_headers.get("Retry-After")
-                            if _ra_raw:
-                                try:
-                                    _retry_after = min(int(_ra_raw), 120)  # Cap at 2 minutes
-                                except (TypeError, ValueError):
-                                    logger.debug("Ignoring error in run_conversation()", exc_info=True)
-                    wait_time = _retry_after if _retry_after else jittered_backoff(retry_count, base_delay=2.0, max_delay=60.0)
-                    if _web_stale_provider:
-                        # The user already sat through the full stale threshold;
-                        # keep the single web-stall retry snappy.
-                        wait_time = min(wait_time, 2)
-                    if is_rate_limited:
-                        self._emit_status(f"⏱️ Rate limit reached. Waiting {wait_time}s before retry (attempt {retry_count + 1}/{max_retries})...")
-                    else:
-                        self._emit_status(f"⏳ Retrying in {wait_time}s (attempt {retry_count}/{max_retries})...")
-                    logger.warning(
-                        "Retrying API call in %ss (attempt %s/%s) %s error=%s",
-                        wait_time,
-                        retry_count,
-                        max_retries,
-                        self._client_log_context(),
-                        api_error,
+                    # Reuse classification/jitter and provider Retry-After. A
+                    # header beyond the elapsed envelope stops, never retries early.
+                    retry_after = retry_after_seconds(api_error)
+                    wait_time = retry_after if retry_after is not None else jittered_backoff(
+                        retry_count, base_delay=2.0, max_delay=60.0,
                     )
-                    # Sleep in small increments so we can respond to interrupts quickly
-                    # instead of blocking the entire wait_time in one sleep() call
-                    sleep_end = time.time() + wait_time
-                    _backoff_touch_counter = 0
-                    while time.time() < sleep_end:
-                        if self._interrupt_requested:
-                            self._vprint(f"{self.log_prefix}⚡ Interrupt detected during retry wait, aborting.", force=True)
-                            self._persist_session(messages, conversation_history)
-                            self.clear_interrupt()
-                            return {
-                                "final_response": f"Operation interrupted: retrying API call after error (retry {retry_count}/{max_retries}).",
-                                "messages": messages,
-                                "api_calls": api_call_count,
-                                "completed": False,
-                                "interrupted": True,
-                            }
-                        time.sleep(0.2)  # Check interrupt every 200ms
-                        # Touch activity every ~30s so the gateway's inactivity
-                        # monitor knows we're alive during backoff waits.
-                        _backoff_touch_counter += 1
-                        if _backoff_touch_counter % 150 == 0:  # 150 × 0.2s = 30s
-                            self._touch_activity(
-                                f"error retry backoff ({retry_count}/{max_retries}), "
-                                f"{int(sleep_end - time.time())}s remaining"
-                            )
+                    if _web_stale_provider and retry_after is None:
+                        wait_time = min(wait_time, 2)
+                    outcome = wait_for_retry(
+                        self, retry_budget, reason=classified.reason.value,
+                        attempt=retry_count + 1, max_attempts=max_retries, delay=wait_time,
+                    )
+                    if outcome != "ready":
+                        return retry_exit(outcome)
 
             # If the API call was interrupted, skip response processing
             if interrupted:

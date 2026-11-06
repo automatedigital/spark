@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, CircleHelp, Loader2, RefreshCw, Search, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type RecoveryCardState } from "@/lib/chatRecovery";
+import { retryDisplayLabel } from "@/lib/retryStatus";
 
 interface RecoveryCardProps {
   state: RecoveryCardState;
@@ -19,6 +20,7 @@ function activityLabel(value: number | null | undefined): string {
 }
 
 export function RecoveryCard({ state, label, lastEventAt, busyAction, onReconnect, onInspect, onRetry, canRetry = true }: RecoveryCardProps) {
+  const displayLabel = retryDisplayLabel(label, Date.now());
   const waiting = state === "waiting-approval" || state === "waiting-input";
   const terminal = state === "failed" || state === "interrupted";
   const title = waiting ? (state === "waiting-approval" ? "Approval needed" : "Input needed")
@@ -30,7 +32,7 @@ export function RecoveryCard({ state, label, lastEventAt, busyAction, onReconnec
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${terminal ? "text-destructive" : "text-amber-300"} ${state === "running" ? "animate-spin" : ""}`} />
         <div className="min-w-0 flex-1">
           <div className="font-medium text-foreground">{title}</div>
-          <div className="mt-0.5 text-muted-foreground">{label ?? (terminal ? "The response did not finish. Review the saved work before retrying." : waiting ? "Resolve the pending decision below to continue." : "Spark has not confirmed a newer event.")}</div>
+          <div className="mt-0.5 text-muted-foreground">{displayLabel ?? (terminal ? "The response did not finish. Review the saved work before retrying." : waiting ? "Resolve the pending decision below to continue." : "Spark has not confirmed a newer event.")}</div>
           <div className="mt-1 text-[10px] text-muted-foreground/80">{activityLabel(lastEventAt)}</div>
         </div>
       </div>

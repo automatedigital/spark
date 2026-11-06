@@ -6,6 +6,8 @@ import {
   type ChatConnectionState,
 } from "@/lib/chatStatus";
 
+import { parseRetryStatus, retryDisplayLabel } from "@/lib/retryStatus";
+
 export const MODEL_LOADING_LABEL = "Loading LLM response";
 
 const MODEL_LOADING_ALIASES = new Set([
@@ -64,7 +66,20 @@ export function StatusPill({
     const timer = window.setTimeout(() => setClock(Date.now()), expiresIn);
     return () => window.clearTimeout(timer);
   }, [clock, hasConfirmedSnapshot, now, optimisticAt]);
-  const effectiveNow = now ?? clock;
+  const retry = parseRetryStatus(backendStatus ?? label);
+  const retryDeadline = retry?.next_attempt_at;
+  const retryBudgetDeadline = retry?.budget_deadline_at;
+  useEffect(() => {
+    if (now !== undefined || retryDeadline === undefined || retryBudgetDeadline === undefined) return;
+    // Local countdown only. Once the backend deadline passes, stop counting
+    // and wait for an authoritative transition; never invent another attempt.
+    const timer = window.setInterval(() => {
+      setClock(Date.now());
+      if (Date.now() >= retryBudgetDeadline * 1000) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [now, retryDeadline, retryBudgetDeadline]);
+  const effectiveNow = now ?? (retry ? Date.now() : clock);
   const resolved = hasConfirmedSnapshot
     ? resolveChatStatus({
         turnActive,
@@ -78,7 +93,7 @@ export function StatusPill({
         now: effectiveNow,
       })
     : null;
-  const effectiveLabel = resolved?.label ?? (resolved?.staleOptimistic ? null : label);
+  const effectiveLabel = resolved?.label ?? (resolved?.staleOptimistic ? null : retryDisplayLabel(label, effectiveNow));
   const effectiveStreaming = resolved ? resolved.kind !== "idle" : streaming;
   if (!effectiveStreaming && !effectiveLabel) return null;
 
@@ -101,7 +116,7 @@ export function StatusPill({
   return (
     <span className="inline-flex h-6 max-w-[13.25rem] items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-2.5 text-[10px] uppercase tracking-wider text-muted-foreground" data-status-kind={resolved?.kind} data-status-source={resolved?.source}>
       {isToolLabel && <Wrench className="h-3 w-3 shrink-0" />}
-      <span className="truncate max-w-[220px]">{text}</span>
+      <span className="truncate max-w-[220px]" title={text}>{text}</span>
     </span>
   );
 }
