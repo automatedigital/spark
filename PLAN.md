@@ -395,6 +395,13 @@ SP21 owns MemoryPage/memory routes/new read adapter. Neither touches SP02/SP03
 lifecycle/controller functions, SP23 Settings/MCP functions, shared API barrels,
 SessionDB schema, lockfiles or generated bundles. Preserve existing endpoints;
 serialize any eventual shared server import/registration integration.
+SP07 may implement bounded tool-result reads using existing signal-capable
+fetchJSON and a dedicated result client before SP04. SP04 remains an explicit
+later transport integration check. SP07 owns only the tool-result detail/download
+route functions, a new read helper, api_session tool-result functions and
+ToolCallBubble. It must not edit SessionDB or SP02-owned API barrels/types and
+controllers; use a worker-owned connection and SQL bounded projection through
+an isolated read adapter. Keep lifecycle preparation/recovery functions untouched.
 This changes scheduling only; every packet's full behaviour, tests and performance
 acceptance remains required. No missing prerequisite is silently counted complete.
 

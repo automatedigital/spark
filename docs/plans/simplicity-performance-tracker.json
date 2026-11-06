@@ -70,9 +70,12 @@
       "id": "SP07",
       "title": "Retrieve large tool results in bounded chunks",
       "issue": "https://github.com/automatedigital/spark/issues/194",
-      "state": "pending",
+      "state": "dispatch_prepared",
       "taskId": null,
-      "pr": null
+      "pr": null,
+      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "prBase": "feat/sp01-submission-acceptance",
+      "scheduling": "Independent bounded result read/domain client before SP04 explicitly authorised; no SessionDB/shared API/controller writer."
     },
     {
       "id": "SP08",
@@ -290,7 +293,7 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "Eight implementation PRs published; confirmed hosted green213/215/216/217/218/219 (219 has two UI checks).220 and214 share unresolved hosted inspector1000-to1410 failure; bounded diagnostic active. Active SP02/SP03/SP12/SP21 plus inspector diagnostic. SP23 committed unpublished with final gates incomplete. No merges/releases or acceptance closure.",
+  "dispatchNotes": "Eight implementation PRs published; hosted green213/215/216/217/218/219.214 and220 shared inspector failure unresolved. SP02/SP03/SP12/SP21 active; SP07 dispatch prepared. SP23 preserved committed with final gates incomplete. No merges/releases/acceptance closure.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",
@@ -310,5 +313,6 @@
       "result": "Both11checks pass; hostedfailureunresolved. Containerremoved, no production/PR/CI changes. Boundeddiagnosticstopped."
     }
   ],
-  "sharedInspectorRepairTaskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-inspector-common-20261106-r3"
+  "sharedInspectorRepairTaskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-inspector-common-20261106-r3",
+  "sharedInspectorRepairResult": "ecea250635b22d5ad23d9584ed22d459046306aa report only; no cause proven, no new runtime checks or fix. Hosted pre-switch keyed geometry absent. No more untriggered A/B or diagnostic CI reruns planned."
 }
