@@ -1,0 +1,210 @@
+{
+  "base": "873f86c2",
+  "provider": "codex",
+  "model": "gpt-6.1-sol",
+  "reasoningEffort": "low",
+  "maxConcurrentAgents": 5,
+  "packets": [
+    {
+      "id": "SP01",
+      "title": "Accept each submitted prompt once",
+      "issue": "https://github.com/automatedigital/spark/issues/188",
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp01-20261106-r1",
+      "pr": null
+    },
+    {
+      "id": "SP02",
+      "title": "Reconcile chat from one authoritative recovery snapshot",
+      "issue": "https://github.com/automatedigital/spark/issues/189",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP03",
+      "title": "Keep expensive chat preparation off the API event loop",
+      "issue": "https://github.com/automatedigital/spark/issues/190",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP04",
+      "title": "Cancel obsolete reads across navigation and connection changes",
+      "issue": "https://github.com/automatedigital/spark/issues/191",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP05",
+      "title": "Share reference-data reads and retire redundant polling",
+      "issue": "https://github.com/automatedigital/spark/issues/192",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP06",
+      "title": "Update only the active tail during token streaming",
+      "issue": "https://github.com/automatedigital/spark/issues/193",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP07",
+      "title": "Retrieve large tool results in bounded chunks",
+      "issue": "https://github.com/automatedigital/spark/issues/194",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP08",
+      "title": "Make warmed-agent retention cost-aware",
+      "issue": "https://github.com/automatedigital/spark/issues/195",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP09",
+      "title": "Load Settings one tab at a time",
+      "issue": "https://github.com/automatedigital/spark/issues/196",
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-r1",
+      "pr": null
+    },
+    {
+      "id": "SP10",
+      "title": "Use one provider catalogue across settings and chat",
+      "issue": "https://github.com/automatedigital/spark/issues/197",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP11",
+      "title": "Make model search fast and immune to stale responses",
+      "issue": "https://github.com/automatedigital/spark/issues/198",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP12",
+      "title": "Open the command palette without bulk-fetching the app",
+      "issue": "https://github.com/automatedigital/spark/issues/199",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP13",
+      "title": "Jump directly to the message found by search",
+      "issue": "https://github.com/automatedigital/spark/issues/200",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP14",
+      "title": "Explain context pressure and make compaction controllable",
+      "issue": "https://github.com/automatedigital/spark/issues/201",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP15",
+      "title": "Show where a slow turn spent its time",
+      "issue": "https://github.com/automatedigital/spark/issues/202",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP16",
+      "title": "Make retry waits visible, bounded and cancellable",
+      "issue": "https://github.com/automatedigital/spark/issues/203",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP17",
+      "title": "Preview schedules before they can run",
+      "issue": "https://github.com/automatedigital/spark/issues/204",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP18",
+      "title": "Separate scheduled execution history from delivery history",
+      "issue": "https://github.com/automatedigital/spark/issues/205",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP19",
+      "title": "Stop terminal sessions whose start acknowledgement arrives too late",
+      "issue": "https://github.com/automatedigital/spark/issues/206",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP20",
+      "title": "Fetch project files as users expand folders",
+      "issue": "https://github.com/automatedigital/spark/issues/207",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP21",
+      "title": "Give memory one coherent, searchable review surface",
+      "issue": "https://github.com/automatedigital/spark/issues/208",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP22",
+      "title": "Make skills easy to choose without loading every instruction",
+      "issue": "https://github.com/automatedigital/spark/issues/209",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP23",
+      "title": "Show integration readiness and bounded MCP tests",
+      "issue": "https://github.com/automatedigital/spark/issues/210",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP24",
+      "title": "Explain Auto model choices before users need logs",
+      "issue": "https://github.com/automatedigital/spark/issues/211",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    },
+    {
+      "id": "SP25",
+      "title": "Replace scattered configuration with a searchable common-settings view",
+      "issue": "https://github.com/automatedigital/spark/issues/212",
+      "state": "pending",
+      "taskId": null,
+      "pr": null
+    }
+  ],
+  "dispatchNotes": "SP01 and SP09 run concurrently. SP10 follows SP09 to preserve sole SettingsPanel writer. Remaining hard dependencies follow PLAN.md. Max five delegates; use gpt-6.1-sol reasoningEffort low, default service tier. Delegate completions wake parent; do not poll. Use stacked PR bases for prerequisites not merged; do not merge without user authorization."
+}
