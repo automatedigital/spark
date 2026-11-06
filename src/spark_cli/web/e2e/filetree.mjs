@@ -44,7 +44,7 @@ try {
   page.setDefaultTimeout(10000);
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.route("**/__sp20", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div><script type="module">import "/@vite/client"; import RefreshRuntime from "/@react-refresh"; RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$=()=>{}; window.$RefreshSig$=()=>type=>type; window.__vite_plugin_react_preamble_installed__=true;</script>' }));
+  await page.route("**/__sp20", route => route.fulfill({ contentType: "text/html", body: '<div id="root" style="display:flex;flex-direction:column;height:800px;width:360px"></div><script type="module">import "/@vite/client"; import RefreshRuntime from "/@react-refresh"; RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$=()=>{}; window.$RefreshSig$=()=>type=>type; window.__vite_plugin_react_preamble_installed__=true;</script>' }));
   await page.route("**/api/workspace/projects/**", async route => {
     const url = new URL(route.request().url());
     const slug = url.pathname.split("/")[4];
@@ -78,6 +78,7 @@ try {
   });
   await page.goto(`${base}/__sp20`);
   await page.evaluate(async () => {
+    await import("/src/index.css");
     const { default: React } = await import("/node_modules/.vite/deps/react.js");
     const { default: { createRoot } } = await import("/node_modules/.vite/deps/react-dom_client.js");
     const { FileTreePane } = await import("/src/components/workspace/FileTreePane.tsx");
@@ -181,6 +182,7 @@ try {
     const samples = window.frameDeltas.slice().sort((a, b) => a - b);
     return { ticks: window.streamTicks, frames: samples.length, p95_frame_ms: samples[Math.ceil(samples.length * .95) - 1], max_frame_ms: samples.at(-1) };
   });
+  console.log(JSON.stringify({ metricsBeforeGate: metrics }));
   assert(metrics.twoSimulatedReactStreams.ticks.every(count => count > 5));
   assert(metrics.twoSimulatedReactStreams.p95_frame_ms < 100);
   delayed = true;

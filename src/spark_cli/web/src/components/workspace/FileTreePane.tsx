@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -44,7 +44,9 @@ export function FileIcon({ name }: { name: string }) {
 
 // ── File tree node ─────────────────────────────────────────────────────────────
 
-function FileNodeRow({
+const EMPTY_PAGES: Record<string, DirectoryPage> = {};
+
+const FileNodeRow = memo(function FileNodeRow({
   node,
   depth,
   onSelect,
@@ -204,7 +206,7 @@ function FileNodeRow({
               onToggleExpand={onToggleExpand}
               forceExpand={forceExpand}
               slug={slug}
-              pages={pages}
+              pages={child.type === "dir" ? pages : EMPTY_PAGES}
               loadPage={loadPage}
             />
           ))}
@@ -221,7 +223,7 @@ function FileNodeRow({
       )}
     </div>
   );
-}
+});
 
 // ── FileTreePane ───────────────────────────────────────────────────────────────
 
@@ -317,6 +319,7 @@ export function FileTreePane({
     if (removed) {
       setExpanded(current => {
         const next = new Set([...current].filter(path => !retired(path)));
+        if (next.size === current.size) return current;
         localStorage.setItem(EXPANDED_KEY_PREFIX + slug, JSON.stringify([...next]));
         return next;
       });
@@ -411,16 +414,16 @@ export function FileTreePane({
     if (reloadTimerRef.current !== null) window.clearTimeout(reloadTimerRef.current);
   }, []);
 
-  const handleDelete = async (node: WorkspaceFileNode) => {
+  const handleDelete = useCallback(async (node: WorkspaceFileNode) => {
     try {
       await api.deleteWorkspaceFile(slug, node.path);
       loadTree(node.path, true);
     } catch (e) {
       console.error("Delete failed", e);
     }
-  };
+  }, [slug, loadTree]);
 
-  const handleRename = async (node: WorkspaceFileNode, nextName: string) => {
+  const handleRename = useCallback(async (node: WorkspaceFileNode, nextName: string) => {
     const parent = node.path.includes("/") ? node.path.slice(0, node.path.lastIndexOf("/") + 1) : "";
     try {
       await api.renameWorkspacePath(slug, node.path, parent + nextName);
@@ -428,7 +431,7 @@ export function FileTreePane({
     } catch (e) {
       console.error("Rename failed", e);
     }
-  };
+  }, [slug, loadTree]);
 
   const submitCreate = async () => {
     const name = createName.trim();
@@ -567,13 +570,13 @@ export function FileTreePane({
             depth={0}
             onSelect={onOpenFile}
             selectedPath={activePath}
-            onDelete={(n) => void handleDelete(n)}
-            onRename={(n, name) => void handleRename(n, name)}
+            onDelete={handleDelete}
+            onRename={handleRename}
             expanded={expanded}
             onToggleExpand={toggleExpand}
             forceExpand={false}
-            pages={pages}
-            loadPage={(path, more) => void loadPage(path, more)}
+            pages={node.type === "dir" ? pages : EMPTY_PAGES}
+            loadPage={loadPage}
             slug={slug}
           />
         ))}
