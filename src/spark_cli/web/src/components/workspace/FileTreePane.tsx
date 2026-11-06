@@ -20,7 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { api, workspaceRawFileUrl } from "@/lib/api";
-import type { WorkspaceFileNode } from "@/lib/api";
+import type { FileTreeNode as WorkspaceFileNode } from "@/lib/api_filetree";
+import { readDirectory, type DirectoryPage } from "@/lib/api_filetree";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useEventBus } from "@/hooks/useEventBus";
@@ -41,30 +42,6 @@ export function FileIcon({ name }: { name: string }) {
   );
 }
 
-// ── Tree filtering ─────────────────────────────────────────────────────────────
-
-/** Prune the tree to nodes whose path matches the query; keep dirs that contain
- *  a match. Returns null filter behaviour (the full tree) when q is empty. */
-function filterTree(nodes: WorkspaceFileNode[], q: string): WorkspaceFileNode[] {
-  if (!q) return nodes;
-  const needle = q.toLowerCase();
-  const walk = (list: WorkspaceFileNode[]): WorkspaceFileNode[] => {
-    const out: WorkspaceFileNode[] = [];
-    for (const node of list) {
-      if (node.type === "dir") {
-        const kids = node.children ? walk(node.children) : [];
-        if (kids.length || node.name.toLowerCase().includes(needle)) {
-          out.push({ ...node, children: kids });
-        }
-      } else if (node.name.toLowerCase().includes(needle) || node.path.toLowerCase().includes(needle)) {
-        out.push(node);
-      }
-    }
-    return out;
-  };
-  return walk(nodes);
-}
-
 // ── File tree node ─────────────────────────────────────────────────────────────
 
 function FileNodeRow({
@@ -78,6 +55,8 @@ function FileNodeRow({
   onToggleExpand,
   forceExpand,
   slug,
+  pages,
+  loadPage,
 }: {
   node: WorkspaceFileNode;
   depth: number;
@@ -89,6 +68,8 @@ function FileNodeRow({
   onToggleExpand: (path: string) => void;
   forceExpand: boolean;
   slug: string;
+  pages: Record<string, DirectoryPage>;
+  loadPage: (path: string, more?: boolean) => void;
 }) {
   const isDir = node.type === "dir";
   const isSelected = node.path === selectedPath;
@@ -154,7 +135,7 @@ function FileNodeRow({
             className="min-w-0 flex-1 rounded-sm border border-primary/50 bg-background px-1 py-0 font-mono-ui text-[11px] text-foreground outline-none"
           />
         ) : (
-          <span className="flex-1 truncate">{node.name}</span>
+          <span className="flex-1 truncate" title={node.symlink ? "Symbolic link (not expanded)" : node.path}>{node.name}{node.symlink && " (link)"}</span>
         )}
         {renameValue === null && (confirmDelete ? (
           <div className="ml-1 flex items-center gap-1.5">
@@ -223,14 +204,17 @@ function FileNodeRow({
               onToggleExpand={onToggleExpand}
               forceExpand={forceExpand}
               slug={slug}
+              pages={pages}
+              loadPage={loadPage}
             />
           ))}
+          {pages[node.path]?.next_cursor && <button className="px-4 text-xs text-primary" onClick={() => loadPage(node.path, true)}>Load more in {node.name}</button>}
           {node.children.length === 0 && (
             <div
               className="px-2 py-0.5 text-[11px] italic text-muted-foreground/40"
               style={{ paddingLeft: `${8 + (depth + 1) * 12}px` }}
             >
-              empty
+              {pages[node.path] ? "empty" : "Loading…"}
             </div>
           )}
         </div>
@@ -252,11 +236,23 @@ export function FileTreePane({
   activePath: string | null;
   onOpenFile: (node: WorkspaceFileNode) => void;
 }) {
-  const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
+  const [pages, setPages] = useState<Record<string, DirectoryPage>>({});
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
+  const generation = useRef(0);
+  const controllers = useRef(new Map<string, AbortController>());
+  const [error, setError] = useState("");
+  const [matches, setMatches] = useState<WorkspaceFileNode[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchMore, setSearchMore] = useState(false);
+  const searchQueue = useRef<Array<{ path: string; cursor: string }>>([]);
+  const searchController = useRef<AbortController | null>(null);
   const [loadingTree, setLoadingTree] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+  const scopeRef = useRef("");
+  scopeRef.current = `${slug}:${showHidden}`;
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState<"file" | "dir" | null>(null);
@@ -275,36 +271,140 @@ export function FileTreePane({
     setFilter("");
   }, [slug]);
 
+  const loadPage = useCallback(async (path: string, more = false, force = false) => {
+    if (scopeRef.current !== `${slug}:${showHidden}`) return;
+    const owner = generation.current;
+    const previousController = controllers.current.get(path);
+    if (previousController && !force) return;
+    previousController?.abort();
+    const controller = new AbortController();
+    controllers.current.set(path, controller);
+    setLoadingTree(true);
+    setError("");
+    try {
+      const previous = pagesRef.current[path];
+      const result = await readDirectory(slug, path, showHidden, controller.signal,
+        more ? previous?.next_cursor ?? "" : "");
+      if (owner !== generation.current || controller.signal.aborted) return;
+      setPages(current => ({ ...current, [path]: {
+        ...result, entries: more && previous?.revision === result.revision
+          ? [...previous.entries, ...result.entries] : result.entries,
+      } }));
+    } catch (cause) {
+      if (owner === generation.current && !controller.signal.aborted) setError(String(cause));
+    } finally {
+      if (controllers.current.get(path) === controller) controllers.current.delete(path);
+      if (owner === generation.current) setLoadingTree(controllers.current.size > 0);
+    }
+  }, [slug, showHidden]);
+
   const toggleExpand = useCallback((path: string) => {
-    setExpanded((prev) => {
+    setExpanded(prev => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       localStorage.setItem(EXPANDED_KEY_PREFIX + slug, JSON.stringify([...next]));
       return next;
     });
-  }, [slug]);
+    if (!pagesRef.current[path]) void loadPage(path);
+  }, [slug, loadPage]);
 
-  const loadTree = useCallback(async () => {
-    setLoadingTree(true);
-    try {
-      const res = await api.getWorkspaceFileTree(slug, showHidden);
-      setTree(res.tree);
-    } catch (e) {
-      console.error("Tree load failed", e);
-    } finally {
-      setLoadingTree(false);
+  const loadTree = useCallback((affected?: string, removed = false) => {
+    const paths = Object.keys(pagesRef.current);
+    const invalid = (path: string) => affected === undefined || path === "" ||
+      affected.startsWith(`${path}/`) || path === affected || path.startsWith(`${affected}/`);
+    const retired = (path: string) => removed && (path === affected || path.startsWith(`${affected}/`));
+    if (removed) {
+      setExpanded(current => {
+        const next = new Set([...current].filter(path => !retired(path)));
+        localStorage.setItem(EXPANDED_KEY_PREFIX + slug, JSON.stringify([...next]));
+        return next;
+      });
     }
-  }, [slug, showHidden]);
+    for (const [path, controller] of controllers.current) {
+      if (invalid(path) && (retired(path) || (path !== "" && !expanded.has(path)))) {
+        controller.abort();
+        controllers.current.delete(path);
+      }
+    }
+    setPages(current => Object.fromEntries(Object.entries(current).filter(([path]) =>
+      !retired(path) && (!invalid(path) || path === "" || expanded.has(path)))));
+    for (const path of new Set(["", ...paths])) {
+      if (!retired(path) && invalid(path) && (path === "" || expanded.has(path))) void loadPage(path, false, true);
+    }
+  }, [loadPage, expanded, slug]);
 
-  useEffect(() => { void loadTree(); }, [loadTree]);
+  useEffect(() => {
+    const ownedControllers = controllers.current;
+    generation.current += 1;
+    for (const controller of ownedControllers.values()) controller.abort();
+    controllers.current.clear();
+    pagesRef.current = {};
+    setPages({});
+    setError("");
+    void loadPage("");
+    return () => {
+      generation.current += 1;
+      for (const controller of ownedControllers.values()) controller.abort();
+      ownedControllers.clear();
+    };
+  }, [loadPage]);
+
+  const runSearch = useCallback(async (controller: AbortController) => {
+    setSearching(true);
+    try {
+      // Yield after twenty bounded pages. Continue is explicit, and every read
+      // is abortable when the query or authorised project changes.
+      for (let count = 0; count < 20 && searchQueue.current.length; count++) {
+        const item = searchQueue.current.shift()!;
+        const page = await readDirectory(slug, item.path, showHidden, controller.signal, item.cursor);
+        if (controller.signal.aborted) return;
+        const found = page.entries.filter(node => node.path.toLowerCase().includes(filter.trim().toLowerCase()));
+        if (found.length) setMatches(found);
+        for (const node of page.entries) {
+          if (node.type === "dir") searchQueue.current.push({ path: node.path, cursor: "" });
+        }
+        if (page.next_cursor) searchQueue.current.push({ path: item.path, cursor: page.next_cursor });
+        if (found.length) break;
+      }
+      if (!controller.signal.aborted) setSearchMore(searchQueue.current.length > 0);
+    } catch (cause) {
+      if (!controller.signal.aborted) setError(String(cause));
+    } finally {
+      if (!controller.signal.aborted) setSearching(false);
+    }
+  }, [slug, showHidden, filter]);
+
+  useEffect(() => {
+    searchController.current?.abort();
+    setMatches([]);
+    setSearchMore(false);
+    setSearching(false);
+    if (!filter.trim()) return;
+    const controller = new AbortController();
+    searchController.current = controller;
+    searchQueue.current = [{ path: "", cursor: "" }];
+    const timer = window.setTimeout(() => void runSearch(controller), 200);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [runSearch, filter]);
+
+  useEffect(() => {
+    for (const path of expanded) {
+      if (!pages[path]) {
+        const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+        if (pages[parent]?.entries.some(node => node.path === path && node.type === "dir")) void loadPage(path);
+      }
+    }
+  }, [expanded, pages, loadPage]);
 
   // Live refresh: the agent writes files outside the UI, so reload (debounced)
   // when a turn finishes or the server signals a workspace file change.
   useEventBus((env: SparkEventEnvelope) => {
     if (env.topic !== "chat.turn_done" && env.topic !== "workspace.files.changed") return;
+    if (typeof env.payload.slug === "string" && env.payload.slug !== slug) return;
+    const affected = typeof env.payload.path === "string" ? env.payload.path : undefined;
     if (reloadTimerRef.current !== null) window.clearTimeout(reloadTimerRef.current);
-    reloadTimerRef.current = window.setTimeout(() => { void loadTree(); }, 400);
+    reloadTimerRef.current = window.setTimeout(() => { loadTree(affected); }, 400);
   });
 
   useEffect(() => () => {
@@ -314,7 +414,7 @@ export function FileTreePane({
   const handleDelete = async (node: WorkspaceFileNode) => {
     try {
       await api.deleteWorkspaceFile(slug, node.path);
-      void loadTree();
+      loadTree(node.path, true);
     } catch (e) {
       console.error("Delete failed", e);
     }
@@ -324,7 +424,7 @@ export function FileTreePane({
     const parent = node.path.includes("/") ? node.path.slice(0, node.path.lastIndexOf("/") + 1) : "";
     try {
       await api.renameWorkspacePath(slug, node.path, parent + nextName);
-      void loadTree();
+      loadTree(node.path, true);
     } catch (e) {
       console.error("Rename failed", e);
     }
@@ -339,7 +439,7 @@ export function FileTreePane({
     try {
       if (kind === "file") await api.writeWorkspaceFile(slug, name, "");
       else await api.makeWorkspaceDir(slug, name);
-      void loadTree();
+      loadTree(name);
     } catch (e) {
       console.error("Create failed", e);
     }
@@ -359,7 +459,13 @@ export function FileTreePane({
     }
   };
 
-  const visibleTree = useMemo(() => filterTree(tree, filter.trim()), [tree, filter]);
+  const tree = pages[""]?.entries ?? [];
+  const visibleTree = useMemo(() => {
+    const build = (nodes: WorkspaceFileNode[]): WorkspaceFileNode[] => nodes.map(node =>
+      node.type === "dir" ? { ...node, children: expanded.has(node.path)
+        ? build(pages[node.path]?.entries ?? []) : [] } : node);
+    return build(filter.trim() ? matches : pages[""]?.entries ?? []);
+  }, [pages, expanded, filter, matches]);
   const filtering = filter.trim().length > 0;
 
   return (
@@ -436,6 +542,10 @@ export function FileTreePane({
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) void handleUpload(e.dataTransfer.files); }}
       >
+        {error && <div role="alert" className="p-2 text-xs text-destructive">{error}</div>}
+        {filtering && <div className="p-2 text-xs text-muted-foreground">{searching ? "Searching…" : searchMore ? "More folders remain." : "Search complete."}
+          {searchMore && !searching && <button onClick={() => { const controller = searchController.current; if (controller) void runSearch(controller); }}>Continue search</button>}
+        </div>}
         {loadingTree && !tree.length && (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -461,10 +571,13 @@ export function FileTreePane({
             onRename={(n, name) => void handleRename(n, name)}
             expanded={expanded}
             onToggleExpand={toggleExpand}
-            forceExpand={filtering}
+            forceExpand={false}
+            pages={pages}
+            loadPage={(path, more) => void loadPage(path, more)}
             slug={slug}
           />
         ))}
+        {!filtering && pages[""]?.next_cursor && <button className="p-2 text-xs text-primary" onClick={() => void loadPage("", true)}>Load more files</button>}
       </div>
     </div>
   );
