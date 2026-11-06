@@ -1,3 +1,5 @@
+import { schemaSettings } from "@/lib/settingsRegistry";
+import { useSettingsDraft } from "@/components/settings/settingsDrafts";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -487,18 +489,18 @@ function numberValue(value: unknown, fallback = 0): number {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function ConfigPage() {
-  const [config, setConfig] = useState<Record<string, unknown> | null>(null);
+export default function ConfigPage({ initialField }: { initialField?: string }) {
+  const [config, setConfig] = useSettingsDraft<Record<string, unknown> | null>("config", null);
   const [schema, setSchema] = useState<Record<string, Record<string, unknown>> | null>(null);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [defaults, setDefaults] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [yamlMode, setYamlMode] = useState(false);
-  const [yamlText, setYamlText] = useState("");
+  const [searchQuery, setSearchQuery] = useSettingsDraft("searchQuery", "");
+  const [yamlMode, setYamlMode] = useSettingsDraft("yamlMode", false);
+  const [yamlText, setYamlText] = useSettingsDraft<string | null>("yamlText", null);
   const [yamlLoading, setYamlLoading] = useState(false);
   const [yamlSaving, setYamlSaving] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string>("");
+  const [activeCategory, setActiveCategory] = useSettingsDraft<string>("activeCategory", "");
   const { toast, showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { t } = useI18n();
@@ -510,7 +512,7 @@ export default function ConfigPage() {
   }
 
   useEffect(() => {
-    api.getConfig().then(setConfig).catch(() => {});
+    api.getConfig().then((next) => setConfig((draft) => draft ?? next)).catch(() => {});
     api
       .getSchema()
       .then((resp) => {
@@ -519,14 +521,21 @@ export default function ConfigPage() {
       })
       .catch(() => {});
     api.getDefaults().then(setDefaults).catch(() => {});
-  }, []);
+  }, [setConfig]);
+
+  useEffect(() => {
+    if (!initialField || !schema?.[initialField]) return;
+    setSearchQuery("");
+    setYamlMode(false);
+    setActiveCategory(String(schema[initialField].category ?? "general"));
+  }, [initialField, schema, setActiveCategory, setSearchQuery, setYamlMode]);
 
   // Set active category when categories load
   useEffect(() => {
     if (categoryOrder.length > 0 && !activeCategory) {
       setActiveCategory(categoryOrder[0]);
     }
-  }, [categoryOrder, activeCategory]);
+  }, [categoryOrder, activeCategory, setActiveCategory]);
 
   // Load YAML when switching to YAML mode
   useEffect(() => {
@@ -534,11 +543,11 @@ export default function ConfigPage() {
       setYamlLoading(true);
       api
         .getConfigRaw()
-        .then((resp) => setYamlText(resp.yaml))
+        .then((resp) => setYamlText((draft) => draft ?? resp.yaml))
         .catch(() => showToast(t.config.failedToLoadRaw, "error"))
         .finally(() => setYamlLoading(false));
     }
-  }, [showToast, t.config.failedToLoadRaw, yamlMode]);
+  }, [showToast, t.config.failedToLoadRaw, yamlMode, setYamlText]);
 
   /* ---- Categories ---- */
   const categories = useMemo(() => {
@@ -573,7 +582,8 @@ export default function ConfigPage() {
         key.toLowerCase().includes(lowerSearch) ||
         humanLabel.toLowerCase().includes(lowerSearch) ||
         String(s.category ?? "").toLowerCase().includes(lowerSearch) ||
-        String(s.description ?? "").toLowerCase().includes(lowerSearch)
+        String(s.description ?? "").toLowerCase().includes(lowerSearch) ||
+        schemaSettings({ [key]: s })[0]?.label.toLowerCase().includes(lowerSearch)
       );
     });
   }, [isSearching, lowerSearch, schema]);
@@ -604,7 +614,7 @@ export default function ConfigPage() {
   const handleYamlSave = async () => {
     setYamlSaving(true);
     try {
-      await api.saveConfigRaw(yamlText);
+      await api.saveConfigRaw(yamlText ?? "");
       showToast(t.config.yamlConfigSaved, "success");
       api.getConfig().then(setConfig).catch(() => {});
     } catch (e) {
@@ -956,7 +966,7 @@ export default function ConfigPage() {
       lastCat = cat;
 
       return (
-        <div key={key}>
+        <div key={key} data-setting-key={key}>
           {showCatBadge && (
             <div className="flex items-center gap-2 pt-4 pb-2 first:pt-0">
               <span className="text-xs font-semibold text-muted-foreground">
@@ -1060,7 +1070,7 @@ export default function ConfigPage() {
             ) : (
               <textarea
                 className="flex min-h-[600px] w-full bg-transparent px-4 py-3 text-sm font-mono leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none"
-                value={yamlText}
+                value={yamlText ?? ""}
                 onChange={(e) => setYamlText(e.target.value)}
                 spellCheck={false}
               />
@@ -1074,10 +1084,11 @@ export default function ConfigPage() {
           <div className="sm:w-48 sm:shrink-0">
             <div className="flex flex-col gap-1 sm:sticky sm:top-4">
               {/* Search */}
-              <div className="relative mb-2 hidden sm:block">
+              <div className="relative mb-2">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   className="pl-8 h-8 text-xs"
+                  aria-label={`${t.common.search} Settings`}
                   placeholder={t.common.search}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -1167,7 +1178,10 @@ export default function ConfigPage() {
                 <div className="grid gap-0 pt-3">
                   {activeCategory === "general" && renderModelEditor()}
                   {activeCategory === "compression" && renderContextManagementCard()}
-                  {activeCategory !== "compression" && renderFields(activeFields)}
+                  {activeCategory !== "compression" && activeFields.length > 0 && <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">Advanced fields</summary>
+                    <div className="mt-2 grid gap-2">{renderFields(activeFields)}</div>
+                  </details>}
                   {activeCategory === "compression" && activeFields.length > 0 && (
                     <details className="mt-2">
                       <summary className="text-[11px] text-muted-foreground cursor-pointer select-none">Advanced fields</summary>

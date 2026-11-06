@@ -487,7 +487,8 @@ The user has requested that this compaction PRIORITISE preserving all informatio
                     "api_mode": self.api_mode,
                 },
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": summary_budget * 2,
+                "max_tokens": min(summary_budget * 2, getattr(self, "_summary_output_limit", summary_budget * 2)),
+                **({"timeout": self._summary_timeout} if hasattr(self, "_summary_timeout") else {}),
                 # timeout resolved from auxiliary.compression.timeout config by call_llm
             }
             if self.summary_model:
@@ -700,7 +701,82 @@ The user has requested that this compaction PRIORITISE preserving all informatio
     # Main compression entry point
     # ------------------------------------------------------------------
 
-    def compress(self, messages: list[dict[str, Any]], current_tokens: int | None = None, focus_topic: str | None = None) -> list[dict[str, Any]]:
+    def preflight(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        """Describe the same conservative policy used by explicit compaction."""
+        from agent.context_policy import (
+            SUMMARY_INPUT_TOKENS,
+            SUMMARY_OUTPUT_TOKENS,
+            SUMMARY_TIMEOUT_SECONDS,
+            protected_message,
+            validate_tool_pairs,
+        )
+
+        start = self._align_boundary_forward(messages, self.protect_first_n)
+        end = self._find_tail_cut_by_tokens(messages, start) if len(messages) > start + 1 else start
+        eligible = [i for i in range(start, end) if not protected_message(messages[i])]
+        return {
+            "head_messages": min(start, len(messages)),
+            "tail_messages": len(messages) - end,
+            "summary_messages": len(eligible),
+            "tool_pairs_valid": validate_tool_pairs(messages),
+            "summary_timeout_seconds": SUMMARY_TIMEOUT_SECONDS,
+            "summary_input_tokens": SUMMARY_INPUT_TOKENS,
+            "summary_output_tokens": min(self.max_summary_tokens, SUMMARY_OUTPUT_TOKENS),
+            "policy": "Reduce repeated tool output first; preserve instructions, attachments, decisions and complete tool pairs. Summarize older assistant prose only. Keep saved context on failure.",
+        }
+
+    def _compress_at_safe_boundary(self, messages: list[dict[str, Any]], focus_topic: str | None) -> list[dict[str, Any]]:
+        from agent.context_checkpoint import build_context_checkpoint
+        from agent.context_policy import bounded_summary, protected_message, reduce_tool_output
+
+        started = time.monotonic()
+        before = estimate_messages_tokens_rough(messages)
+        self.last_compaction = {"status": "unchanged", "before_estimated_tokens": before,
+                                "after_estimated_tokens": before}
+        policy = self.preflight(messages)
+        if not policy["tool_pairs_valid"]:
+            self.last_compaction["reason"] = "Tool results are incomplete; wait for a safe boundary."
+            return messages
+        reduced = [dict(message) for message in messages]
+        for message in reduced[policy["head_messages"]:len(reduced) - policy["tail_messages"]]:
+            if message.get("role") == "tool" and isinstance(message.get("content"), str):
+                message["content"] = reduce_tool_output(message["content"])
+        after_pruning = estimate_messages_tokens_rough(reduced)
+        summary = ""
+        # Prefer a deterministic reduction of at least 20% to any paid call.
+        if after_pruning > before * 0.8:
+            start = policy["head_messages"]
+            end = len(reduced) - policy["tail_messages"]
+            eligible = [i for i in range(start, end) if not protected_message(reduced[i])]
+            if eligible:
+                summary = bounded_summary(self, [reduced[i] for i in eligible], focus_topic) or ""
+                if not summary or time.monotonic() - started > 25:
+                    self.last_compaction["reason"] = "Summary failed or timed out; saved context is intact."
+                    return messages
+                selected = set(eligible)
+                reduced = [message for i, message in enumerate(reduced) if i not in selected]
+                reduced.insert(start, {"role": "assistant", "content": summary})
+        after = estimate_messages_tokens_rough(reduced)
+        if after >= before:
+            self.last_compaction["reason"] = "Protected context cannot be reduced safely."
+            return messages
+        checkpoint = build_context_checkpoint(
+            messages, checkpoint_sequence=self.compression_count + 1,
+            context_epoch=self._context_epoch + 1, task_identity=self._task_identity,
+            current_plan=self._deterministic_plan, prior=self._typed_checkpoint,
+            narrative=summary, last_included_sequence=len(messages) - 1,
+        )
+        self._last_shadow_checkpoint = checkpoint
+        self.compression_count += 1
+        self.last_compaction = {
+            "status": "compacted", "before_estimated_tokens": before,
+            "after_estimated_tokens": after, "provider_actual_tokens": None,
+            "deterministic_tokens_saved": before - after_pruning,
+            "elapsed_seconds": time.monotonic() - started,
+        }
+        return reduced
+
+    def compress(self, messages: list[dict[str, Any]], current_tokens: int | None = None, focus_topic: str | None = None, *, safe_boundary: bool = False) -> list[dict[str, Any]]:
         """Compress conversation messages by summarizing middle turns.
 
         Algorithm:
@@ -719,6 +795,9 @@ The user has requested that this compaction PRIORITISE preserving all informatio
                 related to this topic and be more aggressive about compressing
                 everything else.  Inspired by Claude Code's ``/compact``.
         """
+        if safe_boundary:
+            return self._compress_at_safe_boundary(messages, focus_topic)
+
         n_messages = len(messages)
         # Only need head + 3 tail messages minimum (token budget decides the real tail size)
         _min_for_compress = self.protect_first_n + 3 + 1

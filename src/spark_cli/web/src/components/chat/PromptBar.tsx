@@ -1,3 +1,6 @@
+import { ROUTING_SETTINGS_SAVED_EVENT } from "@/lib/api_routing";
+import { RecordedRoutingDetails } from "@/components/chat/RecordedRoutingDetails";
+import { getProviderCatalog, providerLabel, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp, Box, Brain, Check, ChevronDown, FolderOpen, Loader2, Settings, Square } from "lucide-react";
@@ -15,6 +18,8 @@ import { ComposerAttachmentMenu } from "@/components/chat/ComposerAttachmentMenu
 import { ComposerMoreMenu } from "@/components/chat/ComposerMoreMenu";
 import { COMPOSER_A11Y_LABELS, COMPOSER_WIDE_ONLY, COMPOSER_WIDE_ONLY_BLOCK } from "@/components/chat/composerContracts";
 import { canNavigateComposerHistory, readComposerRecovery, saveComposerRecovery, recallComposerPrompt, stepComposerPromptHistory, type ComposerPromptHistoryBrowse, type ComposerPromptHistoryEntry } from "@/lib/composerPromptHistory";
+
+import { registerSkillTarget } from "@/lib/skillSelection";
 
 import { subscribeDraft } from "@/lib/draftStore";
 
@@ -445,11 +450,13 @@ function ModelDropdown({
 // ── Quick-settings popover ────────────────────────────────────────────────────
 
 function ModelQuickSettings({
+  sessionId,
   status,
   suggestions,
   onClose,
   onStatusChange,
 }: {
+  sessionId?: string | null;
   status: ModelStatusResponse;
   suggestions: ModelSuggestionsResponse | null;
   onClose: () => void;
@@ -457,9 +464,18 @@ function ModelQuickSettings({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [savingSmartModel, setSavingSmartModel] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [savingFastModel, setSavingFastModel] = useState(false);
   const [savingReasoning, setSavingReasoning] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
+  const [providers, setProviders] = useState<ProviderCatalogEntry[]>([]);
+  useEffect(() => {
+    let current = true;
+    void getProviderCatalog().then((catalog) => {
+      if (current) setProviders(catalog.providers);
+    }).catch(() => {});
+    return () => { current = false; };
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -488,9 +504,12 @@ function ModelQuickSettings({
 
   const saveSmartModel = async (model: string) => {
     setSavingSmartModel(true);
+    setModelError(null);
     try {
       await api.setSmartModel(model);
-      onStatusChange({ smart_model: model });
+      onStatusChange(await api.getModelStatus());
+    } catch {
+      setModelError("Model selection could not be saved. Please retry.");
     } finally {
       setSavingSmartModel(false);
     }
@@ -500,7 +519,7 @@ function ModelQuickSettings({
     setSavingFastModel(true);
     try {
       await api.setFastModel(model);
-      onStatusChange({ fast_model: model });
+      onStatusChange(await api.getModelStatus());
     } finally {
       setSavingFastModel(false);
     }
@@ -530,7 +549,7 @@ function ModelQuickSettings({
       ref={ref}
       role="dialog"
       aria-label="Model and reasoning settings"
-      className="absolute bottom-full mb-3 left-0 right-0 mx-3 z-50 overflow-hidden rounded-2xl border border-border/80 bg-[#111]/[0.98] shadow-2xl shadow-black/40 backdrop-blur-xl"
+      className="absolute bottom-full mb-3 left-0 right-0 mx-3 z-50 max-h-[min(70vh,560px)] overflow-y-auto rounded-2xl border border-border/80 bg-[#111]/[0.98] shadow-2xl shadow-black/40 backdrop-blur-xl"
     >
       <div className="flex min-h-[248px]">
         <div className="flex w-11 shrink-0 flex-col items-center border-r border-border/70 bg-foreground/[0.025] py-2">
@@ -552,7 +571,7 @@ function ModelQuickSettings({
             {filteredModelChoices.map((model, index) => {
               const current = model === status.smart_model;
               const label = model.toLowerCase() === "auto" ? "Auto" : shortModelName(model);
-              const provider = model.includes("/") ? model.split("/", 1)[0] : status.smart_provider;
+              const provider = model === status.smart_model ? providerLabel(providers, status.smart_provider) : "Route determined when selected";
               return (
                 <button
                   key={`${model}-${index}`}
@@ -564,7 +583,7 @@ function ModelQuickSettings({
                   <Box className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12px] font-medium">{label}</span>
-                    <span className="block truncate text-[10px] text-muted-foreground/40">{provider || "Spark"}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground/40">{provider || "Unknown provider"}</span>
                   </span>
                   {savingSmartModel && current ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground/60" /> : current ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
                 </button>
@@ -575,12 +594,15 @@ function ModelQuickSettings({
         </div>
       </div>
       <div className="space-y-3 border-t border-border/70 px-3 py-3">
+        <p className="text-xs text-muted-foreground">Choose Auto or pin a model for future turns. A running turn keeps its chosen route.</p>
+        {modelError && <p role="alert">{modelError}</p>}
+        <RecordedRoutingDetails sessionId={sessionId} />
 
         {status.selection === "auto" && (
           <div className="rounded-lg border border-primary/20 bg-primary/[0.05] px-3 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold text-foreground">Auto is choosing per turn</p>
+                <p className="text-xs font-semibold text-foreground">{status.auto_enabled ? "Auto is choosing per turn" : "Auto policy is disabled"}</p>
                 <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                   Task type, risk, context and duration decide the route. Your explicit choice stays pinned until changed.
                 </p>
@@ -607,7 +629,7 @@ function ModelQuickSettings({
           <ModelDropdown
             value={status.fast_model}
             suggestions={suggestions?.fast ?? []}
-            provider={status.fast_provider}
+            provider={providerLabel(providers, status.fast_provider)}
             label="Fast model"
             saving={savingFastModel}
             onChange={(v) => void saveFastModel(v)}
@@ -684,6 +706,7 @@ export function PromptBar({
   draftScopeKey,
   panelOwnerToken,
 }: PromptBarProps) {
+  useEffect(() => { if (draftScopeKey) registerSkillTarget(draftScopeKey); }, [draftScopeKey]);
   const historyOwner = JSON.stringify([draftScopeKey, panelOwnerToken, workspaceSlug ?? null, sessionId ?? null]);
   const recovery = useSyncExternalStore(subscribeDraft, () => draftScopeKey ? readComposerRecovery(draftScopeKey) : null);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -733,6 +756,12 @@ export function PromptBar({
   useEffect(() => {
     api.getModelStatus().then(setModelStatus).catch(() => {});
     api.getModelSuggestions().then(setModelSuggestions).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => { void api.getModelStatus().then(setModelStatus).catch(() => {}); };
+    window.addEventListener(ROUTING_SETTINGS_SAVED_EVENT, refresh);
+    return () => window.removeEventListener(ROUTING_SETTINGS_SAVED_EVENT, refresh);
   }, []);
 
   const handleStatusChange = (patch: Partial<ModelStatusResponse>) => {
@@ -1016,6 +1045,7 @@ export function PromptBar({
 
       {showSettings && modelStatus && (
         <ModelQuickSettings
+          sessionId={sessionId}
           status={modelStatus}
           suggestions={modelSuggestions}
           onClose={() => setShowSettings(false)}
@@ -1164,6 +1194,10 @@ export function PromptBar({
 
           {/* Token budget indicator */}
           <ContextWindowMeter
+            key={historyOwner}
+            sessionId={sessionId}
+            promptText={input}
+            streaming={streaming}
             estimate={estimate}
             loading={estimateLoading}
             contextItems={contextItems}

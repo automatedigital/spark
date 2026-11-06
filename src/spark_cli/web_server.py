@@ -10,6 +10,7 @@ Usage:
 """
 
 import asyncio
+import contextlib
 import hashlib
 import ipaddress
 import json
@@ -43,13 +44,14 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.async_runtime import get_async_runtime
 from gateway.status import get_running_pid, read_runtime_status
-from spark_cli import __release_date__, __version__
+from spark_cli import __release_date__, __version__, turn_timing
 from spark_cli.admin_routes import register_admin_routes
 from spark_cli.admin_runs import (
     ADMIN_ACTIONS,
 )
 from spark_cli.analytics_routes import register_analytics_routes
 from spark_cli.canvas_routes import register_canvas_routes
+from spark_cli.chat_preparation import ChatPreparationPool, await_preparation  # noqa: E402
 from spark_cli.config import (
     DEFAULT_CONFIG,
     OPTIONAL_ENV_VARS,
@@ -119,6 +121,8 @@ except ImportError as err:
         "Web UI requires fastapi and uvicorn.\n"
         "Run 'spark web' to auto-install, or: pip install spark-agent[web]"
     ) from err
+
+_chat_preparation = ChatPreparationPool(runtime=lambda: get_async_runtime())
 
 WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
@@ -270,6 +274,7 @@ class WebActiveTurn:
     active_agent_session_id: str | None
     phase: str
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    submission_epoch: str | None = None
     workspace_slug: str | None = None
     workspace_before: dict[str, Any] | None = None
     plan: dict[str, Any] | None = None
@@ -286,6 +291,7 @@ class WebActiveTurn:
     checkpointed_chars: int = 0
     checkpointed_revision: int = 0
     session_aliases: set[str] = field(default_factory=set)
+    timing_summary: turn_timing.TurnTiming = field(default_factory=turn_timing.TurnTiming)
     timings: dict[str, float] = field(default_factory=dict)
     compaction: dict[str, Any] = field(default_factory=dict)
     pending_input_action_ids: set[str] = field(default_factory=set)
@@ -859,6 +865,7 @@ def _web_turn_projection_payload(
             outcome = compute_changed_files(before, after)
         return {
             "turn_id": turn.turn_id,
+            "submission_epoch": turn.submission_epoch,
             "session_id": session_id,
             "user_message_id": turn.user_message_id,
             "assistant_message_id": turn.assistant_message_id,
@@ -868,6 +875,7 @@ def _web_turn_projection_payload(
             "workspace_slug": turn.workspace_slug,
             "changed_files": outcome,
             "plan": dict(turn.plan) if turn.plan else None,
+            "timing_summary": turn.timing_summary.summary(),
         }
 
 
@@ -898,6 +906,14 @@ def _persist_web_turn_projection(
     return payload
 
 
+def _recover_root_submission_projection(projection: dict[str, Any]) -> dict[str, Any]:
+    if (projection.get("submission_epoch")
+            and projection["submission_epoch"] != _root_submission_epoch
+            and projection.get("status") == "running"):
+        return {**projection, "status": "uncertain", "recovery_reason": "process_lost"}
+    return projection
+
+
 def _latest_web_turn_projection(session_id: str) -> dict[str, Any] | None:
     from core.spark_state import SessionDB
 
@@ -910,7 +926,7 @@ def _latest_web_turn_projection(session_id: str) -> dict[str, Any] | None:
             if (row := db.get_latest_web_turn_projection(candidate)) is not None
         ]
         if rows:
-            return cast("dict[str, Any] | None", max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"])
+            return _recover_root_submission_projection(max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"])
     finally:
         db.close()
     return None
@@ -964,7 +980,7 @@ def _all_web_turn_projections(session_id: str) -> list[dict[str, Any]]:
                 row["turn_id"],
             )
         )
-        return [row["projection"] for row in rows]
+        return [_recover_root_submission_projection(row["projection"]) for row in rows]
     finally:
         db.close()
 
@@ -989,6 +1005,8 @@ def _finalize_web_turn_projection(
     except Exception:
         _log.debug("web plan checkpoint projection failed session=%s", session_id, exc_info=True)
     status = "interrupted" if interrupted else "failed" if isinstance(result, dict) and result.get("backend_error_class") else "completed"
+    with turn.lock:
+        turn.timing_summary.mark("finish")
     after = _web_workspace_git_status(turn.workspace_slug)
     return _persist_web_turn_projection(
         session_id,
@@ -1263,6 +1281,7 @@ def _mark_web_turn_active(
     status: str = "Starting…",
     phase: str = "starting",
     active_agent_session_id: str | None = None,
+    accepted_submission: dict | None = None,
 ) -> WebActiveTurn:
     key = _web_turn_key(session_id)
     now = time.time()
@@ -1278,6 +1297,11 @@ def _mark_web_turn_active(
         workspace_before=_web_workspace_git_status(workspace_slug),
         session_aliases=_web_turn_alias_set(session_id),
     )
+    if accepted_submission:
+        turn.submission_epoch = _root_submission_epoch
+        turn.turn_id = accepted_submission["turn_id"]
+        turn.user_message_id = accepted_submission["user_message_id"]
+    turn.timing_summary.mark("accepted")
     turn.timings["turn_registered"] = now
     with _with_web_turn_lock():
         _web_active_turns[key] = turn
@@ -1983,6 +2007,7 @@ async def _lifespan(_app: FastAPI):
         asyncio.create_task(_run_blocking(function))
         for function in warmup_functions
     ]
+    warmup_tasks.append(asyncio.create_task(_maintain_web_agent_cache()))
     # Desktop app: keep the messaging gateway running in the background so
     # platforms stay reachable while the app is open. No-ops outside the
     # desktop sidecar or when disabled via config. Only stops a gateway we own.
@@ -3083,6 +3108,8 @@ _model_virtual_entries = [
     ("model_base_url", _SCHEMA_OVERRIDES["model_base_url"]),
     ("model_api_mode", _SCHEMA_OVERRIDES["model_api_mode"]),
     ("model_context_length", _SCHEMA_OVERRIDES["model_context_length"]),
+    ("model_auto", {"type": "object", "category": "general", "title": "Auto role mappings",
+                    "description": "Role routes apply to future turns; capabilities are unverified."}),
 ]
 _ordered_schema: dict[str, dict[str, Any]] = {}
 for _k, _v in CONFIG_SCHEMA.items():
@@ -3556,6 +3583,9 @@ def _normalize_config_for_web(config: dict[str, Any]) -> dict[str, Any]:
     display and edit it.  A value of 0 means "auto-detect".
     """
     config = dict(config)  # shallow copy
+    from spark_cli.model_config import normalize_auto_policy
+
+    config["model_auto"] = normalize_auto_policy(config)["model"]["auto"]
     model_val = config.get("model")
     if isinstance(model_val, dict):
         # Extract context_length before flattening the dict
@@ -3698,6 +3728,11 @@ def _denormalize_config_from_web(config: dict[str, Any]) -> dict[str, Any]:
     # Remove any _model_meta that might have leaked in (shouldn't happen
     # with the stripped GET response, but be defensive)
     config.pop("_model_meta", None)
+    model_auto = config.pop("model_auto", None)
+    if model_auto is not None:
+        from spark_cli.routing_projection import validate_role_settings
+
+        model_auto = validate_role_settings(model_auto)
 
     # Extract and remove model virtual fields before processing model
     model_provider = str(config.pop("model_provider", "") or "").strip()
@@ -3749,6 +3784,28 @@ def _denormalize_config_from_web(config: dict[str, Any]) -> dict[str, Any]:
         except Exception:
             # can't read disk config — just use the string form
             _log.debug("Ignored exception in _denormalize_config_from_web", exc_info=True)
+    if model_auto is not None:
+        # Recover metadata even when Auto has an empty default model. Only the
+        # role policy changes; endpoint/custom model keys survive round trips.
+        disk_model = load_config().get("model")
+        current = config.get("model")
+        model_section = dict(disk_model) if isinstance(disk_model, dict) else {}
+        if isinstance(current, dict):
+            model_section.update(current)
+        else:
+            model_section["default"] = str(current or "")
+            for key, value in (("provider", model_provider), ("base_url", model_base_url),
+                               ("api_mode", model_api_mode)):
+                if value:
+                    model_section[key] = value
+                else:
+                    model_section.pop(key, None)
+        model_section["auto"] = model_auto
+        config["model"] = model_section
+        # Keep the canonical runtime policy in sync for TUI/gateway consumers.
+        routing_section = dict(config.get("smart_model_routing") or {})
+        routing_section["auto"] = model_auto
+        config["smart_model_routing"] = routing_section
     return config
 
 
@@ -3989,26 +4046,63 @@ async def get_session_messages(
 
 
 @app.get("/api/sessions/{session_id}/tool-results/{tool_call_id}")
-async def get_session_tool_result(session_id: str, tool_call_id: str):
-    from core.spark_state import SessionDB
+async def get_session_tool_result(
+    session_id: str, tool_call_id: str, paged: bool = False,
+    offset: int = 0, revision: str | None = None,
+):
+    from spark_cli.tool_result_reads import read_result
 
-    db = SessionDB()
-    try:
-        sid = db.resolve_session_id(session_id)
-        if not sid:
-            raise HTTPException(status_code=404, detail="Session not found")
-        leaf_sid = db.resolve_latest_descendant(sid)
-        for msg in db.get_messages(leaf_sid):
-            if msg.get("role") == "tool" and msg.get("tool_call_id") == tool_call_id:
-                return {
-                    "session_id": leaf_sid,
-                    "tool_call_id": tool_call_id,
-                    "content": _sanitize_web_chat_text(str(msg.get("content") or "")),
-                    "tool_name": msg.get("tool_name"),
-                }
-        raise HTTPException(status_code=404, detail="Tool result not found")
-    finally:
-        db.close()
+    home = get_spark_home()
+    if paged:
+        return await _run_blocking(read_result, home, session_id, tool_call_id, offset, revision)
+
+    # Unchanged compatibility payload, now with its connection owned by a worker.
+    def legacy_result():
+        from core.spark_state import SessionDB
+
+        db = SessionDB(home / "state.db")
+        try:
+            sid = db.resolve_session_id(session_id)
+            if not sid:
+                raise HTTPException(404, "Session not found")
+            leaf = db.resolve_latest_descendant(sid)
+            for message in db.get_messages(leaf):
+                if message.get("role") == "tool" and message.get("tool_call_id") == tool_call_id:
+                    return {"session_id": leaf, "tool_call_id": tool_call_id,
+                            "tool_name": message.get("tool_name"),
+                            "content": _sanitize_web_chat_text(str(message.get("content") or ""))}
+            raise HTTPException(404, "Tool result not found")
+        finally:
+            db.close()
+
+    return await _run_blocking(legacy_result)
+
+
+@app.get("/api/sessions/{session_id}/tool-results/{tool_call_id}/download")
+async def download_session_tool_result(session_id: str, tool_call_id: str, revision: str):
+    from starlette.responses import StreamingResponse
+
+    from spark_cli.tool_result_reads import read_result
+
+    home = get_spark_home()
+    first = await _run_blocking(read_result, home, session_id, tool_call_id, 0, revision)
+
+    async def chunks():
+        page = first
+        while True:
+            yield page["content"].encode("utf-8")
+            if page["next_offset"] is None:
+                break
+            page = await _run_blocking(
+                read_result, home, session_id, tool_call_id,
+                page["next_offset"], revision,
+            )
+
+    return StreamingResponse(chunks(), media_type="application/octet-stream", headers={
+        "Content-Disposition": 'attachment; filename="tool-result.txt"',
+        "Content-Length": str(first["total_bytes"]),
+        "X-Content-SHA256": first["sha256"], "Cache-Control": "no-store",
+    })
 
 
 def _resolve_workspace_media_path(path: str) -> Path:
@@ -4166,6 +4260,7 @@ async def delete_session_endpoint(session_id: str):
 
 
 @app.post("/api/sessions/{session_id}/warm")
+@_chat_preparation.admitted
 async def warm_session_agent(session_id: str):
     """Pre-create the AIAgent for a session so the first real message doesn't pay cold-start costs.
 
@@ -4173,78 +4268,52 @@ async def warm_session_agent(session_id: str):
     Returns immediately with {"ok": true, "warm": true/false} indicating
     whether the agent was already warm or was newly created.
     """
-    from core.spark_state import SessionDB
-
-    db = SessionDB()
-    try:
-        requested_session_id = session_id
-        sid = db.resolve_session_id(session_id)
-        if not sid:
-            raise HTTPException(status_code=404, detail="Session not found")
-        latest_sid = db.resolve_latest_descendant(sid)
-        if latest_sid != sid:
-            _log.info(
-                "web warm resolved compression descendant requested=%s resolved=%s latest=%s",
-                requested_session_id,
-                sid,
-                latest_sid,
-            )
-            sid = latest_sid
-        row = db.get_session(sid)
-        if not row:
-            raise HTTPException(status_code=404, detail="Session not found")
-    finally:
-        db.close()
-
-    # Already warm — nothing to do.
-    if sid in _web_agents:
-        _touch_web_agent_cache(sid)
-        return {"ok": True, "warm": True}
-    now = time.time()
-    if sid in _web_warm_inflight or now - _web_warm_recent.get(sid, 0.0) < 5.0:
-        _streaming_pipeline_metrics.record_warm_deduped()
+    preparation = await _chat_preparation.load_session(session_id)
+    sid = preparation.session_id
+    if _is_web_turn_active(sid):
         return {"ok": True, "warm": False}
 
-    # Resolve routing (model, provider, etc.) using an empty-string message
-    # so routing heuristics use the same defaults as a real turn.
-    try:
-        turn_route = _resolve_web_turn_route("")
-    except Exception:
-        return {"ok": True, "warm": False}
-    _web_warm_inflight.add(sid)
-    _web_warm_recent[sid] = now
+    now = time.monotonic()
+    with _web_agent_cache_lock:
+        if sid in _web_warm_inflight:
+            _streaming_pipeline_metrics.record_warm_deduped()
+            return {"ok": True, "warm": False}
+        _web_warm_inflight.add(sid)
+        _web_warm_recent[sid] = now
+        while len(_web_warm_recent) > 256:
+            _web_warm_recent.pop(next(iter(_web_warm_recent)))
 
-    def _warm_in_thread() -> None:
-        try:
-            from core.spark_state import SessionDB as _DB
-            _db = _DB()
-            try:
-                conversation_history = _db.get_messages_as_conversation(sid)
-            finally:
-                _db.close()
-            if sid in _web_agents:
-                _touch_web_agent_cache(sid)
-                return
-            _new_web_agent(
-                session_id=sid,
-                model=turn_route["model"],
-                runtime=turn_route["runtime"],
-                request_overrides=turn_route.get("request_overrides"),
-                signature=turn_route["signature"],
-                token_callback=None,
-                tool_start_callback=None,
-                tool_complete_callback=None,
-                reasoning_callback=None,
-                status_callback=None,
-            )
-            # Load conversation history so the system prompt is built and cached.
-            agent = _get_web_cached_agent(sid)
-            if agent and conversation_history:
-                _hydrate_web_agent_from_history(agent, conversation_history)
-        finally:
+    try:
+        turn_route = await _chat_preparation.run(
+            _resolve_web_turn_route, "", explicit_model=str(preparation.row.get("model") or "").strip() or None
+        )
+    except asyncio.CancelledError:
+        with _web_agent_cache_lock:
             _web_warm_inflight.discard(sid)
+        raise
+    except Exception:
+        with _web_agent_cache_lock:
+            _web_warm_inflight.discard(sid)
+        return {"ok": True, "warm": False}
 
-    asyncio.create_task(_run_blocking(_warm_in_thread))
+    def _warm_in_thread() -> bool:
+        try:
+            return _warm_web_agent(preparation, turn_route)
+        finally:
+            with _web_agent_cache_lock:
+                _web_warm_inflight.discard(sid)
+            _evict_web_agent_cache_if_needed()
+
+    was_cached = sid in _web_agents
+    try:
+        warming = _chat_preparation.start(_warm_in_thread)
+    except Exception:
+        with _web_agent_cache_lock:
+            _web_warm_inflight.discard(sid)
+        raise
+    _chat_preparation.handoff_claim(warming)
+    if was_cached:
+        return {"ok": True, "warm": await asyncio.shield(asyncio.wrap_future(warming))}
     return {"ok": True, "warm": False}
 
 
@@ -4391,10 +4460,71 @@ async def toggle_skill(body: SkillToggle):
     return {"ok": True, "name": name, "skill_id": body.skill_id, "enabled": body.enabled}
 
 
+def _skill_project_root(slug: str | None):
+    if not slug:
+        return None
+    from spark_cli.workspace_routes import _project_dir
+
+    return _project_dir(slug)
+
+
+def _selected_skill_context(item: dict, session_id: str | None = None, *, load_body: bool = False) -> str:
+    """Resolve explicit selection only after the route has validated its target."""
+    from agent.skill_commands import build_selected_skill_message, validate_selected_skill
+    from core.spark_state import SessionDB
+
+    if item.get("skill_profile") != str(get_spark_home()):
+        raise HTTPException(status_code=409, detail="Skill selection belongs to another profile.")
+    thread = item.get("skill_thread")
+    if not thread:
+        raise HTTPException(status_code=409, detail="Skill selection belongs to another thread.")
+    db = SessionDB()
+    try:
+        if session_id is not None:
+            selected_target = db.resolve_latest_descendant(db.resolve_session_id(thread) or thread) or thread
+            actual_target = db.resolve_latest_descendant(db.resolve_session_id(session_id) or session_id) or session_id
+            if selected_target != actual_target:
+                raise HTTPException(status_code=409, detail="Skill selection belongs to another thread.")
+        row = db.get_session(thread)
+    finally:
+        db.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Skill selection thread is unavailable.")
+    source = str(row.get("source") or "")
+    project = source.split(":", 1)[1] if source.startswith("workspace:") else None
+    if project != item.get("skill_project"):
+        raise HTTPException(status_code=409, detail="Skill selection project changed.")
+    try:
+        resolver = build_selected_skill_message if load_body else validate_selected_skill
+        result = resolver(item.get("skill_id") or "", item.get("skill_revision") or "",
+                          project_root=_skill_project_root(project))
+        return str(result) if load_body else ""
+    except (ValueError, OSError, UnicodeError) as exc:
+        raise HTTPException(status_code=409, detail="Selected skill is unavailable or changed; select it again.") from exc
+
+
+@app.get("/api/skills/index")
+async def get_skill_index(refresh: bool = False, query: str = "", scope: str = "all", workspace_slug: str | None = None):
+    """Discover metadata without syncing, setup, instruction or supporting-file reads."""
+    from starlette.concurrency import run_in_threadpool
+
+    from tools.skills_index import list_skill_index
+
+    if len(query) > 256 or scope not in {"all", "profile", "external", "project"}:
+        raise HTTPException(status_code=422, detail="Invalid skill search.")
+    return await run_in_threadpool(list_skill_index, refresh=refresh, query=query, scope=scope,
+                                   project_root=_skill_project_root(workspace_slug))
+
+
 @app.get("/api/skills/{skill_id}")
-async def get_skill_detail(skill_id: str):
+async def get_skill_detail(skill_id: str, workspace_slug: str | None = None):
     """Return one skill's bounded detail by opaque server-generated ID."""
-    record = _skill_record_or_404(skill_id)
+    from tools.skills_index import selected_skill
+    from tools.skills_metadata import resolve_skill
+
+    root = _skill_project_root(workspace_slug)
+    selected = selected_skill(skill_id, root)
+    record = (resolve_skill(selected["_path"], project_root=root) if selected else None) or _skill_record_or_404(skill_id)
     record = dict(record)
     from spark_cli.skills_config import get_disabled_skills
 
@@ -4403,10 +4533,10 @@ async def get_skill_detail(skill_id: str):
     skill_dir = record["_path"]
     skill_md = skill_dir / "SKILL.md"
     try:
-        size = skill_md.stat().st_size
+        size = 0 if record.get("removed") else skill_md.stat().st_size
         if size > 1_048_576:
             raise HTTPException(status_code=413, detail="SKILL.md exceeds the 1 MiB view limit.")
-        content = skill_md.read_text(encoding="utf-8")
+        content = "" if record.get("removed") else skill_md.read_text(encoding="utf-8")
     except UnicodeDecodeError as err:
         raise HTTPException(status_code=422, detail="SKILL.md is not valid UTF-8.") from err
     except OSError as err:
@@ -4632,6 +4762,10 @@ _web_agent_signatures: dict[str, Any] = {}    # session_id → effective model/r
 _web_agent_last_used: dict[str, float] = {}
 _web_warm_inflight: set[str] = set()
 _web_warm_recent: dict[str, float] = {}
+_web_agent_cache_lock = threading.RLock()
+_web_agent_context_estimates: dict[str, tuple[Any, int]] = {}
+# Only stamps, never another transcript copy. Removed with the LRU entry.
+_web_agent_history_revisions: dict[str, tuple[Any, Any, Any]] = {}
 
 
 def _web_turn_worker_count() -> int:
@@ -4678,50 +4812,230 @@ async def _run_web_turn_in_executor(loop: asyncio.AbstractEventLoop, fn: Callabl
     )
 
 
+def _web_agent_cache_policy() -> tuple[float, int]:
+    try:
+        cfg = load_config().get("dashboard") or {}
+    except Exception:
+        cfg = {}
+    values = []
+    for key, env, default in (
+        ("agent_cache_idle_seconds", "SPARK_WEB_AGENT_CACHE_IDLE_SECONDS", 1800),
+        ("agent_cache_context_bytes", "SPARK_WEB_AGENT_CACHE_CONTEXT_BYTES", 64 * 1024 * 1024),
+    ):
+        try:
+            values.append(max(0, int(os.getenv(env, str(cfg.get(key, default))))))
+        except (ValueError, TypeError):
+            values.append(default)
+    return float(values[0]), values[1]
+
+
 def _touch_web_agent_cache(session_id: str) -> None:
-    if session_id in _web_agents:
-        _web_agents.move_to_end(session_id)
-        _web_agent_last_used[session_id] = time.time()
+    with _web_agent_cache_lock:
+        if session_id in _web_agents:
+            _web_agents.move_to_end(session_id)
+            _web_agent_last_used[session_id] = time.monotonic()
 
 
 def _get_web_cached_agent(session_id: str) -> Any:
-    agent = _web_agents.get(session_id)
-    if agent is not None:
-        _touch_web_agent_cache(session_id)
-    return agent
+    if _web_agents:
+        _evict_web_agent_cache_if_needed()
+    with _web_agent_cache_lock:
+        agent = _web_agents.get(session_id)
+        if agent is not None:
+            _touch_web_agent_cache(session_id)
+        return agent
 
 
 def _has_pending_web_approval(session_id: str) -> bool:
     try:
         from tools import approval as approval_mod
 
-        pending = getattr(approval_mod, "_gateway_pending", None)
-        if isinstance(pending, dict):
-            return session_id in pending
+        if approval_mod.has_blocking_approval(session_id):
+            return True
+        with approval_mod._lock:
+            return session_id in approval_mod._pending
     except Exception:
         _log.debug("Ignoring error in _has_pending_web_approval()", exc_info=True)
     return False
 
 
+def _web_agent_cache_owned(session_id: str, agent: Any, *, include_warming: bool = True) -> bool:
+    from spark_cli.web_agent_cache import has_live_children
+
+    return (
+        _is_web_turn_active(session_id)
+        or (include_warming and session_id in _web_warm_inflight)
+        or _has_pending_web_approval(session_id)
+        or vars(agent).get("_session_db") is not None
+        or has_live_children(agent)
+    )
+
+
 def _evict_web_agent_cache_if_needed() -> None:
-    limit = _web_agent_cache_limit()
-    if len(_web_agents) <= limit:
-        return
-    for sid in list(_web_agents.keys()):
-        if len(_web_agents) <= limit:
-            break
-        if _is_web_turn_active(sid) or _has_pending_web_approval(sid):
-            continue
-        _close_web_agent(sid)
-        _web_agent_last_used.pop(sid, None)
-        _streaming_pipeline_metrics.record_agent_eviction()
+    from spark_cli.web_agent_cache import durable_cache_owners, retained_context_bytes
+
+    # Count cannot be over its minimum of one for a singleton cache. Avoid a
+    # second config read on cold creation; this is the common preparation path.
+    limit = _web_agent_cache_limit() if len(_web_agents) > 1 else 1
+    idle_seconds, byte_limit = _web_agent_cache_policy()
+    now = time.monotonic()
+    with _web_agent_cache_lock:
+        for metadata in (
+            _web_agent_last_used, _web_agent_signatures,
+            _web_agent_history_revisions, _web_agent_context_estimates,
+        ):
+            for sid in list(metadata):
+                if sid not in _web_agents:
+                    metadata.pop(sid, None)
+        sizes = {}
+        for sid, agent in _web_agents.items():
+            fields = ("_session_messages", "messages", "_cached_system_prompt",
+                      "_system_prompt", "system_prompt", "tools")
+            key = tuple(
+                (id(value), len(value) if isinstance(value, (list, dict, str)) else 0)
+                for value in (getattr(agent, name, None) for name in fields)
+            )
+            estimate = _web_agent_context_estimates.get(sid)
+            if estimate is None or estimate[0] != key or sid not in _web_agent_history_revisions:
+                estimate = (key, retained_context_bytes(agent))
+                _web_agent_context_estimates[sid] = estimate
+            sizes[sid] = estimate[1]
+        total = sum(sizes.values())
+        candidates = [
+            sid for sid in _web_agents
+            if len(_web_agents) > limit or (byte_limit > 0 and total > byte_limit)
+            or (idle_seconds > 0 and now - _web_agent_last_used.get(sid, now) >= idle_seconds)
+        ]
+        try:
+            protected = durable_cache_owners(candidates)
+        except Exception:
+            # Uncertain durable ownership must not cause destructive cleanup.
+            _log.debug("cache ownership read failed", exc_info=True)
+            protected = set(candidates)
+        for sid in list(_web_agents):
+            expired = idle_seconds > 0 and now - _web_agent_last_used.get(sid, now) >= idle_seconds
+            pressure = len(_web_agents) > limit or (byte_limit > 0 and total > byte_limit)
+            if not expired and not pressure:
+                continue
+            agent = _web_agents.get(sid)
+            if agent is None or sid in protected or _web_agent_cache_owned(sid, agent):
+                continue
+            _close_web_agent(sid)
+            total -= sizes[sid]
+            _streaming_pipeline_metrics.record_agent_eviction()
+        # Recent warm-request bookkeeping is independent of durable session count.
+        for sid, touched in list(_web_warm_recent.items()):
+            if now - touched >= 5.0:
+                _web_warm_recent.pop(sid, None)
+        while len(_web_warm_recent) > 256:
+            _web_warm_recent.pop(next(iter(_web_warm_recent)))
+
+
+async def _maintain_web_agent_cache() -> None:
+    """One sequential sweep on existing workers, cancelled by server lifespan."""
+    def sweep() -> float:
+        _evict_web_agent_cache_if_needed()
+        idle_seconds, _ = _web_agent_cache_policy()
+        return min(30.0, max(0.05, idle_seconds)) if idle_seconds else 30.0
+
+    while True:
+        try:
+            delay = await _run_blocking(sweep)
+        except Exception:
+            _log.debug("web agent cache maintenance failed", exc_info=True)
+            delay = 30.0
+        await asyncio.sleep(delay)
 
 
 def _store_web_agent(session_id: str, agent: Any, signature: Any) -> None:
-    _web_agents[session_id] = agent
-    _web_agent_signatures[session_id] = signature
-    _touch_web_agent_cache(session_id)
+    with _web_agent_cache_lock:
+        _web_agents[session_id] = agent
+        _web_agent_signatures[session_id] = signature
+        _web_agent_history_revisions.pop(session_id, None)
+        _web_agent_context_estimates.pop(session_id, None)
+        _touch_web_agent_cache(session_id)
     _evict_web_agent_cache_if_needed()
+
+
+def _web_agent_history_for_preparation(preparation: Any, agent: Any, signature: Any):
+    """Reuse only a verified durable prefix in this profile, route and agent.
+
+    A send consumes the stamp before its worker mutates agent history. A later
+    warm request can establish a new stamp. The eager accepted prompt is outside
+    preparation.history_count and is never replayed as past history.
+    """
+    from core.spark_state import SessionDB
+    from spark_cli.web_agent_cache import history_revision, same_history_prefix
+
+    revision = preparation.revision
+    with _web_agent_cache_lock:
+        stamp = _web_agent_history_revisions.get(preparation.session_id)
+    if revision is not None and stamp is not None and agent is not None:
+        db = SessionDB()
+        try:
+            db._conn.execute("BEGIN")
+            current = history_revision(db, preparation.session_id)
+        finally:
+            db.close()
+        if (
+            stamp[0] is agent and stamp[1] == revision
+            and stamp[2] is getattr(agent, "_session_messages", None)
+            and _web_agent_signatures.get(preparation.session_id) == signature
+            and len(getattr(agent, "_session_messages", [])) == revision.count
+            and same_history_prefix(revision, current)
+        ):
+            with _web_agent_cache_lock:
+                _web_agent_history_revisions.pop(preparation.session_id, None)
+            db = SessionDB()
+            try:
+                db.reopen_session(preparation.session_id)
+            finally:
+                db.close()
+            return agent._session_messages, True
+    with _web_agent_cache_lock:
+        _web_agent_history_revisions.pop(preparation.session_id, None)
+    return preparation.history(), False
+
+
+def _warm_web_agent(preparation: Any, turn_route: dict[str, Any]) -> bool:
+    """Worker-owned snapshot read and connectionless cache hydration."""
+    from core.spark_state import SessionDB
+    from spark_cli.web_agent_cache import history_revision
+
+    sid = preparation.session_id
+    agent = _get_web_cached_agent(sid)
+    if agent is not None and _web_agent_cache_owned(sid, agent, include_warming=False):
+        return False
+    signature_matches = agent is not None and _web_agent_signatures.get(sid) == turn_route["signature"]
+    db = SessionDB()
+    try:
+        db._conn.execute("BEGIN")
+        revision = history_revision(db, sid)
+        with _web_agent_cache_lock:
+            stamp = _web_agent_history_revisions.get(sid)
+        if signature_matches and stamp is not None and stamp[0] is agent and stamp[1] == revision:
+            history = stamp[2]
+            if isinstance(history, list) and len(history) == revision.count and history is getattr(agent, "_session_messages", None):
+                return True
+        conversation_history = db.get_messages_as_conversation(sid)
+    finally:
+        db.close()
+    if not signature_matches:
+        agent = _new_web_agent(
+            session_id=sid, model=turn_route["model"], runtime=turn_route["runtime"],
+            request_overrides=turn_route.get("request_overrides"), signature=turn_route["signature"],
+            token_callback=None, tool_start_callback=None, tool_complete_callback=None,
+            reasoning_callback=None, status_callback=None,
+        )
+    if agent is None:
+        raise RuntimeError("Warm preparation did not create an agent")
+    _hydrate_web_agent_from_history(agent, conversation_history)
+    hydrated_history = agent._session_messages
+    with _web_agent_cache_lock:
+        if _web_agents.get(sid) is agent:
+            _web_agent_context_estimates.pop(sid, None)
+            _web_agent_history_revisions[sid] = (agent, revision, hydrated_history)
+    return False
 
 
 def _web_max_iterations() -> int:
@@ -4747,6 +5061,7 @@ class KanbanUpdate(BaseModel):
 
 
 class ConversationCreate(BaseModel):
+    submission_id: str | None = Field(default=None, min_length=1, max_length=200)
     message: str
     model: str | None = None
     context_items: list = []
@@ -4776,6 +5091,7 @@ class FakeStreamStart(BaseModel):
 
 
 class ConversationMessage(BaseModel):
+    submission_id: str | None = Field(default=None, min_length=1, max_length=200)
     message: str
     context_items: list = []
 
@@ -4829,18 +5145,27 @@ def _make_web_chat_callbacks(
     # unrelated turns from sharing callback state.
     turn_context = _WebTurnCallbackContext(session_id)
     tool_started_monotonic: dict[str, float] = {}
+    retry_owner: WebActiveTurn | None = None
+    first_token_recorded = False
 
     def publish_status(kind: str, message: str, *, phase: str | None = None) -> None:
         _record_web_first_visible_event(turn_context.session_id, "status")
         _publish_web_status(turn_context.session_id, kind, message, phase=phase)
 
     def token_callback(token: str | None) -> None:
+        nonlocal first_token_recorded
         if token is None:
             return
         token = _sanitize_web_chat_text(token)
         if not token:
             return
         current_session_id = turn_context.session_id
+        if not first_token_recorded:
+            _, timing_turn = _get_web_turn(current_session_id)
+            if timing_turn is not None:
+                with timing_turn.lock:
+                    timing_turn.timing_summary.mark("first_token")
+                first_token_recorded = True
         _append_web_turn_token(current_session_id, token)
         _record_web_first_visible_event(current_session_id, "token")
         _publish_event("chat.token", {"t": token}, current_session_id)
@@ -4861,6 +5186,11 @@ def _make_web_chat_callbacks(
         started = tool_started_monotonic.pop(tid, None)
         duration_seconds = max(0.0, time.monotonic() - started) if started is not None else None
         current_session_id = turn_context.session_id
+        _, timing_turn = _get_web_turn(current_session_id)
+        if timing_turn is not None and duration_seconds is not None:
+            with timing_turn.lock:
+                timing_turn.timing_summary.tool_seconds += duration_seconds
+                timing_turn.timing_summary.tool_count += 1
         if name == "todo":
             _record_web_plan(current_session_id, result)
         publish_status("tool_finished", f"Tool finished: {name}", phase="streaming")
@@ -4885,6 +5215,26 @@ def _make_web_chat_callbacks(
         _publish_event("chat.reasoning", {"text": _truncate_str(text, 8000)}, current_session_id)
 
     def status_callback(kind: str, message: str) -> None:
+        nonlocal retry_owner
+        from core.run_agent.retry_policy import RetryStatus
+
+        _, current_turn = _get_web_turn(turn_context.session_id)
+        if retry_owner is None:
+            retry_owner = current_turn
+
+        if isinstance(message, RetryStatus):
+            from spark_cli.retry_projection import publish_retry_status
+
+            _, turn = _get_web_turn(turn_context.session_id)
+            if turn is None or turn is not retry_owner or turn.interrupt_requested:
+                return
+            if message.data.get("run_id") and message.data["run_id"] != turn.turn_id:
+                return
+            message = publish_retry_status(turn_context.session_id, message, turn)
+            if _get_web_turn(turn_context.session_id)[1] is not turn or turn.interrupt_requested:
+                return
+            publish_status("retry", message, phase="retry")
+            return
         publish_status(kind, message)
 
     def session_migrated_callback(old_id: str, new_id: str, reason: str) -> None:
@@ -5864,6 +6214,9 @@ def _build_context_augmented_message(session_id: str, user_message: str, context
 
     parts: list[str] = []
     for item in context_items:
+        if item.get("type") == "skill":
+            parts.append(_selected_skill_context(item, session_id, load_body=True))
+            continue
         source_path = item.get("source_path")
         label = item.get("label") or (source_path.split("/")[-1] if source_path else "context")
         mode = item.get("inclusion_mode", "full")
@@ -5933,6 +6286,30 @@ def _refresh_web_agent_for_computer_use(agent: Any, user_message: str) -> None:
         _log.debug("computer_use web tool refresh failed", exc_info=True)
 
 
+def _run_web_agent_turn_with_db(
+    agent: Any, message: str, history: list[dict[str, Any]] | None = None,
+    items: list | None = None,
+    stopped: Callable[[], bool] | None = None,
+) -> Any:
+    """Lease a real SessionDB for this worker, never for the idle cache."""
+    from core.spark_state import SessionDB
+
+    db_path = getattr(agent, "_web_session_db_path", None)
+    if db_path is None:
+        # Compatibility for injected agents that do not use web-owned storage.
+        return _run_web_agent_turn(agent, message, history, items)
+    db = SessionDB(db_path)
+    agent._session_db = db
+    try:
+        if stopped is not None and stopped():
+            raise InterruptedError("Chat preparation stopped")
+        return _run_web_agent_turn(agent, message, history, items)
+    finally:
+        if agent._session_db is db:
+            agent._session_db = None
+        db.close()
+
+
 def _run_web_agent_turn(
     agent: Any,
     user_message: str,
@@ -5941,17 +6318,37 @@ def _run_web_agent_turn(
 ) -> Any:
     from tools.approval import reset_current_session_key, set_current_session_key
 
+    typed_message = user_message
     if context_items:
         user_message = _build_context_augmented_message(agent.session_id, user_message, context_items)
 
     _, active_turn = _get_web_turn(agent.session_id)
+    if active_turn is not None:
+        with active_turn.lock:
+            active_turn.timing_summary.mark("execution_started")
     agent._root_run_id = active_turn.turn_id if active_turn else None
 
-    _refresh_web_agent_for_computer_use(agent, user_message)
+    _refresh_web_agent_for_computer_use(agent, typed_message)
 
     user_message = _inject_brief_if_present(agent.session_id, user_message)
     user_message = _with_long_document_delivery_instruction(user_message)
 
+    transport_methods = {}
+    recorder = getattr(agent, "_efficiency_recorder", None)
+    iteration_start = len(recorder.snapshot().get("model_iterations", [])) if recorder else 0
+    if active_turn is not None:
+        for method_name in ("_interruptible_streaming_api_call", "_interruptible_api_call"):
+            original = getattr(agent, method_name, None)
+            if not callable(original):
+                continue
+            transport_methods[method_name] = (original, method_name in vars(agent))
+
+            def timed_transport(*args, _original=original, **kwargs):
+                with active_turn.lock:
+                    active_turn.timing_summary.mark("provider_start")
+                return _original(*args, **kwargs)
+
+            setattr(agent, method_name, timed_transport)
     tok = set_current_session_key(agent.session_id)
     try:
         if conversation_history is not None:
@@ -5959,8 +6356,16 @@ def _run_web_agent_turn(
         else:
             result = agent.run_conversation(user_message)
         _maybe_capture_codex_usage_limit(agent, result)
+        if active_turn is not None:
+            with active_turn.lock:
+                active_turn.timing_summary.account(result, iteration_start)
         return result
     finally:
+        for method_name, (original, had_instance_value) in transport_methods.items():
+            if had_instance_value:
+                setattr(agent, method_name, original)
+            else:
+                delattr(agent, method_name)
         agent._root_run_id = None
         reset_current_session_key(tok)
 
@@ -5990,6 +6395,7 @@ async def _complete_web_agent_turn(
     before_persist: Callable[[], None] | None = None,
     after_persist: Callable[[], None] | None = None,
     log_context: str = "Web turn",
+    interrupted: bool = False,
 ) -> str:
     """Finalize one web-agent task and always release its browser-facing state.
 
@@ -6031,6 +6437,7 @@ async def _complete_web_agent_turn(
             active_turn,
             result,
             agent=agent,
+            interrupted=interrupted,
         )
         if agent is not None:
             _maybe_auto_title_web(agent, final_session_id, user_message, result)
@@ -6046,7 +6453,7 @@ async def _complete_web_agent_turn(
         _web_queues.pop(requested_session_id, None)
         _publish_event(
             "chat.turn_done",
-            _turn_done_payload(result, final_session_id, turn_outcome=turn_outcome),
+            _turn_done_payload(result, final_session_id, turn_outcome=turn_outcome, interrupted=interrupted),
             final_session_id,
         )
         _clear_web_turn(final_session_id)
@@ -6094,16 +6501,21 @@ def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
 
 
 def _close_web_agent(session_id: str) -> None:
-    agent = _web_agents.pop(session_id, None)
-    _web_agent_signatures.pop(session_id, None)
-    _web_agent_last_used.pop(session_id, None)
-    db = getattr(agent, "_session_db", None)
-    close = getattr(db, "close", None)
-    if callable(close):
-        try:
-            close()
-        except Exception:
-            _log.debug("Ignoring error in _close_web_agent()", exc_info=True)
+    with _web_agent_cache_lock:
+        agent = _web_agents.pop(session_id, None)
+        _web_agent_signatures.pop(session_id, None)
+        _web_agent_last_used.pop(session_id, None)
+        _web_agent_history_revisions.pop(session_id, None)
+        _web_agent_context_estimates.pop(session_id, None)
+    # SP03: a running worker exclusively owns its attached physical DB. Never
+    # close its agent here, nor cancel children when retiring a route entry.
+    if agent is not None and not _web_agent_cache_owned(session_id, agent, include_warming=False):
+        close = getattr(agent, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                _log.debug("web agent resource cleanup failed session=%s", session_id, exc_info=True)
 
 
 def _default_web_chat_model() -> str:
@@ -6118,7 +6530,11 @@ def _resolve_web_turn_route(
     explicit_model: str | None = None,
 ) -> dict[str, Any]:
     """Resolve the effective global model/runtime for one web chat turn."""
-    from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
+    from agent.smart_model_routing import (
+        merge_route_request_overrides,
+        resolve_auto_route,
+        resolve_turn_route,
+    )
     from spark_cli.model_config import read_global_model_config
     from spark_cli.runtime_provider import resolve_runtime_provider
 
@@ -6150,12 +6566,21 @@ def _resolve_web_turn_route(
             available_catalog = _resolve_codex_model_catalog()["catalog"]
         except Exception:
             _log.debug("Codex catalog unavailable for Auto routing", exc_info=True)
-    route = resolve_turn_route(
+    routing_config = {**(cfg.get("smart_model_routing", {}) or {}),
+                      "auto": model_cfg.auto_policy.as_dict()}
+    # The configured explicit choice must bypass Auto even when adaptive
+    # routing is disabled. Reuse its existing pinned-route branch, never a
+    # second classifier or a cached-prefix mutation.
+    pinned = (explicit_model is not None and explicit_model.lower() != "auto") or (
+        model_cfg.is_pinned and explicit_model is None
+    )
+    resolver = resolve_auto_route if pinned else resolve_turn_route
+    route = resolver(
         user_message,
-        cfg.get("smart_model_routing", {}) or {},
+        routing_config,
         primary,
         available_catalog=available_catalog,
-        explicit_model=explicit_model,
+        explicit_model=model_cfg.model if model_cfg.is_pinned and explicit_model is None else explicit_model,
     )
     budget_cfg = cfg.get("response_budget", {}) or {}
     return merge_route_request_overrides(
@@ -6201,33 +6626,39 @@ def _new_web_agent(
 
     _close_web_agent(session_id)
     runtime = runtime or {}
-    agent = AIAgent(
-        session_id=session_id,
-        model=model,
-        max_iterations=_web_max_iterations(),
-        api_key=runtime.get("api_key"),
-        base_url=runtime.get("base_url"),
-        provider=runtime.get("provider"),
-        api_mode=runtime.get("api_mode"),
-        command=runtime.get("command"),
-        args=list(runtime.get("args") or []),
-        credential_pool=runtime.get("credential_pool"),
-        request_overrides=request_overrides,
-        stream_delta_callback=token_callback,
-        tool_start_callback=tool_start_callback,
-        tool_complete_callback=tool_complete_callback,
-        reasoning_callback=reasoning_callback,
-        status_callback=status_callback,
-        session_migrated_callback=session_migrated_callback,
-        subagent_event_callback=subagent_event_callback,
-        clarify_callback=lambda question, choices=None: _web_clarify_callback(
-            question, choices, session_id=session_id
-        ),
-        quiet_mode=True,
-        platform="web",
-        session_db=SessionDB(),
-        working_dir=working_dir,
-    )
+    db = SessionDB()
+    try:
+        agent: Any = AIAgent(
+            session_id=session_id,
+            model=model,
+            max_iterations=_web_max_iterations(),
+            api_key=runtime.get("api_key"),
+            base_url=runtime.get("base_url"),
+            provider=runtime.get("provider"),
+            api_mode=runtime.get("api_mode"),
+            command=runtime.get("command"),
+            args=list(runtime.get("args") or []),
+            credential_pool=runtime.get("credential_pool"),
+            request_overrides=request_overrides,
+            stream_delta_callback=token_callback,
+            tool_start_callback=tool_start_callback,
+            tool_complete_callback=tool_complete_callback,
+            reasoning_callback=reasoning_callback,
+            status_callback=status_callback,
+            session_migrated_callback=session_migrated_callback,
+            subagent_event_callback=subagent_event_callback,
+            clarify_callback=lambda question, choices=None: _web_clarify_callback(
+                question, choices, session_id=session_id
+            ),
+            quiet_mode=True,
+            platform="web",
+            session_db=db,
+            working_dir=working_dir,
+        )
+    finally:
+        db.close()
+    agent._web_session_db_path = db.db_path
+    agent._session_db = None
     _store_web_agent(session_id, agent, signature)
     return agent
 
@@ -6264,21 +6695,27 @@ def _maybe_auto_title_web(
         final = _extract_final_response(result)
         if not final:
             return
-        session_db = getattr(agent, "_session_db", None)
-        if session_db is None:
+        db_path = getattr(agent, "_web_session_db_path", None)
+        if db_path is None:
             return
         messages = result.get("messages", []) if isinstance(result, dict) else []
+        if sum(m.get("role") == "user" for m in messages) > 2:
+            return
 
-        from agent.title_generator import maybe_auto_title
+        def title_in_worker():
+            from agent.title_generator import auto_title_session
+            from core.spark_state import SessionDB
 
-        maybe_auto_title(
-            session_db,
-            session_id,
-            user_message,
-            final,
-            messages,
-            on_titled=lambda _title: _emit_web_session_updated(session_id),
-        )
+            db = SessionDB(db_path)
+            try:
+                auto_title_session(
+                    db, session_id, user_message, final,
+                    on_titled=lambda _title: _emit_web_session_updated(session_id),
+                )
+            finally:
+                db.close()
+
+        get_async_runtime().submit_blocking(title_in_worker)
     except Exception:
         _log.debug("web auto-title failed session=%s", session_id, exc_info=True)
 
@@ -6747,11 +7184,20 @@ def _validate_context_items(raw_items: list, workspace_slug: str | None = None) 
     project_root = _get_workspace_root(workspace_slug) if workspace_slug else workspace_root
 
     validated = []
+    selected_ids = set()
     for raw in raw_items:
         try:
             item = ContextItem.model_validate(raw)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Invalid context item: {exc}") from exc
+
+        if item.type.value == "skill":
+            if item.skill_id in selected_ids:
+                raise HTTPException(status_code=400, detail="Duplicate skill selection.")
+            selected_ids.add(item.skill_id)
+            if item.scope.value != "one_turn" or item.source_path or item.content or item.content_ref:
+                raise HTTPException(status_code=400, detail="Skills require one-turn canonical selection only.")
+            _selected_skill_context(item.model_dump())
 
         if item.source_path:
             try:
@@ -6777,6 +7223,13 @@ def _validate_context_items(raw_items: list, workspace_slug: str | None = None) 
 
 
 def _persist_context_items(session_id: str, raw_items: list) -> None:
+    # Fence selections against the route's validated target before acceptance.
+    # The canonical receipt retains identity/revision; transient selections do
+    # not belong in the legacy pinned-file table (whose schema is unchanged).
+    for item in raw_items:
+        if item.get("type") == "skill":
+            _selected_skill_context(item, session_id)
+    raw_items = [item for item in raw_items if item.get("type") != "skill"]
     if not raw_items:
         return
     try:
@@ -6844,99 +7297,208 @@ class TokenEstimateRequest(BaseModel):
 
 @app.post("/api/estimate-tokens")
 async def estimate_tokens(body: TokenEstimateRequest):
-    from spark_cli.context_models import ContextBucket, ContextEstimate
+    """Estimates are component counts, never provider usage or aggregate billing."""
+    def read_estimate():
+        from core.spark_state import SessionDB
 
-    prompt_tokens = _count_tokens_fast(body.prompt)
-
-    # Count attached context item tokens
-    attached_tokens = 0
-    item_buckets: list[ContextBucket] = []
-    if body.context_items:
-        workspace_root: Path | None = None
-        for raw in body.context_items:
-            item = raw if isinstance(raw, dict) else (raw.model_dump() if hasattr(raw, "model_dump") else {})
-            label = item.get("label") or item.get("source_path") or item.get("id", "item")
-            mode = item.get("inclusion_mode", "full")
-            if mode == "path_only":
-                t = _count_tokens_fast(item.get("source_path", ""))
-            else:
-                content = item.get("content") or ""
-                if not content and item.get("source_path") and workspace_root is None:
-                    # Try to resolve workspace root from session
-                    if body.session_id:
-                        try:
-                            from core.spark_state import SessionDB
-                            db = SessionDB()
-                            sess = db.get_session(body.session_id)
-                            if sess and sess.get("workspace_slug"):
-                                slug = sess["workspace_slug"]
-                                workspace_root = _get_workspace_root(slug)
-                        except Exception:
-                            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
-                if not content and item.get("source_path") and workspace_root:
-                    content = _resolve_context_item_content(item, workspace_root) or ""
-                t = _count_tokens_fast(content)
-            attached_tokens += t
-            item_buckets.append(ContextBucket(label=label, tokens=t))
-
-    pinned_tokens = _count_tokens_fast(body.brief)
-
-    # Estimate history tokens from DB if session_id provided
-    history_tokens = 0
-    if body.session_id and body.history_message_count > 0:
-        try:
-            from core.spark_state import SessionDB
-            db = SessionDB()
-            messages = db.get_messages(body.session_id)
-            db.close()
-            # Take the most recent history_message_count messages
-            recent = messages[-body.history_message_count:]
-            for m in recent:
-                history_tokens += _count_tokens_fast(m.get("content") or "")
-        except Exception:
-            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
-
-    total = prompt_tokens + attached_tokens + pinned_tokens + history_tokens
-
-    # Determine context window from model capabilities
-    context_window = 200_000
-    if body.model:
-        try:
+        prompt = _count_tokens_fast(body.prompt)
+        attached = sum(_count_tokens_fast(str(item.get("source_path", "") if item.get("inclusion_mode") == "path_only" else item.get("content") or "")) for item in body.context_items if isinstance(item, dict))
+        history = tools = instructions = 0
+        context_window = 200_000
+        model_config = load_config().get("model") or {}
+        if isinstance(model_config, dict) and isinstance(model_config.get("context_length"), int) and model_config["context_length"] > 0:
+            context_window = model_config["context_length"]
+        if body.model:
             from agent.models_dev import get_model_capabilities
-            route = _resolve_web_turn_route("", explicit_model=body.model)
-            route_runtime = route.get("runtime") or {}
-            route_provider = str(route_runtime.get("provider") or "")
-            mc = get_model_capabilities(provider=route_provider, model=body.model)
-            if mc and mc.context_window > 0:
-                context_window = mc.context_window
-        except Exception:
-            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
+            capabilities = get_model_capabilities(provider=model_config.get("provider", "") if isinstance(model_config, dict) else "", model=body.model)
+            if capabilities and capabilities.context_window > 0:
+                context_window = capabilities.context_window
+        sid = None
+        instruction_basis = "unknown"
+        if body.session_id:
+            db = SessionDB()
+            try:
+                resolved = db.resolve_session_id(body.session_id)
+                if resolved:
+                    sid = db.resolve_latest_descendant(resolved)
+                    row = db.get_session(sid) or {}
+                    agent = _web_agents.get(sid)
+                    engine = getattr(agent, "context_compressor", None)
+                    if engine:
+                        context_window = engine.context_length
+                    system = getattr(agent, "_cached_system_prompt", None) or row.get("system_prompt")
+                    if system:
+                        instructions = _count_tokens_fast(system)
+                        instruction_basis = "estimate (includes loaded memory)"
+                    schemas = getattr(agent, "tools", None)
+                    if schemas:
+                        tools += _count_tokens_fast(json.dumps(schemas, default=str))
+                    for group in db._conn.execute(
+                        "SELECT role, (tool_calls IS NOT NULL) AS has_calls, COUNT(*) AS count, SUM(LENGTH(COALESCE(content, '')) + LENGTH(COALESCE(tool_calls, ''))) AS chars FROM messages WHERE session_id = ? GROUP BY role, has_calls", (sid,)
+                    ):
+                        tokens = int(group["chars"] or 0) // 4 + int(group["count"]) * 10
+                        if group["role"] == "system":
+                            if not system:
+                                instructions += tokens
+                                instruction_basis = "estimate (includes loaded memory)"
+                        elif group["role"] == "tool" or group["has_calls"]:
+                            tools += tokens
+                        else:
+                            history += tokens
+            finally:
+                db.close()
+        instructions += _count_tokens_fast(body.brief)
+        buckets = [
+            {"label": "Prompt", "tokens": prompt, "basis": "estimate"},
+            {"label": "History", "tokens": history, "basis": "estimate"},
+            {"label": "Tools", "tokens": tools, "basis": "estimate (schemas unknown when cold)"},
+            {"label": "Instructions", "tokens": instructions, "basis": instruction_basis},
+            {"label": "Memory", "tokens": None, "basis": "unknown separately; included in loaded instructions"},
+            {"label": "Attachments", "tokens": attached, "basis": "estimate (unloaded files excluded)"},
+        ]
+        total = prompt + attached + history + tools + instructions
+        utilization = total / context_window if context_window else 0
+        return {"prompt_tokens": prompt, "attached_tokens": attached,
+                "pinned_tokens": _count_tokens_fast(body.brief), "history_tokens": history,
+                "total_tokens": total, "context_window": context_window,
+                "utilization": utilization,
+                "warning": "limit_exceeded" if utilization >= .95 else "compression_likely" if utilization >= .8 else None,
+                "buckets": [{"label": "Prompt", "tokens": prompt},
+                            {"label": "Attached", "tokens": attached},
+                            {"label": "Brief", "tokens": _count_tokens_fast(body.brief)},
+                            {"label": "History", "tokens": history}],
+                "breakdown": buckets, "provider_actual_tokens": None, "session_id": sid}
+    return await _run_blocking(read_estimate)
 
-    utilization = total / context_window if context_window > 0 else 0.0
-    warning = None
-    if utilization >= 0.95:
-        warning = "limit_exceeded"
-    elif utilization >= 0.80:
-        warning = "compression_likely"
 
-    buckets = [
-        ContextBucket(label="Prompt", tokens=prompt_tokens),
-        ContextBucket(label="Attached", tokens=attached_tokens, items=[b.label for b in item_buckets]),
-        ContextBucket(label="Brief", tokens=pinned_tokens),
-        ContextBucket(label="History", tokens=history_tokens),
-    ]
+class ContextCompactRequest(BaseModel):
+    expected_revision: str
 
-    return ContextEstimate(
-        prompt_tokens=prompt_tokens,
-        attached_tokens=attached_tokens,
-        pinned_tokens=pinned_tokens,
-        history_tokens=history_tokens,
-        total_tokens=total,
-        context_window=context_window,
-        utilization=utilization,
-        warning=warning,
-        buckets=buckets,
+
+def _context_preflight(session_id: str):
+    from core.spark_state import SessionDB
+    from spark_cli.context_compaction import compressor_for_session, require_idle, revision
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        sid = db.resolve_latest_descendant(sid)
+        row = db.get_session(sid)
+        if not row:
+            raise HTTPException(status_code=404, detail="Session not found")
+        messages = db.get_messages_as_conversation(sid)
+        cached = getattr(_web_agents.get(sid), "context_compressor", None)
+        compressor = compressor_for_session(row, cached)
+        policy = compressor.preflight(messages)
+        reason = None
+        try:
+            require_idle(db, sid)
+            if _is_web_turn_active(sid):
+                raise ValueError("Wait for the active turn before compacting.")
+            if not policy["tool_pairs_valid"]:
+                raise ValueError("Tool results are incomplete; wait for a safe boundary.")
+        except ValueError as exc:
+            reason = str(exc)
+        return {"session_id": sid, "revision": revision(messages),
+                "can_compact": reason is None, "blocked_reason": reason, **policy}
+    finally:
+        db.close()
+
+
+@app.get("/api/conversations/{session_id}/context/preflight")
+async def context_compaction_preflight(session_id: str):
+    return await _run_blocking(_context_preflight, session_id)
+
+
+@app.post("/api/conversations/{session_id}/context/compact")
+async def compact_conversation_context(session_id: str, body: ContextCompactRequest):
+    # Reserve synchronously before the first await. The existing send path sees
+    # this registry entry and rejects concurrent work, including old aliases.
+    from core.spark_state import SessionDB
+    from spark_cli.context_compaction import (
+        compressor_for_session,
+        persist_compaction,
+        require_idle,
+        revision,
     )
+
+    ids = _resolve_web_turn_ids(session_id)
+    sid = ids.get("latest") or ids.get("resolved")
+    if not sid:
+        raise HTTPException(status_code=404, detail="Session not found")
+    with _with_web_turn_lock():
+        if _is_web_turn_active(sid):
+            raise HTTPException(status_code=409, detail="Wait for the active turn before compacting.")
+        reservation = WebActiveTurn(started_at=time.time(), last_event_at=time.time(),
+                                    status="Compacting context…", phase="context_compaction",
+                                    interrupt_requested=False, active_agent_session_id=None)
+        key = _web_turn_key(sid)
+        _web_active_turns[key] = reservation
+    reserved_keys = {key}
+
+    def reserve_child(child):
+        # Cover the interval after the lineage commit but before the worker
+        # returns: send resolves the new leaf immediately after that commit.
+        with _with_web_turn_lock():
+            reserved_keys.add(child)
+            _web_active_turns[child] = reservation
+
+    def run():
+        db = SessionDB()
+        try:
+            row = db.get_session(sid)
+            if not row:
+                raise HTTPException(status_code=404, detail="Session not found")
+            require_idle(db, sid)
+            messages = db.get_messages_as_conversation(sid)
+            if revision(messages) != body.expected_revision:
+                raise ValueError("Context changed; review a fresh preflight before compacting.")
+            cached = getattr(_web_agents.get(sid), "context_compressor", None)
+            compressor = compressor_for_session(row, cached)
+            prior = next((checkpoint for owner in reversed(db.resolve_compression_chain(sid))
+                          if (checkpoint := db.get_latest_context_checkpoint(owner))), None)
+            if prior:
+                from agent.context_checkpoint import ContextCheckpoint
+                compressor._typed_checkpoint = ContextCheckpoint.from_dict(prior["payload"])
+                compressor.compression_count = compressor._typed_checkpoint.checkpoint_sequence
+            compressor.set_deterministic_state(
+                task_identity=(compressor._typed_checkpoint.task_identity if compressor._typed_checkpoint else sid),
+                current_plan=list(compressor._typed_checkpoint.current_plan) if compressor._typed_checkpoint else [],
+                context_epoch=compressor._typed_checkpoint.context_epoch if compressor._typed_checkpoint else 0,
+            )
+            compressed = compressor.compress(messages, safe_boundary=True)
+            if compressed is messages:
+                return {"session_id": sid, **compressor.last_compaction}
+            return persist_compaction(db, sid, messages, compressed, compressor, body.expected_revision, reserve_child)
+        finally:
+            db.close()
+
+    async def finish():
+        try:
+            result = await _run_blocking(run)
+            if result.get("status") == "compacted":
+                _close_web_agent(sid)
+                _emit_sessions_changed("updated", result["session_id"])
+            return result
+        finally:
+            with _with_web_turn_lock():
+                for owned_key in reserved_keys:
+                    if _web_active_turns.get(owned_key) is reservation:
+                        _web_active_turns.pop(owned_key, None)
+
+    work = asyncio.create_task(finish())
+    # Keep a strong reference through cancellation; consume a disconnected
+    # client's exception without turning uncertain acceptance into a retry.
+    def completed(task):
+        if not task.cancelled():
+            task.exception()
+    work.add_done_callback(completed)
+    try:
+        return await asyncio.shield(work)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.patch("/api/sessions/{session_id}/kanban")
@@ -7129,7 +7691,74 @@ async def canvas_chat(body: CanvasChatBody):
     return {"ok": True, "reply": reply, "model": turn_route["model"]}
 
 
+_root_submission_epoch = uuid.uuid4().hex
+
+
+def _root_submission_session(request_id: str | None, fallback: str, namespace: str = "create") -> str:
+    if not request_id:
+        return fallback
+    import hashlib
+    return "submission_" + hashlib.sha256((namespace + ":" + request_id).encode()).hexdigest()
+
+
+def _root_submission(session_id: str, body, operation: str, *, accept: bool = False, route: str = ""):
+    """Receipt lookup never dispatches, including after an ambiguous process loss."""
+    if not body.submission_id:
+        return None
+    from core.spark_state import SessionDB
+
+    payload = {"message": body.message, "context_items": body.context_items,
+               "model": getattr(body, "model", None), "source": getattr(body, "source", None),
+               "route": route}
+    db = SessionDB()
+    receipt: dict[str, Any] | None
+    try:
+        if accept:
+            receipt = db.accept_runtime_command(
+                session_id, operation, body.submission_id, payload,
+                {"session_id": session_id, "turn_id": uuid.uuid4().hex, "ok": True},
+                {"dispatch": "root", "server_epoch": _root_submission_epoch},
+                compression_family=True, root_message=body.message,
+            )
+        else:
+            receipt = db.get_runtime_command(session_id, operation, body.submission_id, payload,
+                                             compression_family=True)
+        if receipt is None:
+            return None
+        result = dict(receipt["acceptance"])
+        result["submission_id"] = body.submission_id
+        projection = db.get_web_turn_projection(result["turn_id"])
+        status = (projection or {}).get("projection", {}).get("status")
+        result["execution_state"] = (
+            "accepted" if receipt.get("created") or (
+                receipt["intent"].get("server_epoch") == _root_submission_epoch
+                and _is_web_turn_active(result["session_id"])
+            ) else status if status in {"completed", "failed", "interrupted", "cancelled"} else "uncertain"
+        )
+        if operation == "root.workspace":
+            result["source"] = route.replace("/api/workspace/projects/", "workspace:").removesuffix("/conversations")
+        return {"created": receipt.get("created", False), "acceptance": result}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        db.close()
+
+
+def _dispatch_prepared_turn(turn, cancelled, agent, message, history, items):
+    # The check runs in the execution worker, after any queue wait. Never reset
+    # an agent's interrupt flag by entering run_conversation after Stop.
+    if cancelled.is_set() or turn.interrupt_requested:
+        raise InterruptedError("Chat preparation stopped")
+    with turn.lock:
+        turn.timing_summary.mark("execution_started")
+    return _run_web_agent_turn_with_db(
+        agent, message, history, items,
+        stopped=lambda: cancelled.is_set() or turn.interrupt_requested,
+    )
+
+
 @app.post("/api/conversations")
+@_chat_preparation.admitted
 async def create_conversation(body: ConversationCreate):
     """Start a new web chat session. Spawns AIAgent in a thread, returns session_id."""
     import uuid
@@ -7142,6 +7771,11 @@ async def create_conversation(body: ConversationCreate):
 
     request_received_at = time.time()
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
+    session_id = _root_submission_session(body.submission_id, session_id)
+    await _chat_preparation.claim(session_id)
+    receipt = await _chat_preparation.run(_root_submission, session_id, body, "root.create", route="/api/conversations")
+    if receipt:
+        return receipt["acceptance"]
     queue: asyncio.Queue = asyncio.Queue()
     _web_queues[session_id] = queue
 
@@ -7157,35 +7791,43 @@ async def create_conversation(body: ConversationCreate):
         _compaction_failed_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
-    turn_route = _resolve_web_turn_route(body.message, explicit_model=body.model)
+    turn_route = await _chat_preparation.run(_resolve_web_turn_route, body.message, explicit_model=body.model)
     model = turn_route["model"]
     session_model = body.model or ("auto" if turn_route.get("role") else model)
 
     session_source = _normalize_web_session_source(body.source)
     workspace_slug = session_source.split(":", 1)[1] if session_source.startswith("workspace:") else None
 
-    try:
-        from core.spark_state import SessionDB as _SessionDB
-
-        _db = _SessionDB()
+    def prepare_session():
         try:
-            _db._conn.execute(
-                "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
-                "VALUES (?, ?, ?, ?, 'active')",
-                (session_id, session_source, session_model, time.time()),
-            )
-            _db._conn.commit()
-            row = _db.get_session(session_id)
-            if row:
-                _emit_sessions_changed("created", session_id, row)
-        finally:
-            _db.close()
-    except Exception:
-        _log.debug("session create emit failed", exc_info=True)
+            from core.spark_state import SessionDB as _SessionDB
+
+            _db = _SessionDB()
+            try:
+                _db._conn.execute(
+                    "INSERT OR IGNORE INTO sessions (id, source, model, started_at, kanban_status) "
+                    "VALUES (?, ?, ?, ?, 'active')",
+                    (session_id, session_source, session_model, time.time()),
+                )
+                _db._conn.commit()
+                row = _db.get_session(session_id)
+                if row:
+                    _emit_sessions_changed("created", session_id, row)
+            finally:
+                _db.close()
+        except Exception:
+            _log.debug("session create emit failed", exc_info=True)
+
+    await _chat_preparation.run(prepare_session)
 
     message = body.message
-    validated_items = _validate_context_items(body.context_items, workspace_slug=workspace_slug)
-    _persist_context_items(session_id, validated_items)
+    validated_items = await _chat_preparation.run(_validate_context_items, body.context_items, workspace_slug=workspace_slug)
+    await _chat_preparation.run(_persist_context_items, session_id, validated_items)
+
+    receipt = await _chat_preparation.run(_root_submission, session_id, body, "root.create", accept=True, route="/api/conversations")
+    if receipt and not receipt["created"]:
+        return receipt["acceptance"]
+    accepted_submission = receipt["acceptance"] if receipt else None
 
     def _gw_notify(data: dict) -> None:
         approval = dict(data or {})
@@ -7197,23 +7839,37 @@ async def create_conversation(body: ConversationCreate):
         _publish_web_status(current_session_id, "waiting_for_approval", "Waiting for approval…", phase="approval")
         _publish_event("chat.approval_requested", {"approval": _json_safe(approval)}, current_session_id)
 
+    cancel_preparation = threading.Event()
+
+    def prepare_agent():
+        if (cancel_preparation.is_set() or turn.interrupt_requested):
+            raise InterruptedError("Chat preparation stopped")
+        return _new_web_agent(
+            session_id=session_id, model=model, runtime=turn_route["runtime"],
+            request_overrides=turn_route.get("request_overrides"), signature=turn_route["signature"],
+            token_callback=token_callback, tool_start_callback=tool_start_callback,
+            tool_complete_callback=tool_complete_callback, reasoning_callback=reasoning_callback,
+            status_callback=status_callback, session_migrated_callback=session_migrated_callback,
+            subagent_event_callback=subagent_event_callback,
+        )
+
     async def run_agent_task() -> None:
         agent = None
         _active_turn = None
         eager_user_id = None
-        before_message_count = _session_message_count(session_id)
+        before_message_count = 0
         register_gateway_notify(session_id, _gw_notify)
         result = None
         try:
             _touch_web_turn(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
             _, _active_turn = _get_web_turn(session_id)
             _record_web_turn_timing(session_id, "task_started")
-            eager_user_id = _persist_web_user_message(session_id, message)
+            eager_user_id = accepted_submission["user_message_id"] if accepted_submission else await _run_blocking(_persist_web_user_message, session_id, message)
             _record_web_turn_timing(session_id, "user_message_persisted")
             if _active_turn is not None:
                 _active_turn.user_message_id = eager_user_id
-            before_message_count = _session_message_count(session_id)
-            slash_text = _execute_web_slash_command(session_id, message)
+            before_message_count = await _run_blocking(_session_message_count, session_id)
+            slash_text = await _run_blocking(_execute_web_slash_command, session_id, message)
             if slash_text is not None:
                 _publish_web_status(session_id, "slash_command", "Running slash command…", phase="streaming")
                 _publish_event("chat.token", {"t": slash_text}, session_id)
@@ -7221,31 +7877,26 @@ async def create_conversation(body: ConversationCreate):
             else:
                 _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
                 _record_web_turn_timing(session_id, "agent_init_start")
-                agent = await _run_blocking(
-                    lambda: _new_web_agent(
-                        session_id=session_id,
-                        model=model,
-                        runtime=turn_route["runtime"],
-                        request_overrides=turn_route.get("request_overrides"),
-                        signature=turn_route["signature"],
-                        token_callback=token_callback,
-                        tool_start_callback=tool_start_callback,
-                        tool_complete_callback=tool_complete_callback,
-                        reasoning_callback=reasoning_callback,
-                        status_callback=status_callback,
-                        session_migrated_callback=session_migrated_callback,
-                        subagent_event_callback=subagent_event_callback,
-                    ),
-                )
+                agent = await await_preparation(prepared_agent, cancel_preparation)
+                if (cancel_preparation.is_set() or turn.interrupt_requested):
+                    raise InterruptedError("Chat preparation stopped")
                 _record_web_turn_timing(session_id, "agent_init_end")
                 _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 _record_web_turn_timing(session_id, "model_request_start")
+                with turn.lock:
+                    turn.timing_summary.mark("preparation_ready")
+                    turn.timing_summary.mark("execution_queued")
                 result = await _run_web_turn_in_executor(
-                    loop, lambda: _run_web_agent_turn(agent, message, None, _items)
+                    loop, lambda: _dispatch_prepared_turn(turn, cancel_preparation, agent, message, None, _items)
                 )
         except asyncio.CancelledError:
+            cancel_preparation.set()
+            try:
+                await await_preparation(prepared_agent, cancel_preparation)
+            except Exception:
+                pass
             # CancelledError is a BaseException, so `except Exception` below
             # misses it and `result` would stay None.  The finally block then
             # publishes chat.turn_done with status "completed" and no
@@ -7267,6 +7918,7 @@ async def create_conversation(body: ConversationCreate):
                 user_message=message,
                 before_message_count=before_message_count,
                 eager_user_id=eager_user_id,
+                interrupted=bool(turn.interrupt_requested or cancel_preparation.is_set()),
                 loop=loop,
                 token_queue=queue,
                 log_context="Web chat turn",
@@ -7275,14 +7927,20 @@ async def create_conversation(body: ConversationCreate):
     turn = await _run_blocking(
         _mark_web_turn_active,
         session_id,
+        accepted_submission=accepted_submission,
         status="Starting…",
         phase="starting",
         active_agent_session_id=session_id,
     )
+
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
+        turn.fake_stream_cancel = cancel_preparation
+    with turn.lock:
+        turn.timing_summary.select_route(turn_route)
+    prepared_agent = _chat_preparation.start(prepare_agent)
     asyncio.create_task(run_agent_task())
-    return {"session_id": session_id, "ok": True}
+    return accepted_submission or {"session_id": session_id, "ok": True}
 
 
 @app.post("/api/dev/fake-streams")
@@ -7654,6 +8312,7 @@ async def interrupt_conversation_subagent(
 
 
 @app.post("/api/conversations/{session_id}/messages")
+@_chat_preparation.admitted
 async def send_conversation_message(session_id: str, body: ConversationMessage):
     """Send a follow-up message to an existing web chat session."""
     from tools.approval import register_gateway_notify, unregister_gateway_notify
@@ -7672,103 +8331,48 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         _compaction_failed_callback,
     ) = _make_web_chat_callbacks(session_id, queue, loop)
 
-    from core.spark_state import SessionDB
-
-    conversation_history: list[dict[str, Any]] | None = None
-    db = SessionDB()
-    try:
-        requested_session_id = session_id
-        sid = db.resolve_session_id(session_id)
-        if not sid:
-            raise HTTPException(status_code=404, detail="Session not found")
-        latest_sid = db.resolve_latest_descendant(sid)
-        if latest_sid != sid:
-            _log.info(
-                "web follow-up resolved compression descendant requested=%s resolved=%s latest=%s",
-                requested_session_id,
-                sid,
-                latest_sid,
-            )
-            sid = latest_sid
-        row = db.get_session(sid)
-        if not row:
-            raise HTTPException(status_code=404, detail="Session not found")
-        session_id = sid
-        if _is_web_turn_active(session_id):
-            raise HTTPException(status_code=409, detail="A turn is already running.")
-        (
-            token_callback,
-            tool_start_callback,
-            tool_complete_callback,
-            reasoning_callback,
-            status_callback,
-            session_migrated_callback,
-            subagent_event_callback,
-            _compaction_failed_callback,
-        ) = _make_web_chat_callbacks(session_id, queue, loop)
-        _web_queues[session_id] = queue
-        selected_model = str(row.get("model") or "").strip()
-        turn_route = _resolve_web_turn_route(
-            body.message,
-            explicit_model=selected_model or None,
-        )
-        agent = _get_web_cached_agent(session_id)
-        conversation_history = db.get_messages_as_conversation(session_id)
-        history_hydrated_at = time.time()
-        history_count = len(conversation_history)
-        cached_signature_matches = (
-            agent is not None
-            and _web_agent_signatures.get(session_id) == turn_route["signature"]
-        )
-        _log.info(
-            "web follow-up hydrated requested=%s session=%s history_count=%s cached_agent=%s signature_match=%s",
-            requested_session_id,
-            session_id,
-            history_count,
-            bool(agent),
-            cached_signature_matches,
-        )
-        if (
-            agent
-            and cached_signature_matches
-            and _cached_web_agent_matches_history(session_id, agent, conversation_history)
-        ):
-            _hydrate_web_agent_from_history(agent, conversation_history)
-            agent.stream_delta_callback = token_callback
-            agent.tool_start_callback = tool_start_callback
-            agent.tool_complete_callback = tool_complete_callback
-            agent.reasoning_callback = reasoning_callback
-            agent.status_callback = status_callback
-            agent.session_migrated_callback = session_migrated_callback
-            agent.subagent_event_callback = subagent_event_callback
-            agent.request_overrides = turn_route.get("request_overrides")
-            conversation_history = None
-        else:
-            agent = _new_web_agent(
-                session_id=session_id,
-                model=turn_route["model"],
-                runtime=turn_route["runtime"],
-                request_overrides=turn_route.get("request_overrides"),
-                signature=turn_route["signature"],
-                token_callback=token_callback,
-                tool_start_callback=tool_start_callback,
-                tool_complete_callback=tool_complete_callback,
-                reasoning_callback=reasoning_callback,
-                status_callback=status_callback,
-                session_migrated_callback=session_migrated_callback,
-                subagent_event_callback=subagent_event_callback,
-            )
-        _update_web_session_model(session_id, turn_route["model"])
-        try:
-            db.reopen_session(session_id)
-        except Exception:
-            _log.debug("Ignoring error in send_conversation_message()", exc_info=True)
-    finally:
-        db.close()
-
+    preparation = await _chat_preparation.load_session(session_id)
+    session_id = preparation.session_id
+    receipt = await _chat_preparation.run(
+        _root_submission, session_id, body, "root.message", route="/api/conversations/messages"
+    )
+    if receipt:
+        return receipt["acceptance"]
+    if _is_web_turn_active(session_id):
+        raise HTTPException(status_code=409, detail="A turn is already running.")
+    (
+        token_callback, tool_start_callback, tool_complete_callback,
+        reasoning_callback, status_callback, session_migrated_callback,
+        subagent_event_callback, _compaction_failed_callback,
+    ) = _make_web_chat_callbacks(session_id, queue, loop)
+    _web_queues[session_id] = queue
     message = body.message
-    validated_items = _validate_context_items(body.context_items)
-    _persist_context_items(session_id, validated_items)
+    validated_items = await _chat_preparation.run(_validate_context_items, body.context_items)
+    await _chat_preparation.run(_persist_context_items, session_id, validated_items)
+    receipt = await _chat_preparation.run(
+        _root_submission, session_id, body, "root.message", accept=True,
+        route="/api/conversations/messages",
+    )
+    if receipt and not receipt["created"]:
+        return receipt["acceptance"]
+    accepted_submission = receipt["acceptance"] if receipt else None
+    agent = None
+    cancel_preparation = threading.Event()
+
+    def prepare_agent():
+        return preparation.prepare_agent(
+            sys.modules[__name__], body.message,
+            {
+                "token_callback": token_callback,
+                "tool_start_callback": tool_start_callback,
+                "tool_complete_callback": tool_complete_callback,
+                "reasoning_callback": reasoning_callback,
+                "status_callback": status_callback,
+                "session_migrated_callback": session_migrated_callback,
+                "subagent_event_callback": subagent_event_callback,
+            },
+            lambda: cancel_preparation.is_set() or turn.interrupt_requested,
+        )
 
     def _gw_notify(data: dict) -> None:
         approval = dict(data or {})
@@ -7781,19 +8385,30 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         _publish_event("chat.approval_requested", {"approval": _json_safe(approval)}, current_session_id)
 
     async def run_agent_task() -> None:
+        agent = None
         register_gateway_notify(session_id, _gw_notify)
-        _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
-        _record_web_turn_timing(session_id, "task_started")
-        _record_web_turn_timing(session_id, "history_hydrated", when=history_hydrated_at)
-        _, _active_turn = _get_web_turn(session_id)
-        eager_user_id = _persist_web_user_message(session_id, message)
-        _record_web_turn_timing(session_id, "user_message_persisted")
-        if _active_turn is not None:
-            _active_turn.user_message_id = eager_user_id
-        before_message_count = _session_message_count(session_id)
+        _active_turn = turn
+        eager_user_id = None
+        before_message_count = 0
         result = None
         try:
-            slash_text = _execute_web_slash_command(session_id, message)
+            _record_web_turn_timing(session_id, "task_started")
+            _, _active_turn = _get_web_turn(session_id)
+            eager_user_id = accepted_submission["user_message_id"] if accepted_submission else await _run_blocking(_persist_web_user_message, session_id, message)
+            _record_web_turn_timing(session_id, "user_message_persisted")
+            if _active_turn is not None:
+                _active_turn.user_message_id = eager_user_id
+            before_message_count = await _run_blocking(_session_message_count, session_id)
+            _publish_web_status(session_id, "initializing_agent", "Preparing agent…", phase="starting")
+            prepared = await await_preparation(prepared_agent, cancel_preparation)
+            agent, conversation_history = prepared.agent, prepared.history
+            _record_web_turn_timing(session_id, "history_hydrated", when=prepared.hydrated_at)
+            if prepared.cached:
+                _record_web_turn_timing(session_id, "cached_agent_ready", when=prepared.hydrated_at)
+            if (cancel_preparation.is_set() or turn.interrupt_requested):
+                raise InterruptedError("Chat preparation stopped")
+            _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
+            slash_text = await _run_blocking(_execute_web_slash_command, session_id, message)
             if slash_text is not None:
                 _publish_web_status(session_id, "slash_command", "Running slash command…", phase="streaming")
                 _publish_event("chat.token", {"t": slash_text}, session_id)
@@ -7802,10 +8417,18 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 _record_web_turn_timing(session_id, "model_request_start")
+                with turn.lock:
+                    turn.timing_summary.mark("preparation_ready")
+                    turn.timing_summary.mark("execution_queued")
                 result = await _run_web_turn_in_executor(
-                    loop, lambda: _run_web_agent_turn(agent, message, conversation_history, _items)
+                    loop, lambda: _dispatch_prepared_turn(turn, cancel_preparation, agent, message, conversation_history, _items)
                 )
         except asyncio.CancelledError:
+            cancel_preparation.set()
+            try:
+                await await_preparation(prepared_agent, cancel_preparation)
+            except Exception:
+                pass
             # CancelledError is a BaseException, so `except Exception` below
             # misses it and `result` would stay None.  The finally block then
             # publishes chat.turn_done with status "completed" and no
@@ -7827,6 +8450,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 user_message=message,
                 before_message_count=before_message_count,
                 eager_user_id=eager_user_id,
+                interrupted=bool(turn.interrupt_requested or cancel_preparation.is_set()),
                 loop=loop,
                 token_queue=queue,
             )
@@ -7834,17 +8458,18 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     turn = await _run_blocking(
         _mark_web_turn_active,
         session_id,
+        accepted_submission=accepted_submission,
         status="Starting…",
         phase="starting",
         active_agent_session_id=getattr(agent, "session_id", session_id),
     )
+
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
-        turn.timings["history_hydrated"] = history_hydrated_at
-        if cached_signature_matches and agent is not None:
-            turn.timings["cached_agent_ready"] = history_hydrated_at
+        turn.fake_stream_cancel = cancel_preparation
+    prepared_agent = _chat_preparation.start(prepare_agent)
     asyncio.create_task(run_agent_task())
-    return {"session_id": session_id, "ok": True}
+    return accepted_submission or {"session_id": session_id, "ok": True}
 
 
 @app.post("/api/conversations/{session_id}/interrupt")
@@ -8286,7 +8911,7 @@ async def retry_conversation(session_id: str, body: ConversationRetryBody):
             _publish_web_status(session_id, "api_call_started", "Retrying model call…", phase="api")
             result = await _run_web_turn_in_executor(
                 loop,
-                lambda: _run_web_agent_turn(agent, user_msg, conv_hist),
+                lambda: _run_web_agent_turn_with_db(agent, user_msg, conv_hist),
             )
         except asyncio.CancelledError:
             # CancelledError is a BaseException, so `except Exception` below
@@ -8529,9 +9154,97 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
                     "timings": _web_turn_timing_payload(turn),
                     "compaction": dict(turn.compaction),
                     "plan": dict(turn.plan) if turn.plan else None,
+                    "timing_summary": turn.timing_summary.summary(),
                 }
             )
     return payload
+
+
+def _conversation_recovery_payload(session_id: str, *, after_chars: int | None = None) -> dict[str, Any]:
+    """Fence a durable read snapshot with the independent process journal.
+
+    A moving stream is retried twice. Continued churn explicitly asks the caller
+    to reconcile again instead of presenting a mixed snapshot as authoritative.
+    No execution or decision is replayed by this read path.
+    """
+    from core.spark_state import SessionDB
+    from spark_cli.web_state import web_state_journal
+
+    def watermark() -> tuple[str, int]:
+        return web_state_journal.server_epoch, web_state_journal.latest_sequence
+
+    for _attempt in range(3):
+        before = watermark()
+        db = SessionDB()
+        try:
+            durable = db.get_web_recovery_snapshot(session_id)
+        finally:
+            db.close()
+        if durable is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        latest = durable["latest_session_id"]
+        active_key, turn = _get_web_turn(latest)
+        with turn.lock if turn else contextlib.nullcontext():
+            state, reason, idle_for = _web_turn_state(turn)
+            text, start, mode, complete = _bounded_stream_snapshot_text(
+                turn.stream_text if turn else "",
+                after_chars=(after_chars if after_chars is not None
+                             and turn and len(turn.stream_text) - after_chars <= 64_000 else None),
+                tail_chars=64_000,
+            )
+            stream = {
+                "active_turn_session_id": active_key,
+                "turn_active": turn is not None,
+                "state": state, "reason": reason, "idle_for_seconds": idle_for,
+                "phase": turn.phase if turn else "idle",
+                "status": turn.status if turn else None,
+                "interrupt_requested": bool(turn and turn.interrupt_requested),
+                "started_at": turn.started_at if turn else None,
+                "last_event_at": turn.last_event_at if turn else None,
+                "active_agent_session_id": turn.active_agent_session_id if turn else None,
+                "stream_text": text, "stream_text_start": start,
+                "stream_text_mode": mode, "stream_text_complete": complete,
+                "stream_revision": turn.stream_revision if turn else 0,
+                "stream_text_chars": len(turn.stream_text) if turn else 0,
+            }
+        after = watermark()
+        # Persistence precedes publication. A second read also detects commits
+        # whose journal event has not yet been published (including compression).
+        db = SessionDB()
+        try:
+            confirmed = db.get_web_recovery_snapshot(session_id)
+        finally:
+            db.close()
+        current_key, current_turn = _get_web_turn(latest)
+        with current_turn.lock if current_turn else contextlib.nullcontext():
+            same_stream = (
+                current_turn is turn and current_key == active_key
+                and (not turn or turn.stream_revision == stream["stream_revision"])
+            )
+        if before == after == watermark() and durable == confirmed and same_stream:
+            break
+    else:
+        raise HTTPException(status_code=409, detail={"code": "reconcile_again", "reason": "stream_changed"})
+    revision = hashlib.sha256(json.dumps(durable, sort_keys=True, default=str).encode()).hexdigest()
+    outcomes = [_recover_root_submission_projection(row["projection"]) for row in durable.pop("outcomes")]
+    outcome = outcomes[-1] if outcomes else None
+    if not turn and outcome and outcome.get("status") in {"running", "uncertain"}:
+        stream.update(state="interrupted", reason="process_lost", stream_text_mode="unknown")
+    history = durable["history"]
+    history["messages"] = [_message_for_history_response(message, include_tool_results=False) for message in history["messages"]]
+    return {
+        "schema_version": 1, "session_id": session_id, **durable, **stream,
+        "projection_revision": revision,
+        "stream_watermark": {"server_epoch": after[0], "sequence": after[1]},
+        "outcomes": outcomes, "turn_outcome": outcome,
+        "plan": outcome.get("plan") if outcome else None,
+        "reconciliation_required": False,
+    }
+
+
+@app.get("/api/conversations/{session_id}/recovery")
+async def conversation_recovery(session_id: str, after_chars: int | None = None):
+    return await _run_blocking(_conversation_recovery_payload, session_id, after_chars=after_chars)
 
 
 @app.get("/api/conversations/{session_id}/stream-snapshot")
@@ -8829,6 +9542,15 @@ register_canvas_routes(app)
 from spark_cli.memory_routes import register_memory_routes
 
 register_memory_routes(app)
+
+
+def _register_palette_routes():
+    from spark_cli.palette_routes import register_palette_routes
+
+    register_palette_routes(app)
+
+
+_register_palette_routes()
 register_workflow_routes(app)
 from spark_cli.artifacts_routes import register_artifacts_routes
 from spark_cli.messaging_routes import register_messaging_routes
@@ -8841,6 +9563,7 @@ register_artifacts_routes(app)
 
 
 class WorkspaceConvCreate(BaseModel):
+    submission_id: str | None = Field(default=None, min_length=1, max_length=200)
     message: str
     model: str | None = None
     context_items: list = []
@@ -8884,6 +9607,10 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     source = f"workspace:{slug}"
 
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
+    session_id = _root_submission_session(body.submission_id, session_id, f"workspace:{slug}")
+    receipt = _root_submission(session_id, body, "root.workspace", route=f"/api/workspace/projects/{slug}/conversations")
+    if receipt:
+        return receipt["acceptance"]
     queue: asyncio.Queue = asyncio.Queue()
     _web_queues[session_id] = queue
 
@@ -8952,6 +9679,11 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     validated_items = _validate_context_items(body.context_items, workspace_slug=slug)
     _persist_context_items(session_id, validated_items)
 
+    receipt = _root_submission(session_id, body, "root.workspace", accept=True, route=f"/api/workspace/projects/{slug}/conversations")
+    if receipt and not receipt["created"]:
+        return receipt["acceptance"]
+    accepted_submission = receipt["acceptance"] if receipt else None
+
     def _gw_notify(data: dict) -> None:
         approval = dict(data or {})
         current_session_id = _web_current_turn_session_id(session_id)
@@ -8985,7 +9717,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         try:
             _touch_web_turn(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
             _, _active_turn = _get_web_turn(session_id)
-            eager_user_id = _persist_web_user_message(session_id, raw_message)
+            eager_user_id = accepted_submission["user_message_id"] if accepted_submission else _persist_web_user_message(session_id, raw_message)
             if _active_turn is not None:
                 _active_turn.user_message_id = eager_user_id
             before_message_count = _session_message_count(session_id)
@@ -9000,8 +9732,13 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
+                if _active_turn is not None:
+                    with _active_turn.lock:
+                        _active_turn.timing_summary.mark("preparation_ready")
+                        _active_turn.timing_summary.mark("execution_queued")
+                        _active_turn.timing_summary.select_route(turn_route)
                 result = await _run_web_turn_in_executor(
-                    loop, lambda: _run_web_agent_turn(agent, message, None, _items)
+                    loop, lambda: _run_web_agent_turn_with_db(agent, message, None, _items)
                 )
         except asyncio.CancelledError:
             # CancelledError is a BaseException, so `except Exception` below
@@ -9034,15 +9771,26 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 token_queue=queue,
             )
 
-    await _run_blocking(
-        _mark_web_turn_active,
-        session_id,
-        status="Starting…",
-        phase="starting",
-        active_agent_session_id=session_id,
-    )
+    if accepted_submission:
+        _mark_web_turn_active(
+            session_id,
+            accepted_submission=accepted_submission,
+            status="Starting…",
+            phase="starting",
+            active_agent_session_id=session_id,
+        )
+    else:
+        await _run_blocking(
+            _mark_web_turn_active,
+            session_id,
+            accepted_submission=accepted_submission,
+            status="Starting…",
+            phase="starting",
+            active_agent_session_id=session_id,
+        )
+
     asyncio.create_task(run_agent_task())
-    return {"session_id": session_id, "ok": True, "source": source}
+    return {**(accepted_submission or {"session_id": session_id, "ok": True}), "source": source}
 
 
 @app.get("/api/workspace/projects/{slug}/conversations")
@@ -9087,6 +9835,13 @@ def _sidebar_settle_block_reason(session_id: str) -> str | None:
     return None
 
 
+def _register_message_anchor_routes():
+    from spark_cli.message_anchor_routes import router
+
+    app.include_router(router)
+
+
+_register_message_anchor_routes()
 app.include_router(sidebar_router)
 app.dependency_overrides[get_sidebar_settle_guard] = lambda: _sidebar_settle_block_reason
 

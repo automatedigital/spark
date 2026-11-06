@@ -236,6 +236,16 @@ describe("chatStreamReducer", () => {
     expect(finished.effects).toContainEqual({ type: "load-history", sessionId: "s1", reason: "snapshot-finalized" });
   });
 
+  it("accepts transport recovery at an unchanged journal cursor", () => {
+    const delivered = reduce(createChatStreamState({ sessionId: "s1" }), event("chat.token", { t: "kept" }, "s1", 4));
+    const reconnect = reduce(delivered.state, event("bus.reconnected", {}, "s1", 4));
+    expect(reconnect.accepted).toBe(true);
+    expect(reconnect.effects).toContainEqual({ type: "resync", reason: "reconnect", allowIdle: true });
+    const wake = reduce(reconnect.state, event("bus.wake", {}, "s1", 99));
+    expect(wake.state.lastEventSequence).toBe(4);
+    expect(reduce(wake.state, event("chat.token", { t: " next" }, "s1", 5)).accepted).toBe(true);
+  });
+
   it("turns reconnect and bus-gap signals into declarative resync effects", () => {
     const initial = createChatStreamState({ sessionId: "s1" });
     for (const [topic, reason] of [

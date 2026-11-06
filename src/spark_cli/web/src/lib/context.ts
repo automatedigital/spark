@@ -4,11 +4,16 @@ export type ContextScope = "one_turn" | "pinned";
 
 export type InclusionMode = "path_only" | "excerpt" | "summary" | "full" | "search" | "diff";
 
-export type ContextItemType = "file" | "excerpt" | "note" | "tool_output" | "url";
+export type ContextItemType = "file" | "excerpt" | "note" | "tool_output" | "url" | "skill";
 
 export interface ContextItem {
   id: string;
   type: ContextItemType;
+  skill_id?: string;
+  skill_revision?: string;
+  skill_profile?: string;
+  skill_thread?: string;
+  skill_project?: string | null;
   source_path?: string | null;
   inclusion_mode: InclusionMode;
   content?: string | null;
@@ -39,6 +44,7 @@ export interface ContextEstimate {
   utilization: number;
   warning: string | null;
   buckets: ContextBucket[];
+  breakdown?: { label: string; tokens: number | null; basis: string }[];
 }
 
 const jsonHeaders = { "Content-Type": "application/json" };

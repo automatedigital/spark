@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bot, ChevronDown, ChevronRight, Wrench, Globe, Database, Terminal, FileText, Loader2, Paperclip, Copy } from "lucide-react";
+import { apiConnectionGeneration } from "@/lib/apiHelpers";
+import { readToolResult, downloadToolResult, type ToolResultPage } from "@/lib/toolResultClient";
 import { detectOutputType } from "@/lib/detectOutputType";
 
 // Detect file paths in tool result text (e.g. "Saved to /path/to/file.py")
@@ -119,6 +121,8 @@ function displayToolName(name: string, done?: boolean): string {
 }
 
 export function ToolCallBubble({
+  sessionId,
+  toolCallId,
   name,
   args,
   result,
@@ -132,6 +136,8 @@ export function ToolCallBubble({
   onAttachPath,
   onFetchFullResult,
 }: {
+  sessionId?: string | null;
+  toolCallId?: string;
   name: string;
   args: Record<string, unknown>;
   result?: string;
@@ -151,9 +157,65 @@ export function ToolCallBubble({
   const [loadingFullResult, setLoadingFullResult] = useState(false);
   const [fullResultError, setFullResultError] = useState<string | null>(null);
 
+  const [page, setPage] = useState<ToolResultPage | null>(null);
+  const request = useRef<AbortController | null>(null);
+  const generation = apiConnectionGeneration();
   useEffect(() => {
-    setDisplayResult(result);
-  }, [result]);
+    request.current?.abort();
+    setDisplayResult(result?.slice(0, 65536));
+    setPage(null);
+    setOpen(false);
+    setLoadingFullResult(false);
+    setFullResultError(null);
+    return () => request.current?.abort();
+  }, [result, sessionId, toolCallId, generation]);
+
+  const loadPage = async (previous?: ToolResultPage) => {
+    if (!sessionId || !toolCallId) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    const epoch = apiConnectionGeneration();
+    setLoadingFullResult(true);
+    setFullResultError(null);
+    try {
+      const next = await readToolResult(sessionId, toolCallId, controller.signal, previous);
+      if (controller.signal.aborted || epoch !== apiConnectionGeneration()) return;
+      setPage(next);
+      // Replace the visible page; never accumulate a multi-megabyte DOM.
+      setDisplayResult(next.content);
+    } catch (error) {
+      if (!controller.signal.aborted) setFullResultError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (!controller.signal.aborted) setLoadingFullResult(false);
+    }
+  };
+
+  const download = async () => {
+    if (!(sessionId && toolCallId && page) && !onFetchFullResult) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    const epoch = apiConnectionGeneration();
+    setLoadingFullResult(true);
+    setFullResultError(null);
+    try {
+      const blob = sessionId && toolCallId && page
+        ? await downloadToolResult(sessionId, toolCallId, page, controller.signal)
+        : new Blob([await onFetchFullResult?.() ?? ""], { type: "text/plain" });
+      if (controller.signal.aborted || epoch !== apiConnectionGeneration()) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "tool-result.txt";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      if (!controller.signal.aborted) setFullResultError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (!controller.signal.aborted) setLoadingFullResult(false);
+    }
+  };
 
   const lname = name.toLowerCase();
   const family = Object.keys(TOOL_FAMILIES).find((k) => lname.includes(k));
@@ -197,24 +259,20 @@ export function ToolCallBubble({
   const toggleOpen = () => {
     const nextOpen = !open;
     setOpen(nextOpen);
-    if (nextOpen && resultTruncated && onFetchFullResult && !loadingFullResult) {
-      setLoadingFullResult(true);
-      setFullResultError(null);
-      void onFetchFullResult()
-        .then((full) => {
-          if (full != null) setDisplayResult(full);
-        })
-        .catch((err) => {
-          setFullResultError(err instanceof Error ? err.message : String(err));
-        })
-        .finally(() => setLoadingFullResult(false));
+    if (!nextOpen) {
+      request.current?.abort();
+      setLoadingFullResult(false);
+    } else if (sessionId && toolCallId) {
+      void loadPage();
     }
+
   };
 
   return (
     <div className="overflow-hidden rounded-md bg-foreground/[0.035] text-xs">
       <button
         type="button"
+        aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2 cursor-pointer hover:bg-foreground/5 transition-colors text-left"
         onClick={toggleOpen}
       >
@@ -251,9 +309,9 @@ export function ToolCallBubble({
       {open && (
         <div className="border-t border-border/45 px-3 py-2 space-y-2">
           <pre className="text-[11px] overflow-x-auto whitespace-pre-wrap font-mono text-muted-foreground max-h-40 overflow-y-auto">
-            {argsStr}
+            {argsStr.slice(0, 12000)}
           </pre>
-          {displayResult != null && displayResult !== "" && (
+          {((displayResult != null && displayResult !== "") || loadingFullResult || fullResultError || page) && (
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
                 <div className="text-[10px] text-muted-foreground">
@@ -263,24 +321,29 @@ export function ToolCallBubble({
                   type="button"
                   onClick={copyResult}
                   className="inline-flex items-center gap-1 rounded-md bg-foreground/6 px-1.5 py-0.5 text-[10px] text-muted-foreground transition hover:bg-foreground/9 hover:text-foreground"
-                  title="Copy full result"
+                  title="Copy visible preview"
                 >
                   <Copy className="h-2.5 w-2.5" />
-                  {copied ? "Copied" : "Copy"}
+                  {copied ? "Copied" : "Copy preview"}
                 </button>
               </div>
-              <ResultPreview result={displayResult} safeMode={safeMode} />
+              <ResultPreview result={displayResult ?? ""} safeMode={safeMode} />
               {loadingFullResult && (
-                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Loading full output…</p>
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Loading output…</p>
               )}
               {fullResultError && (
-                <p className="text-[10px] text-destructive/80 mt-0.5">Could not load full output: {fullResultError}</p>
+                <p className="text-[10px] text-destructive/80 mt-0.5">Could not load output: {fullResultError}</p>
               )}
-              {resultTruncated && !loadingFullResult && !fullResultError && (
-                <p className="text-[10px] text-muted-foreground/50 mt-0.5">Showing a live preview. Opened rows fetch the full output from history when available.</p>
+              {!sessionId && onFetchFullResult && <button type="button" disabled={loadingFullResult} onClick={() => void download()}>Download full output</button>}
+              {page && (
+                <div className="flex gap-2 items-center text-[10px]">
+                  <span>{page.offset}–{page.offset + new TextEncoder().encode(page.content).length} of {page.total_bytes} bytes</span>
+                  {page.next_offset !== null && <button type="button" disabled={loadingFullResult} onClick={() => void loadPage(page)}>Next page</button>}
+                  <button type="button" disabled={loadingFullResult} onClick={() => void download()}>Download full output</button>
+                </div>
               )}
               {onAttachPath && done && (() => {
-                const paths = extractOutputPaths(displayResult);
+                const paths = extractOutputPaths((displayResult ?? "").slice(0, LARGE_RESULT_CHARS)).slice(0, 20);
                 if (paths.length === 0) return null;
                 return (
                   <div className="mt-1.5 flex flex-wrap gap-1">

@@ -1,10 +1,17 @@
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { MessageSquare } from "lucide-react";
 import type { TimelineAssistantMessage, TimelineApprovalItem, TimelineTurn } from "@/lib/threadTimelineModel";
 import { cn } from "@/lib/utils";
 import { AssistantMessageRow } from "./AssistantMessageRow";
 import { TurnWorkGroup, type TurnWorkGroupProps } from "./TurnWorkGroup";
 import { UserMessageRow } from "./UserMessageRow";
+
+declare global {
+  interface Window {
+    /** Opt-in acceptance probe, enabled by the existing efficiency-test bridge. */
+    __sparkTimelineRowCommits?: { settled: number; active: number };
+  }
+}
 
 export interface MessagesTimelineProps extends Pick<TurnWorkGroupProps, "safeMode" | "sessionId" | "approvalBusy" | "onApprovalChoice" | "onAttachPath" | "onFetchFullResult" | "onSubagentSelect" | "onFeedbackSubmit"> {
   turns: readonly TimelineTurn[];
@@ -22,7 +29,7 @@ export interface MessagesTimelineProps extends Pick<TurnWorkGroupProps, "safeMod
   emptyLabel?: string;
 }
 
-export function TimelineTurnGroup({
+export const TimelineTurnGroup = memo(function TimelineTurnGroup({
   turn,
   hasSession,
   streaming,
@@ -43,6 +50,11 @@ export function TimelineTurnGroup({
   onCopyExact,
   onSaveOutput,
 }: Omit<MessagesTimelineProps, "turns" | "className" | "emptyLabel"> & { turn: TimelineTurn }) {
+  useEffect(() => {
+    if (!window.__sparkWebEfficiency) return;
+    const counts = window.__sparkTimelineRowCommits ??= { settled: 0, active: 0 };
+    counts[turn.isSettled ? "settled" : "active"] += 1;
+  });
   return (
     <article className="space-y-3" data-turn-id={turn.id} data-turn-status={turn.status}>
       {turn.userMessage && (
@@ -79,7 +91,7 @@ export function TimelineTurnGroup({
       />
     </article>
   );
-}
+});
 
 export const MessagesTimeline = memo(function MessagesTimeline({
   turns,

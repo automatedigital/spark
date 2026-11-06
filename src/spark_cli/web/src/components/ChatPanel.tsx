@@ -1,4 +1,6 @@
+import { MessageAnchorView } from "@/components/chat/MessageAnchorView";
 import { buildComposerPromptHistoryEntries } from "@/lib/composerPromptHistory";
+import { shouldRefreshRetryStatus } from "@/lib/retryStatus";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -34,6 +36,7 @@ import { ContextTray } from "@/components/chat/ContextTray";
 import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import { TimelineMinimap } from "@/components/chat/TimelineMinimap";
+import { useTimelineCallback, useTimelinePresentation } from "@/components/chat/useTimelinePresentation";
 import { TimelineTurnGroup } from "@/components/chat/MessagesTimeline";
 import { ChangedFilesCard } from "@/components/chat/ChangedFilesCard";
 import { PlanCard } from "@/components/chat/PlanCard";
@@ -82,6 +85,9 @@ import {
 } from "@/lib/chatTimeline";
 import {
   buildThreadTimeline,
+  type TimelineAssistantMessage,
+  type TimelineApprovalItem,
+  type TimelineFeedbackItem,
   type ThreadTimeline,
   type ThreadTimelineMessage,
 } from "@/lib/threadTimelineModel";
@@ -165,8 +171,8 @@ export function ChatPanel({
   const [conversationPlan, setConversationPlan] = useState<WebPlan | null>(null);
   const [pendingActions, setPendingActions] = useState<WebPendingAction[]>([]);
   const [confirmedTurnStatus, setConfirmedTurnStatus] = useState<Awaited<ReturnType<typeof api.getTurnStatus>> | null>(null);
+  const retryRefreshRef = useRef<{ pending: boolean; again: boolean }>({ pending: false, again: false });
   const [statusDisconnected, setStatusDisconnected] = useState(false);
-  const turnSurfaceRefreshGenerationRef = useRef(0);
   const [busyActionIds, setBusyActionIds] = useState<Set<string>>(() => new Set());
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
   const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
@@ -221,6 +227,7 @@ export function ChatPanel({
     onSessionUpdated,
   });
   const {
+    messageAnchor,
     chatMessages,
     setChatMessages,
     activeSessionId,
@@ -236,6 +243,8 @@ export function ChatPanel({
     setSessionStats,
     forkInfo,
     recoveryPollCount,
+    recoverySnapshot,
+    recoveryFailed,
     activeSessionRef,
     activeSessionAliasesRef,
     sessionRecoverySeqRef,
@@ -253,6 +262,7 @@ export function ChatPanel({
     fetchExactAssistant,
   } = controller;
 
+  const anchorOpen = Boolean(messageAnchor.window || messageAnchor.loading || messageAnchor.error);
   const recoverySignalBudgetRef = useRef(initialRecoverySignalBudget());
   const resyncTurnStateRef = useRef<((options?: { allowIdle?: boolean }) => Promise<void>) | null>(null);
   const lastPresentedStreamMessagesRef = useRef<readonly ChatMessage[] | null>(null);
@@ -339,7 +349,7 @@ export function ChatPanel({
     },
   });
   const syncStreamMessages = streamController.syncMessages;
-  const applyStreamSnapshot = streamController.applySnapshot;
+  const hydrateStreamRecovery = streamController.hydrateRecovery;
   const adoptStreamSession = streamController.adoptSession;
   const isCurrentStreamState = streamController.isCurrentState;
 
@@ -418,7 +428,6 @@ export function ChatPanel({
     editMessage,
     forkMessage,
     forkSession,
-    isSubmitting,
   } = composerActions;
 
   streamingRef.current = streaming;
@@ -573,6 +582,8 @@ export function ChatPanel({
     followStreamRef.current = !savedScroll;
     setEditingUser(null);
     setDiagnosticsOpen(false);
+    setConfirmedTurnStatus(null);
+    setStatusDisconnected(false);
     setConversationDiagnostics(null);
     setDiagnosticsError(null);
     const restoredSafeMode = readSafeMode(resetSessionId);
@@ -698,7 +709,6 @@ export function ChatPanel({
 
   const refreshTurnSurfaces = useCallback(async () => {
     if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner)) return;
-    const generation = ++turnSurfaceRefreshGenerationRef.current;
     const sid = activeSessionRef.current;
     if (!sid) {
       setTurnOutcomes([]);
@@ -706,23 +716,24 @@ export function ChatPanel({
       setPendingActions([]);
       return;
     }
-    const [outcomeResult, planResult, actionsResult] = await Promise.allSettled([
-      api.getConversationTurnOutcomes(sid),
-      api.getConversationPlan(sid),
-      api.getConversationPendingActions(sid),
-    ]);
-    if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner) || activeSessionRef.current !== sid || generation !== turnSurfaceRefreshGenerationRef.current) return;
-    if (outcomeResult.status === "fulfilled") setTurnOutcomes(outcomeResult.value.outcomes);
-    if (planResult.status === "fulfilled") setConversationPlan(planResult.value.plan);
-    if (actionsResult.status === "fulfilled") setPendingActions(actionsResult.value.actions);
-  }, [activeSessionRef, owner]);
+    await resyncTurnState({ allowIdle: true });
+    // Adoption is owned by the session controller's generation fence.
+  }, [activeSessionRef, owner, resyncTurnState]);
 
   useEffect(() => {
-    void refreshTurnSurfaces();
-  }, [activeSessionId, refreshTurnSurfaces]);
+    if (!recoverySnapshot || !owner.isCurrent() || !activeSessionAliasesRef.current.has(recoverySnapshot.session_id)) return;
+    hydrateStreamRecovery(recoverySnapshot);
+    setTurnOutcomes(recoverySnapshot.outcomes);
+    setConversationPlan(recoverySnapshot.plan);
+    setPendingActions(recoverySnapshot.pending_actions);
+    setConfirmedTurnStatus(recoverySnapshot);
+    setStatusDisconnected(false);
+  }, [recoverySnapshot, hydrateStreamRecovery, owner, activeSessionAliasesRef]);
+
 
   useEventBus((env) => {
-    if (![
+    const retryTransition = shouldRefreshRetryStatus(env.topic, env.data, confirmedTurnStatus?.phase);
+    if (!retryTransition && ![
       "chat.turn_done",
       "chat.plan_updated",
       "chat.approval_requested",
@@ -732,38 +743,29 @@ export function ChatPanel({
     ].includes(env.topic)) return;
     const sid = activeSessionRef.current;
     if (!sid || (env.session_id && !activeSessionAliasesRef.current.has(env.session_id))) return;
+    if (retryTransition) {
+      const flight = retryRefreshRef.current;
+      if (flight.pending) { flight.again = true; return; }
+      flight.pending = true;
+      void (async () => {
+        try {
+          // Coalesce transitions arriving during the read; no per-token poll.
+          for (let pass = 0; pass < 2; pass += 1) {
+            flight.again = false;
+            await refreshTurnSurfaces();
+            if (!flight.again) break;
+          }
+        } finally { flight.pending = false; }
+      })();
+      return;
+    }
     void refreshTurnSurfaces();
   });
 
-  useEffect(() => { setConfirmedTurnStatus(null); setStatusDisconnected(false); }, [activeSessionId]);
+  // Only a panel reset clears confirmed recovery. Compression may adopt a new
+  // active ID in the same snapshot; that continuation retains its confirmation.
+  useEffect(() => { setStatusDisconnected(recoveryFailed); }, [recoveryFailed]);
 
-  useEffect(() => {
-    const sid = activeSessionId;
-    let cancelled = false;
-    if (!sid) return;
-    const refresh = async () => {
-      try {
-        const status = await api.getTurnStatus(sid);
-        if (!cancelled && activeSessionRef.current === sid) {
-          setConfirmedTurnStatus((previous) => ({ ...status, last_event_at: status.last_event_at ?? previous?.last_event_at ?? null }));
-          setStatusDisconnected(false);
-          // Reconcile both the visible controls and the stream reducer from the
-          // same backend result. An unacknowledged submission may not yet have
-          // entered the active-turn registry, so don't finalize it prematurely.
-          if (!isSubmitting() && (status.turn_active || streamingRef.current)) applyStreamSnapshot(status);
-        }
-      } catch {
-        if (!cancelled && activeSessionRef.current === sid) setStatusDisconnected(true);
-      }
-    };
-    void refresh();
-    if (!streaming && !statusDisconnected) return () => { cancelled = true; };
-    const timer = window.setInterval(() => void refresh(), 2_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [activeSessionId, activeSessionRef, applyStreamSnapshot, isSubmitting, streaming, statusDisconnected]);
   const refreshConversationDiagnostics = useCallback(async () => {
     const sid = activeSessionRef.current;
     if (!sid) return null;
@@ -849,7 +851,6 @@ export function ChatPanel({
     try {
       if (id === "reload") {
         await resyncTurnStateRef.current?.({ allowIdle: true });
-        await refreshLatestTranscript();
       } else if (id === "retry") {
         if (latestUserMessage?.sessionIdx != null) await retryMessage(latestUserMessage.sessionIdx);
       } else if (id === "stop") {
@@ -872,7 +873,6 @@ export function ChatPanel({
     latestUserMessage,
     retryMessage,
     recoveryActionBusy,
-    refreshLatestTranscript,
     stop,
   ]);
 
@@ -1016,11 +1016,11 @@ export function ChatPanel({
   }, [setContextItems]);
 
   // Stable handlers passed to memoized row components
-  const handleEdit = useCallback((idx: number) => {
+  const handleEdit = useTimelineCallback((idx: number) => {
     editMessage(idx);
-  }, [editMessage]);
-  const handleRetry = useCallback((idx: number) => { void retryMessage(idx); }, [retryMessage]);
-  const handleFork = useCallback((idx: number) => { void forkMessage(idx); }, [forkMessage]);
+  });
+  const handleRetry = useTimelineCallback((idx: number) => { void retryMessage(idx); });
+  const handleFork = useTimelineCallback((idx: number) => { void forkMessage(idx); });
 
   const summarizeContextItem = useCallback(async (id: string) => {
     const item = contextItems.find((i) => i.id === id);
@@ -1195,12 +1195,38 @@ export function ChatPanel({
     if (files.length > 0) void uploadFiles(files);
   }, [uploadFiles]);
 
+  // These adapters stay stable during tokens so settled row memo boundaries hold.
+  const handleTimelineApproval = useTimelineCallback((item: TimelineApprovalItem, choice: "once" | "session" | "always" | "deny") => {
+    void submitApproval(choice, typeof item.approval.action_id === "string" ? item.approval.action_id : undefined);
+  });
+  const handleTimelinePromote = useTimelineCallback((message: TimelineAssistantMessage) => {
+    handlePromoteToBrief(message.source as AssistantMsg);
+  });
+  const handleTimelineCopy = useTimelineCallback((message: TimelineAssistantMessage) => {
+    copyAssistant(message.source as AssistantMsg);
+  });
+  const handleTimelineSave = useTimelineCallback((message: TimelineAssistantMessage) => {
+    const source = message.source as AssistantMsg;
+    saveOutput({ id: source.id, title: "Saved answer", sourceSessionId: activeSessionId ?? "", projectSlug: workspaceSlug ?? null, content: source.content });
+  });
+  const handleTimelineAttach = useTimelineCallback((path: string, sizeBytes?: number) => attachPath(path, sizeBytes));
+  const handleTimelineFetchResult = useTimelineCallback((toolId: string) => fetchFullToolResult(toolId));
+  const handleTimelineSubagent = useTimelineCallback((id: string) => onSubagentSelect?.(id));
+  const handleTimelineFeedback = useTimelineCallback(async (item: TimelineFeedbackItem, data: { name: string; email: string; area: string; note: string }) => {
+    if (!activeSessionId) throw new Error("No active session");
+    await api.submitFeedback(activeSessionId, data);
+    setChatMessages((previous) => previous.map((message) => (
+      item.sourceMessageIds.includes(message.id) ? { ...message, submitted: true } : message
+    )));
+  });
+
+  const presentationMessages = useTimelinePresentation(chatMessages, activeSessionId);
   const previousTimelineRef = useRef<ThreadTimeline | undefined>(undefined);
   const timelineSessionRef = useRef<string | null>(null);
   const threadTimeline = useMemo(() => {
     const sessionChanged = timelineSessionRef.current !== activeSessionId;
     const previous = sessionChanged ? undefined : previousTimelineRef.current;
-    const messages = chatMessages as readonly ThreadTimelineMessage[];
+    const messages = presentationMessages as readonly ThreadTimelineMessage[];
     const projectedMessages = subagents.length > 0 && messages.length > 0
       ? messages.map((message, index) => index === messages.length - 1 ? {
           ...message,
@@ -1219,7 +1245,7 @@ export function ChatPanel({
     timelineSessionRef.current = activeSessionId;
     previousTimelineRef.current = next;
     return next;
-  }, [activeSessionId, chatMessages, subagents]);
+  }, [activeSessionId, presentationMessages, subagents]);
   const timelineTurns = threadTimeline.turns;
 
   const streamingAssistantVisibleChars = useMemo(
@@ -1383,6 +1409,8 @@ export function ChatPanel({
     return () => el.removeEventListener("scroll", updateFollowState);
   }, [activeSessionId, activeSessionRef, loadingHistory, owner, scrollBookmarks, timelineTurns, virtualizer]);
 
+  // Cached recovery can mount rows after loading has already settled. Retry
+  // the pending bookmark when that transcript arrives, not only on navigation.
   useEffect(() => {
     const saved = pendingThreadScroll.current;
     if (!saved || saved.sessionId !== activeSessionId || loadingHistory || !timelineTurnsRef.current.length) return;
@@ -1404,7 +1432,7 @@ export function ChatPanel({
     };
     restore();
     return () => cancelAnimationFrame(frame);
-  }, [activeSessionId, loadingHistory, virtualizer]);
+  }, [activeSessionId, loadingHistory, timelineTurns, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
@@ -1423,16 +1451,29 @@ export function ChatPanel({
     if (bottomClampRafRef.current !== null) cancelAnimationFrame(bottomClampRafRef.current);
     let remaining = 30;
     let firstFrame = true;
+    let previousHeight = -1;
+    let stableFrames = 0;
     const step = () => {
       bottomClampRafRef.current = requestAnimationFrame(() => {
         bottomClampRafRef.current = null;
         const el = scrollContainerRef.current;
         if (!el || scrollStateRef.current.mode !== "jumping-to-bottom") return;
         const count = virtualizer.options.count;
+        // The loading skeleton has no virtual rows. Settling its bottom would
+        // let the history mount's layout scroll detach a newly opened thread.
+        // Keep the requested jump pending until the transcript is rendered.
+        if (count === 0 || !messageListRef.current) return;
         // Always clamp at least once; only settle when a frame starts with
         // the viewport already at the bottom (previous clamp survived any
         // row remeasure).
-        if (!firstFrame) {
+        const lastRow = el.querySelector<HTMLElement>(`[data-index="${count - 1}"]`);
+        const lastBottom = lastRow?.getBoundingClientRect().bottom;
+        const viewport = el.getBoundingClientRect();
+        const measuredTailVisible = lastBottom != null && lastBottom > viewport.top && lastBottom <= viewport.bottom + 1;
+        stableFrames = !firstFrame && previousHeight === el.scrollHeight && measuredTailVisible
+          ? stableFrames + 1 : 0;
+        previousHeight = el.scrollHeight;
+        if (stableFrames >= 2) {
           scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
             type: "jump-settle",
             itemCount: count,
@@ -1632,13 +1673,14 @@ export function ChatPanel({
         if (autoScrollRafRef.current !== null) cancelAnimationFrame(autoScrollRafRef.current);
         autoScrollRafRef.current = requestAnimationFrame(() => {
           autoScrollRafRef.current = null;
+          // Hydration can replace rows without changing their count and cancel
+          // an earlier scheduled jump. Never complete that jump via the ordinary
+          // stream-tick path before the measured bottom clamp has settled.
+          if (scrollStateRef.current.mode === "jumping-to-bottom") {
+            runBottomClamp();
+            return;
+          }
           if (countChanged) {
-            if (scrollStateRef.current.mode === "jumping-to-bottom") {
-              // Session open / explicit jump: keep clamping until row
-              // measurements settle instead of a single estimated jump.
-              runBottomClamp();
-              return;
-            }
             virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming || safeMode ? "instant" : "smooth" });
             lastAutoScrollAtRef.current = Date.now();
             scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
@@ -1959,7 +2001,11 @@ export function ChatPanel({
       {showRecoveryCard && (
         <RecoveryCard
           state={confirmedRecoveryState}
-          label={statusDisconnected ? "Connection lost. Your conversation is kept; reconnect to check whether the response is still running." : confirmedTurnStatus?.status}
+          label={statusDisconnected
+            ? "Connection lost. Your conversation is kept; reconnect to check whether the response is still running."
+            : recoverySnapshot?.stream_text_mode === "unknown"
+              ? "The live response is unavailable after a restart. Saved history is shown; work has not been replayed."
+              : confirmedTurnStatus?.status}
           lastEventAt={confirmedTurnStatus?.last_event_at ?? confirmedTurnStatus?.turn_outcome?.ended_at}
           busyAction={recoveryActionBusy === "reload" ? "reconnect" : recoveryActionBusy === "copy" ? "inspect" : recoveryActionBusy === "retry" ? "retry" : null}
           onReconnect={() => void runRecoveryAction("reload")}
@@ -1970,8 +2016,14 @@ export function ChatPanel({
       )}
 
       <div className="relative min-h-0 flex-1">
+        {anchorOpen && (
+          <MessageAnchorView window={messageAnchor.window} loading={messageAnchor.loading} error={messageAnchor.error}
+            onPage={messageAnchor.page} onLatest={() => { messageAnchor.close(); jumpToLatest(); requestAnimationFrame(() => scrollContainerRef.current?.focus({ preventScroll: true })); }} />
+        )}
         <div
+          inert={anchorOpen}
           data-testid="chat-scroll"
+          tabIndex={-1}
           className="h-full overflow-y-auto px-4 py-5 pr-8"
           style={{ overflowAnchor: "none" }}
           ref={scrollContainerRef}
@@ -2029,32 +2081,18 @@ export function ChatPanel({
                     sessionId={activeSessionId}
                     defaultWrap={chatWordWrap}
                     approvalBusy={approvalBusy}
-                    onApprovalChoice={(item, choice) => void submitApproval(
-                      choice,
-                      typeof item.approval.action_id === "string" ? item.approval.action_id : undefined,
-                    )}
+                    onApprovalChoice={handleTimelineApproval}
                     onEdit={handleEdit}
                     onRetry={handleRetry}
                     onFork={handleFork}
                     onCopyText={copyText}
-                    onPromoteToBrief={activeSessionId ? (message) => handlePromoteToBrief(message.source as AssistantMsg) : undefined}
-                    onCopyExact={(message) => copyAssistant(message.source as AssistantMsg)}
-                    onSaveOutput={(message) => {
-                      const source = message.source as AssistantMsg;
-                      saveOutput({ id: source.id, title: "Saved answer", sourceSessionId: activeSessionId ?? "", projectSlug: workspaceSlug ?? null, content: source.content });
-                    }}
-                    onAttachPath={attachPath}
-                    onFetchFullResult={fetchFullToolResult}
-                    onSubagentSelect={onSubagentSelect}
-                    onFeedbackSubmit={async (item, data) => {
-                      if (!activeSessionId) throw new Error("No active session");
-                      await api.submitFeedback(activeSessionId, data);
-                      setChatMessages((previous) => previous.map((message) => (
-                        item.sourceMessageIds.includes(message.id)
-                          ? { ...message, submitted: true }
-                          : message
-                      )));
-                    }}
+                    onPromoteToBrief={activeSessionId ? handleTimelinePromote : undefined}
+                    onCopyExact={handleTimelineCopy}
+                    onSaveOutput={handleTimelineSave}
+                    onAttachPath={handleTimelineAttach}
+                    onFetchFullResult={handleTimelineFetchResult}
+                    onSubagentSelect={onSubagentSelect ? handleTimelineSubagent : undefined}
+                    onFeedbackSubmit={handleTimelineFeedback}
                   />
                   {turnOutcome && (
                     <div className="ml-8 mt-3 max-w-[85%] space-y-2">
@@ -2078,13 +2116,13 @@ export function ChatPanel({
             </>
           )}
         </div>
-        <TimelineMinimap
+        {!anchorOpen && <TimelineMinimap
           landmarks={turnLandmarks}
           visibleStartTurnIndex={visibleStartIndex}
           visibleEndTurnIndex={visibleEndIndex}
           onJumpToTurn={jumpToIndex}
-        />
-        {detachedFromBottom && timelineTurns.length > 0 && (
+        />}
+        {!anchorOpen && detachedFromBottom && timelineTurns.length > 0 && (
           <Button
             type="button"
             variant="outline"
@@ -2135,7 +2173,7 @@ export function ChatPanel({
         </div>
       )}
 
-      <SessionInfoBar stats={sessionStats} />
+      <SessionInfoBar stats={sessionStats} timing={turnOutcomes.at(-1)?.timing_summary} />
 
       {activeSessionId && <BriefPanel sessionId={activeSessionId} />}
 

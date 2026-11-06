@@ -33,6 +33,11 @@ from spark_cli.auth import (
 from spark_cli.config import get_compatible_custom_providers, load_config
 
 
+def registered_provider_metadata() -> dict[str, auth_mod.ProviderConfig]:
+    """Return runtime registration metadata without resolving a route or auth."""
+    return dict(PROVIDER_REGISTRY)
+
+
 def _normalize_custom_provider_name(value: str) -> str:
     return value.strip().lower().replace(" ", "-")
 

@@ -1,0 +1,41 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { sessionApi } from "./api_session";
+import { modelApi } from "./api_model";
+import { api } from "./api";
+import { fetchJSON } from "./apiHelpers";
+afterEach(() => vi.unstubAllGlobals());
+it("forwards optional read signals and preserves mutation independence", async () => {
+  const fetch = vi.fn(async () => new Response("{}"));
+  vi.stubGlobal("fetch", fetch);
+  const signal = new AbortController().signal;
+  await sessionApi.getSessions(20, 0, undefined, signal);
+  await sessionApi.getSession("a", signal);
+  await sessionApi.getSessionMessages("a", 50, "db:12", signal);
+  await sessionApi.searchSessions("query", 20, undefined, 0, signal);
+  await sessionApi.getSessionForks("a", signal);
+  await modelApi.getModelInfo(signal);
+  await modelApi.getModelStatus(signal);
+  await modelApi.getModelSuggestions(signal);
+  await modelApi.getAvailableModels("custom", undefined, signal);
+  await modelApi.getConversationModels(signal);
+  await api.getChatRecovery("a", undefined, signal);
+  await api.getTurnStatus("a", signal);
+  await api.getStreamSnapshot("a", {}, signal);
+  await api.getConversationDiagnostics("a", signal);
+  await api.getConversationTurnOutcome("a", signal);
+  await api.getConversationTurnOutcomes("a", signal);
+  await api.getConversationPlan("a", signal);
+  await api.getConversationPendingActions("a", signal);
+  await api.getReasoningEffort(signal);
+  for (const call of fetch.mock.calls as unknown as Array<[string, RequestInit]>) expect(call[1].signal).toBe(signal);
+  await sessionApi.getSessionMessages("a");
+  await sessionApi.warmSession("a");
+  await modelApi.switchConversationModel("a", "model");
+  for (const call of (fetch.mock.calls as unknown as Array<[string, RequestInit]>).slice(-3)) expect(call[1].signal).toBeUndefined();
+});
+
+it("preserves AbortError while consuming an error response body", async () => {
+  const aborted = new DOMException("retired", "AbortError");
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 401, statusText: "Unauthorized", text: async () => { throw aborted; } })));
+  await expect(fetchJSON("/read")).rejects.toBe(aborted);
+});

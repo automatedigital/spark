@@ -18,10 +18,11 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from core.spark_constants import get_spark_home
 from core.spark_time import now as _spark_now
@@ -119,10 +120,17 @@ def parse_duration(s: str) -> int:
     unit = match.group(2)[0]  # First char: m, h, or d
 
     multipliers = {'m': 1, 'h': 60, 'd': 1440}
-    return value * multipliers[unit]
+    if value <= 0:
+        raise ValueError("Duration must be positive")
+    minutes = value * multipliers[unit]
+    try:
+        _spark_now() + timedelta(minutes=minutes)
+    except OverflowError as exc:
+        raise ValueError("Duration is too large") from exc
+    return minutes
 
 
-def parse_schedule(schedule: str) -> dict[str, Any]:
+def _parse_schedule_string(schedule: str) -> dict[str, Any]:
     """
     Parse schedule string into structured format.
 
@@ -209,6 +217,92 @@ def parse_schedule(schedule: str) -> dict[str, Any]:
         f"  - Cron: '0 9 * * *' (cron expression)\n"
         f"  - Timestamp: '2026-02-03T14:00:00' (one-shot at time)"
     )
+
+
+def validate_schedule(schedule: Any, timezone: str | None = None) -> dict[str, Any]:
+    """Canonical admission boundary for strings and persisted/structured schedules."""
+    if timezone is not None:
+        if not isinstance(timezone, str):
+            raise ValueError("Timezone must be an IANA timezone name")
+        try:
+            ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Unknown IANA timezone") from exc
+    if isinstance(schedule, str):
+        result = _parse_schedule_string(schedule)
+        # Interpret explicit naive one-shots in the job zone, not the server zone.
+        if timezone and ("T" in schedule or re.match(r"^\d{4}-\d{2}-\d{2}", schedule)):
+            wall = datetime.fromisoformat(schedule.replace("Z", "+00:00"))
+            if wall.tzinfo is None:
+                zoned = wall.replace(tzinfo=ZoneInfo(timezone))
+                if zoned.astimezone(UTC).astimezone(zoned.tzinfo).replace(tzinfo=None) != wall:
+                    raise ValueError("One-shot time does not exist in this timezone (DST gap)")
+                result["run_at"] = zoned.isoformat()
+    elif isinstance(schedule, dict):
+        result = dict(schedule)
+    else:
+        raise ValueError("Schedule must be a string or object")
+    zone = timezone if timezone is not None else result.get("timezone")
+    if zone is not None:
+        try:
+            ZoneInfo(zone)
+        except (TypeError, ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Unknown IANA timezone") from exc
+        result["timezone"] = zone
+    kind = result.get("kind")
+    if kind == "interval":
+        minutes = result.get("minutes")
+        if type(minutes) is not int or minutes <= 0:
+            raise ValueError("Interval minutes must be a positive integer")
+        try:
+            _spark_now() + timedelta(minutes=minutes)
+        except OverflowError as exc:
+            raise ValueError("Interval is too large") from exc
+    elif kind == "once":
+        try:
+            timestamp = datetime.fromisoformat(result["run_at"])
+            if zone and timestamp.tzinfo is None:
+                zoned = timestamp.replace(tzinfo=ZoneInfo(zone))
+                if zoned.astimezone(UTC).astimezone(zoned.tzinfo).replace(tzinfo=None) != timestamp:
+                    raise ValueError("One-shot time does not exist in this timezone (DST gap)")
+                result["run_at"] = zoned.isoformat()
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"One-shot requires a valid run_at timestamp: {exc}") from exc
+    elif kind == "cron":
+        expr = result.get("expr")
+        if not HAS_CRONITER or not isinstance(expr, str) or len(expr.split()) not in (5, 6):
+            raise ValueError("A valid cron expression and croniter are required")
+        try:
+            croniter(expr)
+        except (ValueError, KeyError) as exc:
+            raise ValueError("Invalid cron expression") from exc
+    else:
+        raise ValueError("Unsupported schedule kind")
+    return result
+
+
+def parse_schedule(schedule: str, timezone: str | None = None) -> dict[str, Any]:
+    return validate_schedule(schedule, timezone)
+
+
+def preview_schedule(schedule: Any, timezone: str | None = None) -> dict[str, Any]:
+    """Read-only projection using exactly the dispatch next-occurrence calculation."""
+    parsed = validate_schedule(schedule, timezone)
+    now = _spark_now()
+    occurrences = []
+    cursor = now
+    for _ in range(5):
+        value = compute_next_run(parsed, now=cursor)
+        if value is None:
+            break
+        occurrences.append(value)
+        if parsed["kind"] == "once":
+            break
+        cursor = datetime.fromisoformat(value)
+    return {"schedule": parsed, "occurrences": occurrences,
+            "timezone": parsed.get("timezone") or str(now.tzinfo),
+            "missed_run_policy": "Recurring runs catch up once within half a period (minimum 120 seconds, maximum 2 hours); older runs are skipped. Saved due one-shots execute on restart; one-shots without a saved next time recover within 120 seconds. Recurring runs advance before execution; accepted uncertain attempts are recorded as interrupted with unknown delivery and are not automatically retried.",
+            "dst_policy": "Skip nonexistent cron wall times; ambiguous wall times run once, at the first occurrence. Naive one-shots in a gap are rejected; folds use the first occurrence."}
 
 
 def _ensure_aware(dt: datetime) -> datetime:
@@ -304,19 +398,25 @@ def _next_cron_run(expr: str, now: datetime) -> datetime | None:
         candidate_wall = candidate.replace(tzinfo=None)
         if candidate_wall <= now_wall:
             continue
+        roundtrip = candidate.astimezone(UTC).astimezone(now.tzinfo)
+        if roundtrip.replace(tzinfo=None) != candidate_wall:
+            continue
         if croniter.match(expr, candidate_wall):
             return candidate
     logger.error("Could not find a valid next occurrence for cron expression %s", expr)
     return None
 
 
-def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -> str | None:
+def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None, *, now: datetime | None = None) -> str | None:
     """
     Compute the next run time for a schedule.
 
     Returns ISO timestamp string, or None if no more runs.
     """
-    now = _spark_now()
+    schedule = validate_schedule(schedule)
+    now = now or _spark_now()
+    if schedule.get("timezone"):
+        now = now.astimezone(ZoneInfo(schedule["timezone"]))
 
     if schedule["kind"] == "once":
         return _recoverable_oneshot_run_at(schedule, now, last_run_at=last_run_at)
@@ -326,10 +426,10 @@ def compute_next_run(schedule: dict[str, Any], last_run_at: str | None = None) -
         if last_run_at:
             # Next run is last_run + interval
             last = _ensure_aware(datetime.fromisoformat(last_run_at))
-            next_run = last + timedelta(minutes=minutes)
+            next_run = (last.astimezone(UTC) + timedelta(minutes=minutes)).astimezone(now.tzinfo)
         else:
             # First run is now + interval
-            next_run = now + timedelta(minutes=minutes)
+            next_run = (now.astimezone(UTC) + timedelta(minutes=minutes)).astimezone(now.tzinfo)
         return next_run.isoformat()
 
     elif schedule["kind"] == "cron":
@@ -487,6 +587,7 @@ def create_job(
     provider: str | None = None,
     base_url: str | None = None,
     script: str | None = None,
+    timezone: str | None = None,
 ) -> dict[str, Any]:
     """
     Create a new cron job.
@@ -510,7 +611,7 @@ def create_job(
     Returns:
         The created job dict
     """
-    parsed_schedule = parse_schedule(schedule)
+    parsed_schedule = parse_schedule(schedule, timezone)
 
     # Normalize repeat: treat 0 or negative values as None (infinite)
     if repeat is not None and repeat <= 0:
@@ -606,7 +707,18 @@ def _update_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         if job["id"] != job_id:
             continue
 
+        if "id" in updates and updates["id"] != job_id:
+            raise ValueError("Job ID is immutable")
+        updates = dict(updates)
+        if "schedule" in updates or "timezone" in updates:
+            zone = updates.pop("timezone", job.get("schedule", {}).get("timezone"))
+            proposed = updates.get("schedule", job["schedule"])
+            if zone is None and isinstance(proposed, dict):
+                proposed = {key: value for key, value in proposed.items() if key != "timezone"}
+            updates["schedule"] = validate_schedule(proposed, zone)
         updated = _apply_skill_fields({**job, **updates})
+        if updates.get("enabled") is not False:
+            updated["schedule"] = validate_schedule(updated.get("schedule"))
         schedule_changed = "schedule" in updates
 
         if "skills" in updates or "skill" in updates:
@@ -665,16 +777,23 @@ def resume_job(job_id: str) -> dict[str, Any] | None:
     )
 
 
+@_locked_jobs
 def trigger_job(job_id: str) -> dict[str, Any] | None:
     """Schedule a job to run on the next scheduler tick."""
-    return update_job(
+    from cron.history import History
+
+    occurrence = _spark_now().isoformat()
+    # Commit intent first so a tick cannot consume the jobs.json update before
+    # its cause is recorded. Failed mutations leave harmless unmatched intent.
+    History().manual(job_id, occurrence)
+    return _update_job(
         job_id,
         {
             "enabled": True,
             "state": "scheduled",
             "paused_at": None,
             "paused_reason": None,
-            "next_run_at": _spark_now().isoformat(),
+            "next_run_at": occurrence,
         },
     )
 
@@ -787,6 +906,19 @@ def get_due_jobs() -> list[dict[str, Any]]:
     needs_save = False
 
     for job in jobs:
+        try:
+            validate_schedule(job.get("schedule"))
+            if job.get("next_run_at"):
+                datetime.fromisoformat(job["next_run_at"])
+        except (ValueError, TypeError) as exc:
+            for raw in raw_jobs:
+                if raw["id"] == job["id"]:
+                    reason = f"Schedule requires repair: {exc}"
+                    if raw.get("enabled", True) or raw.get("paused_reason") != reason:
+                        raw.update(enabled=False, state="paused", next_run_at=None,
+                                   paused_reason=reason)
+                        needs_save = True
+            continue
         if not job.get("enabled", True):
             continue
 

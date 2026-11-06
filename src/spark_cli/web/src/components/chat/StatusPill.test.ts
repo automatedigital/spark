@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MODEL_LOADING_LABEL, StatusPill } from "./StatusPill";
+import { RecoveryCard } from "./RecoveryCard";
 
 describe("StatusPill", () => {
   it("uses one stable model-loading label while streaming without status text", () => {
@@ -85,4 +86,35 @@ describe("StatusPill", () => {
     expect(html).toContain("Offline");
     expect(html).toContain('data-status-kind="offline"');
   });
+});
+
+it("renders the confirmed retry reason and delay without exposing wire metadata", () => {
+  const status = "spark.retry.v1:" + JSON.stringify({
+    version: 1, reason_class: "rate_limit", attempt: 2, max_attempts: 3,
+    next_delay_seconds: 10, next_attempt_at: 1010, observed_at: 1000,
+    elapsed_seconds: 0, budget_seconds: 240, budget_deadline_at: 1240,
+  });
+  const html = renderToStaticMarkup(createElement(StatusPill, {
+    streaming: true, turnActive: true, backendState: "running", backendPhase: "retry",
+    backendStatus: status, now: 1_000_000,
+  }));
+  expect(html).toContain("Rate limit · retry 2/3 · in 10s");
+  expect(html).toContain('data-status-kind="retrying"');
+  expect(html).not.toContain("spark.retry.v1");
+  expect(html).not.toContain(MODEL_LOADING_LABEL);
+});
+
+
+it("keeps retry wire metadata out of recovery copy", () => {
+  const label = "spark.retry.v1:" + JSON.stringify({
+    version: 1, reason_class: "rate_limit", attempt: 2, max_attempts: 3,
+    next_delay_seconds: 10, next_attempt_at: 1010, observed_at: 1000,
+    elapsed_seconds: 0, budget_seconds: 240, budget_deadline_at: 1240,
+  });
+  const html = renderToStaticMarkup(createElement(RecoveryCard, {
+    state: "running", label, onReconnect: () => {}, onInspect: () => {}, onRetry: () => {},
+  }));
+  expect(html).toContain("Rate limit");
+  expect(html).not.toContain("spark.retry.v1");
+  expect(html).not.toContain("reason_class");
 });

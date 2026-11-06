@@ -121,6 +121,9 @@ jobs:
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
 
+      - name: Combined settings destinations
+        run: node e2e/integration-settings.mjs
+
       # e2e/multi-chat.mjs defaults to <repo>/.venv/bin/python, which does not
       # exist on a runner; point it at the interpreter set up above.
       - name: Multi-chat end-to-end

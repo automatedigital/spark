@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { ContextItem } from "@/lib/context";
 import { createComposerState, planSend, planStop } from "@/lib/chatComposerController";
 import {
+  beginComposerSubmission,
+  acknowledgeComposerSubmission,
   applyComposerPlanIntents,
   executeComposerEffect,
   type ComposerApi,
@@ -97,4 +99,26 @@ describe("useChatComposerActions helpers", () => {
     });
     expect(statuses).toEqual(["Stopping…"]);
   });
+});
+
+it("retains ambiguous draft IDs and retires only the acknowledged draft", () => {
+  const effect = { type: "post-conversation-message", sessionId: "origin", message: "same", contextItems: [] } as const;
+  const first = beginComposerSubmission({ ...effect, contextItems: [] });
+  expect(beginComposerSubmission({ ...effect, contextItems: [] }).id).toBe(first.id);
+  const other = beginComposerSubmission({ ...effect, sessionId: "other", contextItems: [] });
+  expect(other.id).not.toBe(first.id);
+  acknowledgeComposerSubmission(first);
+  expect(beginComposerSubmission({ ...effect, sessionId: "other", contextItems: [] }).id).toBe(other.id);
+  expect(beginComposerSubmission({ ...effect, contextItems: [] }).id).not.toBe(first.id);
+});
+
+it("passes submission IDs through all root transports", async () => {
+  const api = fakeApi();
+  const runner = { apiClient: api, submissionId: "durable-id", retry: vi.fn(), fork: vi.fn() };
+  await executeComposerEffect({ type: "start-conversation", message: "hello", contextItems: [] }, runner);
+  await executeComposerEffect({ type: "post-conversation-message", sessionId: "thread", message: "hello", contextItems: [] }, runner);
+  await executeComposerEffect({ type: "start-workspace-conversation", workspaceSlug: "project", message: "hello", contextItems: [] }, runner);
+  expect(api.postConversation).toHaveBeenCalledWith("hello", undefined, [], undefined, "durable-id");
+  expect(api.postConversationMessage).toHaveBeenCalledWith("thread", "hello", [], "durable-id");
+  expect(api.startWorkspaceConversation).toHaveBeenCalledWith("project", "hello", undefined, [], "durable-id");
 });

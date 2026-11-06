@@ -327,7 +327,7 @@ class SessionDB:
         self.db_path = db_path or _default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._event_subscribers: list[Callable[[dict[str, Any]], None]] = []
         self._write_count = 0
         self._conn = sqlite3.connect(
@@ -1820,7 +1820,7 @@ class SessionDB:
         self, session_id: str, command_kind: str, request_id: str,
         payload: dict[str, Any], acceptance: dict[str, Any], intent: dict[str, Any],
         *, children: list[dict[str, Any]] | None = None, max_children: int = 3,
-        compression_family: bool = False,
+        compression_family: bool = False, root_message: str | None = None,
     ) -> dict[str, Any]:
         """Commit acceptance and dispatch intent before an external side effect.
 
@@ -1841,6 +1841,27 @@ class SessionDB:
             if row:
                 return {"created": False, **self._command_receipt_dict(row)}, []
             child_events = []
+            root_acceptance = dict(acceptance)
+            if root_message is not None:
+                cursor = conn.execute(
+                    "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, 'user', ?, ?)",
+                    (session_id, root_message, now),
+                )
+                message_id = cursor.lastrowid
+                conn.execute("UPDATE sessions SET message_count=message_count+1 WHERE id=?", (session_id,))
+                message_event, _ = self._append_session_event_row(
+                    conn, session_id, "message.appended",
+                    {"role": "user", "content": root_message, "message_id": message_id},
+                    f"root-submission:{command_kind}:{request_id}", now,
+                )
+                child_events.append(message_event)
+                root_acceptance["user_message_id"] = message_id
+                projection = {**root_acceptance, "status": "uncertain", "started_at": now,
+                              "ended_at": None, "dispatch_intent": True}
+                conn.execute(
+                    "INSERT INTO web_turn_projections (turn_id, session_id, projection_json, updated_at) VALUES (?, ?, ?, ?)",
+                    (acceptance["turn_id"], session_id, _event_json(projection), now),
+                )
             if children:
                 active = conn.execute(
                     """SELECT COUNT(*) FROM runtime_child_jobs WHERE state NOT IN
@@ -1869,7 +1890,7 @@ class SessionDB:
                  "payload_hash": payload_hash, "accepted_ids": acceptance},
                 f"runtime.command:{command_kind}:{request_id}", now,
             )
-            accepted = {**acceptance, "request_id": request_id, "committed_sequence": event["sequence"]}
+            accepted = {**root_acceptance, "request_id": request_id, "committed_sequence": event["sequence"]}
             conn.execute(
                 """INSERT INTO runtime_command_receipts
                    (session_id, command_kind, request_id, payload_hash, acceptance_json,
@@ -2183,6 +2204,45 @@ class SessionDB:
 
     # =========================================================================
     # Web turn projections
+
+    def get_web_recovery_snapshot(self, session_id: str, *, limit: int = 80) -> dict[str, Any] | None:
+        """Read lineage, history, runs and decisions from one SQLite snapshot.
+
+        The reentrant connection lock lets existing read accessors participate in
+        this explicit transaction. No backfill or lifecycle writer belongs here.
+        The durable event cursor is deliberately not a web delivery cursor.
+        """
+        with self._lock:
+            self._conn.execute("BEGIN")
+            try:
+                resolved = self.resolve_session_id(session_id)
+                if not resolved:
+                    return None
+                lineage = self.resolve_compression_chain(resolved)
+                latest = self.resolve_latest_descendant(resolved)
+                outcomes = [row for sid in lineage for row in self.list_web_turn_projections(sid)]
+                outcomes.sort(key=lambda row: (
+                    float(row["projection"].get("started_at") or row["updated_at"] or 0.0),
+                    row["updated_at"], row["turn_id"],
+                ))
+                actions = [action for sid in lineage for action in self.list_web_pending_actions(sid)]
+                sequences = {
+                    sid: int(self._conn.execute(
+                        "SELECT COALESCE(MAX(sequence), 0) FROM session_events WHERE session_id = ?",
+                        (sid,),
+                    ).fetchone()[0]) for sid in lineage
+                }
+                return {
+                    "resolved_session_id": resolved,
+                    "latest_session_id": latest,
+                    "lineage": lineage,
+                    "durable_cursor": {"session_sequences": sequences},
+                    "outcomes": outcomes,
+                    "pending_actions": actions,
+                    "history": {"session_id": latest, **self.get_web_message_page(latest, limit=min(max(limit, 1), 200))},
+                }
+            finally:
+                self._conn.execute("ROLLBACK")
 
     def upsert_web_turn_projection(
         self,

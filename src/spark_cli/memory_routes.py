@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi import Path as ApiPath
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -32,8 +33,13 @@ class RemoveBody(BaseModel):
 
 
 def _store():
+    from core.spark_constants import get_spark_home
     from tools.memory_tool import MemoryStore
 
+    home = get_spark_home().resolve()
+    for name in ("MEMORY.md", "USER.md"):
+        if not (home / "memories" / name).resolve().is_relative_to(home):
+            raise HTTPException(status_code=403, detail="Memory file outside active profile")
     s = MemoryStore()
     s.load_from_disk()
     return s
@@ -91,6 +97,40 @@ def remove_entry(target: str, body: RemoveBody) -> dict[str, Any]:
     if not result.get("success"):
         raise HTTPException(status_code=404, detail=result.get("error", "remove failed"))
     return _target_payload(_store(), target)
+
+
+@router.get("/facts")
+def list_facts(q: str = Query("", max_length=200), after: int = Query(0, ge=0, le=9223372036854775807), limit: int = Query(20, ge=1, le=50)) -> dict[str, Any]:
+    from spark_cli.memory_read import browse_facts
+
+    return browse_facts(q, after, limit)
+
+
+@router.get("/facts/{fact_id}")
+def fact_detail(fact_id: int = ApiPath(ge=1, le=9223372036854775807)) -> dict[str, Any]:
+    from spark_cli.memory_read import browse_facts
+
+    result = browse_facts(fact_id=fact_id)
+    if result["status"] == "available" and not result["items"]:
+        raise HTTPException(status_code=404, detail="Fact not found")
+    return result
+
+
+@router.get("/reviews")
+def list_reviews(after: str = Query("", max_length=255)) -> dict[str, Any]:
+    from spark_cli.memory_read import dream_reviews
+
+    return dream_reviews(after)
+
+
+@router.get("/reviews/{name}")
+def review_detail(name: str) -> dict[str, str]:
+    from spark_cli.memory_read import MemoryReadUnavailable, read_dream
+
+    try:
+        return {"name": name, "content": read_dream(name)}
+    except (OSError, UnicodeError, MemoryReadUnavailable):
+        raise HTTPException(status_code=404, detail="Review unavailable in active profile") from None
 
 
 def register_memory_routes(app) -> None:

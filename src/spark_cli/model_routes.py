@@ -591,8 +591,6 @@ def set_fast_model(body: dict[str, Any]):
 def set_smart_model(body: dict[str, Any]):
     """Update just the smart model name, preserving provider/url/api_mode."""
     try:
-        from spark_cli.config import save_config
-
         raw_model = str(body.get("model") or "").strip()
         if raw_model.lower() == "auto":
             from spark_cli.model_config import write_global_model_config
@@ -604,14 +602,9 @@ def set_smart_model(body: dict[str, Any]):
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
 
-        cfg = load_config()
-        model_cfg = cfg.get("model", "")
-        if isinstance(model_cfg, dict):
-            model_cfg["default"] = new_model
-            cfg["model"] = model_cfg
-        else:
-            cfg["model"] = new_model
-        save_config(cfg)
+        from spark_cli.model_config import write_global_model_config
+
+        write_global_model_config(model=new_model)
         return {"ok": True, "model": new_model}
     except Exception:
         _log.exception("PUT /api/model/smart failed")
@@ -670,6 +663,28 @@ def set_reasoning_effort(body: dict[str, Any]):
     except Exception:
         _log.exception("PUT /api/model/reasoning failed")
         return JSONResponse({"error": "Failed to save reasoning effort"}, status_code=500)
+
+
+@router.get("/routing")
+def get_routing_settings():
+    from spark_cli.routing_projection import routing_settings
+
+    return routing_settings(load_config())
+
+
+@router.get("/routing/turns/{session_id}")
+def get_recorded_turn_routes(session_id: str):
+    from core.spark_state import SessionDB
+    from spark_cli.routing_projection import read_recorded_routes
+
+    db = SessionDB()
+    try:
+        resolved = db.resolve_session_id(session_id)
+        if not resolved:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"schema_version": 1, "turns": read_recorded_routes(db, resolved)}
+    finally:
+        db.close()
 
 
 def register_model_routes(app) -> None:

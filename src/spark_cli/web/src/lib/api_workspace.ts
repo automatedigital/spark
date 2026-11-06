@@ -1,3 +1,4 @@
+import { postRootSubmission } from "./api_submissions";
 /** workspace endpoints, split out of api.ts. */
 
 import {
@@ -275,14 +276,10 @@ export const workspaceApi = {
     new EventSource(
       sseUrl(`/api/workspace/projects/${encodeURIComponent(slug)}/preview/events`),
     ),
-  startWorkspaceConversation: (slug: string, message: string, model?: string, contextItems?: unknown[]) =>
-    fetchJSON<{ session_id: string; ok: boolean; source: string }>(
+  startWorkspaceConversation: (slug: string, message: string, model?: string, contextItems?: unknown[], submissionId?: string) =>
+    postRootSubmission<{ session_id: string; ok: boolean; source: string }>(
       `/api/workspace/projects/${encodeURIComponent(slug)}/conversations`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, model, context_items: contextItems ?? [] }),
-      },
+      { message, model, context_items: contextItems ?? [] }, submissionId,
     ),
   listWorkspaceConversations: (slug: string, limit = 30, offset = 0) => {
     const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });

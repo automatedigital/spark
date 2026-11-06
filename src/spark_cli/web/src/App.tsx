@@ -1,3 +1,4 @@
+import { PAGE_DESTINATIONS, resolveAppDestination } from "@/lib/settingsRegistry";
 import { lazy, memo, useState, useEffect, useRef } from "react";
 import {
   Clock,
@@ -39,10 +40,9 @@ import {
 
 
 // Primary sections shown after the "New chat" action.
-const PRIMARY_NAV = [
-  { id: "files", labelKey: "files" as const, icon: FolderOpen },
-  { id: "cron", labelKey: "cron" as const, icon: Clock },
-] as const;
+const PRIMARY_NAV = PAGE_DESTINATIONS.filter((item) => "primary" in item).map((item) => ({
+  ...item, icon: item.id === "files" ? FolderOpen : Clock,
+}));
 
 const CronPage = lazy(() => import("@/pages/CronPage"));
 const KanbanPage = lazy(() => import("@/pages/KanbanPage"));
@@ -302,9 +302,17 @@ function AppShell() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const navigateTo = (id: PageId) => {
-    setPage(id);
-    localStorage.setItem("spark-active-page", id);
+  const navigateTo = (id: string) => {
+    // Keep settings overlays on the originating thread/page.
+    if (id === "kanban") {
+      setPage(id);
+      localStorage.setItem("spark-active-page", id);
+      return;
+    }
+    const destination = resolveAppDestination(id);
+    if ("settings" in destination) { openSettings(destination.settings); return; }
+    setPage(destination.page);
+    localStorage.setItem("spark-active-page", destination.page);
   };
 
   const navLabel = (key: NavLabelKey) => t.app.nav[key];
@@ -525,7 +533,7 @@ function AppShell() {
           <CommandPalette
             open
             onClose={() => setPaletteOpen(false)}
-            onNavigate={(id) => navigateTo(id as PageId)}
+            onNavigate={navigateTo}
             onOpenSettings={() => openSettings()}
           />
         </LazyLoadBoundary>
@@ -871,7 +879,7 @@ function AppShell() {
 
       {settingsOpen && (
         <LazyLoadBoundary label="settings" overlay>
-          <SettingsPanel onClose={() => setSettingsOpen(false)} initialTab={settingsInitialTab} />
+          <SettingsPanel onClose={() => setSettingsOpen(false)} initialTab={settingsInitialTab} onNavigate={navigateTo} />
         </LazyLoadBoundary>
       )}
     </div>

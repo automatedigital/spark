@@ -6,6 +6,8 @@ import asyncio
 import atexit
 import base64
 import errno
+import hashlib
+import heapq
 import ipaddress
 import json
 import logging
@@ -267,11 +269,14 @@ def _safe_path(project_dir: Path, rel: str) -> Path:
 
 def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = False) -> dict[str, Any]:
     rel = str(path.relative_to(project_dir))
-    if path.is_dir():
+    if not path.is_symlink() and path.is_dir():
         children: list[dict[str, Any]] = []
         if depth < _MAX_TREE_DEPTH:
             try:
-                entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+                entries = sorted(
+                    path.iterdir(),
+                    key=lambda p: (p.is_symlink() or not p.is_dir(), p.name.casefold(), p.name),
+                )
                 for child in entries:
                     if not show_hidden and child.name.startswith("."):
                         continue
@@ -279,7 +284,7 @@ def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = Fa
             except PermissionError:
                 _log.debug("Ignoring error in _tree_node()", exc_info=True)
         return {"name": path.name, "path": rel, "type": "dir", "children": children}
-    stat = path.stat()
+    stat = path.lstat()
     mime, _ = mimetypes.guess_type(path.name)
     return {
         "name": path.name,
@@ -821,7 +826,8 @@ def get_project_tree(slug: str, show_hidden: bool = Query(default=False)):
     children: list[dict[str, Any]] = []
     try:
         entries = sorted(
-            project_dir.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
+            project_dir.iterdir(),
+            key=lambda p: (p.is_symlink() or not p.is_dir(), p.name.casefold(), p.name)
         )
         for entry in entries:
             if not show_hidden and entry.name.startswith("."):
@@ -1244,10 +1250,71 @@ async def upload_workspace_files(files: list[UploadFile] = File(...)):
     return {"ok": True, "saved": saved}
 
 
+def _directory_page(project_dir: Path, path: str, show_hidden: bool,
+                    limit: int, cursor: str) -> dict[str, Any]:
+    """One level only; never follow directory links while enumerating children.
+
+    The canonical project root may itself be an intentional linked project.
+    Hidden entries follow the existing explicit visibility switch; no new ignore
+    rules are imposed on user files.
+    """
+    root = project_dir.resolve(strict=True)
+    target = _safe_path(root, path)
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
+    revision = str(target.stat().st_mtime_ns)
+    scope = hashlib.sha256(f"{root}:{path}:{show_hidden}:{revision}".encode()).hexdigest()
+    after: tuple[int, str, str] | None = None
+    if cursor:
+        try:
+            payload = json.loads(base64.urlsafe_b64decode(cursor))
+            if not isinstance(payload, list) or len(payload) != 2:
+                raise ValueError("Invalid cursor shape")
+            if payload[0] != scope:
+                raise HTTPException(status_code=409, detail="Directory changed; refresh this folder")
+            key = payload[1]
+            if (not isinstance(key, list) or len(key) != 3 or key[0] not in (0, 1)
+                    or not all(isinstance(value, str) for value in key[1:])):
+                raise ValueError("Invalid sort key")
+            after = (key[0], key[1], key[2])
+        except (ValueError, TypeError, IndexError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid directory cursor") from exc
+
+    def candidates():
+        with os.scandir(target) as iterator:
+            for entry in iterator:
+                if not show_hidden and entry.name.startswith("."):
+                    continue
+                is_dir = entry.is_dir(follow_symlinks=False)
+                key = (0 if is_dir else 1, entry.name.casefold(), entry.name)
+                if after is None or key > after:
+                    yield key, entry.name, is_dir, entry.is_symlink()
+
+    try:
+        page = heapq.nsmallest(limit + 1, candidates())
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Directory cannot be read") from exc
+    entries = []
+    for _, name, is_dir, link in page[:limit]:
+        rel = (Path(path) / name).as_posix()
+        # Links remain visible but are never recursively expanded, including cycles.
+        entries.append({"name": name, "path": rel, "type": "dir" if is_dir else "file",
+                        "symlink": link})
+    next_cursor = None
+    if len(page) > limit:
+        next_cursor = base64.urlsafe_b64encode(json.dumps([scope, page[limit - 1][0]]).encode()).decode()
+    return {"path": path, "entries": entries, "revision": scope, "next_cursor": next_cursor}
+
+
 @router.get("/projects/{slug}/list")
-def list_project_dir(slug: str, path: str = Query(default=""), show_hidden: bool = Query(default=False)):
-    """List one level of a directory in a workspace project for @ autocomplete."""
+def list_project_dir(slug: str, path: str = Query(default=""),
+                     show_hidden: bool = Query(default=False),
+                     limit: int = Query(default=200, ge=1, le=200),
+                     cursor: str = Query(default=""), paged: bool = Query(default=False)):
+    """Paged explorer reads; retain the existing autocomplete response contract."""
     project_dir = _project_dir(slug)
+    if paged:
+        return _directory_page(project_dir, path, show_hidden, limit, cursor)
     target = _safe_path(project_dir, path) if path else project_dir
     if not target.exists() or not target.is_dir():
         raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
@@ -1704,25 +1771,26 @@ def _run_terminal_command(run_id: str) -> None:
     proc: subprocess.Popen | None = None
 
     try:
-        with _terminal_lock:
-            run["status"] = "running"
-            run["updated_at"] = time.time()
-        _queue_terminal_event(run_id, {"type": "state", "status": "running"})
-
-        proc = subprocess.Popen(
-            _terminal_command_argv(command),
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            bufsize=1,
-            errors="replace",
-        )
-        with _terminal_lock:
-            run["pid"] = proc.pid
-            run["process"] = proc
-
+        with run["lifecycle_lock"]:
+            if run.get("stop_requested"):
+                return
+            proc = subprocess.Popen(
+                _terminal_command_argv(command),
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                bufsize=1,
+                errors="replace",
+                start_new_session=sys.platform != "win32",
+            )
+            with _terminal_lock:
+                run["pid"] = proc.pid
+                run["process"] = proc
+                run["status"] = "running"
+                run["updated_at"] = time.time()
+            _queue_terminal_event(run_id, {"type": "state", "status": "running"})
         assert proc.stdout is not None
         for line in proc.stdout:
             with _terminal_lock:
@@ -1730,9 +1798,15 @@ def _run_terminal_command(run_id: str) -> None:
                 run["updated_at"] = time.time()
             _queue_terminal_event(run_id, {"type": "output", "stream": "stdout", "text": line})
 
-        exit_code = proc.wait()
+        while True:
+            with run["lifecycle_lock"]:
+                try:
+                    exit_code = proc.wait(timeout=0.1)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
         with _terminal_lock:
-            if run.get("status") == "stopped":
+            if run.get("stop_requested"):
                 status = "stopped"
             else:
                 status = "done" if exit_code == 0 else "failed"
@@ -1782,6 +1856,8 @@ def start_terminal_run(slug: str, body: TerminalRunCreate | None = None):
         "exit_code": None,
         "pid": None,
         "process": None,
+        "lifecycle_lock": threading.RLock(),
+        "stop_requested": False,
         "output": [],
         "created_at": time.time(),
         "updated_at": time.time(),
@@ -1801,6 +1877,9 @@ def _run_terminal_shell(run_id: str) -> None:
     master_fd: int | None = None
 
     try:
+        with run["lifecycle_lock"]:
+            if run.get("stop_requested"):
+                return
         if pty is None or fcntl is None or termios is None:
             raise RuntimeError("Interactive workspace terminals are not yet supported on Windows")
         master_fd, slave_fd = pty.openpty()
@@ -1808,24 +1887,28 @@ def _run_terminal_shell(run_id: str) -> None:
             fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
         except OSError:
             _log.debug("Ignoring error in _run_terminal_shell()", exc_info=True)
-        proc = subprocess.Popen(
-            [shell, "-i"],
-            cwd=cwd,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            start_new_session=True,
-            close_fds=True,
-            env={**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor", "LINES": "24", "COLUMNS": "80"},
-        )
-        os.close(slave_fd)
-        with _terminal_lock:
-            run["status"] = "running"
-            run["pid"] = proc.pid
-            run["process"] = proc
-            run["pty_fd"] = master_fd
-            run["updated_at"] = time.time()
-        _queue_terminal_event(run_id, {"type": "state", "status": "running"})
+        with run["lifecycle_lock"]:
+            if run.get("stop_requested"):
+                os.close(slave_fd)
+                return
+            proc = subprocess.Popen(
+                [shell, "-i"],
+                cwd=cwd,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                start_new_session=True,
+                close_fds=True,
+                env={**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor", "LINES": "24", "COLUMNS": "80"},
+            )
+            os.close(slave_fd)
+            with _terminal_lock:
+                run["status"] = "running"
+                run["pid"] = proc.pid
+                run["process"] = proc
+                run["pty_fd"] = master_fd
+                run["updated_at"] = time.time()
+            _queue_terminal_event(run_id, {"type": "state", "status": "running"})
 
         while True:
             try:
@@ -1839,14 +1922,18 @@ def _run_terminal_shell(run_id: str) -> None:
                 run["output"].append(text)
                 run["updated_at"] = time.time()
             _queue_terminal_event(run_id, {"type": "output", "stream": "pty", "text": text})
-            if proc.poll() is not None:
-                break
 
-        exit_code = proc.poll()
-        if exit_code is None:
-            exit_code = proc.wait(timeout=1)
+        while True:
+            with run["lifecycle_lock"]:
+                try:
+                    exit_code = proc.wait(timeout=0.1)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
         with _terminal_lock:
-            if run.get("status") != "stopped":
+            if run.get("stop_requested"):
+                run["status"] = "stopped"
+            else:
                 run["status"] = "done" if exit_code == 0 else "failed"
             run["exit_code"] = exit_code
             run["process"] = None
@@ -1963,16 +2050,22 @@ def stop_terminal_run(slug: str, run_id: str):
     run = _terminal_runs.get(run_id)
     if not run or run.get("slug") != slug:
         raise HTTPException(status_code=404, detail="Run not found")
-    proc = run.get("process")
-    if proc is not None and proc.poll() is None:
-        run["status"] = "stopped"
-        run["updated_at"] = time.time()
+    from spark_cli.terminal_process import terminate_terminal_process
+
+    with run["lifecycle_lock"]:
+        run["stop_requested"] = True
+        proc = run.get("process")
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except Exception:
-            proc.terminate()
+            if proc is not None:
+                terminate_terminal_process(proc)
+        except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+            raise HTTPException(status_code=500, detail="Terminal exit could not be confirmed") from exc
+        with _terminal_lock:
+            run["status"] = "stopped"
+            run["exit_code"] = proc.returncode if proc is not None else None
+            run["updated_at"] = time.time()
         _queue_terminal_event(run_id, {"type": "state", "status": "stopped"})
-    return {"ok": True, "run_id": run_id, "status": run.get("status")}
+    return {"ok": True, "run_id": run_id, "status": run["status"]}
 
 
 # ── Project preview ──────────────────────────────────────────────────────────

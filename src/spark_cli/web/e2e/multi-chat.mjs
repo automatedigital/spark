@@ -157,12 +157,15 @@ async function run() {
 
   const startBackend = () => startProcess(
       pythonBin,
-      ["-m", "spark_cli.main", "dashboard", "--host", "127.0.0.1", "--port", String(apiPort), "--no-open"],
+      // Vite owns frontend serving here. The dashboard CLI also installs/builds
+      // the frontend, which can block readiness and mutate the frozen npm tree.
+      ["-u", "-c", "from spark_cli.web_server import start_server; import sys; start_server('127.0.0.1', int(sys.argv[1]), False)", String(apiPort)],
       {
       cwd: repoRoot,
       env: {
         ...process.env,
         SPARK_HOME: sparkHome,
+        PYTHONPATH: path.join(repoRoot, "src"),
         SPARK_WEB_FAKE_STREAMS: "1",
       },
     },

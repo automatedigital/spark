@@ -192,8 +192,9 @@ class TestComputeNextRun:
         assert isinstance(next_dt, datetime)
         assert next_dt > datetime.now().astimezone()
 
-    def test_unknown_kind_returns_none(self):
-        assert compute_next_run({"kind": "unknown"}) is None
+    def test_unknown_kind_rejected(self):
+        with pytest.raises(ValueError, match="Unsupported schedule kind"):
+            compute_next_run({"kind": "unknown"})
 
     def test_interval_across_dst_spring_forward(self):
         """Interval schedule should advance by real minutes, not wall-clock hours."""

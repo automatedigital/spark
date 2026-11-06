@@ -1,3 +1,4 @@
+import { useSettingsDraft } from "@/components/settings/settingsDrafts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -73,8 +74,8 @@ function ShellButton({
   );
 }
 
-export default function AdminPage() {
-  const [tab, setTab] = useState<TabId>("setup");
+export default function AdminPage({ initialTab = "setup" }: { initialTab?: TabId }) {
+  const [tab, setTab] = useState<TabId>(initialTab);
   const [query, setQuery] = useState("");
   const [actions, setActions] = useState<AdminActionMeta[]>([]);
   const [gateway, setGateway] = useState<GatewayAdminStatus | null>(null);
@@ -82,13 +83,13 @@ export default function AdminPage() {
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [mcp, setMcp] = useState<McpServersResponse | null>(null);
   const [diag, setDiag] = useState<DiagnosticsSummary | null>(null);
-  const [newProfile, setNewProfile] = useState("");
-  const [cloneProfile, setCloneProfile] = useState("");
-  const [pluginName, setPluginName] = useState("");
-  const [mcpName, setMcpName] = useState("");
-  const [mcpUrl, setMcpUrl] = useState("");
-  const [mcpCommand, setMcpCommand] = useState("");
-  const [importPath, setImportPath] = useState("");
+  const [newProfile, setNewProfile] = useSettingsDraft("newProfile", "");
+  const [cloneProfile, setCloneProfile] = useSettingsDraft("cloneProfile", "");
+  const [pluginName, setPluginName] = useSettingsDraft("pluginName", "");
+  const [mcpName, setMcpName] = useSettingsDraft("mcpName", "");
+  const [mcpUrl, setMcpUrl] = useSettingsDraft("mcpUrl", "");
+  const [mcpCommand, setMcpCommand] = useSettingsDraft("mcpCommand", "");
+  const [importPath, setImportPath] = useSettingsDraft("importPath", "");
   const [outputLines, setOutputLines] = useState<string[]>([]);
   const [runStatus, setRunStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

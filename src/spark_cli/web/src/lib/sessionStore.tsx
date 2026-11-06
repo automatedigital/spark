@@ -5,6 +5,10 @@
  * Mounted once in App.tsx; consumed by both the global sidebar and ChatPage.
  */
 /* eslint-disable react-refresh/only-export-components */
+import { referenceResources } from "./referenceResources";
+import { fetchJSON } from "./apiHelpers";
+import type { SidebarSnapshot } from "./api_sidebar";
+import { useReferenceRefresh } from "@/hooks/useReferenceRefresh";
 import {
   createContext,
   useCallback,
@@ -388,10 +392,11 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
 
   const metadataRequestRef = useRef(0);
   const metadataScopeRef = useRef<string | null>(null);
-  const reloadSidebarMetadata = useCallback(async () => {
+  const reloadSidebarMetadata = useCallback(async (invalidate = true) => {
+    if (invalidate) referenceResources.invalidate("sidebar");
     const request = ++metadataRequestRef.current;
     try {
-      const snapshot = await api.getSidebarThreads();
+      const snapshot = await referenceResources.read("sidebar", (signal) => fetchJSON<SidebarSnapshot>("/api/sidebar/threads", { signal }));
       if (request !== metadataRequestRef.current) return;
       if (snapshot.schema_version !== 1) throw new Error("Unsupported sidebar metadata version");
       const scopeChanged = metadataScopeRef.current !== snapshot.preference_scope;
@@ -411,21 +416,14 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
         setCanImportLocalPins(!readSidebarPreference("spark-sidebar-pin-import") && Array.isArray(legacy) && legacy.some((id: unknown) => typeof id === "string" && snapshot.entries[id]?.revision === 0));
       } catch { setCanImportLocalPins(false); }
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       if (request === metadataRequestRef.current) {
         setSidebarMetadataReady(false);
         setSidebarMetadataError(error instanceof Error ? error.message : "Could not load thread organization");
       }
     }
   }, []);
-  useEffect(() => {
-    void reloadSidebarMetadata();
-    const refresh = () => { if (document.visibilityState !== "hidden") void reloadSidebarMetadata(); };
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    // One bounded subscription for all rows, also covering other backend processes.
-    const timer = window.setInterval(refresh, 15000);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
-  }, [reloadSidebarMetadata]);
+  useReferenceRefresh("sidebar", () => { void reloadSidebarMetadata(false); });
 
   const metadataRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queueSidebarMetadataReload = useCallback(() => {
@@ -492,7 +490,6 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
   // ── Real-time updates (SSE) ──
   useEventBus((env: SparkEventEnvelope) => {
     if (env.topic === "sidebar.metadata_changed") queueSidebarMetadataReload();
-    if (env.topic === STATE_SNAPSHOT_TOPIC) void reloadSidebarMetadata();
     if (env.topic === STATE_SNAPSHOT_TOPIC) {
       const snapshot = env.data.snapshot as WebStateSnapshotV1 | undefined;
       if (snapshot?.shells) {
@@ -795,6 +792,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     const meta = metadataRef.current[id] ?? DEFAULT_SIDEBAR_METADATA;
     try {
       const result = await api.patchSidebarThread(id, expected ?? meta.revision, fields);
+      referenceResources.refresh("sidebar", true);
       // Fence a GET started before this acceptance, including snapshots that
       // predate a newly created thread and therefore omit its ID entirely.
       metadataRequestRef.current += 1;

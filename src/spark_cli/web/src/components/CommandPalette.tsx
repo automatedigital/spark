@@ -1,10 +1,10 @@
+import { PAGE_DESTINATIONS, SETTINGS_SECTIONS } from "@/lib/settingsRegistry";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, MessageSquare, MessageCircle, Clock, Package, Plug, Settings, FolderOpen, Loader2, Brain, Blocks } from "lucide-react";
-import { api } from "@/lib/api";
-import type { CronJob, SessionInfo, SessionSearchResult, SkillInfo, WorkspaceProject } from "@/lib/api";
+import { Search, MessageSquare, Clock, Package, Plug, Settings, FolderOpen, Loader2 } from "lucide-react";
+import { cachedPaletteRecent, paletteCategories, paletteItemKey, paletteScope, readPalette, type PaletteCategory, type PaletteItem, type PalettePage } from "@/lib/paletteClient";
+import { SIDEBAR_SCOPE_EVENT, sidebarPreferenceScopeReady } from "@/lib/sidebarPrefs";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
 import { cn } from "@/lib/utils";
-import { threadTitle } from "@/components/chat/ThreadRow";
 
 interface CommandItem {
   id: string;
@@ -22,161 +22,133 @@ interface CommandPaletteProps {
   onOpenSettings: () => void;
 }
 
+const PAGE_ICONS = { chat: MessageSquare, files: FolderOpen, cron: Clock, skills: Package, connectors: Plug };
 const PAGE_ITEMS = [
-  { id: "skillsTools", label: "Skills & Tools", description: "Skills and connectable tools", icon: Blocks },
-  { id: "messaging", label: "Messaging", description: "Connect messaging platforms", icon: MessageCircle },
-  { id: "chat", label: "Chat", description: "Projects and conversations", icon: MessageSquare },
-  { id: "files", label: "Files", description: "Workspace files", icon: FolderOpen },
-  { id: "cron", label: "Schedule", description: "Scheduled jobs", icon: Clock },
-  { id: "skills", label: "Skills", description: "Skill manager", icon: Package },
-  { id: "connectors", label: "Connectors", description: "External app connectors", icon: Plug },
-  { id: "memory", label: "Memory", description: "What the agent remembers", icon: Brain },
+  ...PAGE_DESTINATIONS.map((item) => ({ ...item, icon: PAGE_ICONS[item.id] })),
+  ...SETTINGS_SECTIONS.filter((item) => "common" in item && !("desktopOnly" in item)).map((item) => ({
+    id: `settings:${item.id}`, destination: item.id, label: item.label, description: `Settings › ${item.label}`, icon: Settings,
+  })),
 ];
 
 export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [messageResults, setMessageResults] = useState<SessionSearchResult[]>([]);
-  const [jobs, setJobs] = useState<CronJob[]>([]);
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [scope, setScope] = useState(paletteScope);
+  const [recent, setRecent] = useState(() => cachedPaletteRecent());
+  const [pages, setPages] = useState<Partial<Record<PaletteCategory, PalettePage>>>({});
+  const [errors, setErrors] = useState<string[]>([]);
+  const [pending, setPending] = useState(0);
+  const [dataIdentity, setDataIdentity] = useState(() => `${scope}:`);
+  const dataCurrent = dataIdentity === `${scope}:${query}` && scope === paletteScope();
+  const owner = useRef<{ current: () => boolean; controller: AbortController } | null>(null);
+  const loading = dataCurrent && pending > 0;
 
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setActiveIdx(0);
-      setTimeout(() => inputRef.current?.focus(), 10);
-      setLoading(true);
-      setMessageResults([]);
-      Promise.allSettled([
-        api.listWorkspaceProjects(),
-        api.getSessions(500, 0),
-        api.getCronJobs(),
-        api.getSkills(),
-      ]).then(([projectRes, sessionRes, jobRes, skillRes]) => {
-        if (projectRes.status === "fulfilled") setProjects(projectRes.value.projects);
-        if (sessionRes.status === "fulfilled") setSessions(sessionRes.value.sessions);
-        if (jobRes.status === "fulfilled") setJobs(jobRes.value);
-        if (skillRes.status === "fulfilled") setSkills(skillRes.value);
-      }).finally(() => setLoading(false));
-    }
+    const changed = () => setScope(paletteScope());
+    window.addEventListener(SIDEBAR_SCOPE_EVENT, changed);
+    window.addEventListener("storage", changed);
+    const timer = window.setInterval(changed, 50);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener(SIDEBAR_SCOPE_EVENT, changed);
+      window.removeEventListener("storage", changed);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setActiveId(null);
+    inputRef.current?.focus();
   }, [open]);
 
   useEffect(() => {
-    if (!open || !query.trim()) {
-      setMessageResults([]);
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      api.searchSessions(query.trim(), 30).then((response) => {
-        if (!cancelled) setMessageResults(response.results);
+    const controller = new AbortController();
+    let live = true;
+    const current = () => live && !controller.signal.aborted && scope === paletteScope();
+    owner.current = { current, controller };
+    setDataIdentity(`${scope}:${query}`);
+    setPages({});
+    setErrors([]);
+    setPending(0);
+    const cached = cachedPaletteRecent();
+    setRecent(cached);
+    const run = (category: PaletteCategory | "recent") => {
+      setPending((n) => n + 1);
+      readPalette(category, query.trim(), controller.signal).then((page) => {
+        if (!current()) return;
+        if (category === "recent") setRecent(page);
+        else setPages((old) => ({ ...old, [category]: page }));
       }).catch(() => {
-        if (!cancelled) setMessageResults([]);
+        if (current()) setErrors((old) => [...old, category]);
+      }).finally(() => {
+        if (current()) setPending((n) => n - 1);
       });
-    }, 150);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
     };
-  }, [open, query]);
+    let timer: number | undefined;
+    if (open && sidebarPreferenceScopeReady() && query.trim()) {
+      timer = window.setTimeout(() => paletteCategories.forEach(run), 150);
+    } else if (open && sidebarPreferenceScopeReady() && !cached) run("recent");
+    return () => { live = false; controller.abort(); window.clearTimeout(timer); };
+  }, [open, query, scope]);
 
-  const allItems: CommandItem[] = useMemo(() => [
-    ...projects.map((project) => ({
-      id: `project:${project.slug}`,
-      label: project.name,
-      description: project.path,
-      group: "Projects",
-      icon: FolderOpen,
-      action: () => {
-        setGlobalNavTarget({ type: "project", id: project.slug });
-        onNavigate("chat");
-        onClose();
-      },
-    })),
-    ...sessions.map((session) => ({
-      id: `thread:${session.id}`,
-      label: threadTitle(session),
-      description: session.preview ?? session.model ?? session.id,
-      group: "Chat Threads",
-      icon: MessageSquare,
-      action: () => {
-        setGlobalNavTarget({ type: "thread", id: session.id });
-        onNavigate("chat");
-        onClose();
-      },
-    })),
-    ...messageResults.map((result) => ({
-      id: `message:${result.message_id ?? result.session_id}`,
-      label: result.title || "Conversation match",
-      description: result.snippet.replaceAll(">>>", "").replaceAll("<<<", ""),
-      group: "Messages",
-      icon: MessageSquare,
-      action: () => {
-        setGlobalNavTarget({ type: "thread", id: result.session_id });
-        onNavigate("chat");
-        onClose();
-      },
-    })),
-    ...jobs.map((job) => ({
-      id: `scheduled-task:${job.id}`,
-      label: job.name || job.prompt.slice(0, 80),
-      description: `${job.state} · ${job.schedule_display || job.schedule?.display || job.schedule?.expr}`,
-      group: "Scheduled Tasks",
-      icon: Clock,
-      action: () => {
-        setGlobalNavTarget({ type: "scheduled-task", id: job.id });
-        onNavigate("cron");
-        onClose();
-      },
-    })),
-    ...skills.map((skill) => ({
-      id: `skill:${skill.name}`,
-      label: skill.name,
-      description: skill.description || skill.category,
-      group: "Skills",
-      icon: Package,
-      action: () => {
-        setGlobalNavTarget({ type: "skill", id: skill.name });
-        onNavigate("skills");
-        onClose();
-      },
-    })),
-    ...PAGE_ITEMS.map((p) => ({
-      ...p,
-      group: "Pages",
-      action: () => { onNavigate(p.id); onClose(); },
-    })),
-    {
-      id: "settings",
-      label: "Settings",
-      description: "App preferences and configuration",
-      group: "Pages",
-      icon: Settings,
-      action: () => { onOpenSettings(); onClose(); },
-    },
-  ], [jobs, messageResults, onClose, onNavigate, onOpenSettings, projects, sessions, skills]);
+  const loadMore = (category: PaletteCategory, offset: number) => {
+    const request = owner.current;
+    if (!request?.current()) return;
+    setPending((n) => n + 1);
+    readPalette(category, query.trim(), request.controller.signal, offset).then((page) => {
+      if (request.current()) setPages((old) => ({ ...old, [category]: { ...page, items: page.items } }));
+    }).catch(() => {
+      if (request.current()) setErrors((old) => [...new Set([...old, category])]);
+    }).finally(() => {
+      if (request.current()) setPending((n) => n - 1);
+    });
+  };
 
-  const filtered = query.trim()
-    ? allItems.filter((item) => {
-        const q = query.toLowerCase();
-        return item.label.toLowerCase().includes(q) ||
-          item.group.toLowerCase().includes(q) ||
-          (item.description?.toLowerCase().includes(q));
-      })
-    : allItems;
+  const allItems: CommandItem[] = useMemo(() => {
+    const staticItems = [
+      ...PAGE_ITEMS.map((p) => ({ ...p, group: "Pages", action: () => { onNavigate("destination" in p ? p.destination : p.id); onClose(); } })),
+      { id: "settings", label: "Settings", description: "App preferences and configuration", group: "Pages", icon: Settings, action: () => { onOpenSettings(); onClose(); } },
+    ];
+    const groups = { thread: "Chat Threads", message: "Messages", project: "Projects", "scheduled-task": "Scheduled Tasks", skill: "Skills" };
+    const icons = { thread: MessageSquare, message: MessageSquare, project: FolderOpen, "scheduled-task": Clock, skill: Package };
+    const items: PaletteItem[] = !dataCurrent ? [] : query.trim()
+      ? paletteCategories.flatMap((category) => pages[category]?.items ?? [])
+      : recent?.items ?? [];
+    return [...staticItems, ...items.map((item) => ({
+      id: paletteItemKey(item), label: item.label, description: item.description,
+      group: groups[item.kind], icon: icons[item.kind],
+      action: () => {
+        if (scope !== paletteScope()) return;
+        setGlobalNavTarget({ type: item.kind === "message" ? "thread" : item.kind, id: item.destination ?? item.id, ...(item.kind === "message" ? { messageId: item.id } : {}) });
+        onNavigate(item.kind === "skill" ? "skills" : item.kind === "scheduled-task" ? "cron" : "chat");
+        onClose();
+      },
+    }))];
+  }, [onClose, onNavigate, onOpenSettings, pages, query, recent, scope, dataCurrent]);
+
+  const filtered = allItems.filter((item) => {
+    if (!query.trim() || item.group !== "Pages") return true;
+    const q = query.trim().toLowerCase();
+    return `${item.label} ${item.description} ${item.group}`.toLowerCase().includes(q);
+  });
+  const activeIdx = Math.max(0, filtered.findIndex((item) => item.id === activeId));
+
+  useEffect(() => {
+    if (!activeId) return;
+    const selected = document.getElementById(`command-palette-item-${activeId}`);
+    if (selected && listRef.current?.contains(selected)) selected.scrollIntoView({ block: "nearest" });
+  }, [activeId, activeIdx]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIdx((i) => Math.min(i + 1, filtered.length - 1));
+      setActiveId(filtered[Math.min(activeIdx + 1, filtered.length - 1)]?.id ?? null);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActiveIdx((i) => Math.max(i - 1, 0));
+      setActiveId(filtered[Math.max(activeIdx - 1, 0)]?.id ?? null);
     } else if (e.key === "Enter") {
       filtered[activeIdx]?.action();
     } else if (e.key === "Escape") {
@@ -185,7 +157,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
   };
 
   useEffect(() => {
-    setActiveIdx(0);
+    setActiveId(null);
   }, [query]);
 
   if (!open) return null;
@@ -240,7 +212,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
                     "flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-accent/50 transition-colors",
                     i === activeIdx && "bg-accent/50"
                   )}
-                  onMouseEnter={() => setActiveIdx(i)}
+                  onMouseEnter={() => setActiveId(item.id)}
                   onClick={item.action}
                 >
                   <item.icon className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -260,6 +232,11 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
             ))}
           </ul>
         )}
+
+        {dataCurrent && errors.length > 0 && <div role="status" className="px-4 py-2 text-xs text-muted-foreground">Could not load: {[...new Set(errors)].join(", ")}. Other results remain available.</div>}
+        {dataCurrent && query.trim() && paletteCategories.map((category) => pages[category]?.next != null && (
+          <button key={category} disabled={loading} className="px-4 py-2 text-xs" onClick={() => loadMore(category, pages[category]!.next!)}>More {category}</button>
+        ))}
 
         <div className="border-t border-border px-4 py-2 flex items-center gap-4 text-[10px] text-muted-foreground">
           <span><kbd className="border border-border rounded px-1">↑↓</kbd> navigate</span>

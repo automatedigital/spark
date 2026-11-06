@@ -1,3 +1,5 @@
+import { parseRetryStatus, retryDisplayLabel } from "./retryStatus";
+
 /**
  * The status shown beside the composer is deliberately resolved separately
  * from the optimistic stream reducer.  A reducer event tells us what the
@@ -9,6 +11,7 @@ export type ChatConnectionState = "online" | "offline" | "reconnecting";
 
 export type ChatStatusKind =
   | "idle"
+  | "retrying"
   | "loading"
   | "working"
   | "streaming"
@@ -54,7 +57,8 @@ function nonEmpty(value: string | null | undefined): string | null {
 function canonicalBackendStatus(input: ChatStatusInput): { kind: ChatStatusKind; label: string } | null {
   const state = input.backendState?.toLowerCase();
   const phase = input.backendPhase?.toLowerCase();
-  const label = nonEmpty(input.backendLabel);
+  const rawLabel = nonEmpty(input.backendLabel);
+  const label = retryDisplayLabel(rawLabel, input.now ?? Date.now());
 
   if (state === "failed") return { kind: "failed", label: label ?? "Response failed" };
   if (state === "interrupted") return { kind: "interrupted", label: label ?? "Response interrupted" };
@@ -63,6 +67,7 @@ function canonicalBackendStatus(input: ChatStatusInput): { kind: ChatStatusKind;
   if (state === "redirecting" || phase === "redirecting") {
     return { kind: "redirecting", label: label ?? "Redirecting response" };
   }
+  if (parseRetryStatus(rawLabel)) return { kind: "retrying", label: label! };
   if (phase === "starting") return { kind: "loading", label: label ?? "Preparing agent" };
   if (phase === "api") return { kind: "loading", label: label ?? "Waiting for provider response" };
   if (phase === "tool") return { kind: "working", label: label ?? "Tool running" };

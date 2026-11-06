@@ -130,3 +130,30 @@ export function snapshotAction(snapshot: ChatStreamSnapshot): ChatStreamAction {
 export function flushAction(reason?: FlushReason): ChatStreamAction {
   return { type: "flush", ...(reason === undefined ? {} : { reason }) };
 }
+
+/** History has already been reconciled; restore its independent bounded live tail.
+ * A full tail is authoritative even when its revision equals the last delivery.
+ * Do not replace tokens received after this snapshot was assembled.
+ */
+export function hydrateChatStreamRecovery(
+  state: ChatStreamState,
+  snapshot: ChatStreamSnapshot,
+): ChatStreamControllerTransition {
+  if (!snapshot.turn_active) {
+    const transition = reduceChatStreamController(state, snapshotAction(snapshot));
+    if (!transition.accepted) return transition;
+    // The authoritative response already supplied saved history. Complete the
+    // reducer reconciliation too, without the legacy follow-up history fetch.
+    return {
+      ...transition,
+      state: { ...transition.state, turnState: "idle", statusLabel: null, finalized: true },
+      effects: [], queuedEffects: [],
+    };
+  }
+  if ((snapshot.stream_revision ?? 0) < state.streamRevision) {
+    return { state, effects: [], queuedEffects: [], accepted: false };
+  }
+  return reduceChatStreamController({
+    ...state, streamRevision: 0, streamTextChars: 0, tokenBuffer: "",
+  }, snapshotAction(snapshot));
+}
