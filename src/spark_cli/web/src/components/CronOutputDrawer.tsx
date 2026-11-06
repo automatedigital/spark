@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { savedOutputsApi, type SavedOutput } from "@/lib/api_cron_outputs";
 
 /** Mounted per job so pending requests cannot populate a different job's drawer. */
-export function CronOutputDrawer({ jobId, name, onClose }: { jobId: string; name: string; onClose: () => void }) {
+export function CronOutputDrawer({ jobId, name, onClose, initialFilename }: { jobId: string; name: string; onClose: () => void; initialFilename?: string }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [files, setFiles] = useState<string[]>([]);
   const [before, setBefore] = useState<string | null>(null);
@@ -27,11 +27,11 @@ export function CronOutputDrawer({ jobId, name, onClose }: { jobId: string; name
       if (!active) return;
       setFiles((old) => page ? [...old, ...result.files] : result.files);
       setBefore(result.next_before);
-      if (!page && result.files.length) setSelected(result.files[0]);
+      if (!page) setSelected(initialFilename || result.files[0] || "");
     }).catch(() => { if (active) setError("Could not load saved output history. Close and reopen to retry."); })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [jobId, page]);
+  }, [jobId, page, initialFilename]);
 
   useEffect(() => {
     if (!selected) return;

@@ -8,6 +8,7 @@ pull the scheduler in.
 from __future__ import annotations
 
 import logging
+import os
 from collections import Counter
 from pathlib import PurePosixPath
 
@@ -37,6 +38,83 @@ class CronJobCreate(BaseModel):
     model: str | None = None
     provider: str | None = None
     skills: list[str] | None = None
+    timezone: str | None = None
+
+
+class CronPreview(BaseModel):
+    schedule: str | dict
+    timezone: str | None = None
+    model: str | None = None
+    provider: str | None = None
+    skills: list[str] | None = None
+    deliver: str = "local"
+
+
+@router.post("/preview")
+def preview_cron(body: CronPreview):
+    from cron.jobs import preview_schedule
+    from cron.scheduler import _resolve_delivery_target
+    from spark_cli.auth import PROVIDER_REGISTRY, resolve_provider
+    from spark_cli.config import load_config
+    from spark_cli.runtime_provider import _get_named_custom_provider
+
+    try:
+        result = preview_schedule(body.schedule, body.timezone)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    errors = []
+    provider = None
+    cfg = load_config().get("model") or {}
+    model = body.model or (cfg if isinstance(cfg, str) else cfg.get("default")) or os.getenv("SPARK_MODEL") or None
+    requested = body.provider or os.getenv("SPARK_INFERENCE_PROVIDER") or (cfg.get("provider") if isinstance(cfg, dict) else None) or "auto"
+    # Execution resolution may refresh OAuth, seed credential pools or query a local
+    # model server. Preview must only inspect configuration, never invoke it.
+    try:
+        custom = _get_named_custom_provider(requested)
+        if custom:
+            provider = requested
+            model = body.model or custom.get("model") or model
+        elif requested == "auto":
+            provider = "auto"
+            errors.append("Automatic provider availability is unknown until execution; pin a configured provider for a deterministic preview")
+        else:
+            provider = resolve_provider(requested)
+            metadata = PROVIDER_REGISTRY.get(provider)
+            if metadata and metadata.auth_type == "api_key":
+                available = any(os.getenv(key) for key in metadata.api_key_env_vars)
+                if not available:
+                    errors.append("Provider credential availability is unknown; verify credentials in model settings")
+            elif provider != "custom":
+                errors.append("Provider credential availability is unknown; preview does not refresh credentials")
+    except Exception:
+        errors.append("Provider configuration unavailable; configure the selected provider")
+    if not model:
+        errors.append("Model is not configured; select a model before scheduling")
+    catalog = {item["id"]: item for item in _cron_skills()}
+    skills = []
+    for value in body.skills or []:
+        available = bool(catalog.get(value, {}).get("enabled"))
+        skills.append({"id": value, "available": available})
+        if not available:
+            errors.append(f"Skill unavailable: {value}")
+    delivery = body.deliver == "local"
+    if not delivery:
+        from gateway.config import Platform, load_gateway_config
+
+        target = _resolve_delivery_target({"deliver": body.deliver})
+        if target:
+            try:
+                platform = Platform(target["platform"].lower())
+                config = load_gateway_config().platforms.get(platform)
+                delivery = bool(config and config.enabled)
+            except ValueError:
+                pass
+    if not delivery:
+        errors.append("Delivery target unavailable; configure a destination or choose local")
+    result["readiness"] = {"provider": provider, "model": model, "skills": skills,
+                           "delivery_available": delivery, "errors": errors,
+                           "verification": "Configuration only; no provider or delivery request was made"}
+    return result
 
 
 class CronJobUpdate(BaseModel):
@@ -155,6 +233,17 @@ def list_cron_providers():
     return providers
 
 
+@router.get("/history")
+def read_cron_history(job_id: str | None = None, before: int | None = None,
+                      limit: int = 20):
+    from cron.history import History
+
+    try:
+        return History().page(job_id, before, limit)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get("/jobs")
 async def list_cron_jobs():
     from cron.jobs import list_jobs
@@ -178,6 +267,7 @@ async def create_cron_job(body: CronJobCreate):
 
     try:
         job = create_job(
+            timezone=body.timezone,
             prompt=body.prompt,
             schedule=body.schedule,
             name=body.name,
@@ -195,7 +285,7 @@ async def create_cron_job(body: CronJobCreate):
 
 @router.put("/jobs/{job_id}")
 async def update_cron_job(job_id: str, body: CronJobUpdate):
-    from cron.jobs import parse_schedule, update_job
+    from cron.jobs import update_job
 
     try:
         updates = dict(body.updates)
@@ -203,11 +293,12 @@ async def update_cron_job(job_id: str, body: CronJobUpdate):
         # an explicit empty list. Do not let a stale legacy value reappear.
         if "skills" in updates:
             updates["skills"] = _resolve_cron_skills(
-                TypeAdapter(list[str] | None).validate_python(updates["skills"])
+                None if updates["skills"] is None else TypeAdapter(list[str]).validate_python(updates["skills"])
             ) or []
             updates.pop("skill", None)
         elif "skill" in updates:
-            legacy: str | None = TypeAdapter(str | None).validate_python(updates.pop("skill"))
+            raw_legacy = updates.pop("skill")
+            legacy = None if raw_legacy is None else TypeAdapter(str).validate_python(raw_legacy)
             updates["skills"] = _resolve_cron_skills([legacy] if legacy else []) or []
         for field in ("model", "provider"):
             if field in updates:
@@ -215,8 +306,6 @@ async def update_cron_job(job_id: str, body: CronJobUpdate):
                 if value is not None and not isinstance(value, str):
                     raise ValueError(f"{field} must be a string or null")
                 updates[field] = value.strip() or None if value is not None else None
-        if isinstance(updates.get("schedule"), str):
-            updates["schedule"] = parse_schedule(updates["schedule"])
         job = update_job(job_id, updates)
     except Exception as e:
         _log.exception("PUT /api/cron/jobs/%s failed", job_id)

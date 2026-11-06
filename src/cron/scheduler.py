@@ -930,6 +930,13 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
         return 0
 
     try:
+        from cron.history import History
+        from cron.jobs import list_jobs
+
+        history = History()
+        history.reconcile()
+        history.prune({job["id"] for job in list_jobs(include_disabled=True)})
+
         # Dream pass — runs at most once per day if scheduled. Cheap when not due.
         try:
             from core import dream as _dream
@@ -948,13 +955,18 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
 
         executed = 0
         for job in due_jobs:
+            attempt = None
             try:
+                attempt = history.accept(job)
                 tracked_at_start = get_job(job["id"]) is not None
                 # For recurring jobs (cron/interval), advance next_run_at to the
                 # next future occurrence BEFORE execution.  This way, if the
                 # process crashes mid-run, the job won't re-fire on restart.
-                # One-shot jobs are left alone so they can retry on restart.
+                # One-shots keep their schedule; the ledger fences uncertain replay.
                 advance_next_run(job["id"])
+                if attempt is None:
+                    continue
+                history.start(attempt)
 
                 # Bind the loop variables as defaults so the callback stays
                 # correct even if run_job retains it beyond this iteration.
@@ -969,15 +981,22 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
 
                 success, output, final_response, error = run_job(job, is_cancelled=job_cancelled)
 
+                cancelled = job_cancelled() or error == f"RuntimeError: {JOB_CANCELLED_ERROR}"
+                outcome = "cancelled" if error == f"RuntimeError: {JOB_CANCELLED_ERROR}" else "success" if success else "error"
+                history.executed(attempt, outcome, error)
                 output_file = save_job_output(job["id"], output)
+                # Reject legacy/custom paths as references without breaking their
+                # existing output write or delivery behavior.
+                history.attach_output(attempt, Path(output_file))
                 if verbose:
                     logger.info("Output saved to: %s", output_file)
 
                 # Deliver the final response to the origin/target chat.
                 # If the agent responded with [SILENT], skip delivery (but
                 # output is already saved above).  Failed jobs always deliver.
-                if job_cancelled() or error == f"RuntimeError: {JOB_CANCELLED_ERROR}":
+                if cancelled or job_cancelled():
                     logger.info("Job '%s' was cancelled; suppressing delivery and run marking", job["id"])
+                    history.finish(attempt, "suppressed")
                     executed += 1
                     continue
 
@@ -988,20 +1007,23 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
                     should_deliver = False
 
                 delivery_error = None
+                delivery = "silent" if success and SILENT_MARKER in deliver_content.strip().upper() else "empty"
                 if should_deliver:
+                    delivery = "sent" if _resolve_delivery_target(job) else "no_target"
                     try:
                         delivery_error = _deliver_result(job, deliver_content, adapters=adapters, loop=loop)
                     except Exception as de:
                         delivery_error = str(de)
                         logger.error("Delivery failed for job %s: %s", job["id"], de)
 
+                committed = history.finish(attempt, "error" if delivery_error and delivery != "no_target" else delivery, delivery_error)
                 mark_job_run(job["id"], success, error, delivery_error=delivery_error)
                 executed += 1
 
                 try:
                     import sys as _sys
                     _ws = _sys.modules.get("spark_cli.web_server")
-                    if _ws is not None:
+                    if _ws is not None and committed:
                         summary = error or (final_response[:200] if final_response else "completed")
                         _ws.push_job_notification(job["id"], job.get("name", job["id"]), success, summary)
                 except Exception:
@@ -1009,6 +1031,9 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
 
             except Exception as e:
                 logger.error("Error processing job %s: %s", job['id'], e)
+                if attempt is not None:
+                    history.executed(attempt, "error", str(e))
+                    history.finish(attempt, "unknown")
                 mark_job_run(job["id"], False, str(e))
 
         return executed

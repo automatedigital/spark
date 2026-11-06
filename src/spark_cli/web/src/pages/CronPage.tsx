@@ -1,8 +1,11 @@
+import { CronHistoryDrawer } from "@/components/CronHistoryDrawer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clock, Edit3, Pause, Play, Plus, Trash2, X, Zap } from "lucide-react";
+import { CronSchedulePreview } from "@/components/CronSchedulePreview";
+import { cronApi } from "@/lib/api_cron";
 import { CronOutputDrawer } from "@/components/CronOutputDrawer";
 import { api } from "@/lib/api";
-import type { CronJob } from "@/lib/api";
+import type { CronScheduleJob as CronJob } from "@/lib/api_cron";
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/Toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,7 +107,10 @@ function cronToPicker(expr: string): {
 }
 
 function jobScheduleExpr(job: CronJob): string {
-  return job.schedule?.expr || job.schedule_display || "";
+  const schedule = job.schedule;
+  if (schedule?.kind === "once") return schedule.run_at || "";
+  if (schedule?.kind === "interval") return `every ${schedule.minutes}m`;
+  return schedule?.expr || job.schedule_display || "";
 }
 
 type Overrides = { provider: string; model: string; skills: string[] };
@@ -182,6 +188,7 @@ export default function CronPage() {
       .catch(() => { if (active) setOutputCapability({ supported: false, reason: "Could not verify saved output availability. Reload to retry." }); });
     return () => { active = false; };
   }, []);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [outputJob, setOutputJob] = useState<CronJob | null>(null);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -193,6 +200,8 @@ export default function CronPage() {
   // New job form state
   const [prompt, setPrompt] = useState("");
   const [name, setName] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [editTimezone, setEditTimezone] = useState("");
   const [deliver, setDeliver] = useState("local");
   const [overrides, setOverrides] = useState<Overrides>(defaultOverrides);
   const [editOverrides, setEditOverrides] = useState<Overrides>(defaultOverrides);
@@ -264,6 +273,7 @@ export default function CronPage() {
     setEditingJobId(job.id);
     setEditAdvanced(false);
     setEditOverrides({ provider: job.provider || "", model: job.model || "", skills: job.skills ?? (job.skill ? [job.skill] : []) });
+    setEditTimezone(job.schedule?.timezone || "");
     setEditName(job.name || "");
     setEditPrompt(job.prompt);
     setEditDeliver(job.deliver || "local");
@@ -287,7 +297,8 @@ export default function CronPage() {
     }
     setCreating(true);
     try {
-      await api.createCronJob({
+      await cronApi.createCronJob({
+        timezone: timezone || null,
         prompt: prompt.trim(),
         schedule: resolvedSchedule,
         name: name.trim() || undefined,
@@ -336,7 +347,8 @@ export default function CronPage() {
     }
     setSavingJobId(job.id);
     try {
-      await api.updateCronJob(job.id, {
+      await cronApi.updateCronJob(job.id, {
+        timezone: editTimezone || null,
         prompt: editPrompt.trim(),
         schedule: resolvedEditSchedule,
         name: editName.trim(),
@@ -390,6 +402,9 @@ export default function CronPage() {
       <Toast toast={toast} />
       {outputJob && <CronOutputDrawer key={outputJob.id} jobId={outputJob.id} name={outputJob.name || outputJob.id} onClose={() => setOutputJob(null)} />}
 
+      <Button variant="outline" onClick={() => setHistoryOpen(true)}>Execution history</Button>
+      {historyOpen && <CronHistoryDrawer onClose={() => setHistoryOpen(false)} />}
+
       {/* Create new job form */}
       <Card>
         <CardHeader>
@@ -422,6 +437,9 @@ export default function CronPage() {
             </div>
 
             <Button variant="outline" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>Advanced</Button>
+            <Label htmlFor="cron-timezone">Timezone (IANA; blank uses server/profile default)</Label>
+            <Input id="cron-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Europe/London" />
+            <CronSchedulePreview value={{ schedule: resolvedSchedule, timezone: timezone || null, ...overrides, deliver }} />
             {advanced && <JobAdvanced id="cron" value={overrides} onChange={setOverrides} />}
             {/* Friendly schedule picker */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -638,6 +656,9 @@ export default function CronPage() {
                       </div>
                     </div>
                     <Button variant="outline" aria-expanded={editAdvanced} onClick={() => setEditAdvanced(!editAdvanced)}>Advanced</Button>
+                    <Label htmlFor={`cron-timezone-${job.id}`}>Timezone (IANA; blank uses server/profile default)</Label>
+                    <Input id={`cron-timezone-${job.id}`} value={editTimezone} onChange={(e) => setEditTimezone(e.target.value)} />
+                    <CronSchedulePreview value={{ schedule: resolvedEditSchedule, timezone: editTimezone || null, ...editOverrides, deliver: editDeliver }} />
                     {editAdvanced && <JobAdvanced id={`cron-${job.id}`} value={editOverrides} onChange={setEditOverrides} />}
                     {resolvedEditSchedule && editFreq !== "custom" && (
                       <p className="text-xs text-muted-foreground">
@@ -667,6 +688,7 @@ export default function CronPage() {
                 )}
                 <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   <span className="font-mono" title={job.schedule_display}>{cronToFriendly(job.schedule_display)}</span>
+                  <span>Timezone: {job.schedule?.timezone || "Server/profile default"}</span>
                   <span>{t.cron.last}: {formatTime(job.last_run_at)}</span>
                   <span
                     className={job.next_run_at && new Date(job.next_run_at) < new Date() ? "text-destructive" : ""}
@@ -679,6 +701,7 @@ export default function CronPage() {
                   Provider: {job.provider || "Profile default"} · Model: {job.model || "Profile default"}
                   {" · Skills: "}{(job.skills ?? (job.skill ? [job.skill] : [])).join(" → ") || "None"}
                 </p>
+                {job.paused_reason && <p role="alert" className="text-xs text-destructive mt-1">{job.paused_reason}</p>}
                 {job.last_error && (
                   <p className="text-xs text-destructive mt-1">{job.last_error}</p>
                 )}
