@@ -76,9 +76,11 @@
       "id": "SP06",
       "title": "Update only the active tail during token streaming",
       "issue": "https://github.com/automatedigital/spark/issues/193",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp06-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/230",
+      "head": "bbda96ddd181c8a9ee4adf2bda9f68a9e9e0e27a",
+      "leadVerification": "Reviewed presentationhook: framebatches assistanttextonly, immediatelypresents session/metadata/tool/decision/terminalchanges, stablecallbackowner via latestcommittedref. Reportbaseline10kprojectionmedian1.751to0.364ms,79.2%lower; browserzero settledrowcommits and0pxanchor movement. Parent focusedprojection/presentation tests run; CIpending."
     },
     {
       "id": "SP07",
