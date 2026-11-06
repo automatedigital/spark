@@ -30,6 +30,8 @@ import {
   type ChatForkInfo,
 } from "./chatSessionControllerHelpers";
 
+import { ReadOwner, isAbortError } from "@/lib/readOwner";
+
 const HISTORY_PAGE = 50;
 const RECOVERY_ERROR = "Unable to reconcile conversation. Reconnecting…";
 
@@ -122,6 +124,19 @@ export function useChatSessionController({
     };
   }, []);
   const isOwnerCurrent = useCallback(() => mountedRef.current && owner.isCurrent() && isChatPanelScopeCurrent(owner), [owner]);
+  const readOwnerRef = useRef<ReadOwner | null>(null);
+  useEffect(() => {
+    const reads = new ReadOwner(isOwnerCurrent);
+    readOwnerRef.current = reads;
+    return () => {
+      reads.retire();
+      if (readOwnerRef.current === reads) readOwnerRef.current = null;
+    };
+  }, [isOwnerCurrent, sessionId]);
+  const read = useCallback(<T,>(request: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+    if (!isOwnerCurrent() || !readOwnerRef.current) return Promise.reject(new DOMException("Read owner retired", "AbortError"));
+    return readOwnerRef.current.read(request);
+  }, [isOwnerCurrent]);
   const schedule = useCallback((callback: () => void, delay: number) => {
     if (!isOwnerCurrent()) return;
     const timer = window.setTimeout(() => {
@@ -217,10 +232,10 @@ export function useChatSessionController({
     recoverySequence: number,
     options: Parameters<typeof mergeHistoryResponse>[3] = {},
   ) => {
-    const response = await api.getSessionMessages(requestedSessionId, HISTORY_PAGE);
+    const response = await read((signal) => api.getSessionMessages(requestedSessionId, HISTORY_PAGE, undefined, signal));
     mergeHistoryResponse(response, requestedSessionId, recoverySequence, options);
     return response;
-  }, [mergeHistoryResponse]);
+  }, [mergeHistoryResponse, read]);
 
   const refreshLatestTranscript = useCallback(async (options: {
     sessionId?: string;
@@ -235,6 +250,7 @@ export function useChatSessionController({
       const response = await loadHistoryPage(requestedSessionId, recoverySequence, {
         preferSyncedAssistants: true,
       });
+      if (!isCurrentSessionResponse(recoverySequence, requestedSessionId, response.session_id)) return null;
       if (options.persistSequence !== undefined) {
         schedulePersistSettledDetail(
           response.session_id ?? requestedSessionId,
@@ -245,7 +261,7 @@ export function useChatSessionController({
       }
       if (options.syncTail) {
         schedule(() => {
-          void api.getSessionMessages(requestedSessionId, 20).then((tailResponse) => {
+          void read((signal) => api.getSessionMessages(requestedSessionId, 20, undefined, signal)).then((tailResponse) => {
             if (!isCurrentSessionResponse(recoverySequence, requestedSessionId, tailResponse.session_id)) return;
             rememberActiveSessionAliases(requestedSessionId, tailResponse.session_id);
             const tail = tailResponse.messages.filter((message) => message.role === "user");
@@ -269,10 +285,13 @@ export function useChatSessionController({
         }, 500);
       }
       return response;
+    } catch (error) {
+      if (isAbortError(error) || !isCurrentSessionResponse(recoverySequence, requestedSessionId)) return null;
+      throw error;
     } finally {
       if (isCurrentSessionResponse(recoverySequence, requestedSessionId)) setLoadingHistory(false);
     }
-  }, [isCurrentSessionResponse, isOwnerCurrent, loadHistoryPage, rememberActiveSessionAliases, schedule]);
+  }, [isCurrentSessionResponse, isOwnerCurrent, loadHistoryPage, read, rememberActiveSessionAliases, schedule]);
 
   const resyncTurnState = useCallback(async (options: { allowIdle?: boolean } = {}) => {
     const sid = activeSessionRef.current;
@@ -283,7 +302,7 @@ export function useChatSessionController({
     recordWebEfficiency("httpPolls");
     recordWebEfficiency("streamRecoveryActions");
     try {
-      const snapshot = await api.getChatRecovery(sid);
+      const snapshot = await read((signal) => api.getChatRecovery(sid, undefined, signal));
       if (!isCurrentSessionResponse(recoverySequence, sid)) return;
       if (!isAuthoritativeRecoveryFor(snapshot, sid)) throw new Error("Recovery needs reconciliation");
       setError((previous) => previous === RECOVERY_ERROR ? null : previous);
@@ -320,13 +339,13 @@ export function useChatSessionController({
       if (!snapshot.turn_active && snapshot.stream_text_mode === "unknown") appendRecoveredStaleTurnNoteRef.current?.(
         "The live response is unavailable after a restart. Saved history is shown; work has not been replayed.",
       );
-    } catch {
-      if (isCurrentSessionResponse(recoverySequence, sid)) {
+    } catch (error) {
+      if (!isAbortError(error) && isCurrentSessionResponse(recoverySequence, sid)) {
         setRecoveryFailed(true);
         setError(RECOVERY_ERROR);
       }
     } finally {
-      if (resyncInFlightRef.current === recoverySequence) resyncInFlightRef.current = null;
+      if (isCurrentSessionResponse(recoverySequence, sid) && resyncInFlightRef.current === recoverySequence) resyncInFlightRef.current = null;
     }
   }, [
     appendRecoveredStaleTurnNoteRef,
@@ -335,6 +354,7 @@ export function useChatSessionController({
     isCurrentSessionResponse,
     isOwnerCurrent,
     mergeHistoryResponse,
+    read,
     schedule,
     rememberActiveSessionAliases,
     setStreaming,
@@ -378,6 +398,8 @@ export function useChatSessionController({
     setStreaming(Boolean(initialMessage));
     setLoadingHistory(false);
     setHasEarlier(false);
+    setLoadingEarlier(false);
+    resyncInFlightRef.current = null;
     setSessionStats({});
     setForkInfo(null);
     setRecoverySnapshot(null);
@@ -406,7 +428,7 @@ export function useChatSessionController({
     void resyncTurnState({ allowIdle: true }).finally(() => {
       if (recoveryStillCurrent()) setLoadingHistory(false);
     });
-    void api.getSessionForks(sessionId).then((info) => {
+    void read((signal) => api.getSessionForks(sessionId, signal)).then((info) => {
       if (recoveryStillCurrent()) setForkInfo(forkInfoFromResponse(info));
     }).catch(() => {});
 
@@ -498,7 +520,7 @@ export function useChatSessionController({
       : null;
     setLoadingEarlier(true);
     try {
-      const response = await api.getSessionMessages(request.sessionId, request.limit, request.beforeId);
+      const response = await read((signal) => api.getSessionMessages(request.sessionId, request.limit, request.beforeId, signal));
       if (!isCurrentSessionResponse(recoverySequence, request.sessionId, response.session_id)) return;
       rememberActiveSessionAliases(request.sessionId, response.session_id);
       const mapped = chatMessagesFromHistory(response.messages);
@@ -509,19 +531,19 @@ export function useChatSessionController({
       });
       setHasEarlier(hasEarlierFromResponse(response.has_earlier));
     } catch {
-      prependScrollAnchorRef.current = null;
+      if (isCurrentSessionResponse(recoverySequence, request.sessionId)) prependScrollAnchorRef.current = null;
     } finally {
-      setLoadingEarlier(false);
+      if (isCurrentSessionResponse(recoverySequence, request.sessionId)) setLoadingEarlier(false);
     }
-  }, [chatMessages, isCurrentSessionResponse, isOwnerCurrent, loadingEarlier, rememberActiveSessionAliases, scrollContainerRef]);
+  }, [chatMessages, isCurrentSessionResponse, isOwnerCurrent, loadingEarlier, read, rememberActiveSessionAliases, scrollContainerRef]);
 
   const loadExactMessages = useCallback(async () => {
-    // Bind exact content to this render's session. A retired action may finish
-    // copying/promoting its origin message, but cannot use a replacement loader.
+    // Exact-content reads belong to this view too; retirement cancels the read
+    // without cancelling any already accepted promotion or other mutation.
     const sid = activeSessionId;
     if (!sid) return [] as SessionMessage[];
     if (!isChatPanelScopeCurrent(owner)) throw new Error("The chat backend or profile changed.");
-    const response = await api.getSessionMessages(sid);
+    const response = await read((signal) => api.getSessionMessages(sid, 0, undefined, signal));
     if (!isChatPanelScopeCurrent(owner)) throw new Error("The chat backend or profile changed.");
     for (const message of isOwnerCurrent() ? response.messages : []) {
       if (message.role === "assistant" && message.id != null && message.content != null) {
@@ -529,7 +551,7 @@ export function useChatSessionController({
       }
     }
     return response.messages;
-  }, [activeSessionId, isOwnerCurrent, owner]);
+  }, [activeSessionId, isOwnerCurrent, owner, read]);
 
   const fetchExactAssistant = useCallback(async (
     message: Extract<ChatMessage, { role: "assistant" }>,

@@ -19,14 +19,14 @@ export const sessionApi = {
     fetchJSON<SubagentNavigation>(`/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childId)}/navigation`, { signal }),
   openSubagentWorktree: (sessionId: string, childId: string) =>
     fetchJSON<SubagentWorktreeProject>(`/api/conversations/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childId)}/navigation/worktree`, { method: "POST" }),
-  getSessions: (limit = 20, offset = 0, source?: string) => {
+  getSessions: (limit = 20, offset = 0, source?: string, signal?: AbortSignal) => {
     const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (source) qs.set("source", source);
-    return fetchJSON<PaginatedSessions>(`/api/sessions?${qs.toString()}`);
+    return fetchJSON<PaginatedSessions>(`/api/sessions?${qs.toString()}`, { signal });
   },
-  getSession: (id: string) =>
-    fetchJSON<Partial<SessionInfo> & { id: string }>(`/api/sessions/${encodeURIComponent(id)}`),
-  getSessionMessages: (id: string, limit = 0, beforeId?: string) => {
+  getSession: (id: string, signal?: AbortSignal) =>
+    fetchJSON<Partial<SessionInfo> & { id: string }>(`/api/sessions/${encodeURIComponent(id)}`, { signal }),
+  getSessionMessages: (id: string, limit = 0, beforeId?: string, signal?: AbortSignal) => {
     const qs = new URLSearchParams();
     if (limit > 0) qs.set("limit", String(limit));
     const rawBeforeId = beforeId?.startsWith("db:") ? beforeId.slice(3) : beforeId;
@@ -35,6 +35,7 @@ export const sessionApi = {
     const q = qs.toString();
     return fetchJSON<SessionMessagesResponse>(
       `/api/sessions/${encodeURIComponent(id)}/messages${q ? `?${q}` : ""}`,
+      { signal },
     );
   },
   moveSession: (id: string, source: string | null) =>
@@ -67,20 +68,20 @@ export const sessionApi = {
         body: JSON.stringify({ title }),
       },
     ),
-  searchSessions: (q: string, limit = 20, source?: string, offset = 0) => {
+  searchSessions: (q: string, limit = 20, source?: string, offset = 0, signal?: AbortSignal) => {
     const qs = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
     if (source) qs.set("source", source);
-    return fetchJSON<SessionSearchResponse>(`/api/sessions/search?${qs.toString()}`);
+    return fetchJSON<SessionSearchResponse>(`/api/sessions/search?${qs.toString()}`, { signal });
   },
 
   // Kanban status management
-  getSessionForks: (sessionId: string) =>
+  getSessionForks: (sessionId: string, signal?: AbortSignal) =>
     fetchJSON<{
       forks: Array<{ id: string; title: string }>;
       fork_count: number;
       parent_session_id: string | null;
       parent_title: string | null;
-    }>(`/api/sessions/${encodeURIComponent(sessionId)}/forks`),
+    }>(`/api/sessions/${encodeURIComponent(sessionId)}/forks`, { signal }),
   pollOAuthSession: (providerId: string, sessionId: string) =>
     fetchJSON<OAuthPollResponse>(
       `/api/providers/oauth/${encodeURIComponent(providerId)}/poll/${encodeURIComponent(sessionId)}`,

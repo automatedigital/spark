@@ -99,9 +99,9 @@ export const api = {
     fetchJSON<{ needs_onboarding: boolean; has_model: boolean; has_api_key: boolean }>(
       "/api/onboarding/status",
     ),
-  getChatRecovery: (id: string, afterChars?: number) =>
-    fetchJSON<ChatRecoveryResponse>(`/api/conversations/${encodeURIComponent(id)}/recovery${afterChars == null ? "" : `?after_chars=${afterChars}`}`),
-  getTurnStatus: (id: string) =>
+  getChatRecovery: (id: string, afterChars?: number, signal?: AbortSignal) =>
+    fetchJSON<ChatRecoveryResponse>(`/api/conversations/${encodeURIComponent(id)}/recovery${afterChars == null ? "" : `?after_chars=${afterChars}`}`, { signal }),
+  getTurnStatus: (id: string, signal?: AbortSignal) =>
     fetchJSON<{
       session_id: string;
       resolved_session_id: string;
@@ -129,12 +129,14 @@ export const api = {
       diagnostics?: Record<string, unknown>;
     }>(
       `/api/conversations/${encodeURIComponent(id)}/turn-status`,
+      { signal },
     ),
-  getConversationDiagnostics: (id: string) =>
+  getConversationDiagnostics: (id: string, signal?: AbortSignal) =>
     fetchJSON<ConversationDiagnosticsResponse>(
       `/api/conversations/${encodeURIComponent(id)}/diagnostics`,
+      { signal },
     ),
-  getStreamSnapshot: (id: string, options: { afterChars?: number; tailChars?: number } = {}) => {
+  getStreamSnapshot: (id: string, options: { afterChars?: number; tailChars?: number } = {}, signal?: AbortSignal) => {
     const qs = new URLSearchParams();
     if (typeof options.afterChars === "number") qs.set("after_chars", String(options.afterChars));
     if (typeof options.tailChars === "number") qs.set("tail_chars", String(options.tailChars));
@@ -163,6 +165,7 @@ export const api = {
       diagnostics?: Record<string, unknown>;
     }>(
       `/api/conversations/${encodeURIComponent(id)}/stream-snapshot${query ? `?${query}` : ""}`,
+      { signal },
     )
     );
   },
@@ -178,7 +181,7 @@ export const api = {
     fetchJSON<AnalyticsResponse>(`/api/analytics/usage?days=${days}`),
   getDefaults: () => fetchJSON<Record<string, unknown>>("/api/config/defaults"),
   getSchema: () => fetchJSON<{ fields: Record<string, unknown>; category_order: string[] }>("/api/config/schema"),
-  getReasoningEffort: () => fetchJSON<ReasoningEffortResponse>("/api/model/reasoning"),
+  getReasoningEffort: (signal?: AbortSignal) => fetchJSON<ReasoningEffortResponse>("/api/model/reasoning", { signal }),
   setReasoningEffort: (effort: string) =>
     fetchJSON<{ effort: string; ok: boolean }>("/api/model/reasoning", {
       method: "PUT",
@@ -270,21 +273,25 @@ export const api = {
         }),
       },
     ),
-  getConversationTurnOutcome: (sessionId: string) =>
+  getConversationTurnOutcome: (sessionId: string, signal?: AbortSignal) =>
     fetchJSON<WebTurnOutcome | null>(
       `/api/conversations/${encodeURIComponent(sessionId)}/turn-outcome`,
+      { signal },
     ),
-  getConversationTurnOutcomes: (sessionId: string) =>
+  getConversationTurnOutcomes: (sessionId: string, signal?: AbortSignal) =>
     fetchJSON<WebTurnOutcomesResponse>(
       `/api/conversations/${encodeURIComponent(sessionId)}/turn-outcomes`,
+      { signal },
     ),
-  getConversationPlan: (sessionId: string) =>
+  getConversationPlan: (sessionId: string, signal?: AbortSignal) =>
     fetchJSON<WebPlanResponse>(
       `/api/conversations/${encodeURIComponent(sessionId)}/plan`,
+      { signal },
     ),
-  getConversationPendingActions: (sessionId: string) =>
+  getConversationPendingActions: (sessionId: string, signal?: AbortSignal) =>
     fetchJSON<WebPendingActionsResponse>(
       `/api/conversations/${encodeURIComponent(sessionId)}/pending-actions`,
+      { signal },
     ),
   submitConversationInput: (sessionId: string, actionId: string, response: string) =>
     fetchJSON<WebPendingActionSubmitResponse>(

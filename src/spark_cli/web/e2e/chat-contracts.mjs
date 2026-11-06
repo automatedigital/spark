@@ -300,6 +300,17 @@ async function run() {
       const url = new URL(route.request().url());
       if (!url.pathname.endsWith("/contracts_actions/fork")) return route.continue();
       forkPayloads.push(JSON.parse(route.request().postData() || "{}"));
+      // SP02 recovery reads real durable history, not a separate messages mock.
+      const forkSeed = spawnSync(pythonBin, ["-c", `
+from core.spark_state import SessionDB
+db = SessionDB()
+db.ensure_session("contracts_forked", source="web", model="fake-model")
+db.set_session_title("contracts_forked", "Contract forked")
+db.append_message("contracts_forked", "user", content="Forked prompt")
+db.append_message("contracts_forked", "assistant", content="Fork result visible")
+db.close()
+`], { cwd: repoRoot, env: { ...process.env, SPARK_HOME: sparkHome, PYTHONPATH: path.join(repoRoot, "src") }, encoding: "utf8" });
+      if (forkSeed.status !== 0) throw new Error(forkSeed.stderr || "Fork fixture seed failed");
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -316,36 +327,6 @@ async function run() {
         contentType: "application/json",
         body: JSON.stringify({ ok: true, session_id: "contracts_approval", resolved: 1 }),
       });
-    });
-
-    await page.route("**/api/sessions/contracts_forked/messages**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          session_id: "contracts_forked",
-          messages: [
-            { id: "fork-user", message_index: 0, role: "user", content: "Forked prompt" },
-            { id: "fork-assistant", message_index: 1, role: "assistant", content: "Fork result visible" },
-          ],
-          has_earlier: false,
-        }),
-      });
-    });
-    await page.route("**/api/sessions/contracts_forked", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          id: "contracts_forked",
-          source: "web",
-          model: "fake-model",
-          title: "Contract forked",
-        }),
-      });
-    });
-    await page.route("**/api/sessions/contracts_forked/forks", async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ forks: [], fork_count: 0 }) });
     });
 
     await page.goto(webBase, { waitUntil: "domcontentloaded" });
