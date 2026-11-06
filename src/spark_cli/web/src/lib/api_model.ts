@@ -14,7 +14,7 @@ export const modelApi = {
   getModelInfo: () => fetchJSON<ModelInfoResponse>("/api/model/info"),
   getModelStatus: () => fetchJSON<ModelStatusResponse>("/api/model/status"),
   getModelSuggestions: () => fetchJSON<ModelSuggestionsResponse>("/api/model/suggestions"),
-  getAvailableModels: (provider: string, baseUrl?: string) =>
+  getAvailableModels: (provider: string, baseUrl?: string, signal?: AbortSignal) =>
     fetchJSON<{
       provider: string;
       models: string[];
@@ -25,6 +25,7 @@ export const modelApi = {
     }>(
       `/api/model/available?provider=${encodeURIComponent(provider)}` +
         (baseUrl ? `&base_url=${encodeURIComponent(baseUrl)}` : ""),
+      { signal },
     ),
   setSmartModel: (model: string) =>
     fetchJSON<{ ok: boolean; model: string }>("/api/model/smart", {
