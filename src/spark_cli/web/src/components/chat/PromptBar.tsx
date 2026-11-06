@@ -17,6 +17,8 @@ import { ComposerMoreMenu } from "@/components/chat/ComposerMoreMenu";
 import { COMPOSER_A11Y_LABELS, COMPOSER_WIDE_ONLY, COMPOSER_WIDE_ONLY_BLOCK } from "@/components/chat/composerContracts";
 import { canNavigateComposerHistory, readComposerRecovery, saveComposerRecovery, recallComposerPrompt, stepComposerPromptHistory, type ComposerPromptHistoryBrowse, type ComposerPromptHistoryEntry } from "@/lib/composerPromptHistory";
 
+import { registerSkillTarget } from "@/lib/skillSelection";
+
 import { subscribeDraft } from "@/lib/draftStore";
 
 import { PromptStashChooser } from "./PromptStashChooser";
@@ -693,6 +695,7 @@ export function PromptBar({
   draftScopeKey,
   panelOwnerToken,
 }: PromptBarProps) {
+  useEffect(() => { if (draftScopeKey) registerSkillTarget(draftScopeKey); }, [draftScopeKey]);
   const historyOwner = JSON.stringify([draftScopeKey, panelOwnerToken, workspaceSlug ?? null, sessionId ?? null]);
   const recovery = useSyncExternalStore(subscribeDraft, () => draftScopeKey ? readComposerRecovery(draftScopeKey) : null);
   const [historyError, setHistoryError] = useState<string | null>(null);

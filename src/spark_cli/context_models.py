@@ -25,11 +25,17 @@ class ContextItemType(StrEnum):
     note = "note"
     tool_output = "tool_output"
     url = "url"
+    skill = "skill"
 
 
 class ContextItem(BaseModel):
     id: str
     type: ContextItemType
+    skill_id: str | None = None
+    skill_revision: str | None = None
+    skill_profile: str | None = None
+    skill_thread: str | None = None
+    skill_project: str | None = None
     source_path: str | None = None
     inclusion_mode: InclusionMode = InclusionMode.full
     content: str | None = None

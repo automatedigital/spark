@@ -87,7 +87,7 @@ def _requirements(frontmatter: dict[str, Any], credentials: dict[str, str]) -> t
     return requirements, "available"
 
 
-def list_skill_index(*, refresh: bool = False, query: str = "", scope: str = "all") -> list[dict[str, Any]]:
+def list_skill_index(*, refresh: bool = False, query: str = "", scope: str = "all", project_root: Path | None = None, internal: bool = False) -> list[dict[str, Any]]:
     from spark_cli.config import load_config
     from spark_cli.skills_config import get_disabled_skills
     from tools.skills_metadata import (
@@ -100,7 +100,7 @@ def list_skill_index(*, refresh: bool = False, query: str = "", scope: str = "al
     )
     from tools.skills_tool import load_env
 
-    roots = _roots()
+    roots = _roots(project_root) if project_root is not None else _roots()
     home = get_spark_home()
     sidecars = tuple(_revision(home / path) for path in (
         "skills/.usage.json", "skills/.bundled_manifest", "skills/.bundled_tombstones", "skills/.hub/lock.json",
@@ -113,7 +113,7 @@ def list_skill_index(*, refresh: bool = False, query: str = "", scope: str = "al
             _cache.clear()
         artifacts = None
         for kind, root in roots:
-            row_scope = "profile" if kind == "local" else "external"
+            row_scope = "profile" if kind == "local" else kind
             if scope not in ("all", row_scope):
                 continue
             for path in root.rglob("SKILL.md"):
@@ -124,19 +124,19 @@ def list_skill_index(*, refresh: bool = False, query: str = "", scope: str = "al
                     path.resolve().relative_to(root.resolve())
                 except (ValueError, OSError):
                     continue
-                key = (str(root), str(path), _revision(path), sidecars)
+                key = (str(home), kind, str(root), str(path), _revision(path), sidecars)
                 cached = _cache.get(key)
                 if cached is None:
                     if artifacts is None:
                         artifacts = _load_quality_artifacts()
-                    row = resolve_skill(path.parent, root_kind=kind, artifacts=artifacts, metadata_only=True)
+                    row = resolve_skill(path.parent, root_kind=kind, artifacts=artifacts, metadata_only=True, project_root=project_root)
                     if row is None:
                         continue
                     # Quality/detail fields remain available on selection; discovery
                     # keeps only the row contract and explicit identity/source labels.
                     fields = {"skill_id", "name", "description", "category", "provenance",
                               "provenance_detail", "trust_level", "source", "location", "enabled",
-                              "skill_state", "use_count", "view_count", "patch_count"}
+                              "skill_state", "use_count", "view_count", "patch_count", "capabilities", "user_invocable"}
                     summary = {key: value for key, value in public_record(row).items() if key in fields}
                     cached = {"row": summary, "header": _parse_frontmatter(read_header(path))}
                     _cache[key] = cached
@@ -145,6 +145,11 @@ def list_skill_index(*, refresh: bool = False, query: str = "", scope: str = "al
                 else:
                     _cache.move_to_end(key)
                 row = dict(cached["row"])
+                import hashlib
+
+                row["revision"] = hashlib.sha256(repr(_revision(path)).encode()).hexdigest()
+                if internal:
+                    row["_path"] = path.parent.resolve()
                 row["scope"] = row_scope
                 row["enabled"] = row["name"] not in disabled
                 row["requirements"], readiness = _requirements(cached["header"], credentials)
@@ -152,6 +157,12 @@ def list_skill_index(*, refresh: bool = False, query: str = "", scope: str = "al
                 if query.casefold() not in f'{row["name"]} {row["description"]}'.casefold():
                     continue
                 records.append(row)
+    if scope in {"all", "profile"}:
+        from tools.skills_metadata import removed_skill_records
+
+        records.extend(public_record(row) | {"scope": "profile", "readiness": "disabled", "requirements": []}
+                       for row in removed_skill_records(metadata_only=True)
+                       if query.casefold() in f'{row["name"]} {row["description"]}'.casefold())
     names: dict[str, int] = {}
     for row in records:
         names[row["name"]] = names.get(row["name"], 0) + 1
@@ -159,3 +170,9 @@ def list_skill_index(*, refresh: bool = False, query: str = "", scope: str = "al
         if names[row["name"]] > 1:
             row["duplicate_warning"] = "Duplicate name; select by source and stable identity. Toggles apply to all skills with this name."
     return sorted(records, key=lambda row: (row["name"].casefold(), row["skill_id"]))
+
+
+def selected_skill(skill_id: str, project_root: Path | None = None) -> dict[str, Any] | None:
+    """Resolve identity from metadata, reading no unselected instruction bodies."""
+    return next((row for row in list_skill_index(project_root=project_root, internal=True)
+                 if row["skill_id"] == skill_id and not row.get("removed")), None)

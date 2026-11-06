@@ -257,7 +257,7 @@ def _external_dirs() -> list[Path]:
         return []
 
 
-def _roots() -> list[tuple[str, Path]]:
+def _roots(project_root: Path | None = None) -> list[tuple[str, Path]]:
     """Return local profile root followed by validated external roots."""
     local = get_skills_dir().resolve()
     result: list[tuple[str, Path]] = [("local", local)]
@@ -271,6 +271,17 @@ def _roots() -> list[tuple[str, Path]]:
             continue
         seen.add(resolved)
         result.append(("external", resolved))
+    if project_root is not None:
+        project_root = project_root.resolve()
+        for relative in (".agents/skills", ".spark/skills"):
+            root = (project_root / relative).resolve()
+            try:
+                root.relative_to(project_root)
+            except ValueError:
+                continue
+            if root.is_dir() and root not in seen:
+                result.append(("project", root))
+                seen.add(root)
     return result
 
 
@@ -382,6 +393,8 @@ def _display_location(root_kind: str, root: Path, skill_dir: Path, provenance: s
         relative = skill_dir.resolve().relative_to(root.resolve()).as_posix()
     except (ValueError, OSError):
         relative = skill_dir.name
+    if root_kind == "project":
+        return f"project://{relative}"
     if provenance == SkillProvenance.EXTERNAL.value:
         digest = hashlib.sha256(str(root).encode()).hexdigest()[:10]
         return f"external://{digest}/{relative}"
@@ -398,7 +411,7 @@ def _skill_id(root: Path, skill_dir: Path, provenance: str) -> str:
 
 
 def _provenance(root_kind: str, root: Path, skill_dir: Path, name: str) -> tuple[str, dict[str, Any] | None, dict[str, Any] | None]:
-    if root_kind == "external":
+    if root_kind in {"external", "project"}:
         return SkillProvenance.EXTERNAL.value, None, None
 
     hub = _hub_entry(name, skill_dir)
@@ -436,6 +449,7 @@ def resolve_skill(
     root_kind: str | None = None,
     artifacts: tuple[dict[str, list[dict[str, Any]]], dict[str, tuple[str, str | None]]] | None = None,
     metadata_only: bool = False,
+    project_root: Path | None = None,
 ) -> dict[str, Any] | None:
     """Resolve one already-discovered directory to the canonical API record."""
     try:
@@ -443,7 +457,7 @@ def resolve_skill(
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.is_file():
             return None
-        roots = _roots()
+        roots = _roots(project_root) if project_root is not None else _roots()
         matched = None
         for kind, root in roots:
             try:
@@ -506,6 +520,8 @@ def resolve_skill(
             }[provenance],
             "source": str(hub.get("source") or "") if hub else provenance,
         }
+        if kind == "project":
+            detail = {"label": "Project skill / read-only", "source": "project"}
         record = {
             "skill_id": _skill_id(root, skill_dir, provenance),
             "name": name,
@@ -551,19 +567,40 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
                 continue
             seen_names.add(record["name"])
             records.append(record)
+    records.extend(removed_skill_records(seen_names=seen_names, artifacts=artifacts))
+    records.sort(key=lambda row: (str(row.get("name") or "").lower(), row["skill_id"]))
+    records_by_name: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        records_by_name.setdefault(str(record.get("name") or ""), []).append(record)
+    for _name, matching_records in records_by_name.items():
+        if len(matching_records) < 2:
+            continue
+        sources = sorted({str(record.get("source") or record.get("provenance") or "unknown") for record in matching_records})
+        warning = f"Duplicate skill name across: {', '.join(sources)}"
+        for record in matching_records:
+            record["duplicate_warning"] = warning
+    return records
+
+
+def removed_skill_records(*, seen_names=None, artifacts=None, metadata_only=False):
+    from tools.skills_index import read_header
+
     # Keep deliberately removed bundled entries addressable for restore.  The
     # destination is absent by design, but its opaque identity remains stable
     # and no content is returned until the user restores it.
+    records = []
+    seen_names = set(seen_names or ())
+    artifacts = artifacts or _load_quality_artifacts()
     local_root = get_skills_dir().resolve()
     for name in sorted(_tombstones()):
-        if name in seen_names:
-            continue
         source = _find_bundled_source(name)
         if source is None:
             continue
         destination = local_root / source.relative_to(_bundled_root())
+        if (destination / "SKILL.md").is_file():
+            continue
         try:
-            frontmatter = _parse_frontmatter((source / "SKILL.md").read_text(encoding="utf-8")[:100_000])
+            frontmatter = _parse_frontmatter(read_header(source / "SKILL.md"))
         except (OSError, UnicodeError):
             continue
         description = str(frontmatter.get("description") or "").strip()[:_MAX_DESCRIPTION]
@@ -577,7 +614,7 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
             "name": name,
             "description": description,
             **invocation,
-            **_quality_metadata(name, frontmatter, SkillProvenance.BUNDLED.value, destination, artifacts=artifacts),
+            **_quality_metadata(name, frontmatter, SkillProvenance.BUNDLED.value, destination, artifacts=artifacts, metadata_only=metadata_only),
             "category": relative.parts[-2] if len(relative.parts) > 1 else None,
             "provenance": SkillProvenance.BUNDLED.value,
             "provenance_detail": {"label": "Spark built-in", "source": "bundled"},
@@ -596,17 +633,6 @@ def iter_skill_records(*, include_duplicates: bool = True) -> list[dict[str, Any
         }
         seen_names.add(name)
         records.append(record)
-    records.sort(key=lambda row: (str(row.get("name") or "").lower(), row["skill_id"]))
-    records_by_name: dict[str, list[dict[str, Any]]] = {}
-    for record in records:
-        records_by_name.setdefault(str(record.get("name") or ""), []).append(record)
-    for _name, matching_records in records_by_name.items():
-        if len(matching_records) < 2:
-            continue
-        sources = sorted({str(record.get("source") or record.get("provenance") or "unknown") for record in matching_records})
-        warning = f"Duplicate skill name across: {', '.join(sources)}"
-        for record in matching_records:
-            record["duplicate_warning"] = warning
     return records
 
 
@@ -618,8 +644,13 @@ def public_record(record: dict[str, Any]) -> dict[str, Any]:
 def find_skill_by_id(skill_id: str) -> dict[str, Any] | None:
     if not isinstance(skill_id, str) or not skill_id or "/" in skill_id or "\\" in skill_id:
         return None
-    matches = [r for r in iter_skill_records(include_duplicates=True) if r.get("skill_id") == skill_id]
-    return matches[0] if len(matches) == 1 else None
+    from tools.skills_index import selected_skill
+
+    selected = selected_skill(skill_id)
+    if selected:
+        return resolve_skill(selected["_path"])
+    return next((row for row in removed_skill_records() if row["skill_id"] == skill_id), None)
+
 
 
 def all_capabilities() -> dict[str, dict[str, Any]]:

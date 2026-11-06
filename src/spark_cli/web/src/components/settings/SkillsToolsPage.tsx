@@ -1,5 +1,5 @@
 import { useSettingsDraft } from "@/components/settings/settingsDrafts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronRight,
@@ -11,7 +11,10 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { getSkillIndex, type DiscoveredSkill } from "@/lib/skillDiscovery";
+import { apiConnectionGeneration, getApiBase } from "@/lib/apiHelpers";
+import { skillTargets, stageSkill } from "@/lib/skillSelection";
+import type { DraftScope } from "@/lib/draftStore";
+import { getSkillDetail, getSkillIndex, type DiscoveredSkill } from "@/lib/skillDiscovery";
 import type { SkillDetail, SkillInfo as BaseSkillInfo, ToolsetInfo } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
 import { useEventBus } from "@/hooks/useEventBus";
@@ -25,7 +28,7 @@ import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/l
 import { SkillHistoryDrawer } from "@/components/skills/SkillHistoryDrawer";
 import { SkillQualitySignals } from "@/components/skills/SkillQualitySignals";
 
-type SkillInfo = BaseSkillInfo & Partial<Pick<DiscoveredSkill, "scope" | "readiness" | "requirements">>;
+type SkillInfo = BaseSkillInfo & Partial<Pick<DiscoveredSkill, "scope" | "readiness" | "requirements" | "revision">>;
 
 const CATEGORY_LABELS: Record<string, string> = {
   mlops: "MLOps",
@@ -129,7 +132,7 @@ function SkillRow({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
-        <Switch checked={skill.enabled} disabled={toggling} onCheckedChange={onToggle} aria-label={`Toggle ${skill.name}`} />
+        <Switch checked={skill.enabled} disabled={toggling || skill.scope === "project" || skill.removed} onCheckedChange={onToggle} aria-label={`Toggle ${skill.name}`} />
         <ChevronRight className="h-4 w-4 text-muted-foreground/50 transition group-hover:text-foreground" aria-hidden="true" />
       </div>
     </div>
@@ -154,7 +157,9 @@ function SkillDetailPanel({
   onArmDelete,
   onCancelDelete,
   onClose,
+  selectionAction,
 }: {
+  selectionAction?: React.ReactNode;
   detail: SkillDetail | null;
   loading: boolean;
   draft: string;
@@ -213,6 +218,7 @@ function SkillDetailPanel({
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">{detail.description || "No description provided."}</p>
                 <div className="flex shrink-0 gap-2">
+                  {selectionAction}
                   <Button size="sm" variant="outline" onClick={() => setHistoryOpen(true)}>History</Button>
                   {canEdit && !editing && <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={onEdit}><Pencil className="h-3.5 w-3.5" />Edit</Button>}
                   {canRestore && <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={onRestore} disabled={busy}><RefreshCw className="h-3.5 w-3.5" />Restore</Button>}
@@ -261,6 +267,19 @@ function SkillDetailPanel({
 }
 
 export default function SkillsToolsPage() {
+  const [targets, setTargets] = useState<DraftScope[]>([]);
+  const [targetIndex, setTargetIndex] = useState(0);
+  const [scopeFilter, setScopeFilter] = useState("all");
+  const target = targets[targetIndex];
+  useEffect(() => {
+    let alive = true;
+    const generation = apiConnectionGeneration();
+    const backend = getApiBase() || window.location.origin;
+    api.getStatus().then((status) => {
+      if (alive && generation === apiConnectionGeneration()) setTargets(skillTargets(backend, status.spark_home ?? ""));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const [tab, setTab] = useState<Tab>("skills");
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
@@ -279,19 +298,28 @@ export default function SkillsToolsPage() {
   const [deleteArmed, setDeleteArmed] = useState(false);
   const { toast, showToast } = useToast();
 
+  const loadVersion = useRef(0);
+  const loadAbort = useRef<AbortController | null>(null);
   const load = useCallback((refresh = false) => {
+    loadAbort.current?.abort();
+    const controller = new AbortController();
+    loadAbort.current = controller;
+    const version = ++loadVersion.current;
+    const generation = apiConnectionGeneration();
     setLoading(true);
-    Promise.all([getSkillIndex(refresh), tab === "toolsets" ? api.getToolsets() : Promise.resolve([])]).then(([nextSkills, nextToolsets]) => {
+    Promise.all([getSkillIndex(refresh, controller.signal, target?.project), tab === "toolsets" ? api.getToolsets() : Promise.resolve([])]).then(([nextSkills, nextToolsets]) => {
+      if (version !== loadVersion.current || generation !== apiConnectionGeneration()) return;
       setSkills(nextSkills);
       setToolsets(nextToolsets);
-    }).catch((error) => showToast(`Failed to load skills: ${errorMessage(error)}`, "error")).finally(() => setLoading(false));
-  }, [showToast, tab]);
+    }).catch((error) => { if (!controller.signal.aborted && version === loadVersion.current) showToast(`Failed to load skills: ${errorMessage(error)}`, "error"); }).finally(() => { if (version === loadVersion.current) setLoading(false); });
+  }, [showToast, tab, target?.project]);
 
-  useEffect(() => load(), [load]);
+  const cancelLoad = useCallback(() => { loadVersion.current++; loadAbort.current?.abort(); }, []);
+  useEffect(() => { load(); return cancelLoad; }, [load, cancelLoad]);
 
   useEventBus((env) => {
     if (env.topic !== "skills.updated") return;
-    getSkillIndex().then(setSkills).catch(() => {});
+    load();
   });
 
   useEffect(() => {
@@ -326,16 +354,18 @@ export default function SkillsToolsPage() {
       return;
     }
     let alive = true;
+    const generation = apiConnectionGeneration();
+    setDetail(null);
     setDetailLoading(true);
-    api.getSkill(skillId(selectedSkill)).then((nextDetail) => {
-      if (!alive) return;
+    getSkillDetail(skillId(selectedSkill), target?.project).then((nextDetail) => {
+      if (!alive || generation !== apiConnectionGeneration()) return;
       setDetail(nextDetail);
       setDraft((current) => editing ? current : nextDetail.content);
     }).catch((error) => alive && showToast(`Failed to load ${selectedSkill.name}: ${errorMessage(error)}`, "error")).finally(() => alive && setDetailLoading(false));
     return () => { alive = false; };
     // Preserve an open editor when this tab remounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSkill, showToast]);
+  }, [selectedSkill, showToast, target?.project]);
 
   useEffect(() => {
     if (!selectedSkill) return;
@@ -469,7 +499,7 @@ export default function SkillsToolsPage() {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-3"><div className="mx-auto max-w-5xl">
           <div className="mb-3 flex items-center justify-between text-[11px] text-muted-foreground"><span>{filteredSkills.length} skill{filteredSkills.length === 1 ? "" : "s"}</span><span>Click a row to inspect the actual SKILL.md</span></div>
-          {filteredSkills.length === 0 ? <div className="rounded-md border border-dashed border-border px-5 py-16 text-center text-sm text-muted-foreground">No skills match these filters.</div> : <div className="overflow-hidden rounded-md border border-border/70">{[...filteredSkills].sort((a, b) => a.name.localeCompare(b.name)).map((skill) => <SkillRow key={skillId(skill)} skill={skill} toggling={toggling.has(skillId(skill))} onOpen={() => openSkill(skill)} onToggle={() => void handleToggleSkill(skill)} />)}</div>}
+          {filteredSkills.length === 0 ? <div className="rounded-md border border-dashed border-border px-5 py-16 text-center text-sm text-muted-foreground">No skills match these filters.</div> : <div className="overflow-hidden rounded-md border border-border/70">{[...filteredSkills].filter((skill) => scopeFilter === "all" || skill.scope === scopeFilter).sort((a, b) => a.name.localeCompare(b.name)).map((skill) => <SkillRow key={skillId(skill)} skill={skill} toggling={toggling.has(skillId(skill))} onOpen={() => openSkill(skill)} onToggle={() => void handleToggleSkill(skill)} />)}</div>}
         </div></div>
       </>}
 
@@ -477,7 +507,26 @@ export default function SkillsToolsPage() {
       {tab === "tools" && <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-4"><div className="mx-auto max-w-5xl"><ConnectorsPage /></div></div>}
       {tab === "keys" && <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-4"><div className="mx-auto max-w-5xl"><EnvPage /></div></div>}
 
-      {selectedSkill && <SkillDetailPanel detail={detail} loading={detailLoading} draft={draft} editing={editing} busy={actionBusy} deleteName={deleteName} deleteArmed={deleteArmed} onDraftChange={setDraft} onEdit={() => { if (detail) { setDraft(detail.content); setEditing(true); } }} onSave={() => void saveDetail()} onCancelEdit={() => { setDraft(detail?.content ?? ""); setEditing(false); }} onDelete={() => void deleteDetail()} onRestore={() => void restoreDetail()} onDeleteNameChange={setDeleteName} onArmDelete={() => { setDeleteName(""); setDeleteArmed(true); }} onCancelDelete={() => { setDeleteName(""); setDeleteArmed(false); }} onClose={() => setSelectedSkill(null)} />}
+      {tab === "skills" && <div className="flex flex-wrap items-center gap-2 px-5 py-2 text-xs">
+        <label>Thread/project <select aria-label="Skill target thread" value={targetIndex} onChange={(event) => { setTargetIndex(Number(event.target.value)); setSelectedSkill(null); }}>
+          {targets.map((scope, index) => <option key={index} value={index}>{scope.project ?? "No project"} / {scope.thread}</option>)}
+        </select></label>
+        {!target && <span>Open the intended chat first to make it a selection target.</span>}
+        <label>Scope <select aria-label="Skill scope" value={scopeFilter} onChange={(event) => setScopeFilter(event.target.value)}>
+          {["all", "profile", "project", "external"].map((scope) => <option key={scope}>{scope}</option>)}
+        </select></label>
+
+      </div>}
+      {selectedSkill && <SkillDetailPanel selectionAction={<div className="flex flex-col items-end gap-1"><span className="max-w-64 truncate text-[10px] text-muted-foreground">{target ? `${target.project ?? "No project"} / ${target.thread}` : "Choose a thread first"}</span><Button disabled={loading || !detail || !target || !selectedSkill.revision || selectedSkill.removed || !["available", "unknown"].includes(selectedSkill.readiness ?? "")} onClick={async () => {
+          try {
+            if (!target) throw new Error("Choose a thread first.");
+            const generation = apiConnectionGeneration();
+            const status = await api.getStatus();
+            if (generation !== apiConnectionGeneration() || target.backend !== (getApiBase() || window.location.origin) || status.spark_home !== target.profile) throw new Error("Backend or profile changed; reopen the intended thread.");
+            stageSkill(target, selectedSkill as DiscoveredSkill);
+            showToast("Selected for this thread's next submitted turn. Your draft and attachments are retained.", "success");
+          } catch (error) { showToast(errorMessage(error), "error"); }
+        }}>Use on next turn</Button></div>} detail={detail} loading={detailLoading} draft={draft} editing={editing} busy={actionBusy} deleteName={deleteName} deleteArmed={deleteArmed} onDraftChange={setDraft} onEdit={() => { if (detail) { setDraft(detail.content); setEditing(true); } }} onSave={() => void saveDetail()} onCancelEdit={() => { setDraft(detail?.content ?? ""); setEditing(false); }} onDelete={() => void deleteDetail()} onRestore={() => void restoreDetail()} onDeleteNameChange={setDeleteName} onArmDelete={() => { setDeleteName(""); setDeleteArmed(true); }} onCancelDelete={() => { setDeleteName(""); setDeleteArmed(false); }} onClose={() => setSelectedSkill(null)} />}
     </div>
   );
 }

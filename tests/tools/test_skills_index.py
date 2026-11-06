@@ -104,3 +104,14 @@ def test_oversized_header_is_unknown_and_external_link_not_indexed(catalog, tmp_
     write_skill(outside)
     (catalog / "escape").symlink_to(outside / "example", target_is_directory=True)
     assert len(skills_index.list_skill_index()) == 1
+
+
+def test_cache_fences_root_role_and_profile(catalog, monkeypatch, tmp_path):
+    write_skill(catalog)
+    first = skills_index.list_skill_index()[0]
+    monkeypatch.setattr(skills_metadata, "_roots", lambda: [("external", catalog)])
+    monkeypatch.setattr(skills_metadata, "_provenance", lambda *args: ("external", None, None))
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path / "second-profile"))
+    second = skills_index.list_skill_index()[0]
+    assert first["skill_id"] != second["skill_id"]
+    assert second["provenance"] == "external"

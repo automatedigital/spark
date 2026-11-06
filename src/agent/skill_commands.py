@@ -128,6 +128,7 @@ def _build_skill_message(
     activation_note: str,
     user_instruction: str = "",
     runtime_note: str = "",
+    include_config: bool = True,
 ) -> str:
     """Format a loaded skill into a user/system message payload."""
     from tools.skills_tool import SKILLS_DIR
@@ -137,7 +138,8 @@ def _build_skill_message(
     parts = [activation_note, "", content.strip()]
 
     # ── Inject resolved skill config values ──
-    _inject_skill_config(loaded_skill, parts)
+    if include_config:
+        _inject_skill_config(loaded_skill, parts)
 
     if loaded_skill.get("setup_skipped"):
         parts.extend(
@@ -404,3 +406,38 @@ def build_preloaded_skills_prompt(
         loaded_names.append(skill_name)
 
     return "\n\n".join(prompt_parts), loaded_names, missing
+
+
+def validate_selected_skill(skill_id: str, revision: str, *, project_root: Path | None = None) -> dict[str, Any]:
+    """Explicit web selection: canonical identity, no setup, secrets or state writes."""
+    from tools.skills_index import selected_skill
+
+    row = selected_skill(skill_id, project_root)
+    if row is None or not row["enabled"] or not row.get("user_invocable", True):
+        raise ValueError("Selected skill is unavailable.")
+    if row["readiness"] in {"missing_requirements", "unsupported"}:
+        raise ValueError("Selected skill requirements are unavailable.")
+    path = row["_path"] / "SKILL.md"
+    if row["revision"] != revision or path.stat().st_size > 1_048_576:
+        raise ValueError("Selected skill changed; select it again.")
+    return row
+
+
+def build_selected_skill_message(skill_id: str, revision: str, *, project_root: Path | None = None) -> str:
+    """Format a validated selection without entering skill_view/setup or config capture."""
+    import hashlib
+
+    from tools.skills_index import _revision
+
+    row = validate_selected_skill(skill_id, revision, project_root=project_root)
+    path = row["_path"] / "SKILL.md"
+    content = path.read_text(encoding="utf-8")
+    if hashlib.sha256(repr(_revision(path)).encode()).hexdigest() != revision:
+        raise ValueError("Selected skill changed; select it again.")
+    return _build_skill_message(
+        {"content": content}, None,
+        f'[User-invoked skill: "{row["name"]}". The user asked Spark to follow '
+        "these instructions for this turn. The full skill content is loaded below.]",
+        include_config=False,
+        runtime_note=f"Resolve this selected skill's relative file references from {row['_path']}.",
+    )
