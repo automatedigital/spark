@@ -180,9 +180,11 @@
       "id": "SP13",
       "title": "Jump directly to the message found by search",
       "issue": "https://github.com/automatedigital/spark/issues/200",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp13-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/236",
+      "head": "866f0365",
+      "leadVerification": "Parentreviewcaughtfull exacttoolanchorSQLmaterialization1.3Mchars; regressionfailedbefore, fixedsame2001characterprojectionasneighbors.16anchor/palette tests+Ruffpass. Childbuiltsearch/highlight/paging/SSE/latestflowpass. CorrectedheadCIpending, crosspacket/nativeacceptanceopen."
     },
     {
       "id": "SP14",
@@ -201,9 +203,9 @@
       "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp15-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/229",
-      "head": "67f675b7",
+      "head": "1ef4d97c",
       "leadVerification": "Reviewed bounded monotonic timing helper/unknown usage/actual routing field contract; parent independently11 timing regressions passed0.64s. Existing route scores typedint, preserved. Childreports0.12%syntheticreplayoverhead andreal2chatrefreshdetailsflowpass. Hostedpending; no integration/nativeclaim.",
-      "ciRepair": "Hostedminimalturnstub lackedlock/timing fields. Updated2StopteststouseactualWebActiveTurn;19DB-lifetime/timingtests andRuffpass. Mergedsharedfixturefixes; Mermaid10checks pass. CIpending."
+      "ciRepair": "Addedexplicitdurableseedsettlementprecondition for draft fixture afterhostedCharlievisibilityfailure; original9assertionspreserved, completeflowpassed. Historicalproductioncauseunproven; correctedheadCIpending."
     },
     {
       "id": "SP16",
