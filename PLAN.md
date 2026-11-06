@@ -402,6 +402,16 @@ route functions, a new read helper, api_session tool-result functions and
 ToolCallBubble. It must not edit SessionDB or SP02-owned API barrels/types and
 controllers; use a worker-owned connection and SQL bounded projection through
 an isolated read adapter. Keep lifecycle preparation/recovery functions untouched.
+SP03's real ownership probe demonstrated that a cached agent connection crosses
+preparation, turn and cleanup threads. SP03 may therefore additionally change
+narrow agent creation/disposal and title/runtime DB-lifetime helpers to finish
+physical connection ownership. Preserve cache policy, actual SessionDB identity,
+child ownership and receipt/schema contracts; no generic proxy or new worker pool.
+SP22 may add a stable-ID skill invocation formatter without setup and narrow
+context-validation/augmentation integration. Keep selected identity/revision in
+the canonical submission payload; no receipt/schema/controller changes or cached
+prefix/toolset mutation. This does not give SP22 ownership of SP03's preparation
+handlers. Each writer integrates these separate function slices explicitly.
 This changes scheduling only; every packet's full behaviour, tests and performance
 acceptance remains required. No missing prerequisite is silently counted complete.
 
