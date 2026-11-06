@@ -81,14 +81,17 @@
       "id": "SP09",
       "title": "Load Settings one tab at a time",
       "issue": "https://github.com/automatedigital/spark/issues/196",
-      "state": "running",
-      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-resume-r2",
+      "state": "repair_running_unpublished",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-bundle-r3",
       "pr": null,
       "priorTaskIds": [
-        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-r1"
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-r1",
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-resume-r2"
       ],
-      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
-      "prBase": "feat/sp01-submission-acceptance"
+      "base": "a08cf0a47453eb7370cc349130991602c8f7391e",
+      "prBase": "feat/sp01-submission-acceptance",
+      "localHead": "a08cf0a47453eb7370cc349130991602c8f7391e",
+      "publicationBlocker": "Initial Chat +81gzipB violates no-growth; functional/browser gates and full fast Python pass, unpublished."
     },
     {
       "id": "SP10",
@@ -169,12 +172,17 @@
       "id": "SP19",
       "title": "Stop terminal sessions whose start acknowledgement arrives too late",
       "issue": "https://github.com/automatedigital/spark/issues/206",
-      "state": "running",
-      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp19-20261106-r1",
+      "state": "repair_running_unpublished",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp19-20261106-process-r2",
       "pr": null,
-      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "base": "fa52522c8039ad00c8e94955cec5f8671715942f",
       "prBase": "feat/sp01-submission-acceptance",
-      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers."
+      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers.",
+      "priorTaskIds": [
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp19-20261106-r1"
+      ],
+      "localHead": "fa52522c8039ad00c8e94955cec5f8671715942f",
+      "publicationBlocker": "Real-process gate: Stop reported stopped while interactive zsh survives. UI+7tests/allweb/multichat/recovery pass, unpublished; scope extended terminal-only backend functions."
     },
     {
       "id": "SP20",
@@ -228,5 +236,5 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "Five Sol Low delegates dispatched: SP02 recovery, SP09 lazySettings, SP17 schedulePreview, SP19 terminalOwnership, SP20 incrementalFiles. All use greenSP01 a12205a5 and one scoped stackedPR; user explicitly requested more parallelism. Non-overlap paths recorded in plan scheduling refinement. Fresh pytest9.2 + relevant exact CI selections + Node22/npmci + browser checks required before single publication push; no checkpoint/speculative pushes. No merges/releases. Remaining19 tasks not dispatched; SP01 published with all7 hostedchecks green but acceptance limitations retained."
+  "dispatchNotes": "Five SolLow implementation agents: SP02,SP17,SP20 plus SP09 bundle repair and SP19 backend Stop repair. SP09/SP19 preceding local commits preserved; neither pushed failing code. SP19 now owns terminal functions only, SP20 tree/list/search only in workspace_routes; integration must rerun workspace neighbours. No threshold/assertion relaxation, no speculative pushes. Original25PR objective ongoing."
 }
