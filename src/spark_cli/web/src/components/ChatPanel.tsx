@@ -1357,6 +1357,8 @@ export function ChatPanel({
     return () => el.removeEventListener("scroll", updateFollowState);
   }, [activeSessionId, activeSessionRef, loadingHistory, owner, scrollBookmarks, timelineTurns, virtualizer]);
 
+  // Cached recovery can mount rows after loading has already settled. Retry
+  // the pending bookmark when that transcript arrives, not only on navigation.
   useEffect(() => {
     const saved = pendingThreadScroll.current;
     if (!saved || saved.sessionId !== activeSessionId || loadingHistory || !timelineTurnsRef.current.length) return;
@@ -1378,7 +1380,7 @@ export function ChatPanel({
     };
     restore();
     return () => cancelAnimationFrame(frame);
-  }, [activeSessionId, loadingHistory, virtualizer]);
+  }, [activeSessionId, loadingHistory, timelineTurns, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
