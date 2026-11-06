@@ -377,6 +377,12 @@ readiness UI and only the McpSection function/imports in SettingsPanelContent;
 SP11 owns ModelCombobox/provider sections in that file. Keep those slices narrow,
 serialize final shared-file integration and rerun Settings neighbours. Do not
 replace either with a whole-file rewrite or introduce another generic transport.
+SP03 may implement against green SP01 while SP02 finishes rendered recovery:
+SP02's committed server edits add recovery assembly/read routes, whereas SP03
+owns only create/send/warm preparation handlers and a new preparation helper.
+Keep SessionDB schema/receipts and recovery read fields unchanged. These separate
+function slices require explicit rebase/integration and shared lifecycle replay
+checks before acceptance; SP03 must preserve SP02's eventual recovery response.
 This changes scheduling only; every packet's full behaviour, tests and performance
 acceptance remains required. No missing prerequisite is silently counted complete.
 
