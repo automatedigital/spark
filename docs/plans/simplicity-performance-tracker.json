@@ -9,17 +9,21 @@
       "id": "SP01",
       "title": "Accept each submitted prompt once",
       "issue": "https://github.com/automatedigital/spark/issues/188",
-      "state": "running",
+      "state": "published_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp01-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/213",
+      "head": "968f4e7d3d2258fe7ca681ebbd8821ce5519f857",
+      "leadVerification": "Reviewed diff/report; independently reran tests/spark_cli/test_root_submissions.py with worktree src, isolated test home, -n 0 not integration: 9 passed in 2.29s. Broader multi-chat/native acceptance remains open."
     },
     {
       "id": "SP02",
       "title": "Reconcile chat from one authoritative recovery snapshot",
       "issue": "https://github.com/automatedigital/spark/issues/189",
-      "state": "pending",
-      "taskId": null,
-      "pr": null
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-r1",
+      "pr": null,
+      "base": "968f4e7d3d2258fe7ca681ebbd8821ce5519f857",
+      "prBase": "feat/sp01-submission-acceptance"
     },
     {
       "id": "SP03",
@@ -206,5 +210,5 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "SP01 and SP09 run concurrently. SP10 follows SP09 to preserve sole SettingsPanel writer. Remaining hard dependencies follow PLAN.md. Max five delegates; use gpt-6.1-sol reasoningEffort low, default service tier. Delegate completions wake parent; do not poll. Use stacked PR bases for prerequisites not merged; do not merge without user authorization."
+  "dispatchNotes": "SP02 stacked on published SP01; SP09 continues as sole SettingsPanel writer, SP10 follows SP09. Max five delegates, Sol Low reasoning. Follow delegate completion wakes; no polling. One scoped PR per packet, no merge/release authorization. Publication does not close acceptance."
 }
