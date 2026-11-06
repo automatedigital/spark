@@ -5456,5 +5456,900 @@
       "use",
       "close"
     ]
+  },
+  "connection_ownership_repair": {
+    "runtime_commit": "c28b4d2e17286c356b4e4fcee734a5fab341b3a3",
+    "baseline_probe": {
+      "single_worker": false,
+      "trace": [
+        {
+          "stage": "create",
+          "db": 4614273680,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614273680,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4614273680,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4614272656,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614272656,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4614272656,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4614272592,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614272592,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614272592,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614272592,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4614272592,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4614326544,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614326544,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614326544,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4614326544,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4614328336,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614328336,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614328336,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4614328336,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4614328272,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614328272,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4614328272,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4614328272,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4614331024,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614331024,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614331024,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4614331024,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4614327696,
+          "id": 6155382784,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4614338640,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614338640,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614338640,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4614338640,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4614267408,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614267408,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614267408,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4614267408,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4614274576,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614274576,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614274576,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4614274576,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4609766480,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4609766480,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4609766480,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4609766480,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614327696,
+          "id": 6172209152,
+          "name": "spark-web-turn_0"
+        },
+        {
+          "stage": "create",
+          "db": 4614337744,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614337744,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4614337744,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4614337744,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4609768272,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4609768272,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4609768272,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4609768272,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4609768912,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4609768912,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4612449104,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4612449104,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4612449104,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4612449104,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4609768912,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4614327696,
+          "id": 8254472064,
+          "name": "MainThread"
+        }
+      ],
+      "stages": [
+        "create",
+        "use",
+        "close",
+        "create",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "use",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "create",
+        "use",
+        "use",
+        "close",
+        "close",
+        "close"
+      ]
+    },
+    "repaired_probe": {
+      "single_worker": true,
+      "trace": [
+        {
+          "stage": "create",
+          "db": 4424997264,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4424997264,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4424997264,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4425692176,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425692176,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4425692176,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4425693520,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425693520,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425693520,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425693520,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4425693520,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4425694032,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425694032,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425694032,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4425694032,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4425631888,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425631888,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425631888,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4425631888,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4425630864,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425630864,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425630864,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4425630864,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4425631568,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425631568,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425631568,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425631568,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4425636624,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425636624,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425636624,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425636624,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4423525200,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "close",
+          "db": 4423525200,
+          "id": 6204977152,
+          "name": "spark-runtime-worker_0"
+        },
+        {
+          "stage": "create",
+          "db": 4425640016,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425640016,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425640016,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425640016,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4425197520,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425197520,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425197520,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425197520,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4425694928,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425694928,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425694928,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425694928,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4425768464,
+          "id": 6238629888,
+          "name": "spark-web-turn_0"
+        },
+        {
+          "stage": "use",
+          "db": 4425768464,
+          "id": 6238629888,
+          "name": "spark-web-turn_0"
+        },
+        {
+          "stage": "close",
+          "db": 4425768464,
+          "id": 6238629888,
+          "name": "spark-web-turn_0"
+        },
+        {
+          "stage": "create",
+          "db": 4425766800,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425766800,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425766800,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425766800,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4425766224,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425766224,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425766224,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425766224,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4425770448,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425770448,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "create",
+          "db": 4425771024,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425771024,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "use",
+          "db": 4425771024,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425771024,
+          "id": 8254472064,
+          "name": "MainThread"
+        },
+        {
+          "stage": "close",
+          "db": 4425770448,
+          "id": 8254472064,
+          "name": "MainThread"
+        }
+      ],
+      "stages": [
+        "create",
+        "use",
+        "close",
+        "create",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "use",
+        "close",
+        "create",
+        "use",
+        "create",
+        "use",
+        "use",
+        "close",
+        "close"
+      ]
+    },
+    "focused_boundaries": {
+      "passed": 31,
+      "seconds": 24.37
+    },
+    "focused_delegation_receipts": {
+      "passed": 117,
+      "seconds": 139.88
+    },
+    "ruff_baseline_findings": 298,
+    "full_matrix": "interrupted by user; partial evidence only; CI owns next full run"
   }
 }
