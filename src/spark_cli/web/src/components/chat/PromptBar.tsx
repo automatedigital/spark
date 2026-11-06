@@ -1,3 +1,5 @@
+import { ROUTING_SETTINGS_SAVED_EVENT } from "@/lib/api_routing";
+import { RecordedRoutingDetails } from "@/components/chat/RecordedRoutingDetails";
 import { getProviderCatalog, providerLabel, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -446,11 +448,13 @@ function ModelDropdown({
 // ── Quick-settings popover ────────────────────────────────────────────────────
 
 function ModelQuickSettings({
+  sessionId,
   status,
   suggestions,
   onClose,
   onStatusChange,
 }: {
+  sessionId?: string | null;
   status: ModelStatusResponse;
   suggestions: ModelSuggestionsResponse | null;
   onClose: () => void;
@@ -458,6 +462,7 @@ function ModelQuickSettings({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [savingSmartModel, setSavingSmartModel] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [savingFastModel, setSavingFastModel] = useState(false);
   const [savingReasoning, setSavingReasoning] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
@@ -497,9 +502,12 @@ function ModelQuickSettings({
 
   const saveSmartModel = async (model: string) => {
     setSavingSmartModel(true);
+    setModelError(null);
     try {
       await api.setSmartModel(model);
       onStatusChange(await api.getModelStatus());
+    } catch {
+      setModelError("Model selection could not be saved. Please retry.");
     } finally {
       setSavingSmartModel(false);
     }
@@ -539,7 +547,7 @@ function ModelQuickSettings({
       ref={ref}
       role="dialog"
       aria-label="Model and reasoning settings"
-      className="absolute bottom-full mb-3 left-0 right-0 mx-3 z-50 overflow-hidden rounded-2xl border border-border/80 bg-[#111]/[0.98] shadow-2xl shadow-black/40 backdrop-blur-xl"
+      className="absolute bottom-full mb-3 left-0 right-0 mx-3 z-50 max-h-[min(70vh,560px)] overflow-y-auto rounded-2xl border border-border/80 bg-[#111]/[0.98] shadow-2xl shadow-black/40 backdrop-blur-xl"
     >
       <div className="flex min-h-[248px]">
         <div className="flex w-11 shrink-0 flex-col items-center border-r border-border/70 bg-foreground/[0.025] py-2">
@@ -584,12 +592,15 @@ function ModelQuickSettings({
         </div>
       </div>
       <div className="space-y-3 border-t border-border/70 px-3 py-3">
+        <p className="text-xs text-muted-foreground">Choose Auto or pin a model for future turns. A running turn keeps its chosen route.</p>
+        {modelError && <p role="alert">{modelError}</p>}
+        <RecordedRoutingDetails sessionId={sessionId} />
 
         {status.selection === "auto" && (
           <div className="rounded-lg border border-primary/20 bg-primary/[0.05] px-3 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold text-foreground">Auto is choosing per turn</p>
+                <p className="text-xs font-semibold text-foreground">{status.auto_enabled ? "Auto is choosing per turn" : "Auto policy is disabled"}</p>
                 <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                   Task type, risk, context and duration decide the route. Your explicit choice stays pinned until changed.
                 </p>
@@ -742,6 +753,12 @@ export function PromptBar({
   useEffect(() => {
     api.getModelStatus().then(setModelStatus).catch(() => {});
     api.getModelSuggestions().then(setModelSuggestions).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => { void api.getModelStatus().then(setModelStatus).catch(() => {}); };
+    window.addEventListener(ROUTING_SETTINGS_SAVED_EVENT, refresh);
+    return () => window.removeEventListener(ROUTING_SETTINGS_SAVED_EVENT, refresh);
   }, []);
 
   const handleStatusChange = (patch: Partial<ModelStatusResponse>) => {
@@ -1025,6 +1042,7 @@ export function PromptBar({
 
       {showSettings && modelStatus && (
         <ModelQuickSettings
+          sessionId={sessionId}
           status={modelStatus}
           suggestions={modelSuggestions}
           onClose={() => setShowSettings(false)}

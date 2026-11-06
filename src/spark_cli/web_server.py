@@ -3102,6 +3102,8 @@ _model_virtual_entries = [
     ("model_base_url", _SCHEMA_OVERRIDES["model_base_url"]),
     ("model_api_mode", _SCHEMA_OVERRIDES["model_api_mode"]),
     ("model_context_length", _SCHEMA_OVERRIDES["model_context_length"]),
+    ("model_auto", {"type": "object", "category": "general", "title": "Auto role mappings",
+                    "description": "Role routes apply to future turns; capabilities are unverified."}),
 ]
 _ordered_schema: dict[str, dict[str, Any]] = {}
 for _k, _v in CONFIG_SCHEMA.items():
@@ -3575,6 +3577,9 @@ def _normalize_config_for_web(config: dict[str, Any]) -> dict[str, Any]:
     display and edit it.  A value of 0 means "auto-detect".
     """
     config = dict(config)  # shallow copy
+    from spark_cli.model_config import normalize_auto_policy
+
+    config["model_auto"] = normalize_auto_policy(config)["model"]["auto"]
     model_val = config.get("model")
     if isinstance(model_val, dict):
         # Extract context_length before flattening the dict
@@ -3717,6 +3722,11 @@ def _denormalize_config_from_web(config: dict[str, Any]) -> dict[str, Any]:
     # Remove any _model_meta that might have leaked in (shouldn't happen
     # with the stripped GET response, but be defensive)
     config.pop("_model_meta", None)
+    model_auto = config.pop("model_auto", None)
+    if model_auto is not None:
+        from spark_cli.routing_projection import validate_role_settings
+
+        model_auto = validate_role_settings(model_auto)
 
     # Extract and remove model virtual fields before processing model
     model_provider = str(config.pop("model_provider", "") or "").strip()
@@ -3768,6 +3778,28 @@ def _denormalize_config_from_web(config: dict[str, Any]) -> dict[str, Any]:
         except Exception:
             # can't read disk config — just use the string form
             _log.debug("Ignored exception in _denormalize_config_from_web", exc_info=True)
+    if model_auto is not None:
+        # Recover metadata even when Auto has an empty default model. Only the
+        # role policy changes; endpoint/custom model keys survive round trips.
+        disk_model = load_config().get("model")
+        current = config.get("model")
+        model_section = dict(disk_model) if isinstance(disk_model, dict) else {}
+        if isinstance(current, dict):
+            model_section.update(current)
+        else:
+            model_section["default"] = str(current or "")
+            for key, value in (("provider", model_provider), ("base_url", model_base_url),
+                               ("api_mode", model_api_mode)):
+                if value:
+                    model_section[key] = value
+                else:
+                    model_section.pop(key, None)
+        model_section["auto"] = model_auto
+        config["model"] = model_section
+        # Keep the canonical runtime policy in sync for TUI/gateway consumers.
+        routing_section = dict(config.get("smart_model_routing") or {})
+        routing_section["auto"] = model_auto
+        config["smart_model_routing"] = routing_section
     return config
 
 
@@ -6144,7 +6176,11 @@ def _resolve_web_turn_route(
     explicit_model: str | None = None,
 ) -> dict[str, Any]:
     """Resolve the effective global model/runtime for one web chat turn."""
-    from agent.smart_model_routing import merge_route_request_overrides, resolve_turn_route
+    from agent.smart_model_routing import (
+        merge_route_request_overrides,
+        resolve_auto_route,
+        resolve_turn_route,
+    )
     from spark_cli.model_config import read_global_model_config
     from spark_cli.runtime_provider import resolve_runtime_provider
 
@@ -6176,12 +6212,21 @@ def _resolve_web_turn_route(
             available_catalog = _resolve_codex_model_catalog()["catalog"]
         except Exception:
             _log.debug("Codex catalog unavailable for Auto routing", exc_info=True)
-    route = resolve_turn_route(
+    routing_config = {**(cfg.get("smart_model_routing", {}) or {}),
+                      "auto": model_cfg.auto_policy.as_dict()}
+    # The configured explicit choice must bypass Auto even when adaptive
+    # routing is disabled. Reuse its existing pinned-route branch, never a
+    # second classifier or a cached-prefix mutation.
+    pinned = (explicit_model is not None and explicit_model.lower() != "auto") or (
+        model_cfg.is_pinned and explicit_model is None
+    )
+    resolver = resolve_auto_route if pinned else resolve_turn_route
+    route = resolver(
         user_message,
-        cfg.get("smart_model_routing", {}) or {},
+        routing_config,
         primary,
         available_catalog=available_catalog,
-        explicit_model=explicit_model,
+        explicit_model=model_cfg.model if model_cfg.is_pinned and explicit_model is None else explicit_model,
     )
     budget_cfg = cfg.get("response_budget", {}) or {}
     return merge_route_request_overrides(

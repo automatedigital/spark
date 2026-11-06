@@ -1,3 +1,5 @@
+import { ROUTING_SETTINGS_SAVED_EVENT } from "@/lib/api_routing";
+import { RoutingRolesEditor } from "@/components/settings/RoutingRolesEditor";
 import { getProviderCatalog, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
 import { lazy, useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -391,6 +393,9 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
     const included: [string, Record<string, unknown>][] = [];
     for (const [key, s] of Object.entries(schema)) {
       if (exclude.has(key)) continue;
+      // One role editor owns the effective mappings; don't show a second,
+      // potentially different legacy copy underneath it.
+      if ("model_auto" in schema && key.startsWith("smart_model_routing.auto.roles.")) continue;
       const cat = String(s.category ?? "general");
       if (include.has(key)) {
         included.push([key, s]);
@@ -411,6 +416,7 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
     setSaving(true);
     try {
       await api.saveConfig(config);
+      if (config.model_auto) window.dispatchEvent(new Event(ROUTING_SETTINGS_SAVED_EVENT));
       showToast("Settings saved", "success");
     } catch (e) {
       showToast(`Failed to save: ${e}`, "error");
@@ -436,6 +442,9 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
         // provider-aware editor (dropdown that pulls live models), so swap the
         // generic AutoField for ModelProviderBlock at the "model" anchor and
         // skip the other two keys it handles.
+        if (key === "model_auto") {
+          return <div key={key} className="border-t border-border py-3"><RoutingRolesEditor config={config} setConfig={setConfig} /></div>;
+        }
         if (key === "model_provider" || key === "model_base_url") return null;
         if (key === "model") {
           return (
@@ -444,13 +453,15 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
             </div>
           );
         }
+        const configPath = "model_auto" in schema && key.startsWith("smart_model_routing.auto.")
+          ? key.replace("smart_model_routing.auto.", "model_auto.") : key;
         return (
           <div key={key} className="border-t border-border/60 py-3 first:border-t-0 first:pt-0">
             <AutoField
               schemaKey={key}
               schema={s}
-              value={getNestedValue(config, key)}
-              onChange={(v) => setConfig((c) => (c ? setNestedValue(c, key, v) : c))}
+              value={getNestedValue(config, configPath)}
+              onChange={(v) => setConfig((c) => (c ? setNestedValue(c, configPath, v) : c))}
             />
           </div>
         );
@@ -654,7 +665,7 @@ function ModelSection() {
       <ConfigSectionForm
         categories={["general", "auxiliary", "curator"]}
         excludeKeys={NON_MODEL_GENERAL_KEYS}
-        intro="Applies to new sessions. Use the model picker in the composer to hot-swap the active chat."
+        intro="Model and role changes apply to future turns and new threads. The composer offers Auto or an explicit pinned model."
       />
       <div className="mx-auto w-full max-w-2xl border-t border-border pt-8">
         <Toast toast={toast} />
