@@ -2129,7 +2129,7 @@ export function ChatPanel({
         </div>
       )}
 
-      <SessionInfoBar stats={sessionStats} />
+      <SessionInfoBar stats={sessionStats} timing={turnOutcomes.at(-1)?.timing_summary} />
 
       {activeSessionId && <BriefPanel sessionId={activeSessionId} />}
 

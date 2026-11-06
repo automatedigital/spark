@@ -1,3 +1,5 @@
+import type { TurnTimingSummary } from "@/lib/turnTiming";
+import { TurnTimingDetails } from "./TurnTimingDetails";
 import { useId, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
@@ -21,11 +23,11 @@ function fmtCost(n: number): string {
   return `$${n.toFixed(3)}`;
 }
 
-export function SessionInfoBar({ stats }: { stats: SessionStats }) {
+export function SessionInfoBar({ stats, timing }: { stats: SessionStats; timing?: TurnTimingSummary | null }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = `session-stats-${useId().replace(/:/g, "")}`;
 
-  const hasData = stats.model || stats.inputTokens || stats.turnCount;
+  const hasData = stats.model || stats.inputTokens || stats.turnCount || timing;
   if (!hasData) return null;
 
   // Approximate cache savings: cached tokens cost ~10% of full input price.
@@ -45,6 +47,7 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
         onClick={() => setExpanded((p) => !p)}
         title={expanded ? "Collapse stats" : "Expand stats"}
       >
+        {timing && <span>Turn details</span>}
         {stats.inputTokens != null && stats.inputTokens > 0 && (
           <span title="Input tokens">↑ {fmt(stats.inputTokens)}</span>
         )}
@@ -67,7 +70,8 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
       </button>
 
       {expanded && (
-        <div id={detailsId} className="mt-1 pb-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-muted-foreground/60">
+        <div id={detailsId}>
+        <div className="mt-1 pb-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-muted-foreground/60">
           {stats.model && (
             <><span>Model</span><span className="font-mono text-primary/60 truncate">{stats.model}</span></>
           )}
@@ -92,6 +96,8 @@ export function SessionInfoBar({ stats }: { stats: SessionStats }) {
           {stats.turnCount != null && (
             <><span>Turns</span><span>{stats.turnCount}</span></>
           )}
+        </div>
+        {timing && <TurnTimingDetails timing={timing} />}
         </div>
       )}
     </div>

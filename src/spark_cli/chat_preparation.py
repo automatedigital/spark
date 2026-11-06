@@ -200,6 +200,10 @@ class ChatPreparation:
             message,
             explicit_model=selected_model or None,
         )
+        _, timing_turn = server._get_web_turn(self.session_id)
+        if timing_turn is not None:
+            with timing_turn.lock:
+                timing_turn.timing_summary.select_route(turn_route)
         agent = server._get_web_cached_agent(self.session_id)
         conversation_history = self.history()
         history_hydrated_at = time.time()

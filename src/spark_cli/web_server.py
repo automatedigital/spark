@@ -44,7 +44,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.async_runtime import get_async_runtime
 from gateway.status import get_running_pid, read_runtime_status
-from spark_cli import __release_date__, __version__
+from spark_cli import __release_date__, __version__, turn_timing
 from spark_cli.admin_routes import register_admin_routes
 from spark_cli.admin_runs import (
     ADMIN_ACTIONS,
@@ -291,6 +291,7 @@ class WebActiveTurn:
     checkpointed_chars: int = 0
     checkpointed_revision: int = 0
     session_aliases: set[str] = field(default_factory=set)
+    timing_summary: turn_timing.TurnTiming = field(default_factory=turn_timing.TurnTiming)
     timings: dict[str, float] = field(default_factory=dict)
     compaction: dict[str, Any] = field(default_factory=dict)
     pending_input_action_ids: set[str] = field(default_factory=set)
@@ -874,6 +875,7 @@ def _web_turn_projection_payload(
             "workspace_slug": turn.workspace_slug,
             "changed_files": outcome,
             "plan": dict(turn.plan) if turn.plan else None,
+            "timing_summary": turn.timing_summary.summary(),
         }
 
 
@@ -1003,6 +1005,8 @@ def _finalize_web_turn_projection(
     except Exception:
         _log.debug("web plan checkpoint projection failed session=%s", session_id, exc_info=True)
     status = "interrupted" if interrupted else "failed" if isinstance(result, dict) and result.get("backend_error_class") else "completed"
+    with turn.lock:
+        turn.timing_summary.mark("finish")
     after = _web_workspace_git_status(turn.workspace_slug)
     return _persist_web_turn_projection(
         session_id,
@@ -1297,6 +1301,7 @@ def _mark_web_turn_active(
         turn.submission_epoch = _root_submission_epoch
         turn.turn_id = accepted_submission["turn_id"]
         turn.user_message_id = accepted_submission["user_message_id"]
+    turn.timing_summary.mark("accepted")
     turn.timings["turn_registered"] = now
     with _with_web_turn_lock():
         _web_active_turns[key] = turn
@@ -4834,18 +4839,26 @@ def _make_web_chat_callbacks(
     # unrelated turns from sharing callback state.
     turn_context = _WebTurnCallbackContext(session_id)
     tool_started_monotonic: dict[str, float] = {}
+    first_token_recorded = False
 
     def publish_status(kind: str, message: str, *, phase: str | None = None) -> None:
         _record_web_first_visible_event(turn_context.session_id, "status")
         _publish_web_status(turn_context.session_id, kind, message, phase=phase)
 
     def token_callback(token: str | None) -> None:
+        nonlocal first_token_recorded
         if token is None:
             return
         token = _sanitize_web_chat_text(token)
         if not token:
             return
         current_session_id = turn_context.session_id
+        if not first_token_recorded:
+            _, timing_turn = _get_web_turn(current_session_id)
+            if timing_turn is not None:
+                with timing_turn.lock:
+                    timing_turn.timing_summary.mark("first_token")
+                first_token_recorded = True
         _append_web_turn_token(current_session_id, token)
         _record_web_first_visible_event(current_session_id, "token")
         _publish_event("chat.token", {"t": token}, current_session_id)
@@ -4866,6 +4879,11 @@ def _make_web_chat_callbacks(
         started = tool_started_monotonic.pop(tid, None)
         duration_seconds = max(0.0, time.monotonic() - started) if started is not None else None
         current_session_id = turn_context.session_id
+        _, timing_turn = _get_web_turn(current_session_id)
+        if timing_turn is not None and duration_seconds is not None:
+            with timing_turn.lock:
+                timing_turn.timing_summary.tool_seconds += duration_seconds
+                timing_turn.timing_summary.tool_count += 1
         if name == "todo":
             _record_web_plan(current_session_id, result)
         publish_status("tool_finished", f"Tool finished: {name}", phase="streaming")
@@ -5974,6 +5992,9 @@ def _run_web_agent_turn(
         user_message = _build_context_augmented_message(agent.session_id, user_message, context_items)
 
     _, active_turn = _get_web_turn(agent.session_id)
+    if active_turn is not None:
+        with active_turn.lock:
+            active_turn.timing_summary.mark("execution_started")
     agent._root_run_id = active_turn.turn_id if active_turn else None
 
     _refresh_web_agent_for_computer_use(agent, user_message)
@@ -5981,6 +6002,22 @@ def _run_web_agent_turn(
     user_message = _inject_brief_if_present(agent.session_id, user_message)
     user_message = _with_long_document_delivery_instruction(user_message)
 
+    transport_methods = {}
+    recorder = getattr(agent, "_efficiency_recorder", None)
+    iteration_start = len(recorder.snapshot().get("model_iterations", [])) if recorder else 0
+    if active_turn is not None:
+        for method_name in ("_interruptible_streaming_api_call", "_interruptible_api_call"):
+            original = getattr(agent, method_name, None)
+            if not callable(original):
+                continue
+            transport_methods[method_name] = (original, method_name in vars(agent))
+
+            def timed_transport(*args, _original=original, **kwargs):
+                with active_turn.lock:
+                    active_turn.timing_summary.mark("provider_start")
+                return _original(*args, **kwargs)
+
+            setattr(agent, method_name, timed_transport)
     tok = set_current_session_key(agent.session_id)
     try:
         if conversation_history is not None:
@@ -5988,8 +6025,16 @@ def _run_web_agent_turn(
         else:
             result = agent.run_conversation(user_message)
         _maybe_capture_codex_usage_limit(agent, result)
+        if active_turn is not None:
+            with active_turn.lock:
+                active_turn.timing_summary.account(result, iteration_start)
         return result
     finally:
+        for method_name, (original, had_instance_value) in transport_methods.items():
+            if had_instance_value:
+                setattr(agent, method_name, original)
+            else:
+                delattr(agent, method_name)
         agent._root_run_id = None
         reset_current_session_key(tok)
 
@@ -7225,6 +7270,8 @@ def _dispatch_prepared_turn(turn, cancelled, agent, message, history, items):
     # an agent's interrupt flag by entering run_conversation after Stop.
     if cancelled.is_set() or turn.interrupt_requested:
         raise InterruptedError("Chat preparation stopped")
+    with turn.lock:
+        turn.timing_summary.mark("execution_started")
     return _run_web_agent_turn_with_db(
         agent, message, history, items,
         stopped=lambda: cancelled.is_set() or turn.interrupt_requested,
@@ -7359,6 +7406,9 @@ async def create_conversation(body: ConversationCreate):
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 _record_web_turn_timing(session_id, "model_request_start")
+                with turn.lock:
+                    turn.timing_summary.mark("preparation_ready")
+                    turn.timing_summary.mark("execution_queued")
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _dispatch_prepared_turn(turn, cancel_preparation, agent, message, None, _items)
                 )
@@ -7407,6 +7457,8 @@ async def create_conversation(body: ConversationCreate):
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
         turn.fake_stream_cancel = cancel_preparation
+    with turn.lock:
+        turn.timing_summary.select_route(turn_route)
     prepared_agent = _chat_preparation.start(prepare_agent)
     asyncio.create_task(run_agent_task())
     return accepted_submission or {"session_id": session_id, "ok": True}
@@ -7886,6 +7938,9 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
                 _record_web_turn_timing(session_id, "model_request_start")
+                with turn.lock:
+                    turn.timing_summary.mark("preparation_ready")
+                    turn.timing_summary.mark("execution_queued")
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _dispatch_prepared_turn(turn, cancel_preparation, agent, message, conversation_history, _items)
                 )
@@ -8620,6 +8675,7 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
                     "timings": _web_turn_timing_payload(turn),
                     "compaction": dict(turn.compaction),
                     "plan": dict(turn.plan) if turn.plan else None,
+                    "timing_summary": turn.timing_summary.summary(),
                 }
             )
     return payload
@@ -9197,6 +9253,11 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 _touch_web_turn(session_id, status="Running…", phase="streaming", active_agent_session_id=getattr(agent, "session_id", session_id))
                 _items = validated_items
                 _publish_web_status(session_id, "api_call_started", "Calling model…", phase="api")
+                if _active_turn is not None:
+                    with _active_turn.lock:
+                        _active_turn.timing_summary.mark("preparation_ready")
+                        _active_turn.timing_summary.mark("execution_queued")
+                        _active_turn.timing_summary.select_route(turn_route)
                 result = await _run_web_turn_in_executor(
                     loop, lambda: _run_web_agent_turn_with_db(agent, message, None, _items)
                 )
