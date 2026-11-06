@@ -847,6 +847,11 @@ DEFAULT_CONFIG = {
         # Show first-class delegated sub-agents in the chat right sidebar.
         # Default on for v1, but keep a kill switch while the lifecycle API settles.
         "subagents_sidebar": True,
+        # Idle-only retention targets; live roots/children/decisions may exceed them.
+        "agent_cache_size": 8,
+        "agent_cache_idle_seconds": 1800,
+        # Logical retained context estimate, not process RSS. Zero disables a limit.
+        "agent_cache_context_bytes": 64 * 1024 * 1024,
     },
     # macOS / desktop app behaviour.
     "desktop": {
@@ -921,6 +926,16 @@ REQUIRED_ENV_VARS: dict[str, dict[str, Any]] = {}
 
 # Optional environment variables that enhance functionality
 OPTIONAL_ENV_VARS: dict[str, dict[str, Any]] = {
+    "SPARK_WEB_AGENT_CACHE_IDLE_SECONDS": {
+        "description": "Idle seconds before an unowned web agent expires (0 disables)",
+        "prompt": "Web agent idle expiry seconds", "password": False,
+        "category": "setting", "advanced": True,
+    },
+    "SPARK_WEB_AGENT_CACHE_CONTEXT_BYTES": {
+        "description": "Logical retained web context byte budget (0 disables; not RSS)",
+        "prompt": "Web agent context byte budget", "password": False,
+        "category": "setting", "advanced": True,
+    },
     # ── Provider (handled in provider selection, not shown in checklists) ──
     "OPENROUTER_API_KEY": {
         "description": "OpenRouter API key (for vision, web scraping helpers, and MoA)",
