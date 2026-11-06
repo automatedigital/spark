@@ -51,8 +51,8 @@
       "id": "SP04",
       "title": "Cancel obsolete reads across navigation and connection changes",
       "issue": "https://github.com/automatedigital/spark/issues/191",
-      "state": "dispatch_prepared",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp04-20261106-r1",
       "pr": null,
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
       "prBase": "feat/sp02-recovery-snapshot-final"
@@ -289,9 +289,9 @@
       "id": "SP23",
       "title": "Show integration readiness and bounded MCP tests",
       "issue": "https://github.com/automatedigital/spark/issues/210",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-acceptance-r3",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/223",
       "base": "c549bc6fcd53458f6391c8cdc16f10d8756b3b0f",
       "prBase": "feat/sp10-provider-catalogue",
       "lastResult": "No sourcechange/no environmentblocker. IdentifiedunsafeunboundedCLIprobe; structuredadapter implementation remainsassignedscope, notacceptedblocker.",
@@ -301,7 +301,9 @@
       ],
       "resumeReason": "Previousagentreturnednoimplementation/noenvironmentblocker. Safe structuredisolatedprobe adapter is requiredimplementation, notblocker. ParentconfirmedexistinghelperstopsprocessglobalMCPloop: isolateprobechild toprotectliveconnections/toolsets.",
       "localHead": "c549bc6fcd53458f6391c8cdc16f10d8756b3b0f",
-      "publicationBlocker": "Final source changed after earlier checks; host load194-250 and one-second ps cleanup preflight failures reported. Root observed load104.78 at18:49. No final immutable-source browser/full Python evidence, no publication. Do not infer environment alone proves correctness."
+      "publicationBlocker": "Final source changed after earlier checks; host load194-250 and one-second ps cleanup preflight failures reported. Root observed load104.78 at18:49. No final immutable-source browser/full Python evidence, no publication. Do not infer environment alone proves correctness.",
+      "head": "1c2c74954fab875ebf97c5d66429f16fe6f7ab04",
+      "leadVerification": "Reviewed isolated stdin config/SDK transport/deadline/bounded structured output and no raw exception disclosure. Independently3 cancellation/owner bounds-profile-revision/secret-safe passive-read tests passed. Child reports79focused/12754parallel191serial/571frontend andbrowser gates pass. Hosted CI pending; process/native/integration acceptance not inferred."
     },
     {
       "id": "SP24",
