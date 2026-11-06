@@ -6862,99 +6862,208 @@ class TokenEstimateRequest(BaseModel):
 
 @app.post("/api/estimate-tokens")
 async def estimate_tokens(body: TokenEstimateRequest):
-    from spark_cli.context_models import ContextBucket, ContextEstimate
+    """Estimates are component counts, never provider usage or aggregate billing."""
+    def read_estimate():
+        from core.spark_state import SessionDB
 
-    prompt_tokens = _count_tokens_fast(body.prompt)
-
-    # Count attached context item tokens
-    attached_tokens = 0
-    item_buckets: list[ContextBucket] = []
-    if body.context_items:
-        workspace_root: Path | None = None
-        for raw in body.context_items:
-            item = raw if isinstance(raw, dict) else (raw.model_dump() if hasattr(raw, "model_dump") else {})
-            label = item.get("label") or item.get("source_path") or item.get("id", "item")
-            mode = item.get("inclusion_mode", "full")
-            if mode == "path_only":
-                t = _count_tokens_fast(item.get("source_path", ""))
-            else:
-                content = item.get("content") or ""
-                if not content and item.get("source_path") and workspace_root is None:
-                    # Try to resolve workspace root from session
-                    if body.session_id:
-                        try:
-                            from core.spark_state import SessionDB
-                            db = SessionDB()
-                            sess = db.get_session(body.session_id)
-                            if sess and sess.get("workspace_slug"):
-                                slug = sess["workspace_slug"]
-                                workspace_root = _get_workspace_root(slug)
-                        except Exception:
-                            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
-                if not content and item.get("source_path") and workspace_root:
-                    content = _resolve_context_item_content(item, workspace_root) or ""
-                t = _count_tokens_fast(content)
-            attached_tokens += t
-            item_buckets.append(ContextBucket(label=label, tokens=t))
-
-    pinned_tokens = _count_tokens_fast(body.brief)
-
-    # Estimate history tokens from DB if session_id provided
-    history_tokens = 0
-    if body.session_id and body.history_message_count > 0:
-        try:
-            from core.spark_state import SessionDB
-            db = SessionDB()
-            messages = db.get_messages(body.session_id)
-            db.close()
-            # Take the most recent history_message_count messages
-            recent = messages[-body.history_message_count:]
-            for m in recent:
-                history_tokens += _count_tokens_fast(m.get("content") or "")
-        except Exception:
-            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
-
-    total = prompt_tokens + attached_tokens + pinned_tokens + history_tokens
-
-    # Determine context window from model capabilities
-    context_window = 200_000
-    if body.model:
-        try:
+        prompt = _count_tokens_fast(body.prompt)
+        attached = sum(_count_tokens_fast(str(item.get("source_path", "") if item.get("inclusion_mode") == "path_only" else item.get("content") or "")) for item in body.context_items if isinstance(item, dict))
+        history = tools = instructions = 0
+        context_window = 200_000
+        model_config = load_config().get("model") or {}
+        if isinstance(model_config, dict) and isinstance(model_config.get("context_length"), int) and model_config["context_length"] > 0:
+            context_window = model_config["context_length"]
+        if body.model:
             from agent.models_dev import get_model_capabilities
-            route = _resolve_web_turn_route("", explicit_model=body.model)
-            route_runtime = route.get("runtime") or {}
-            route_provider = str(route_runtime.get("provider") or "")
-            mc = get_model_capabilities(provider=route_provider, model=body.model)
-            if mc and mc.context_window > 0:
-                context_window = mc.context_window
-        except Exception:
-            _log.debug("Ignoring error in estimate_tokens()", exc_info=True)
+            capabilities = get_model_capabilities(provider=model_config.get("provider", "") if isinstance(model_config, dict) else "", model=body.model)
+            if capabilities and capabilities.context_window > 0:
+                context_window = capabilities.context_window
+        sid = None
+        instruction_basis = "unknown"
+        if body.session_id:
+            db = SessionDB()
+            try:
+                resolved = db.resolve_session_id(body.session_id)
+                if resolved:
+                    sid = db.resolve_latest_descendant(resolved)
+                    row = db.get_session(sid) or {}
+                    agent = _web_agents.get(sid)
+                    engine = getattr(agent, "context_compressor", None)
+                    if engine:
+                        context_window = engine.context_length
+                    system = getattr(agent, "_cached_system_prompt", None) or row.get("system_prompt")
+                    if system:
+                        instructions = _count_tokens_fast(system)
+                        instruction_basis = "estimate (includes loaded memory)"
+                    schemas = getattr(agent, "tools", None)
+                    if schemas:
+                        tools += _count_tokens_fast(json.dumps(schemas, default=str))
+                    for group in db._conn.execute(
+                        "SELECT role, (tool_calls IS NOT NULL) AS has_calls, COUNT(*) AS count, SUM(LENGTH(COALESCE(content, '')) + LENGTH(COALESCE(tool_calls, ''))) AS chars FROM messages WHERE session_id = ? GROUP BY role, has_calls", (sid,)
+                    ):
+                        tokens = int(group["chars"] or 0) // 4 + int(group["count"]) * 10
+                        if group["role"] == "system":
+                            if not system:
+                                instructions += tokens
+                                instruction_basis = "estimate (includes loaded memory)"
+                        elif group["role"] == "tool" or group["has_calls"]:
+                            tools += tokens
+                        else:
+                            history += tokens
+            finally:
+                db.close()
+        instructions += _count_tokens_fast(body.brief)
+        buckets = [
+            {"label": "Prompt", "tokens": prompt, "basis": "estimate"},
+            {"label": "History", "tokens": history, "basis": "estimate"},
+            {"label": "Tools", "tokens": tools, "basis": "estimate (schemas unknown when cold)"},
+            {"label": "Instructions", "tokens": instructions, "basis": instruction_basis},
+            {"label": "Memory", "tokens": None, "basis": "unknown separately; included in loaded instructions"},
+            {"label": "Attachments", "tokens": attached, "basis": "estimate (unloaded files excluded)"},
+        ]
+        total = prompt + attached + history + tools + instructions
+        utilization = total / context_window if context_window else 0
+        return {"prompt_tokens": prompt, "attached_tokens": attached,
+                "pinned_tokens": _count_tokens_fast(body.brief), "history_tokens": history,
+                "total_tokens": total, "context_window": context_window,
+                "utilization": utilization,
+                "warning": "limit_exceeded" if utilization >= .95 else "compression_likely" if utilization >= .8 else None,
+                "buckets": [{"label": "Prompt", "tokens": prompt},
+                            {"label": "Attached", "tokens": attached},
+                            {"label": "Brief", "tokens": _count_tokens_fast(body.brief)},
+                            {"label": "History", "tokens": history}],
+                "breakdown": buckets, "provider_actual_tokens": None, "session_id": sid}
+    return await _run_blocking(read_estimate)
 
-    utilization = total / context_window if context_window > 0 else 0.0
-    warning = None
-    if utilization >= 0.95:
-        warning = "limit_exceeded"
-    elif utilization >= 0.80:
-        warning = "compression_likely"
 
-    buckets = [
-        ContextBucket(label="Prompt", tokens=prompt_tokens),
-        ContextBucket(label="Attached", tokens=attached_tokens, items=[b.label for b in item_buckets]),
-        ContextBucket(label="Brief", tokens=pinned_tokens),
-        ContextBucket(label="History", tokens=history_tokens),
-    ]
+class ContextCompactRequest(BaseModel):
+    expected_revision: str
 
-    return ContextEstimate(
-        prompt_tokens=prompt_tokens,
-        attached_tokens=attached_tokens,
-        pinned_tokens=pinned_tokens,
-        history_tokens=history_tokens,
-        total_tokens=total,
-        context_window=context_window,
-        utilization=utilization,
-        warning=warning,
-        buckets=buckets,
+
+def _context_preflight(session_id: str):
+    from core.spark_state import SessionDB
+    from spark_cli.context_compaction import compressor_for_session, require_idle, revision
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        sid = db.resolve_latest_descendant(sid)
+        row = db.get_session(sid)
+        if not row:
+            raise HTTPException(status_code=404, detail="Session not found")
+        messages = db.get_messages_as_conversation(sid)
+        cached = getattr(_web_agents.get(sid), "context_compressor", None)
+        compressor = compressor_for_session(row, cached)
+        policy = compressor.preflight(messages)
+        reason = None
+        try:
+            require_idle(db, sid)
+            if _is_web_turn_active(sid):
+                raise ValueError("Wait for the active turn before compacting.")
+            if not policy["tool_pairs_valid"]:
+                raise ValueError("Tool results are incomplete; wait for a safe boundary.")
+        except ValueError as exc:
+            reason = str(exc)
+        return {"session_id": sid, "revision": revision(messages),
+                "can_compact": reason is None, "blocked_reason": reason, **policy}
+    finally:
+        db.close()
+
+
+@app.get("/api/conversations/{session_id}/context/preflight")
+async def context_compaction_preflight(session_id: str):
+    return await _run_blocking(_context_preflight, session_id)
+
+
+@app.post("/api/conversations/{session_id}/context/compact")
+async def compact_conversation_context(session_id: str, body: ContextCompactRequest):
+    # Reserve synchronously before the first await. The existing send path sees
+    # this registry entry and rejects concurrent work, including old aliases.
+    from core.spark_state import SessionDB
+    from spark_cli.context_compaction import (
+        compressor_for_session,
+        persist_compaction,
+        require_idle,
+        revision,
     )
+
+    ids = _resolve_web_turn_ids(session_id)
+    sid = ids.get("latest") or ids.get("resolved")
+    if not sid:
+        raise HTTPException(status_code=404, detail="Session not found")
+    with _with_web_turn_lock():
+        if _is_web_turn_active(sid):
+            raise HTTPException(status_code=409, detail="Wait for the active turn before compacting.")
+        reservation = WebActiveTurn(started_at=time.time(), last_event_at=time.time(),
+                                    status="Compacting context…", phase="context_compaction",
+                                    interrupt_requested=False, active_agent_session_id=None)
+        key = _web_turn_key(sid)
+        _web_active_turns[key] = reservation
+    reserved_keys = {key}
+
+    def reserve_child(child):
+        # Cover the interval after the lineage commit but before the worker
+        # returns: send resolves the new leaf immediately after that commit.
+        with _with_web_turn_lock():
+            reserved_keys.add(child)
+            _web_active_turns[child] = reservation
+
+    def run():
+        db = SessionDB()
+        try:
+            row = db.get_session(sid)
+            if not row:
+                raise HTTPException(status_code=404, detail="Session not found")
+            require_idle(db, sid)
+            messages = db.get_messages_as_conversation(sid)
+            if revision(messages) != body.expected_revision:
+                raise ValueError("Context changed; review a fresh preflight before compacting.")
+            cached = getattr(_web_agents.get(sid), "context_compressor", None)
+            compressor = compressor_for_session(row, cached)
+            prior = next((checkpoint for owner in reversed(db.resolve_compression_chain(sid))
+                          if (checkpoint := db.get_latest_context_checkpoint(owner))), None)
+            if prior:
+                from agent.context_checkpoint import ContextCheckpoint
+                compressor._typed_checkpoint = ContextCheckpoint.from_dict(prior["payload"])
+                compressor.compression_count = compressor._typed_checkpoint.checkpoint_sequence
+            compressor.set_deterministic_state(
+                task_identity=(compressor._typed_checkpoint.task_identity if compressor._typed_checkpoint else sid),
+                current_plan=list(compressor._typed_checkpoint.current_plan) if compressor._typed_checkpoint else [],
+                context_epoch=compressor._typed_checkpoint.context_epoch if compressor._typed_checkpoint else 0,
+            )
+            compressed = compressor.compress(messages, safe_boundary=True)
+            if compressed is messages:
+                return {"session_id": sid, **compressor.last_compaction}
+            return persist_compaction(db, sid, messages, compressed, compressor, body.expected_revision, reserve_child)
+        finally:
+            db.close()
+
+    async def finish():
+        try:
+            result = await _run_blocking(run)
+            if result.get("status") == "compacted":
+                _close_web_agent(sid)
+                _emit_sessions_changed("updated", result["session_id"])
+            return result
+        finally:
+            with _with_web_turn_lock():
+                for owned_key in reserved_keys:
+                    if _web_active_turns.get(owned_key) is reservation:
+                        _web_active_turns.pop(owned_key, None)
+
+    work = asyncio.create_task(finish())
+    # Keep a strong reference through cancellation; consume a disconnected
+    # client's exception without turning uncertain acceptance into a retry.
+    def completed(task):
+        if not task.cancelled():
+            task.exception()
+    work.add_done_callback(completed)
+    try:
+        return await asyncio.shield(work)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.patch("/api/sessions/{session_id}/kanban")

@@ -39,6 +39,7 @@ export interface ContextEstimate {
   utilization: number;
   warning: string | null;
   buckets: ContextBucket[];
+  breakdown?: { label: string; tokens: number | null; basis: string }[];
 }
 
 const jsonHeaders = { "Content-Type": "application/json" };
