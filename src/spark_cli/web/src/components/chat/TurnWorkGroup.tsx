@@ -46,14 +46,17 @@ function statusIcon(turn: TimelineTurn) {
   return <Check className="h-3.5 w-3.5" />;
 }
 
-function ToolItem({ item, safeMode, onAttachPath, onFetchFullResult }: {
+function ToolItem({ item, sessionId, safeMode, onAttachPath, onFetchFullResult }: {
   item: TimelineToolItem;
+  sessionId?: string | null;
   safeMode: boolean;
   onAttachPath?: (path: string) => void;
   onFetchFullResult?: (toolId: string) => Promise<string | null>;
 }) {
   return (
     <ToolCallBubble
+      sessionId={sessionId}
+      toolCallId={item.toolId}
       name={item.name}
       args={{ ...item.args }}
       result={item.result}
@@ -98,8 +101,9 @@ function RequestedInputItem({ item }: { item: TimelineRequestedInputItem }) {
   );
 }
 
-function WorkItem({ item, safeMode, approvalBusy, onApprovalChoice, onAttachPath, onFetchFullResult, onFeedbackSubmit }: {
+function WorkItem({ item, sessionId, safeMode, approvalBusy, onApprovalChoice, onAttachPath, onFetchFullResult, onFeedbackSubmit }: {
   item: TimelineWorkItem;
+  sessionId?: string | null;
   safeMode: boolean;
   approvalBusy: boolean;
   onApprovalChoice?: TurnWorkGroupProps["onApprovalChoice"];
@@ -111,7 +115,7 @@ function WorkItem({ item, safeMode, approvalBusy, onApprovalChoice, onAttachPath
     case "reasoning":
       return <ReasoningBubble text={item.text} isActive={false} safeMode={safeMode} />;
     case "tool":
-      return <ToolItem item={item} safeMode={safeMode} onAttachPath={onAttachPath} onFetchFullResult={onFetchFullResult} />;
+      return <ToolItem item={item} sessionId={sessionId} safeMode={safeMode} onAttachPath={onAttachPath} onFetchFullResult={onFetchFullResult} />;
     case "approval":
       return <ApprovalItem item={item} disabled={approvalBusy} onChoice={onApprovalChoice} />;
     case "requested-input":
@@ -127,6 +131,7 @@ function WorkItem({ item, safeMode, approvalBusy, onApprovalChoice, onAttachPath
 
 export const TurnWorkGroup = memo(function TurnWorkGroup({
   turn,
+  sessionId,
   safeMode = false,
   approvalBusy = false,
   onApprovalChoice,
@@ -163,6 +168,7 @@ export const TurnWorkGroup = memo(function TurnWorkGroup({
             <div key={item.id} data-work-item={item.kind}>
               <WorkItem
                 item={item}
+                sessionId={sessionId}
                 safeMode={safeMode}
                 approvalBusy={approvalBusy}
                 onApprovalChoice={onApprovalChoice}

@@ -4008,26 +4008,63 @@ async def get_session_messages(
 
 
 @app.get("/api/sessions/{session_id}/tool-results/{tool_call_id}")
-async def get_session_tool_result(session_id: str, tool_call_id: str):
-    from core.spark_state import SessionDB
+async def get_session_tool_result(
+    session_id: str, tool_call_id: str, paged: bool = False,
+    offset: int = 0, revision: str | None = None,
+):
+    from spark_cli.tool_result_reads import read_result
 
-    db = SessionDB()
-    try:
-        sid = db.resolve_session_id(session_id)
-        if not sid:
-            raise HTTPException(status_code=404, detail="Session not found")
-        leaf_sid = db.resolve_latest_descendant(sid)
-        for msg in db.get_messages(leaf_sid):
-            if msg.get("role") == "tool" and msg.get("tool_call_id") == tool_call_id:
-                return {
-                    "session_id": leaf_sid,
-                    "tool_call_id": tool_call_id,
-                    "content": _sanitize_web_chat_text(str(msg.get("content") or "")),
-                    "tool_name": msg.get("tool_name"),
-                }
-        raise HTTPException(status_code=404, detail="Tool result not found")
-    finally:
-        db.close()
+    home = get_spark_home()
+    if paged:
+        return await _run_blocking(read_result, home, session_id, tool_call_id, offset, revision)
+
+    # Unchanged compatibility payload, now with its connection owned by a worker.
+    def legacy_result():
+        from core.spark_state import SessionDB
+
+        db = SessionDB(home / "state.db")
+        try:
+            sid = db.resolve_session_id(session_id)
+            if not sid:
+                raise HTTPException(404, "Session not found")
+            leaf = db.resolve_latest_descendant(sid)
+            for message in db.get_messages(leaf):
+                if message.get("role") == "tool" and message.get("tool_call_id") == tool_call_id:
+                    return {"session_id": leaf, "tool_call_id": tool_call_id,
+                            "tool_name": message.get("tool_name"),
+                            "content": _sanitize_web_chat_text(str(message.get("content") or ""))}
+            raise HTTPException(404, "Tool result not found")
+        finally:
+            db.close()
+
+    return await _run_blocking(legacy_result)
+
+
+@app.get("/api/sessions/{session_id}/tool-results/{tool_call_id}/download")
+async def download_session_tool_result(session_id: str, tool_call_id: str, revision: str):
+    from starlette.responses import StreamingResponse
+
+    from spark_cli.tool_result_reads import read_result
+
+    home = get_spark_home()
+    first = await _run_blocking(read_result, home, session_id, tool_call_id, 0, revision)
+
+    async def chunks():
+        page = first
+        while True:
+            yield page["content"].encode("utf-8")
+            if page["next_offset"] is None:
+                break
+            page = await _run_blocking(
+                read_result, home, session_id, tool_call_id,
+                page["next_offset"], revision,
+            )
+
+    return StreamingResponse(chunks(), media_type="application/octet-stream", headers={
+        "Content-Disposition": 'attachment; filename="tool-result.txt"',
+        "Content-Length": str(first["total_bytes"]),
+        "X-Content-SHA256": first["sha256"], "Cache-Control": "no-store",
+    })
 
 
 def _resolve_workspace_media_path(path: str) -> Path:
