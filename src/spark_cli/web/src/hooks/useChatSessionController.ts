@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
-import { api, type SessionMessage } from "@/lib/api";
+import { api, type ChatRecoveryResponse, type SessionMessage } from "@/lib/api";
 import type { SessionStats } from "@/components/chat/SessionInfoBar";
 import {
   earlierHistoryRequest,
@@ -17,6 +17,7 @@ import {
   recoverTurnStateFromBackend,
   type ChatTurnState,
 } from "@/lib/chatTurnState";
+import { isAuthoritativeRecoveryFor } from "@/lib/chatRecovery";
 import { recordWebEfficiency } from "@/lib/efficiencyMetrics";
 import { exactAssistantContent } from "@/lib/exactMessage";
 import { isChatPanelScopeCurrent, type ChatPanelOwner, type OwnedSessionAdoption } from "@/lib/chatPanelOwnership";
@@ -30,7 +31,7 @@ import {
 } from "./chatSessionControllerHelpers";
 
 const HISTORY_PAGE = 50;
-const CHAT_RECOVERY_DEBUG_KEY = "spark:chat-recovery-debug";
+const RECOVERY_ERROR = "Unable to reconcile conversation. Reconnecting…";
 
 type CallbackRef<T extends (...args: never[]) => void> = MutableRefObject<T | null>;
 
@@ -68,15 +69,6 @@ export interface UseChatSessionControllerOptions {
   onSessionUpdated?: (id: string) => void;
 }
 
-function debugChatRecovery(event: string, payload: unknown): void {
-  try {
-    const enabled = window.localStorage.getItem(CHAT_RECOVERY_DEBUG_KEY);
-    if (enabled !== "1" && enabled !== "true") return;
-    console.debug(`[spark-chat-recovery] ${event}`, payload);
-  } catch {
-    /* debug logging is best-effort */
-  }
-}
 
 export function useChatSessionController({
   sessionId,
@@ -88,7 +80,6 @@ export function useChatSessionController({
   onSessionResetRef,
   flushPendingStreamRef,
   finalizeAssistantRef,
-  syncLiveAssistantSnapshotRef,
   appendRecoveredStaleTurnNoteRef,
   owner,
   onSessionAdopt,
@@ -103,7 +94,9 @@ export function useChatSessionController({
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>({});
   const [forkInfo, setForkInfo] = useState<ChatForkInfo | null>(null);
+  const [recoverySnapshot, setRecoverySnapshot] = useState<ChatRecoveryResponse | null>(null);
   const [recoveryPollCount, setRecoveryPollCount] = useState(0);
+  const [recoveryFailed, setRecoveryFailed] = useState(false);
 
   const activeSessionRef = useRef<string | null>(sessionId);
   const activeSessionAliasesRef = useRef<Set<string>>(new Set(sessionId ? [sessionId] : []));
@@ -111,7 +104,8 @@ export function useChatSessionController({
   const activeTurnSessionIdRef = useRef<string | null>(null);
   const streamTextCharsRef = useRef(0);
   const prependScrollAnchorRef = useRef<ChatPrependScrollAnchor | null>(null);
-  const resyncInFlightRef = useRef(false);
+  const resyncInFlightRef = useRef<number | null>(null);
+  const warmedRecoverySeqRef = useRef<number | null>(null);
   const exactAssistantContentRef = useRef<Map<string, string>>(new Map());
   const exactSearchRequestKeyRef = useRef("");
   const onSessionUpdatedRef = useRef(onSessionUpdated);
@@ -282,122 +276,56 @@ export function useChatSessionController({
 
   const resyncTurnState = useCallback(async (options: { allowIdle?: boolean } = {}) => {
     const sid = activeSessionRef.current;
-    if (!sid || !isOwnerCurrent() || (!streamingRef.current && !options.allowIdle) || resyncInFlightRef.current) return;
+    if (!sid || !isOwnerCurrent() || (!streamingRef.current && !options.allowIdle) || resyncInFlightRef.current === sessionRecoverySeqRef.current) return;
     const recoverySequence = sessionRecoverySeqRef.current;
-    resyncInFlightRef.current = true;
+    resyncInFlightRef.current = recoverySequence;
     setRecoveryPollCount((count) => count + 1);
     recordWebEfficiency("httpPolls");
     recordWebEfficiency("streamRecoveryActions");
     try {
-      const status = await api.getTurnStatus(sid);
-      debugChatRecovery("resync-turn-status", status.diagnostics ?? status);
-      if (!isCurrentSessionResponse(
-        recoverySequence,
-        sid,
-        status.resolved_session_id,
-        status.latest_session_id,
-        status.active_turn_session_id,
-      )) return;
-      rememberActiveSessionAliases(
-        sid,
-        status.resolved_session_id,
-        status.latest_session_id,
-        status.active_turn_session_id,
-      );
-      if (!status.turn_active) {
-        const wasStreaming = streamingRef.current;
-        activeTurnSessionIdRef.current = null;
+      const snapshot = await api.getChatRecovery(sid);
+      if (!isCurrentSessionResponse(recoverySequence, sid)) return;
+      if (!isAuthoritativeRecoveryFor(snapshot, sid)) throw new Error("Recovery needs reconciliation");
+      setError((previous) => previous === RECOVERY_ERROR ? null : previous);
+      setRecoveryFailed(false);
+      setRecoverySnapshot(snapshot);
+      if (warmedRecoverySeqRef.current !== recoverySequence) {
+        warmedRecoverySeqRef.current = recoverySequence;
+        schedule(() => {
+          if (isCurrentSessionResponse(recoverySequence, sid)) void api.warmSession(snapshot.latest_session_id).catch(() => {});
+        }, 400);
+      }
+      rememberActiveSessionAliases(sid, ...snapshot.lineage);
+      activeTurnSessionIdRef.current = snapshot.active_turn_session_id;
+      setTurnState(recoverTurnStateFromBackend({
+        turnActive: snapshot.turn_active, phase: snapshot.phase, state: snapshot.state,
+        interruptRequested: snapshot.interrupt_requested,
+      }));
+      setStatusLabel(backendTurnStatusLabel({
+        turnActive: snapshot.turn_active, phase: snapshot.phase, state: snapshot.state,
+        status: snapshot.status, idleForSeconds: snapshot.idle_for_seconds,
+      }));
+      if (snapshot.turn_active) {
+        setStreaming(true);
+      } else {
         flushPendingStreamRef.current?.();
         finalizeAssistantRef.current?.();
         setStreaming(false);
-        setStatusLabel(null);
-        try {
-          const response = await loadHistoryPage(sid, recoverySequence, { preferSyncedAssistants: true });
-          if (!isCurrentSessionResponse(recoverySequence, sid, response.session_id)) return;
-          const hasAssistant = chatMessagesFromHistory(response.messages).some(
-            (message) => message.role === "assistant" && message.content.trim(),
-          );
-          if (wasStreaming && !hasAssistant) {
-            appendRecoveredStaleTurnNoteRef.current?.(
-              "The previous response stopped before Spark saved an assistant reply. You can retry this message.",
-            );
-          }
-        } catch {
-          if (wasStreaming && isCurrentSessionResponse(recoverySequence, sid)) {
-            appendRecoveredStaleTurnNoteRef.current?.(
-              "Spark lost the live response state while reconnecting. You can retry or send a follow-up.",
-            );
-          }
-        }
-      } else {
-        const snapshotSessionId = status.active_turn_session_id ?? sid;
-        activeTurnSessionIdRef.current = snapshotSessionId;
-        setTurnState(recoverTurnStateFromBackend({
-          turnActive: true,
-          phase: status.phase,
-          state: status.state,
-          interruptRequested: status.interrupt_requested,
-        }));
-        setStatusLabel(backendTurnStatusLabel({
-          turnActive: true,
-          phase: status.phase,
-          state: status.state,
-          status: status.status,
-          idleForSeconds: status.idle_for_seconds,
-        }) ?? MODEL_LOADING_LABEL);
-        try {
-          const snapshot = await api.getStreamSnapshot(
-            snapshotSessionId,
-            streamTextCharsRef.current > 0 ? { afterChars: streamTextCharsRef.current } : {},
-          );
-          debugChatRecovery("resync-stream-snapshot", snapshot.diagnostics ?? snapshot);
-          if (!isCurrentSessionResponse(
-            recoverySequence,
-            sid,
-            snapshot.resolved_session_id,
-            snapshot.latest_session_id,
-            snapshot.active_turn_session_id,
-          )) return;
-          rememberActiveSessionAliases(
-            sid,
-            snapshot.resolved_session_id,
-            snapshot.latest_session_id,
-            snapshot.active_turn_session_id,
-          );
-          activeTurnSessionIdRef.current = snapshot.turn_active
-            ? snapshot.active_turn_session_id ?? snapshotSessionId
-            : null;
-          if (snapshot.stream_text) {
-            syncLiveAssistantSnapshotRef.current?.(
-              snapshot.stream_text,
-              snapshot.stream_revision,
-              snapshot.stream_text_start ?? 0,
-            );
-          }
-          if (!snapshot.turn_active) {
-            activeTurnSessionIdRef.current = null;
-            flushPendingStreamRef.current?.();
-            finalizeAssistantRef.current?.();
-            setStreaming(false);
-            setStatusLabel("Finalizing from saved history…");
-            try {
-              await loadHistoryPage(
-                snapshot.latest_session_id ?? snapshotSessionId,
-                recoverySequence,
-                { preferSyncedAssistants: true },
-              );
-            } finally {
-              setStatusLabel(null);
-            }
-          }
-        } catch {
-          /* snapshot recovery is best-effort */
-        }
+        if (snapshot.stream_text_mode === "unknown") appendRecoveredStaleTurnNoteRef.current?.(
+          "The live response is unavailable after a restart. Saved history is shown; work has not been replayed.",
+        );
       }
+      mergeHistoryResponse(snapshot.history, sid, recoverySequence, {
+        preferSyncedAssistants: !snapshot.turn_active,
+        preserveLocalAssistantPrefix: snapshot.turn_active,
+      });
     } catch {
-      /* network blip — leave state untouched, watchdog will retry */
+      if (isCurrentSessionResponse(recoverySequence, sid)) {
+        setRecoveryFailed(true);
+        setError(RECOVERY_ERROR);
+      }
     } finally {
-      resyncInFlightRef.current = false;
+      if (resyncInFlightRef.current === recoverySequence) resyncInFlightRef.current = null;
     }
   }, [
     appendRecoveredStaleTurnNoteRef,
@@ -405,12 +333,12 @@ export function useChatSessionController({
     flushPendingStreamRef,
     isCurrentSessionResponse,
     isOwnerCurrent,
-    loadHistoryPage,
+    mergeHistoryResponse,
+    schedule,
     rememberActiveSessionAliases,
     setStreaming,
     setTurnState,
     streamingRef,
-    syncLiveAssistantSnapshotRef,
   ]);
 
   useEffect(() => {
@@ -438,8 +366,10 @@ export function useChatSessionController({
     setHasEarlier(false);
     setSessionStats({});
     setForkInfo(null);
+    setRecoverySnapshot(null);
+    setRecoveryFailed(false);
     activeTurnSessionIdRef.current = null;
-    streamTextCharsRef.current = latestAssistantContentLength(initialTranscript);
+    streamTextCharsRef.current = 0;
     prependScrollAnchorRef.current = null;
     exactAssistantContentRef.current.clear();
     exactSearchRequestKeyRef.current = "";
@@ -456,120 +386,13 @@ export function useChatSessionController({
       !cancelled && isCurrentSessionResponse(recoverySequence, sessionId, ...ids)
     );
 
-    void api.getTurnStatus(sessionId).then(async (status) => {
-      debugChatRecovery("initial-turn-status", status.diagnostics ?? status);
-      if (!recoveryStillCurrent(
-        status.resolved_session_id,
-        status.latest_session_id,
-        status.active_turn_session_id,
-      )) return;
-      rememberActiveSessionAliases(
-        sessionId,
-        status.resolved_session_id,
-        status.latest_session_id,
-        status.active_turn_session_id,
-      );
-      activeTurnSessionIdRef.current = status.turn_active
-        ? status.active_turn_session_id ?? sessionId
-        : null;
-      setTurnState(recoverTurnStateFromBackend({
-        turnActive: status.turn_active,
-        phase: status.phase,
-        state: status.state,
-        interruptRequested: status.interrupt_requested,
-      }));
-      setStatusLabel(backendTurnStatusLabel({
-        turnActive: status.turn_active,
-        phase: status.phase,
-        state: status.state,
-        status: status.status,
-        idleForSeconds: status.idle_for_seconds,
-      }));
-      if (!status.turn_active) {
-        flushPendingStreamRef.current?.();
-        finalizeAssistantRef.current?.();
-        try {
-          await loadHistoryPage(sessionId, recoverySequence, {
-            baseMessages: initialTranscript.length > 0 ? initialTranscript : optimistic,
-            preferSyncedAssistants: true,
-          });
-        } catch {
-          /* history recovery is best-effort */
-        }
-        return;
-      }
-
-      try {
-        const snapshotSessionId = status.active_turn_session_id ?? sessionId;
-        const snapshot = await api.getStreamSnapshot(
-          snapshotSessionId,
-          streamTextCharsRef.current > 0 ? { afterChars: streamTextCharsRef.current } : {},
-        );
-        debugChatRecovery("initial-stream-snapshot", snapshot.diagnostics ?? snapshot);
-        if (!recoveryStillCurrent(
-          snapshot.resolved_session_id,
-          snapshot.latest_session_id,
-          snapshot.active_turn_session_id,
-        )) return;
-        rememberActiveSessionAliases(
-          snapshot.resolved_session_id,
-          snapshot.latest_session_id,
-          snapshot.active_turn_session_id,
-        );
-        activeTurnSessionIdRef.current = snapshot.turn_active
-          ? snapshot.active_turn_session_id ?? snapshotSessionId
-          : null;
-        if (snapshot.stream_text) {
-          syncLiveAssistantSnapshotRef.current?.(
-            snapshot.stream_text,
-            snapshot.stream_revision,
-            snapshot.stream_text_start ?? 0,
-          );
-        }
-        if (!snapshot.turn_active) {
-          setStreaming(false);
-          setStatusLabel("Finalizing from saved history…");
-          flushPendingStreamRef.current?.();
-          finalizeAssistantRef.current?.();
-          try {
-            await loadHistoryPage(sessionId, recoverySequence, { preferSyncedAssistants: true });
-          } catch {
-            /* final history recovery is best-effort */
-          } finally {
-            setStatusLabel(null);
-          }
-        }
-      } catch {
-        /* snapshot hydration is best-effort */
-      }
-    }).catch(() => {
-      /* selected-session turn recovery is best-effort */
-    });
-
     setLoadingHistory(true);
+    void resyncTurnState({ allowIdle: true }).finally(() => {
+      if (recoveryStillCurrent()) setLoadingHistory(false);
+    });
     void api.getSessionForks(sessionId).then((info) => {
       if (recoveryStillCurrent()) setForkInfo(forkInfoFromResponse(info));
     }).catch(() => {});
-    void api.getSessionMessages(sessionId, HISTORY_PAGE).then((response) => {
-      if (!recoveryStillCurrent(response.session_id)) return;
-      mergeHistoryResponse(response, sessionId, recoverySequence, {
-        baseMessages: initialTranscript.length > 0 ? initialTranscript : optimistic,
-        preserveLocalAssistantPrefix: Boolean(activeTurnSessionIdRef.current),
-      });
-      const mapped = chatMessagesFromHistory(response.messages);
-      if (streamingRef.current && !activeTurnSessionIdRef.current && mapped.some((message) => message.role === "assistant")) {
-        setStreaming(false);
-        setStatusLabel(null);
-      }
-      const warmSessionId = response.session_id ?? sessionId;
-      schedule(() => {
-        if (activeSessionRef.current === warmSessionId || activeSessionAliasesRef.current.has(warmSessionId)) {
-          void api.warmSession(warmSessionId).catch(() => {});
-        }
-      }, 400);
-    }).catch(() => {
-      if (recoveryStillCurrent() && !initialMessage) setError("Failed to load conversation history.");
-    }).finally(() => { if (recoveryStillCurrent()) setLoadingHistory(false); });
 
     return () => {
       cancelled = true;
@@ -723,6 +546,8 @@ export function useChatSessionController({
     setSessionStats,
     forkInfo,
     recoveryPollCount,
+    recoverySnapshot,
+    recoveryFailed,
     activeSessionRef,
     activeSessionAliasesRef,
     sessionRecoverySeqRef,

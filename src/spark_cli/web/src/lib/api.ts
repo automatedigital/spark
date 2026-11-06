@@ -28,6 +28,7 @@ import { connectorApi } from "./api_connector";
 import { workflowApi } from "./api_workflow";
 
 import type {
+  ChatRecoveryResponse,
   AnalyticsResponse,
   ArtifactsResponse,
   ConnectorStatus,
@@ -98,6 +99,8 @@ export const api = {
     fetchJSON<{ needs_onboarding: boolean; has_model: boolean; has_api_key: boolean }>(
       "/api/onboarding/status",
     ),
+  getChatRecovery: (id: string, afterChars?: number) =>
+    fetchJSON<ChatRecoveryResponse>(`/api/conversations/${encodeURIComponent(id)}/recovery${afterChars == null ? "" : `?after_chars=${afterChars}`}`),
   getTurnStatus: (id: string) =>
     fetchJSON<{
       session_id: string;

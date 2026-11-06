@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   adoptChatStreamSession,
+  hydrateChatStreamRecovery,
   eventAction,
   executeChatStreamEffect,
   flushAction,
@@ -142,5 +143,23 @@ describe("chat stream controller helpers", () => {
     expect(foreign.accepted).toBe(false);
     expect(duplicate.state.tokenBuffer).toBe("ok");
     expect(foreign.state.tokenBuffer).toBe("ok");
+  });
+});
+
+
+describe("authoritative recovery after history reconciliation", () => {
+  it("retains a live tail beside a bounded page of older saved turns", () => {
+    const history = Array.from({ length: 80 }, (_, i) => ({
+      id: `db:${i}`, role: i % 2 === 0 ? "user" as const : "assistant" as const,
+      content: `saved ${i}`,
+    }));
+    history.push({ id: "current", role: "user", content: "current prompt" });
+    const state = createChatStreamState({ sessionId: "s1", messages: history });
+    const snapshot = { session_id: "s1", turn_active: true, stream_text: "live tail", stream_revision: 4 };
+    const result = hydrateChatStreamRecovery({ ...state, streamRevision: 4, streamTextChars: 9 }, snapshot);
+    expect(result.state.messages.at(-1)?.content).toBe("live tail");
+    expect(result.state.messages[0].content).toBe("saved 0");
+    expect(result.queuedEffects).toEqual([]);
+    expect(hydrateChatStreamRecovery({ ...result.state, streamRevision: 5 }, snapshot).accepted).toBe(false);
   });
 });

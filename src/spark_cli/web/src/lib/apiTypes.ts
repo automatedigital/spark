@@ -1457,3 +1457,38 @@ export interface CliToolInfo {
   path: string | null;
   install_hint: string;
 }
+
+/** Durable database cursors and process delivery watermarks have distinct scopes. */
+export interface ChatRecoveryResponse {
+  schema_version: 1;
+  session_id: string;
+  resolved_session_id: string;
+  latest_session_id: string;
+  lineage: string[];
+  durable_cursor: { session_sequences: Record<string, number> };
+  stream_watermark: { server_epoch: string; sequence: number };
+  projection_revision: string;
+  reconciliation_required: boolean;
+  active_turn_session_id: string | null;
+  turn_active: boolean;
+  state: string;
+  reason: string | null;
+  phase: string;
+  status: string | null;
+  started_at: number | null;
+  last_event_at: number | null;
+  active_agent_session_id: string | null;
+  interrupt_requested: boolean;
+  idle_for_seconds: number | null;
+  stream_text: string;
+  stream_revision: number;
+  stream_text_start: number;
+  stream_text_chars: number;
+  stream_text_mode: string;
+  stream_text_complete: boolean;
+  turn_outcome: WebTurnOutcome | null;
+  outcomes: WebTurnOutcome[];
+  plan: WebPlan | null;
+  pending_actions: WebPendingAction[];
+  history: SessionMessagesResponse;
+}

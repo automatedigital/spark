@@ -1,3 +1,4 @@
+import type { ChatRecoveryResponse } from "./apiTypes";
 import { resolveChatStatus, type ChatConnectionState } from "./chatStatus";
 
 export interface RecoveryPollInput {
@@ -145,4 +146,12 @@ export function decideRecoveryPoll(input: RecoveryPollInput): RecoveryPollDecisi
     optimisticExpired,
     nextIdlePollAt: lastIdlePollAt,
   };
+}
+
+/** Validate the snapshot before adopting aliases or any of its projections. */
+export function isAuthoritativeRecoveryFor(snapshot: ChatRecoveryResponse, requestedId: string): boolean {
+  return snapshot.schema_version === 1 && !snapshot.reconciliation_required
+    && snapshot.session_id === requestedId
+    && snapshot.lineage.includes(snapshot.resolved_session_id)
+    && snapshot.lineage.includes(snapshot.latest_session_id);
 }

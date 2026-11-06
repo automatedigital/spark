@@ -166,7 +166,6 @@ export function ChatPanel({
   const [pendingActions, setPendingActions] = useState<WebPendingAction[]>([]);
   const [confirmedTurnStatus, setConfirmedTurnStatus] = useState<Awaited<ReturnType<typeof api.getTurnStatus>> | null>(null);
   const [statusDisconnected, setStatusDisconnected] = useState(false);
-  const turnSurfaceRefreshGenerationRef = useRef(0);
   const [busyActionIds, setBusyActionIds] = useState<Set<string>>(() => new Set());
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
   const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
@@ -236,6 +235,8 @@ export function ChatPanel({
     setSessionStats,
     forkInfo,
     recoveryPollCount,
+    recoverySnapshot,
+    recoveryFailed,
     activeSessionRef,
     activeSessionAliasesRef,
     sessionRecoverySeqRef,
@@ -339,7 +340,7 @@ export function ChatPanel({
     },
   });
   const syncStreamMessages = streamController.syncMessages;
-  const applyStreamSnapshot = streamController.applySnapshot;
+  const hydrateStreamRecovery = streamController.hydrateRecovery;
   const adoptStreamSession = streamController.adoptSession;
   const isCurrentStreamState = streamController.isCurrentState;
 
@@ -418,7 +419,6 @@ export function ChatPanel({
     editMessage,
     forkMessage,
     forkSession,
-    isSubmitting,
   } = composerActions;
 
   streamingRef.current = streaming;
@@ -698,7 +698,6 @@ export function ChatPanel({
 
   const refreshTurnSurfaces = useCallback(async () => {
     if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner)) return;
-    const generation = ++turnSurfaceRefreshGenerationRef.current;
     const sid = activeSessionRef.current;
     if (!sid) {
       setTurnOutcomes([]);
@@ -706,20 +705,20 @@ export function ChatPanel({
       setPendingActions([]);
       return;
     }
-    const [outcomeResult, planResult, actionsResult] = await Promise.allSettled([
-      api.getConversationTurnOutcomes(sid),
-      api.getConversationPlan(sid),
-      api.getConversationPendingActions(sid),
-    ]);
-    if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner) || activeSessionRef.current !== sid || generation !== turnSurfaceRefreshGenerationRef.current) return;
-    if (outcomeResult.status === "fulfilled") setTurnOutcomes(outcomeResult.value.outcomes);
-    if (planResult.status === "fulfilled") setConversationPlan(planResult.value.plan);
-    if (actionsResult.status === "fulfilled") setPendingActions(actionsResult.value.actions);
-  }, [activeSessionRef, owner]);
+    await resyncTurnState({ allowIdle: true });
+    // Adoption is owned by the session controller's generation fence.
+  }, [activeSessionRef, owner, resyncTurnState]);
 
   useEffect(() => {
-    void refreshTurnSurfaces();
-  }, [activeSessionId, refreshTurnSurfaces]);
+    if (!recoverySnapshot) return;
+    hydrateStreamRecovery(recoverySnapshot);
+    setTurnOutcomes(recoverySnapshot.outcomes);
+    setConversationPlan(recoverySnapshot.plan);
+    setPendingActions(recoverySnapshot.pending_actions);
+    setConfirmedTurnStatus(recoverySnapshot);
+    setStatusDisconnected(false);
+  }, [recoverySnapshot, hydrateStreamRecovery]);
+
 
   useEventBus((env) => {
     if (![
@@ -736,34 +735,8 @@ export function ChatPanel({
   });
 
   useEffect(() => { setConfirmedTurnStatus(null); setStatusDisconnected(false); }, [activeSessionId]);
+  useEffect(() => { setStatusDisconnected(recoveryFailed); }, [recoveryFailed]);
 
-  useEffect(() => {
-    const sid = activeSessionId;
-    let cancelled = false;
-    if (!sid) return;
-    const refresh = async () => {
-      try {
-        const status = await api.getTurnStatus(sid);
-        if (!cancelled && activeSessionRef.current === sid) {
-          setConfirmedTurnStatus((previous) => ({ ...status, last_event_at: status.last_event_at ?? previous?.last_event_at ?? null }));
-          setStatusDisconnected(false);
-          // Reconcile both the visible controls and the stream reducer from the
-          // same backend result. An unacknowledged submission may not yet have
-          // entered the active-turn registry, so don't finalize it prematurely.
-          if (!isSubmitting() && (status.turn_active || streamingRef.current)) applyStreamSnapshot(status);
-        }
-      } catch {
-        if (!cancelled && activeSessionRef.current === sid) setStatusDisconnected(true);
-      }
-    };
-    void refresh();
-    if (!streaming && !statusDisconnected) return () => { cancelled = true; };
-    const timer = window.setInterval(() => void refresh(), 2_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [activeSessionId, activeSessionRef, applyStreamSnapshot, isSubmitting, streaming, statusDisconnected]);
   const refreshConversationDiagnostics = useCallback(async () => {
     const sid = activeSessionRef.current;
     if (!sid) return null;
@@ -849,7 +822,6 @@ export function ChatPanel({
     try {
       if (id === "reload") {
         await resyncTurnStateRef.current?.({ allowIdle: true });
-        await refreshLatestTranscript();
       } else if (id === "retry") {
         if (latestUserMessage?.sessionIdx != null) await retryMessage(latestUserMessage.sessionIdx);
       } else if (id === "stop") {
@@ -872,7 +844,6 @@ export function ChatPanel({
     latestUserMessage,
     retryMessage,
     recoveryActionBusy,
-    refreshLatestTranscript,
     stop,
   ]);
 

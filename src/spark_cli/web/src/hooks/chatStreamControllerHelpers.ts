@@ -130,3 +130,19 @@ export function snapshotAction(snapshot: ChatStreamSnapshot): ChatStreamAction {
 export function flushAction(reason?: FlushReason): ChatStreamAction {
   return { type: "flush", ...(reason === undefined ? {} : { reason }) };
 }
+
+/** History has already been reconciled; restore its independent bounded live tail.
+ * A full tail is authoritative even when its revision equals the last delivery.
+ * Do not replace tokens received after this snapshot was assembled.
+ */
+export function hydrateChatStreamRecovery(
+  state: ChatStreamState,
+  snapshot: ChatStreamSnapshot,
+): ChatStreamControllerTransition {
+  if (!snapshot.turn_active || (snapshot.stream_revision ?? 0) < state.streamRevision) {
+    return { state, effects: [], queuedEffects: [], accepted: false };
+  }
+  return reduceChatStreamController({
+    ...state, streamRevision: 0, streamTextChars: 0, tokenBuffer: "",
+  }, snapshotAction(snapshot));
+}
