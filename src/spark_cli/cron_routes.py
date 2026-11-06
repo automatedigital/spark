@@ -19,6 +19,16 @@ _log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/cron", tags=["cron"])
 
 
+def _publish_cron_changed() -> None:
+    """Best-effort notification after persistence; polling covers other processes."""
+    try:
+        from spark_cli.web_server import _publish_event
+
+        _publish_event("bus.cron_changed", {})
+    except Exception:
+        _log.debug("Cron committed; live notification unavailable", exc_info=True)
+
+
 class CronJobCreate(BaseModel):
     prompt: str
     schedule: str
@@ -176,6 +186,7 @@ async def create_cron_job(body: CronJobCreate):
             provider=body.provider or None,
             skills=_resolve_cron_skills(body.skills),
         )
+        _publish_cron_changed()
         return job
     except Exception as e:
         _log.exception("POST /api/cron/jobs failed")
@@ -212,6 +223,7 @@ async def update_cron_job(job_id: str, body: CronJobUpdate):
         raise HTTPException(status_code=400, detail=str(e)) from e
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    _publish_cron_changed()
     return job
 
 
@@ -222,6 +234,7 @@ async def pause_cron_job(job_id: str):
     job = pause_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    _publish_cron_changed()
     return job
 
 
@@ -232,6 +245,7 @@ async def resume_cron_job(job_id: str):
     job = resume_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    _publish_cron_changed()
     return job
 
 
@@ -242,6 +256,7 @@ async def trigger_cron_job(job_id: str):
     job = trigger_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    _publish_cron_changed()
     return job
 
 
@@ -251,6 +266,7 @@ async def delete_cron_job(job_id: str):
 
     if not remove_job(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
+    _publish_cron_changed()
     return {"ok": True}
 
 

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Brain, Trash2, Plus, Loader2, Pencil, Check, X } from "lucide-react";
 import { memoryReview, type MemoryTarget } from "@/lib/memoryReview";
 import { MemoryBrowser } from "./memory/MemoryBrowser";
-import { useEventBus } from "@/hooks/useEventBus";
+import { useReferenceRefresh } from "@/hooks/useReferenceRefresh";
+import { referenceResources } from "@/lib/referenceResources";
 
 const TARGETS: { id: string; title: string; hint: string }[] = [
   { id: "memory", title: "Memory", hint: "Facts the agent has learned about your work and projects" },
@@ -152,28 +153,30 @@ export default function MemoryPage() {
   const [targets, setTargets] = useState<Record<string, MemoryTarget>>({});
   const [error, setError] = useState("");
   const pending = useRef<AbortController | null>(null);
-  const load = useCallback(() => {
+  const load = useCallback((invalidate = true) => {
+    if (invalidate) referenceResources.invalidate("memory");
     pending.current?.abort();
     const controller = new AbortController();
     pending.current = controller;
-    memoryReview.targets(controller.signal).then((r) => {
+    referenceResources.read("memory", (signal) => memoryReview.targets(signal), controller.signal).then((r) => {
       if (!controller.signal.aborted) { setTargets(r.targets); setError(""); }
     }).catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Read failed; drafts preserved.");
     });
   }, []);
-  useEffect(() => { load(); return () => pending.current?.abort(); }, [load]);
-  useEventBus((env) => { if (env.topic === "memory.updated") load(); });
+  useReferenceRefresh("memory", () => load(false));
+  useEffect(() => () => pending.current?.abort(), []);
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4">
       <div>
         <h1 className="text-lg font-semibold text-foreground">Memory</h1>
         <p className="text-sm text-muted-foreground/70">Edits apply at the next supported conversation or compaction boundary. Current conversation context stays frozen. Forget removes only the selected Markdown entry.</p>
       </div>
-      <button type="button" onClick={load}>Refresh Markdown</button>
-      {error && <p role="alert">{error} <button onClick={load}>Retry read</button></p>}
+      <button type="button" onClick={() => load()}>Refresh Markdown</button>
+      {error && <p role="alert">{error} <button onClick={() => load()}>Retry read</button></p>}
       {TARGETS.map((t) => (
-        <TargetCard key={t.id} target={t.id} title={t.title} hint={t.hint} data={targets[t.id] ?? null} setData={(data) => { pending.current?.abort(); setTargets((current) => ({ ...current, [t.id]: data })); }} />
+        <TargetCard key={t.id} target={t.id} title={t.title} hint={t.hint} data={targets[t.id] ?? null} setData={(data) => { pending.current?.abort(); referenceResources.refresh("memory", true); setTargets((current) => ({ ...current, [t.id]: data })); }} />
       ))}
       <MemoryBrowser />
     </div>
