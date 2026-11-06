@@ -189,9 +189,11 @@
       "id": "SP15",
       "title": "Show where a slow turn spent its time",
       "issue": "https://github.com/automatedigital/spark/issues/202",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp15-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/229",
+      "head": "aaadb7610e33b3fa250b0c5b5e996c5366b8763f",
+      "leadVerification": "Reviewed bounded monotonic timing helper/unknown usage/actual routing field contract; parent independently11 timing regressions passed0.64s. Existing route scores typedint, preserved. Childreports0.12%syntheticreplayoverhead andreal2chatrefreshdetailsflowpass. Hostedpending; no integration/nativeclaim."
     },
     {
       "id": "SP16",
