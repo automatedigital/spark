@@ -40,19 +40,12 @@ def actual_route(config, prompt, context=None, **kwargs):
 
 
 def sp15_summary(route):
-    """Published aaadb761 TurnTiming.select_route wire fixture (no writer here)."""
-    result = {key: route[key][:500] for key in ("model", "role", "routing_reason")
-              if isinstance(route.get(key), str)}
-    result["provider"] = route["runtime"]["provider"][:100]
-    decision = route.get("routing_decision")
-    if isinstance(decision, dict):
-        safe = {key: decision[key][:500] for key in ("role", "desired_role", "reason")
-                if isinstance(decision.get(key), str)}
-        for key in ("signals", "scores"):
-            safe[key] = {str(k)[:80]: value for k, value in list(decision.get(key, {}).items())[:32]
-                         if isinstance(value, (bool, int)) and abs(value) < 1_000_000}
-        result["routing_decision"] = safe
-    return {"version": 1, **result}
+    """Use SP15's actual writer contract in SP24's durable endpoint tests."""
+    from spark_cli.turn_timing import TurnTiming
+
+    timing = TurnTiming()
+    timing.select_route(route)
+    return timing.summary()
 
 
 @pytest.mark.parametrize("prompt,context,role", [

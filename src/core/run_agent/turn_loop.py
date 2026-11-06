@@ -60,6 +60,8 @@ logger = logging.getLogger(__name__)
 
 
 class _TurnLoopMixin:
+    _current_streamed_assistant_text: str
+
     def _spawn_background_review(
         self,
         messages_snapshot: list[dict],

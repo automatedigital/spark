@@ -27,7 +27,10 @@ export function focusSetting(root: HTMLElement, destination: SettingDestination)
     const label = [...field.querySelectorAll<HTMLLabelElement>("label")].find((el) => el.textContent?.trim() === destination.controlLabel);
     if (!label) return false;
     target = label.control ?? [...field.querySelectorAll<HTMLElement>(controls)].find((control) => control.getAttribute("aria-labelledby") === label.id);
-  } else if (destination.fieldKey) target = field.querySelector<HTMLElement>(controls) ?? undefined;
+  } else if (destination.fieldKey) {
+    target = field.querySelector<HTMLElement>(controls) ?? field;
+    if (target === field) target.tabIndex = -1;
+  }
   else if (!root.querySelector('[role="status"]') || root.querySelector("h2, h3, input, button")) target = root;
   if (!target) return false;
   for (let parent = target.parentElement; parent && parent !== root; parent = parent.parentElement) if (parent instanceof HTMLDetailsElement) parent.open = true;

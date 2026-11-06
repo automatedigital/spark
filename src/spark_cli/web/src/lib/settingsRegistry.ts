@@ -43,8 +43,11 @@ export interface SettingDestination {
 }
 export const COMMON_SETTINGS: readonly SettingDestination[] = [
   { id: "model-provider", label: "Provider", section: "model", fieldKey: "model", controlLabel: "Provider" },
-  { id: "model-id", label: "Model", section: "model", fieldKey: "model", controlLabel: "Model", keywords: "Auto role mappings" },
+  { id: "model-id", label: "Model", section: "model", fieldKey: "model", controlLabel: "Model", keywords: "model selection" },
   { id: "model-endpoint", label: "Base URL", section: "model", fieldKey: "model", controlLabel: "Base URL", keywords: "custom endpoint" },
+  { id: "auto-roles", label: "Auto role mappings", section: "model", fieldKey: "model_auto", keywords: "routing lead balanced fast subagent provider" },
+  { id: "context-pressure", label: "Context pressure", section: "memory", fieldKey: "compression.threshold", keywords: "context compaction threshold" },
+  { id: "mcp-readiness", label: "MCP readiness", section: "mcp", fieldKey: "mcp-readiness", keywords: "saved verified test connection discovery" },
   { id: "mcp-name", label: "Name", section: "mcp", controlLabel: "Name", keywords: "MCP server" },
   { id: "mcp-json", label: "Server JSON", section: "mcp", controlLabel: "Server JSON", keywords: "MCP saved configuration" },
   { id: "completion-alerts", label: "Completion alerts", section: "notifications", controlLabel: "Completion alerts" },
@@ -103,5 +106,5 @@ export function resolveAppDestination(id: string): { page: PageDestinationId } |
   return { settings: id === "messaging" ? "messaging" : id };
 }
 
-const COMMON_FIELD_KEYS = new Set(["model", "timezone", "memory.memory_enabled", "memory.user_profile_enabled", "memory.provider", "compression.enabled", "compression.threshold"]);
+const COMMON_FIELD_KEYS = new Set(["model", "timezone", "memory.memory_enabled", "memory.user_profile_enabled", "memory.provider", "compression.enabled", "compression.threshold", "model_auto"]);
 export function isCommonSetting(key: string) { return COMMON_FIELD_KEYS.has(key); }

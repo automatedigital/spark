@@ -51,7 +51,9 @@ describe("shared destination registry", () => {
   });
   it("keeps common destinations before secondary sections", () => {
     expect(SETTINGS_SECTIONS.slice(0, 8).map((item) => item.id)).toEqual(["connection", "profiles", "model", "memory", "skills-tools", "mcp", "mcp-tests", "notifications"]);
-    // SP24's role UI is an integration gate: the index points at the existing Model destination.
-    expect(searchSettings("role mappings")[0]).toMatchObject({ label: "Model", section: "model", controlLabel: "Model" });
+    // Combined SP24/SP25 points to the actual role editor.
+    expect(searchSettings("role mappings")[0]).toMatchObject({ id: "auto-roles", section: "model", fieldKey: "model_auto" });
+    expect(searchSettings("context pressure")[0]).toMatchObject({ section: "memory", fieldKey: "compression.threshold" });
+    expect(searchSettings("MCP readiness")[0]).toMatchObject({ section: "mcp", fieldKey: "mcp-readiness" });
   });
 });

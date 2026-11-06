@@ -440,7 +440,7 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
         // generic AutoField for ModelProviderBlock at the "model" anchor and
         // skip the other two keys it handles.
         if (key === "model_auto") {
-          return <div key={key} className="border-t border-border py-3"><RoutingRolesEditor config={config} setConfig={setConfig} /></div>;
+          return <div key={key} data-setting-key={key} className="border-t border-border py-3"><RoutingRolesEditor config={config} setConfig={setConfig} /></div>;
         }
         if (key === "model_provider" || key === "model_base_url") return null;
         if (key === "model") {
@@ -559,7 +559,7 @@ function McpSection() {
       <Toast toast={toast} />
 
       {/* Existing servers */}
-      <div className="flex min-h-40 flex-col">
+      <div data-setting-key="mcp-readiness" className="flex min-h-40 flex-col">
         {entries.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-1 py-10 text-center">
             <p className="text-sm font-medium text-foreground">No MCP servers</p>

@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 
 class _ProviderTransportMixin:
+    _interrupt_requested: bool
+
     # Roles the chat-completions API accepts; anything else is dropped
     # before the call rather than rejected by the provider.
     @staticmethod
