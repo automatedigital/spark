@@ -228,5 +228,5 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "Five Sol Low delegates dispatched: SP02 recovery, SP09 lazySettings, SP17 schedulePreview, SP19 terminalOwnership, SP20 incrementalFiles. All use greenSP01 a12205a5 and one scoped stackedPR; user explicitly requested more parallelism. Non-overlap paths recorded in plan scheduling refinement. Fresh pytest9.2 + relevant exact CI selections + Node22/npmci + browser checks required before single publication push; no checkpoint/speculative pushes. No merges/releases. Remaining20 tasks not dispatched; SP01 published with all7 hostedchecks green but acceptance limitations retained."
+  "dispatchNotes": "Five Sol Low delegates dispatched: SP02 recovery, SP09 lazySettings, SP17 schedulePreview, SP19 terminalOwnership, SP20 incrementalFiles. All use greenSP01 a12205a5 and one scoped stackedPR; user explicitly requested more parallelism. Non-overlap paths recorded in plan scheduling refinement. Fresh pytest9.2 + relevant exact CI selections + Node22/npmci + browser checks required before single publication push; no checkpoint/speculative pushes. No merges/releases. Remaining19 tasks not dispatched; SP01 published with all7 hostedchecks green but acceptance limitations retained."
 }
