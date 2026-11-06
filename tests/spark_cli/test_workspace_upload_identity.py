@@ -171,7 +171,8 @@ def test_windows_directory_identity_uses_native_handle_not_crt_fd(tmp_path, monk
     opener = Mock(return_value=456)
     monkeypatch.setattr(routes, "_windows_upload_handle", opener)
     fstat = Mock(side_effect=AssertionError("A native HANDLE is not a CRT fd"))
-    monkeypatch.setattr(routes.os, "fstat", fstat)
+    # Patch the route binding, not the shared os module used by pytest capture.
+    monkeypatch.setattr(routes, "os", SimpleNamespace(fstat=fstat, path=routes.os.path))
     with monkeypatch.context() as patch:
         patch.setattr(routes.sys, "platform", "win32")
         if same_identity:

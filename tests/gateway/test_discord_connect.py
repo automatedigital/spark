@@ -111,7 +111,7 @@ async def test_connect_only_requests_members_intent_when_needed(monkeypatch, all
     monkeypatch.setattr("gateway.status.release_scoped_lock", lambda scope, identity: None)
 
     intents = SimpleNamespace(message_content=False, dm_messages=False, guild_messages=False, members=False, voice_states=False)
-    monkeypatch.setattr(discord_platform.Intents, "default", lambda: intents)
+    monkeypatch.setattr(discord_platform, "Intents", SimpleNamespace(default=lambda: intents))
 
     created = {}
 
@@ -139,7 +139,7 @@ async def test_connect_releases_token_lock_on_timeout(monkeypatch):
     monkeypatch.setattr("gateway.status.release_scoped_lock", lambda scope, identity: released.append((scope, identity)))
 
     intents = SimpleNamespace(message_content=False, dm_messages=False, guild_messages=False, members=False, voice_states=False)
-    monkeypatch.setattr(discord_platform.Intents, "default", lambda: intents)
+    monkeypatch.setattr(discord_platform, "Intents", SimpleNamespace(default=lambda: intents))
 
     monkeypatch.setattr(
         discord_platform.commands,
@@ -168,7 +168,7 @@ async def test_connect_does_not_wait_for_slash_sync(monkeypatch):
     monkeypatch.setattr("gateway.status.release_scoped_lock", lambda scope, identity: None)
 
     intents = SimpleNamespace(message_content=False, dm_messages=False, guild_messages=False, members=False, voice_states=False)
-    monkeypatch.setattr(discord_platform.Intents, "default", lambda: intents)
+    monkeypatch.setattr(discord_platform, "Intents", SimpleNamespace(default=lambda: intents))
 
     created = {}
 
