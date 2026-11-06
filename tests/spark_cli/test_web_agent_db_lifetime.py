@@ -173,7 +173,7 @@ def test_stopped_dispatch_does_not_open_runtime_connection(owned_agent):
     cancelled = threading.Event()
     cancelled.set()
     with pytest.raises(InterruptedError):
-        web._dispatch_prepared_turn(SimpleNamespace(interrupt_requested=False), cancelled, agent, "stop", None, [])
+        web._dispatch_prepared_turn(web.WebActiveTurn(0, 0, "test", False, "owned", "preparation"), cancelled, agent, "stop", None, [])
     assert len(events) == 1
 
 
@@ -223,5 +223,5 @@ def test_stop_during_connection_open_fences_provider(owned_agent, monkeypatch):
     monkeypatch.setattr(SessionDB, "__init__", opened)
     monkeypatch.setattr(web, "_run_web_agent_turn", forbidden)
     with pytest.raises(InterruptedError):
-        web._dispatch_prepared_turn(SimpleNamespace(interrupt_requested=False), cancelled, agent, "stop", None, [])
+        web._dispatch_prepared_turn(web.WebActiveTurn(0, 0, "test", False, "owned", "preparation"), cancelled, agent, "stop", None, [])
     assert agent._session_db is None
