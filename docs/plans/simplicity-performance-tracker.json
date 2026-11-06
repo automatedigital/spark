@@ -3,7 +3,7 @@
   "provider": "codex",
   "model": "gpt-6.1-sol",
   "reasoningEffort": "low",
-  "maxConcurrentAgents": 8,
+  "maxConcurrentAgents": 9,
   "packets": [
     {
       "id": "SP01",
@@ -20,7 +20,7 @@
       "id": "SP02",
       "title": "Reconcile chat from one authoritative recovery snapshot",
       "issue": "https://github.com/automatedigital/spark/issues/189",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_failed_fork_fixture",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-publication-r4",
       "pr": "https://github.com/automatedigital/spark/pull/224",
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
@@ -33,7 +33,8 @@
       "localHead": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
       "publicationBlocker": "Final serial failed/interrupted during measuredload200 on12cores. Same source parallel12712 passed; no acceptance superseded by earlier passes. Resume exact remaining serial first at currentquieterload, no needless repeatparallel ifsourceunchanged.",
       "head": "dfe89333db1d539d48573ab85f23ef3df112d381",
-      "leadVerification": "Reviewed narrow cached transcript restoration dependency correction; child reproduced1000-to0 beforefix, final production inspector1000-to1091 within unchanged<100 tolerance. This does not establish cause/repair of214/220 historical1000-to1410. Qualified199serial and20real-scanner tests pass; inherited synthetic scan fixture removed. Frontend571 andbrowser gates pass. Hosted pending."
+      "leadVerification": "Reviewed narrow cached transcript restoration dependency correction; child reproduced1000-to0 beforefix, final production inspector1000-to1091 within unchanged<100 tolerance. This does not establish cause/repair of214/220 historical1000-to1410. Qualified199serial and20real-scanner tests pass; inherited synthetic scan fixture removed. Frontend571 andbrowser gates pass. Hosted pending.",
+      "ciFailure": "e2e42289307299/job128138239116 chat-contracts Fork result visible timeout. Mockforkack/legacymessages have no authoritativeDBsession; parentseededrealfixture, affectedflowverificationrunning."
     },
     {
       "id": "SP03",
@@ -324,9 +325,10 @@
       "id": "SP25",
       "title": "Replace scattered configuration with a searchable common-settings view",
       "issue": "https://github.com/automatedigital/spark/issues/212",
-      "state": "pending",
-      "taskId": null,
-      "pr": null
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp25-20261106-r1",
+      "pr": null,
+      "base": "3224c032a542900edc79ada36e9aaf24d82d1a42"
     }
   ],
   "dispatchNotes": "Ten PRs published; five preserved implementations SP02/SP03/SP07/SP22/SP23 being resumed immediately from correct committed feature bases. Two shared local acceptance slots prevent five full suites saturating host; reuse immutable-source passing gates and run missing/newlyaffected checks. No merges/releases/acceptanceclosure.",
@@ -354,5 +356,6 @@
   "validationDirection": "User explicitly stopped excessive repeated local testing. Active agents steered to stop own broad batches, focused changed-behavior tests + relevant lint/types/build + affected browser flow; full matrix once inCI. Preserve assertions and reuse immutable evidence.",
   "userDeadlineUtc": "2026-11-06T21:35:58Z",
   "deadlineDirection": "User imposed one-hour delivery window at20:35:58UTC. Active agents steered to finish/publish promptly with focused checks; no full local suites/audit expansion. Report exact delivered and incomplete state at deadline.",
-  "integrationBase": "70eb460290b3182108b7fad351793270240d8017 integration/sp-foundations-20261106: existingSP12+SP04+SP02+SP03 featurebranches only; no PR merged to main"
+  "integrationBase": "70eb460290b3182108b7fad351793270240d8017 integration/sp-foundations-20261106: existingSP12+SP04+SP02+SP03 featurebranches only; no PR merged to main",
+  "foundationVerification": "Parent combined26 snapshot/palette/preparation regressions pass3.20s on70eb460; mergeofexistingfeaturebranches, no mainmerge."
 }
