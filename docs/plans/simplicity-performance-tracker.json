@@ -120,14 +120,15 @@
       "id": "SP11",
       "title": "Make model search fast and immune to stale responses",
       "issue": "https://github.com/automatedigital/spark/issues/198",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp11-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/219",
       "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
       "prBase": "feat/sp10-provider-catalogue",
       "predecessorCorrection": "SP10correction completed andall7checks green; sameagentcontinuesseparateSP11PR asassigned.",
       "head": "88097547172754d8eb953c7f604a6bd51ad12e23",
-      "leadVerification": "Reviewed bounded loader cache, per-consumer AbortController/generation and profile/backend/auth fences. Independently ran 11 modelListLoader tests under verified Node22: passed. Browser evidence reported by child; hosted e2e pending."
+      "leadVerification": "Reviewed bounded loader cache, per-consumer AbortController/generation and profile/backend/auth fences. Independently ran 11 modelListLoader tests under verified Node22: passed. Browser evidence reported by child; hosted e2e pending.",
+      "hostedVerification": "T3 completion event: both hosted checks passed on88097547172754d8eb953c7f604a6bd51ad12e23. This UI-only PR ran two checks, not the seven-check backend matrix. Parent independently passed11 modelListLoader regressions; combined transport/integration/native acceptance remains open. No merge or release."
     },
     {
       "id": "SP12",
@@ -289,7 +290,7 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "Eight implementation PRs published; confirmed hosted green213/215/216/217/218.220 and214 share hosted inspector1000-to1410 failure; bounded diagnostic active. Active SP02/SP03/SP12/SP21 plus inspector diagnostic. SP23 committed unpublished with final gates incomplete. No merges/releases or acceptance closure.",
+  "dispatchNotes": "Eight implementation PRs published; confirmed hosted green213/215/216/217/218/219 (219 has two UI checks).220 and214 share unresolved hosted inspector1000-to1410 failure; bounded diagnostic active. Active SP02/SP03/SP12/SP21 plus inspector diagnostic. SP23 committed unpublished with final gates incomplete. No merges/releases or acceptance closure.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",
