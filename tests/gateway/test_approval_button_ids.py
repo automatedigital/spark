@@ -7,7 +7,7 @@ import socket
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -69,8 +69,13 @@ def discord_module(monkeypatch):
         def set_footer(self, *, text):
             self.footer = text
 
-    monkeypatch.setattr(discord.ui, "View", LocalView)
-    monkeypatch.setattr(discord, "Embed", LocalEmbed)
+    # Keep the imported application's UI boundary local to this test. Mutating
+    # shared MagicMock children leaks across cases with pytest 9.2 restoration.
+    sdk = ModuleType("discord")
+    sdk.ui = SimpleNamespace(View=LocalView, Button=object, button=lambda *a, **k: (lambda fn: fn))
+    sdk.Embed = LocalEmbed
+    sdk.__getattr__ = lambda name: getattr(discord, name)
+    monkeypatch.setitem(sys.modules, "discord", sdk)
     name = "gateway.platforms._approval_discord_sdk_boundary"
     path = Path(__file__).resolve().parents[2] / "src/gateway/platforms/discord.py"
     spec = importlib.util.spec_from_file_location(name, path)
