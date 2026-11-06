@@ -37,6 +37,17 @@ def test_middle_window_bounded_and_exact_equal_snippets(history):
     print(f"SP13 middle 10k window milliseconds n=5: {timings}")
 
 
+def test_exact_tool_anchor_does_not_materialize_full_result(history):
+    history._conn.execute(
+        "UPDATE messages SET role='tool', content=? WHERE id=5001",
+        ("large result " * 100000,),
+    )
+    history._conn.commit()
+    window = read_message_window(history, "anchor-thread", 5001)
+    selected = next(row for row in window["messages"] if row["id"] == 5001)
+    assert len(selected["content"]) == 2001
+
+
 def test_keyset_pages_and_live_append_have_no_duplicates_or_cursor_loss(history):
     middle = read_message_window(history, "anchor-thread", 5001)
     older = read_message_window(history, "anchor-thread", 5001, before_id=middle["before_id"])

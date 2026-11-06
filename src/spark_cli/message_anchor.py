@@ -70,7 +70,9 @@ def read_message_window(
                 rows += select("after", anchor, limit - len(rows) - 1)
                 # The exact anchor is selected with the same bounded projection.
                 rows += db._conn.execute(
-                    """SELECT id, role, content, tool_call_id, tool_calls, tool_name, timestamp,
+                    """SELECT id, role,
+                    CASE WHEN role = 'tool' THEN substr(content, 1, 2001) ELSE content END AS content,
+                    tool_call_id, tool_calls, tool_name, timestamp,
                     finish_reason, reasoning, reasoning_details, codex_reasoning_items
                     FROM messages WHERE id = ?""", (message_id,),
                 ).fetchall()
