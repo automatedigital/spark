@@ -133,8 +133,8 @@
       "id": "SP12",
       "title": "Open the command palette without bulk-fetching the app",
       "issue": "https://github.com/automatedigital/spark/issues/199",
-      "state": "dispatch_prepared",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp12-20261106-r1",
       "pr": null,
       "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
       "prBase": "feat/sp10-provider-catalogue",
@@ -220,7 +220,7 @@
       "id": "SP20",
       "title": "Fetch project files as users expand folders",
       "issue": "https://github.com/automatedigital/spark/issues/207",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_failed_shared_inspector",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp20-20261106-gates-r2",
       "pr": "https://github.com/automatedigital/spark/pull/220",
       "base": "d0de5a7bdf9f9a794a80cc323ba0dac080a9c705",
@@ -232,14 +232,15 @@
       "localHead": "d0de5a7bdf9f9a794a80cc323ba0dac080a9c705",
       "publicationBlocker": "Cleared by exact final local gates; historical timing cause not claimed proven.",
       "head": "3d71089ea4fb5f33596ebe4be119195ba372f49a",
-      "leadVerification": "Child reports exact parallel12717/serial191 and focused143 passed after verifying real Tirith prerequisite. Implementation unchanged; earlier frontend/browser evidence retained. Historical approval failure cause remains unproven. Parent source/focused verification still pending."
+      "leadVerification": "Reviewed directory-page bounds/containment/cursors and independently passed6 test_sp20_filetree tests with fresh pytest9.2/own src (10.18s). Agent exact parallel12717/serial191 passed; historical approval failure not claimed proven. Shared inspector gate remains open.",
+      "ciFailure": "Hosted e2e run42271396220/job128076576320 fails unchanged inspector line261: scroll1000 to1410, identical to214. Only capability check reached, zero page errors; artifact13531975662 retained. No speculative push/rerun."
     },
     {
       "id": "SP21",
       "title": "Give memory one coherent, searchable review surface",
       "issue": "https://github.com/automatedigital/spark/issues/208",
-      "state": "dispatch_prepared",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp21-20261106-r1",
       "pr": null,
       "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
       "prBase": "feat/sp10-provider-catalogue",
@@ -257,7 +258,7 @@
       "id": "SP23",
       "title": "Show integration readiness and bounded MCP tests",
       "issue": "https://github.com/automatedigital/spark/issues/210",
-      "state": "running",
+      "state": "committed_unpublished_gates_incomplete",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-implement-r2",
       "pr": null,
       "base": "ac29be47daac59dfbadb7a468820b39a319b907b",
@@ -266,7 +267,9 @@
       "priorTaskIds": [
         "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-r1"
       ],
-      "resumeReason": "Previousagentreturnednoimplementation/noenvironmentblocker. Safe structuredisolatedprobe adapter is requiredimplementation, notblocker. ParentconfirmedexistinghelperstopsprocessglobalMCPloop: isolateprobechild toprotectliveconnections/toolsets."
+      "resumeReason": "Previousagentreturnednoimplementation/noenvironmentblocker. Safe structuredisolatedprobe adapter is requiredimplementation, notblocker. ParentconfirmedexistinghelperstopsprocessglobalMCPloop: isolateprobechild toprotectliveconnections/toolsets.",
+      "localHead": "c549bc6fcd53458f6391c8cdc16f10d8756b3b0f",
+      "publicationBlocker": "Final source changed after earlier checks; host load194-250 and one-second ps cleanup preflight failures reported. Root observed load104.78 at18:49. No final immutable-source browser/full Python evidence, no publication. Do not infer environment alone proves correctness."
     },
     {
       "id": "SP24",
@@ -285,7 +288,7 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "Eight implementation PRs published. Confirmed hosted green213/215/216/217;214 unresolved inspector gate.218/219/220 longer checks pending. Active SP02/SP03/SP23; SP12/SP21 dispatch prepared. No merge/release or acceptance closure.",
+  "dispatchNotes": "Eight implementation PRs published;220 and214 share hosted inspector1000-to1410 failure. Active SP02/SP03/SP12/SP21. SP23 preserved unpublished atc549bc6f with final gates incomplete. Fifth slot reserved for bounded shared inspector diagnosis; avoid concurrent heavy suites on overloaded shared host. No merges/releases or acceptance closure.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",
