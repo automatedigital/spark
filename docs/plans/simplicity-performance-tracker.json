@@ -20,7 +20,7 @@
       "id": "SP02",
       "title": "Reconcile chat from one authoritative recovery snapshot",
       "issue": "https://github.com/automatedigital/spark/issues/189",
-      "state": "published_ci_failed_fork_fixture",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-publication-r4",
       "pr": "https://github.com/automatedigital/spark/pull/224",
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
@@ -32,9 +32,10 @@
       ],
       "localHead": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
       "publicationBlocker": "Final serial failed/interrupted during measuredload200 on12cores. Same source parallel12712 passed; no acceptance superseded by earlier passes. Resume exact remaining serial first at currentquieterload, no needless repeatparallel ifsourceunchanged.",
-      "head": "dfe89333db1d539d48573ab85f23ef3df112d381",
+      "head": "acef64b5b0d4d40f824552db31e121e8ecec945e",
       "leadVerification": "Reviewed narrow cached transcript restoration dependency correction; child reproduced1000-to0 beforefix, final production inspector1000-to1091 within unchanged<100 tolerance. This does not establish cause/repair of214/220 historical1000-to1410. Qualified199serial and20real-scanner tests pass; inherited synthetic scan fixture removed. Frontend571 andbrowser gates pass. Hosted pending.",
-      "ciFailure": "e2e42289307299/job128138239116 chat-contracts Fork result visible timeout. Mockforkack/legacymessages have no authoritativeDBsession; parentseededrealfixture, affectedflowverificationrunning."
+      "ciFailure": "e2e42289307299/job128138239116 chat-contracts Fork result visible timeout. Mockforkack/legacymessages have no authoritativeDBsession; parentseededrealfixture, affectedflowverificationrunning.",
+      "ciRepair": "Seeded durable mocked fork session for authoritative recovery; complete affectedchat-contracts browserflowpassed against verifiedownbackend. Originalassertionsunchanged. CorrectedheadCIpending."
     },
     {
       "id": "SP03",
@@ -60,7 +61,8 @@
       "pr": "https://github.com/automatedigital/spark/pull/228",
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
       "prBase": "feat/sp02-recovery-snapshot-final",
-      "head": "c88a0b4dd885411b6b7c8bd19c5d399ad6d73374"
+      "head": "35d01bc9",
+      "ciRepair": "MergedSP02durableforkfixturefix toavoidknowninheritede2efailure; correctedheadCIpending."
     },
     {
       "id": "SP05",
@@ -94,7 +96,8 @@
       ],
       "localHead": "dd136b9a54af5379eb11b546bb5883190726487a",
       "publicationBlocker": "Local141backend/573frontend and exact large-result refresh/navigation/browser gates pass after SP02 integration. Required feat/sp02-recovery-snapshot-final branch not yet published; retain readyhead without rerunning gates.",
-      "head": "3a3889ca"
+      "head": "99ba1903",
+      "ciRepair": "MypyLockType/RLock mismatchfixed and8focusedtests/cleanmodulemypy/Ruffpass; mergedSP02forkfixturefix. Currenthead99ba1903 pendingCI."
     },
     {
       "id": "SP08",
@@ -280,7 +283,7 @@
       "id": "SP22",
       "title": "Make skills easy to choose without loading every instruction",
       "issue": "https://github.com/automatedigital/spark/issues/209",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp22-20261106-invocation-r2",
       "pr": "https://github.com/automatedigital/spark/pull/225",
       "base": "ae027cef24f3b3480259c31907ae76bb02518284",
@@ -290,7 +293,8 @@
       ],
       "localCheckpoint": "a09cfd5a410be96d9b70ceb0e13137ad69a07663",
       "scopeClarification": "Stable-ID setup-free formatter and validated context augmentation authorised; preserve receipt hash and target fencing. Prior run mistakenly based ondocs1c92, ancestryverifiedfalse; scoped dirtywork committed and must replay ontoactualae027featurebase.",
-      "head": "3224c032a542900edc79ada36e9aaf24d82d1a42"
+      "head": "3224c032a542900edc79ada36e9aaf24d82d1a42",
+      "hostedVerification": "T3 event: all7 hostedchecks passed3224c032a542900edc79ada36e9aaf24d82d1a42. Parent acceptance/integration remains open; no merge/release."
     },
     {
       "id": "SP23",
