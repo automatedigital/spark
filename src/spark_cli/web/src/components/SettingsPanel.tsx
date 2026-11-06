@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { lazy, useState, useEffect, useMemo, useRef } from "react";
 import {
   X,
   Archive,
@@ -20,16 +20,8 @@ import {
   SlidersHorizontal,
   Wrench,
 } from "lucide-react";
-import StatusPage from "@/pages/StatusPage";
-import AnalyticsPage from "@/pages/AnalyticsPage";
-import LogsPage from "@/pages/LogsPage";
-import AdminPage from "@/pages/AdminPage";
-import ConfigPage from "@/pages/ConfigPage";
-import UpdatesPage from "@/pages/UpdatesPage";
-import AppearancePage from "@/pages/AppearancePage";
-import MemoryPage from "@/pages/MemoryPage";
-import MessagingPage from "@/pages/MessagingPage";
-import SkillsToolsPage from "@/pages/SkillsToolsPage";
+import { useSettingsDraft } from "@/components/settings/settingsDrafts";
+import { SettingsDraftProvider } from "@/components/settings/SettingsDraftProvider";
 import {
   api,
   getConnectionMode,
@@ -43,6 +35,7 @@ import { isTauri } from "@/sidecar";
 import type { McpServersResponse } from "@/lib/api";
 import { getNestedValue, setNestedValue } from "@/lib/nested";
 import { AutoField } from "@/components/AutoField";
+import { LazyLoadBoundary } from "@/components/LazyLoadBoundary";
 import { OAuthProvidersCard } from "@/components/OAuthProvidersCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +43,19 @@ import { Select, SelectOption } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/Toast";
+
+
+
+const StatusPage = lazy(() => import("@/pages/StatusPage"));
+const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
+const LogsPage = lazy(() => import("@/pages/LogsPage"));
+const AdminPage = lazy(() => import("@/pages/AdminPage"));
+const ConfigPage = lazy(() => import("@/pages/ConfigPage"));
+const UpdatesPage = lazy(() => import("@/pages/UpdatesPage"));
+const AppearancePage = lazy(() => import("@/pages/AppearancePage"));
+const MemoryPage = lazy(() => import("@/pages/MemoryPage"));
+const MessagingPage = lazy(() => import("@/pages/MessagingPage"));
+const SkillsToolsPage = lazy(() => import("@/pages/SkillsToolsPage"));
 
 /* ------------------------------------------------------------------ */
 /*  Schema-driven config section                                       */
@@ -271,7 +277,7 @@ function ModelCombobox({
 function ProviderApiKeyField({ envVar }: { envVar: string }) {
   const [isSet, setIsSet] = useState(false);
   const [redacted, setRedacted] = useState<string | null>(null);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useSettingsDraft(`provider-key-${envVar}`, "");
   const [saving, setSaving] = useState(false);
   const { toast, showToast } = useToast();
 
@@ -421,18 +427,18 @@ interface ConfigSectionFormProps {
 }
 
 function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], intro }: ConfigSectionFormProps) {
-  const [config, setConfig] = useState<Record<string, unknown> | null>(null);
+  const [config, setConfig] = useSettingsDraft<Record<string, unknown> | null>("config", null);
   const [schema, setSchema] = useState<Record<string, Record<string, unknown>> | null>(null);
   const [saving, setSaving] = useState(false);
   const { toast, showToast } = useToast();
 
   useEffect(() => {
-    api.getConfig().then(setConfig).catch(() => {});
+    api.getConfig().then((next) => setConfig((draft) => draft ?? next)).catch(() => {});
     api
       .getSchema()
       .then((resp) => setSchema(resp.fields as Record<string, Record<string, unknown>>))
       .catch(() => {});
-  }, []);
+  }, [setConfig]);
 
   const fields = useMemo(() => {
     if (!schema) return [] as [string, Record<string, unknown>][];
@@ -530,8 +536,8 @@ const MCP_JSON_TEMPLATE = `{
 
 function McpSection() {
   const [servers, setServers] = useState<McpServersResponse | null>(null);
-  const [name, setName] = useState("");
-  const [json, setJson] = useState(MCP_JSON_TEMPLATE);
+  const [name, setName] = useSettingsDraft("mcp-name", "");
+  const [json, setJson] = useSettingsDraft("mcp-json", MCP_JSON_TEMPLATE);
   const [saving, setSaving] = useState(false);
   const { toast, showToast } = useToast();
 
@@ -749,8 +755,8 @@ function VoiceSection() {
 function ConnectionSection() {
   const localDevice = localDeviceLabel();
   const [mode, setMode] = useState(getConnectionMode());
-  const [url, setUrl] = useState(getRemoteBaseUrl() ?? "");
-  const [token, setToken] = useState("");
+  const [url, setUrl] = useSettingsDraft("connection-url", getRemoteBaseUrl() ?? "");
+  const [token, setToken] = useSettingsDraft("connection-token", "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast, showToast } = useToast();
@@ -929,12 +935,20 @@ interface SettingsPanelProps {
   initialTab?: string;
 }
 
-export default function SettingsPanel({ onClose, initialTab = "model" }: SettingsPanelProps) {
+export default function SettingsPanel(props: SettingsPanelProps) {
+  useEffect(() => {
+    const opener = document.activeElement;
+    return () => { if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
+  }, []);
+
+  return <SettingsDraftProvider><SettingsPanelContent {...props} /></SettingsDraftProvider>;
+}
+
+function SettingsPanelContent({ onClose, initialTab = "model" }: SettingsPanelProps) {
   const resolvedInitial =
     ALL_SECTIONS.find((s) => s.id === initialTab)?.id ?? LEGACY_TAB_MAP[initialTab] ?? "model";
   const [activeTab, setActiveTab] = useState<SettingsTabId>(resolvedInitial);
   const [activeChild, setActiveChild] = useState<string>("");
-  const [animKey, setAnimKey] = useState(0);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -948,12 +962,10 @@ export default function SettingsPanel({ onClose, initialTab = "model" }: Setting
     setActiveTab(id);
     const section = ALL_SECTIONS.find((s) => s.id === id);
     setActiveChild(section?.children?.[0]?.id ?? "");
-    setAnimKey((k) => k + 1);
   };
 
   const handleChildChange = (id: string) => {
     setActiveChild(id);
-    setAnimKey((k) => k + 1);
   };
 
   const activeSection = ALL_SECTIONS.find((s) => s.id === activeTab)!;
@@ -1095,11 +1107,15 @@ export default function SettingsPanel({ onClose, initialTab = "model" }: Setting
 
             <div className={activeSection.fullBleed ? "flex min-h-0 flex-1 overflow-hidden" : "flex-1 overflow-y-auto"}>
               <div
-                key={animKey}
+                key={activeChildDef?.id ?? activeTab}
                 className={activeSection.fullBleed ? "min-h-0 w-full" : "mx-auto w-full px-4 py-5 sm:px-8 sm:py-8"}
                 style={{ animation: "fade-in 120ms ease-out" }}
               >
-                <ActiveComponent />
+                <SettingsDraftProvider tab={activeChildDef?.id ?? activeTab}>
+                  <LazyLoadBoundary label={activeChildDef?.id === "config" ? "Config" : activeChildDef?.label ?? activeSection.label}>
+                    <ActiveComponent />
+                  </LazyLoadBoundary>
+                </SettingsDraftProvider>
               </div>
             </div>
           </div>

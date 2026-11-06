@@ -1,3 +1,4 @@
+import { useSettingsDraft } from "@/components/settings/settingsDrafts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
@@ -263,11 +264,11 @@ export default function SkillsToolsPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [toggling, setToggling] = useState<Set<string>>(new Set());
-  const [selectedSkill, setSelectedSkill] = useState<SkillInfo | null>(null);
+  const [selectedSkill, setSelectedSkill] = useSettingsDraft<SkillInfo | null>("selectedSkill", null);
   const [detail, setDetail] = useState<SkillDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useSettingsDraft("editing", false);
+  const [draft, setDraft] = useSettingsDraft("draft", "");
   const [actionBusy, setActionBusy] = useState(false);
   const [deleteName, setDeleteName] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -309,7 +310,7 @@ export default function SkillsToolsPage() {
     if (!selectedSkill) return;
     const selected = skills.find((skill) => skillId(skill) === skillId(selectedSkill));
     if (selected) setSelectedSkill(selected);
-  }, [skills, selectedSkill]);
+  }, [skills, selectedSkill, setSelectedSkill]);
 
   useEffect(() => {
     if (!selectedSkill) {
@@ -324,9 +325,11 @@ export default function SkillsToolsPage() {
     api.getSkill(skillId(selectedSkill)).then((nextDetail) => {
       if (!alive) return;
       setDetail(nextDetail);
-      setDraft(nextDetail.content);
+      setDraft((current) => editing ? current : nextDetail.content);
     }).catch((error) => alive && showToast(`Failed to load ${selectedSkill.name}: ${errorMessage(error)}`, "error")).finally(() => alive && setDetailLoading(false));
     return () => { alive = false; };
+    // Preserve an open editor when this tab remounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSkill, showToast]);
 
   useEffect(() => {
@@ -336,7 +339,7 @@ export default function SkillsToolsPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedSkill]);
+  }, [selectedSkill, setSelectedSkill]);
 
   const handleToggleSkill = async (skill: SkillInfo) => {
     const id = skillId(skill);

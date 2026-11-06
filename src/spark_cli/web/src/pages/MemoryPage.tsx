@@ -1,3 +1,4 @@
+import { useSettingsDraft } from "@/components/settings/settingsDrafts";
 import { useCallback, useEffect, useState } from "react";
 import { Brain, Trash2, Plus, Loader2, Pencil, Check, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -11,9 +12,9 @@ const TARGETS: { id: string; title: string; hint: string }[] = [
 
 function TargetCard({ target, title, hint }: { target: string; title: string; hint: string }) {
   const [data, setData] = useState<MemoryTargetPayload | null>(null);
-  const [adding, setAdding] = useState("");
-  const [editIdx, setEditIdx] = useState<number | null>(null);
-  const [editText, setEditText] = useState("");
+  const [adding, setAdding] = useSettingsDraft(`memory-${target}-adding`, "");
+  const [editIdx, setEditIdx] = useSettingsDraft<number | null>(`memory-${target}-editIdx`, null);
+  const [editText, setEditText] = useSettingsDraft(`memory-${target}-editText`, "");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {

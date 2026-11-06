@@ -1,3 +1,4 @@
+import { useSettingsDraft } from "@/components/settings/settingsDrafts";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, ExternalLink, Save, Search } from "lucide-react";
 import { api, openExternal } from "@/lib/api";
@@ -112,9 +113,9 @@ function PlatformDetail({
   gatewayRunning: boolean;
   onSaved: (updated: MessagingPlatform) => void;
 }) {
-  const [enabled, setEnabled] = useState(platform.enabled);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [enabled, setEnabled] = useSettingsDraft(`messaging-${platform.id}-enabled`, platform.enabled);
+  const [values, setValues] = useSettingsDraft<Record<string, string>>(`messaging-${platform.id}-values`, {});
+  const [advancedOpen, setAdvancedOpen] = useSettingsDraft(`messaging-${platform.id}-advancedOpen`, false);
   const [saving, setSaving] = useState(false);
   const { toast, showToast } = useToast();
 
@@ -270,8 +271,8 @@ export default function MessagingPage() {
   const [gatewayRunning, setGatewayRunning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [search, setSearch] = useSettingsDraft("search", "");
+  const [selectedId, setSelectedId] = useSettingsDraft<string | null>("selectedId", null);
 
   useEffect(() => {
     api
@@ -283,7 +284,7 @@ export default function MessagingPage() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [setSelectedId]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
