@@ -160,20 +160,24 @@
       "id": "SP17",
       "title": "Preview schedules before they can run",
       "issue": "https://github.com/automatedigital/spark/issues/204",
-      "state": "running",
+      "state": "published_ci_pending",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp17-20261106-r1",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/216",
       "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
       "prBase": "feat/sp01-submission-acceptance",
-      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers."
+      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers.",
+      "head": "9c04091e4c62ad0edaf717ae564c3f18e7d51c13",
+      "leadVerification": "Reviewed parser/validation/timezone/admission diff and report; independently reran18 schedule_preview tests with freshpytest9.2 ownsrc -n0: pass0.55s. Agentfullgates used realSHAverifiedTirithdependency beforetimedfixtures; hosted/native/SP10integration notinferred."
     },
     {
       "id": "SP18",
       "title": "Separate scheduled execution history from delivery history",
       "issue": "https://github.com/automatedigital/spark/issues/205",
-      "state": "pending",
-      "taskId": null,
-      "pr": null
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp18-20261106-r1",
+      "pr": null,
+      "base": "9c04091e4c62ad0edaf717ae564c3f18e7d51c13",
+      "prBase": "feat/cron-schedule-preview"
     },
     {
       "id": "SP19",
@@ -244,13 +248,14 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "3 implementation PRs published (#213green, #214inspectorCIblocked, #215localgatespass/CIpending). Active5SolLow: SP02repair,SP10catalogue,SP17schedule,SP20filetree + boundedPR214inspector diagnostic (no productionwrite/push). No blind workflowrerun or speculativecodepush.18packetstotallyundispatched. PreserveSP20tree/slice+SP19terminal/slice on integration.",
+  "dispatchNotes": "4implementation PRs published213,214,215,216. Active4SolLow: SP02repair,SP10catalogue,SP20filetree,SP18attemptHistory. PR214matchedA/Bdiagnosticcomplete inconclusive: no speculativepush/rerun, Linuxcauseunresolved. Root checking localLinuxavailability before newboundeddiagnostic.17packetsnotdispatched; no merges/releases/checklistacceptanceinferred.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-pr214-20261106-inspector-r1",
       "base": "53d527d7f61a094ae258ac5afc6c4f8c61c2e3a5",
-      "state": "running"
+      "state": "completed_inconclusive_unpublished",
+      "result": "Exactbase/candidate each11inspectorchecks pass1000\u21921000 identicalrow/offset onmacOS; hostedLinux1000\u21921410 remainsunresolved. Localdiagnostics/reportonly, no production/assertion/dependency/publishedhead change."
     }
   ]
 }
