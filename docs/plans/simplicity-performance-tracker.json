@@ -51,9 +51,11 @@
       "id": "SP04",
       "title": "Cancel obsolete reads across navigation and connection changes",
       "issue": "https://github.com/automatedigital/spark/issues/191",
-      "state": "pending",
+      "state": "dispatch_prepared",
       "taskId": null,
-      "pr": null
+      "pr": null,
+      "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
+      "prBase": "feat/sp02-recovery-snapshot-final"
     },
     {
       "id": "SP05",
@@ -75,7 +77,7 @@
       "id": "SP07",
       "title": "Retrieve large tool results in bounded chunks",
       "issue": "https://github.com/automatedigital/spark/issues/194",
-      "state": "running",
+      "state": "ready_local_waiting_base_publication",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-recovery-r2",
       "pr": null,
       "base": "39835a4f259c414f1b5df96c23e23a494d2b9b85",
@@ -85,8 +87,8 @@
       "priorTaskIds": [
         "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-r1"
       ],
-      "localHead": "39835a4f259c414f1b5df96c23e23a494d2b9b85",
-      "publicationBlocker": "Builtbrowser refresh losesvisibleSSEtext despitebackendstream. Other focused133/frontend568/full12720+191/inspector pass. Integrate committedSP02 recovery first; keep source unchanged otherwise, bounded realflow retest."
+      "localHead": "dd136b9a54af5379eb11b546bb5883190726487a",
+      "publicationBlocker": "Local141backend/573frontend and exact large-result refresh/navigation/browser gates pass after SP02 integration. Required feat/sp02-recovery-snapshot-final branch not yet published; retain readyhead without rerunning gates."
     },
     {
       "id": "SP08",
