@@ -166,14 +166,15 @@
       "id": "SP17",
       "title": "Preview schedules before they can run",
       "issue": "https://github.com/automatedigital/spark/issues/204",
-      "state": "published_ci_pending",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp17-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/216",
       "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
       "prBase": "feat/sp01-submission-acceptance",
       "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers.",
       "head": "9c04091e4c62ad0edaf717ae564c3f18e7d51c13",
-      "leadVerification": "Reviewed parser/validation/timezone/admission diff and report; independently reran18 schedule_preview tests with freshpytest9.2 ownsrc -n0: pass0.55s. Agentfullgates used realSHAverifiedTirithdependency beforetimedfixtures; hosted/native/SP10integration notinferred."
+      "leadVerification": "Reviewed parser/validation/timezone/admission diff and report; independently reran18 schedule_preview tests with freshpytest9.2 ownsrc -n0: pass0.55s. Agentfullgates used realSHAverifiedTirithdependency beforetimedfixtures; hosted/native/SP10integration notinferred.",
+      "hostedVerification": "T3 event: all7checks passed at9c04091e4c62ad0edaf717ae564c3f18e7d51c13. No merge/release/native/SP10integration acceptance inferred. SP18 continuesfromexactbase."
     },
     {
       "id": "SP18",
@@ -239,11 +240,12 @@
       "id": "SP23",
       "title": "Show integration readiness and bounded MCP tests",
       "issue": "https://github.com/automatedigital/spark/issues/210",
-      "state": "running",
+      "state": "returned_unimplemented_needs_resume",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-r1",
       "pr": null,
       "base": "ac29be47daac59dfbadb7a468820b39a319b907b",
-      "prBase": "feat/sp10-provider-catalogue"
+      "prBase": "feat/sp10-provider-catalogue",
+      "lastResult": "No sourcechange/no environmentblocker. IdentifiedunsafeunboundedCLIprobe; structuredadapter implementation remainsassignedscope, notacceptedblocker."
     },
     {
       "id": "SP24",
