@@ -6,11 +6,10 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { Copy, Eraser, RotateCcw, Search, X } from "lucide-react";
 import { api } from "@/lib/api";
-import type { WorkspaceTerminalEvent } from "@/lib/api";
+import { createTerminalLifecycle, type TerminalStatus } from "@/lib/terminalLifecycle";
 import { useWebUITheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
-type ShellStatus = "connecting" | "running" | "stopped" | "failed";
 
 /** Read a theme colour token, falling back to a sane default. */
 function cssColor(name: string, fallback: string): string {
@@ -39,12 +38,11 @@ export function WorkspaceTerminalPanel({ slug }: { slug: string }) {
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const lifecycleRef = useRef<ReturnType<typeof createTerminalLifecycle> | null>(null);
   const shellRunIdRef = useRef<string | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
-  const connectRef = useRef<() => void>(() => {});
   const [shellRunId, setShellRunId] = useState<string | null>(null);
-  const [shellStatus, setShellStatus] = useState<ShellStatus>("connecting");
+  const [shellStatus, setShellStatus] = useState<TerminalStatus>("connecting");
   const [showFind, setShowFind] = useState(false);
   const [findValue, setFindValue] = useState("");
 
@@ -95,82 +93,49 @@ export function WorkspaceTerminalPanel({ slug }: { slug: string }) {
       return true;
     });
 
+    let disposed = false;
     const dataDisposable = term.onData((data) => {
       const runId = shellRunIdRef.current;
       if (!runId) return;
       void api.sendWorkspaceTerminalInput(slug, runId, data).catch((e) => {
-        term.writeln(`\r\n\x1b[31mFailed to send input: ${String(e)}\x1b[0m`);
+        if (!disposed && shellRunIdRef.current === runId) term.writeln(`\r\n\x1b[31mFailed to send input: ${String(e)}\x1b[0m`);
       });
     });
 
-    let cancelled = false;
-
-    // (Re)connect a shell: start a fresh PTY run and attach its event stream.
-    // Used on mount, on Restart, and on Reconnect after a stream drop.
-    const connect = () => {
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
-      shellRunIdRef.current = null;
-      setShellRunId(null);
-      setShellStatus("connecting");
-      term.writeln("\x1b[2mStarting workspace shell...\x1b[0m");
-      void api.runWorkspaceTerminalCommand(slug).then((run) => {
-        if (cancelled) return;
-        setShellRunId(run.run_id);
-        shellRunIdRef.current = run.run_id;
-        const source = api.streamWorkspaceTerminalRun(slug, run.run_id);
-        eventSourceRef.current = source;
-        source.onmessage = (ev) => {
-          const data = JSON.parse(ev.data) as WorkspaceTerminalEvent;
-          if (data.type === "output") {
-            term.write(data.text);
-            return;
-          }
-          if (data.type === "state") {
-            setShellStatus(data.status === "running" ? "running" : "connecting");
-            if (data.status === "running") {
-              window.setTimeout(sendResize, 30);
-              term.focus();
-            }
-            return;
-          }
-          if (data.type === "done") {
-            setShellStatus(data.status === "stopped" ? "stopped" : "failed");
-            term.writeln(`\r\n\x1b[2m[terminal ${data.status}${data.exit_code !== null ? `:${data.exit_code}` : ""}]\x1b[0m`);
-            source.close();
-            if (eventSourceRef.current === source) eventSourceRef.current = null;
-          }
-        };
-        source.onerror = () => {
-          setShellStatus("failed");
-          term.writeln("\r\n\x1b[31m[terminal stream disconnected — press Reconnect]\x1b[0m");
-          source.close();
-          if (eventSourceRef.current === source) eventSourceRef.current = null;
-        };
-      }).catch((e) => {
-        if (cancelled) return;
-        setShellStatus("failed");
-        term.writeln(`\r\n\x1b[31mFailed to start shell: ${String(e)}\x1b[0m`);
-      });
-    };
-    connectRef.current = connect;
-    connect();
+    const lifecycle = createTerminalLifecycle({
+      start: () => api.runWorkspaceTerminalCommand(slug),
+      stop: (id) => api.stopWorkspaceTerminalRun(slug, id),
+      stream: (id) => api.streamWorkspaceTerminalRun(slug, id),
+      state: (status, id) => {
+        shellRunIdRef.current = id;
+        setShellRunId(id);
+        setShellStatus(status);
+        if (status === "running") { sendResize(); term.focus(); }
+      },
+      event: (data) => {
+        if (data.type === "output" && data.text) term.write(data.text);
+        if (data.type === "done") term.writeln(`\r\n[terminal ${data.status}]`);
+      },
+      error: (message) => { if (!disposed) term.writeln(`\r\n${message}`); },
+    });
+    lifecycleRef.current = lifecycle;
+    lifecycle.restart();
 
     const observer = new ResizeObserver(() => {
       if (resizeTimerRef.current !== null) window.clearTimeout(resizeTimerRef.current);
       resizeTimerRef.current = window.setTimeout(sendResize, 80);
     });
     observer.observe(host);
-    window.setTimeout(sendResize, 30);
+    const initialResize = window.setTimeout(sendResize, 30);
 
     return () => {
-      cancelled = true;
+      disposed = true;
+      lifecycle.retire();
+      if (lifecycleRef.current === lifecycle) lifecycleRef.current = null;
+      window.clearTimeout(initialResize);
       observer.disconnect();
       dataDisposable.dispose();
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
       if (resizeTimerRef.current !== null) window.clearTimeout(resizeTimerRef.current);
-      if (shellRunIdRef.current) void api.stopWorkspaceTerminalRun(slug, shellRunIdRef.current).catch(() => {});
       shellRunIdRef.current = null;
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -187,10 +152,8 @@ export function WorkspaceTerminalPanel({ slug }: { slug: string }) {
 
   // Restart kills the current shell and starts a fresh one.
   const restart = () => {
-    const runId = shellRunIdRef.current;
-    if (runId) void api.stopWorkspaceTerminalRun(slug, runId).catch(() => {});
     terminalRef.current?.clear();
-    connectRef.current();
+    lifecycleRef.current?.restart();
   };
 
   const copySelection = () => {
@@ -204,7 +167,7 @@ export function WorkspaceTerminalPanel({ slug }: { slug: string }) {
     else searchAddonRef.current?.findPrevious(findValue);
   };
 
-  const stopped = shellStatus === "stopped" || shellStatus === "failed";
+  const disconnected = shellStatus === "disconnected";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -213,10 +176,10 @@ export function WorkspaceTerminalPanel({ slug }: { slug: string }) {
         <span className="font-mono-ui text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">
           {shellStatus}{shellRunId ? ` · ${shellRunId.slice(-4)}` : ""}
         </span>
-        {stopped && (
+        {disconnected && (
           <button
             type="button"
-            onClick={() => connectRef.current()}
+            onClick={() => lifecycleRef.current?.reconnect()}
             className="rounded-sm bg-secondary px-1.5 py-0.5 text-[10px] text-foreground transition hover:bg-secondary/70"
           >
             Reconnect
