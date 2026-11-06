@@ -340,11 +340,12 @@
       "id": "SP24",
       "title": "Explain Auto model choices before users need logs",
       "issue": "https://github.com/automatedigital/spark/issues/211",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp24-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/231",
       "head": "76cf5a72e8bc235e10fd50ab9ac2271e47f3e6f3",
-      "leadVerification": "Read actualrole-config/recordeddecision report; SP15contract communicated andconsumed, combinedproductionwriterintegration remainsopen. Reportedcronmypydebt not reproduced by parent clean targetedcron check; cleanwhole-domaincheck and22routingtests running. No liveproviderclaim."
+      "leadVerification": "Read actualrole-config/recordeddecision report; SP15contract communicated andconsumed, combinedproductionwriterintegration remainsopen. Reportedcronmypydebt not reproduced by parent clean targetedcron check; cleanwhole-domaincheck and22routingtests running. No liveproviderclaim.",
+      "hostedVerification": "T3completionevent: all7 hostedchecks passed76cf5a72e8bc235e10fd50ab9ac2271e47f3e6f3. Parent22routingtests andcleanmypy142files passed. CombinedSP15writer/readintegration/nativeacceptanceopen; no merge/release."
     },
     {
       "id": "SP25",
