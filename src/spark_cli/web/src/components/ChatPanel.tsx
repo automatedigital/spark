@@ -573,6 +573,8 @@ export function ChatPanel({
     followStreamRef.current = !savedScroll;
     setEditingUser(null);
     setDiagnosticsOpen(false);
+    setConfirmedTurnStatus(null);
+    setStatusDisconnected(false);
     setConversationDiagnostics(null);
     setDiagnosticsError(null);
     const restoredSafeMode = readSafeMode(resetSessionId);
@@ -710,14 +712,14 @@ export function ChatPanel({
   }, [activeSessionRef, owner, resyncTurnState]);
 
   useEffect(() => {
-    if (!recoverySnapshot) return;
+    if (!recoverySnapshot || !owner.isCurrent() || !activeSessionAliasesRef.current.has(recoverySnapshot.session_id)) return;
     hydrateStreamRecovery(recoverySnapshot);
     setTurnOutcomes(recoverySnapshot.outcomes);
     setConversationPlan(recoverySnapshot.plan);
     setPendingActions(recoverySnapshot.pending_actions);
     setConfirmedTurnStatus(recoverySnapshot);
     setStatusDisconnected(false);
-  }, [recoverySnapshot, hydrateStreamRecovery]);
+  }, [recoverySnapshot, hydrateStreamRecovery, owner, activeSessionAliasesRef]);
 
 
   useEventBus((env) => {
@@ -734,7 +736,8 @@ export function ChatPanel({
     void refreshTurnSurfaces();
   });
 
-  useEffect(() => { setConfirmedTurnStatus(null); setStatusDisconnected(false); }, [activeSessionId]);
+  // Only a panel reset clears confirmed recovery. Compression may adopt a new
+  // active ID in the same snapshot; that continuation retains its confirmation.
   useEffect(() => { setStatusDisconnected(recoveryFailed); }, [recoveryFailed]);
 
   const refreshConversationDiagnostics = useCallback(async () => {
@@ -1394,16 +1397,29 @@ export function ChatPanel({
     if (bottomClampRafRef.current !== null) cancelAnimationFrame(bottomClampRafRef.current);
     let remaining = 30;
     let firstFrame = true;
+    let previousHeight = -1;
+    let stableFrames = 0;
     const step = () => {
       bottomClampRafRef.current = requestAnimationFrame(() => {
         bottomClampRafRef.current = null;
         const el = scrollContainerRef.current;
         if (!el || scrollStateRef.current.mode !== "jumping-to-bottom") return;
         const count = virtualizer.options.count;
+        // The loading skeleton has no virtual rows. Settling its bottom would
+        // let the history mount's layout scroll detach a newly opened thread.
+        // Keep the requested jump pending until the transcript is rendered.
+        if (count === 0 || !messageListRef.current) return;
         // Always clamp at least once; only settle when a frame starts with
         // the viewport already at the bottom (previous clamp survived any
         // row remeasure).
-        if (!firstFrame) {
+        const lastRow = el.querySelector<HTMLElement>(`[data-index="${count - 1}"]`);
+        const lastBottom = lastRow?.getBoundingClientRect().bottom;
+        const viewport = el.getBoundingClientRect();
+        const measuredTailVisible = lastBottom != null && lastBottom > viewport.top && lastBottom <= viewport.bottom + 1;
+        stableFrames = !firstFrame && previousHeight === el.scrollHeight && measuredTailVisible
+          ? stableFrames + 1 : 0;
+        previousHeight = el.scrollHeight;
+        if (stableFrames >= 2) {
           scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
             type: "jump-settle",
             itemCount: count,
@@ -1603,13 +1619,14 @@ export function ChatPanel({
         if (autoScrollRafRef.current !== null) cancelAnimationFrame(autoScrollRafRef.current);
         autoScrollRafRef.current = requestAnimationFrame(() => {
           autoScrollRafRef.current = null;
+          // Hydration can replace rows without changing their count and cancel
+          // an earlier scheduled jump. Never complete that jump via the ordinary
+          // stream-tick path before the measured bottom clamp has settled.
+          if (scrollStateRef.current.mode === "jumping-to-bottom") {
+            runBottomClamp();
+            return;
+          }
           if (countChanged) {
-            if (scrollStateRef.current.mode === "jumping-to-bottom") {
-              // Session open / explicit jump: keep clamping until row
-              // measurements settle instead of a single estimated jump.
-              runBottomClamp();
-              return;
-            }
             virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming || safeMode ? "instant" : "smooth" });
             lastAutoScrollAtRef.current = Date.now();
             scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
@@ -1930,7 +1947,11 @@ export function ChatPanel({
       {showRecoveryCard && (
         <RecoveryCard
           state={confirmedRecoveryState}
-          label={statusDisconnected ? "Connection lost. Your conversation is kept; reconnect to check whether the response is still running." : confirmedTurnStatus?.status}
+          label={statusDisconnected
+            ? "Connection lost. Your conversation is kept; reconnect to check whether the response is still running."
+            : recoverySnapshot?.stream_text_mode === "unknown"
+              ? "The live response is unavailable after a restart. Saved history is shown; work has not been replayed."
+              : confirmedTurnStatus?.status}
           lastEventAt={confirmedTurnStatus?.last_event_at ?? confirmedTurnStatus?.turn_outcome?.ended_at}
           busyAction={recoveryActionBusy === "reload" ? "reconnect" : recoveryActionBusy === "copy" ? "inspect" : recoveryActionBusy === "retry" ? "retry" : null}
           onReconnect={() => void runRecoveryAction("reload")}

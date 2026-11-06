@@ -92,7 +92,37 @@ try {
     await page.getByRole('button', { name: /Snapshot alpha/ }).first().click();
     await panel.getByText('Snapshot alpha retained text', { exact: false }).first().waitFor();
   }
+  if (!baseline) {
+    // Commit compression while a recovery request is in flight. The same
+    // panel adopts the durable continuation and must retain its recovery card.
+    await page.route('**/api/conversations/sp02_b/recovery*', async route => {
+      execFileSync(python, ['-c', `
+from core.spark_state import SessionDB
+db = SessionDB()
+db.create_session('sp02_b_continued', source='web', model='replay', parent_session_id='sp02_b')
+db.end_session('sp02_b', end_reason='compression')
+db.close()
+`], { cwd: root, env: { ...process.env, SPARK_HOME: home, PYTHONPATH: path.join(root, 'src') } });
+      const created = await fetch(`${api}/api/dev/fake-streams`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session_id: 'sp02_b_continued', reuse_existing: true, title: 'Snapshot continued', message: 'continued prompt', events: [{ type: 'token', text: 'continued retained tail' }, { type: 'stall', phase: 'api' }, { type: 'token', text: ' done', delay_ms: 60000 }] }) });
+      assert(created.ok, await created.text());
+      for (let i = 0; i < 40; i++) {
+        const status = await (await fetch(`${api}/api/conversations/sp02_b_continued/turn-status`)).json();
+        if (status.state === 'stalled') break;
+        await page.waitForTimeout(100);
+      }
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      assert.equal(snapshot.latest_session_id, 'sp02_b_continued');
+      assert.equal(snapshot.state, 'stalled');
+      await route.fulfill({ response });
+    }, { times: 1 });
+    await page.getByRole('button', { name: /Snapshot bravo/ }).first().click();
+    await panel.getByText('continued retained tail', { exact: false }).first().waitFor();
+    await page.waitForFunction(() => document.querySelector('[data-testid="chat-panel"]')?.getAttribute('data-session-id') === 'sp02_b_continued');
+    await panel.getByTestId('recovery-card').waitFor({ timeout: 15000 });
+    assert.equal(await panel.getByTestId('recovery-card').getAttribute('data-recovery-state'), 'reconnecting');
+  }
   assert.equal(posts, 0, 'recovery replayed a conversation action');
   const sorted = samples.map(x => x.restoredMs).sort((a,b) => a-b);
   console.log(JSON.stringify({ mode: baseline ? 'baseline' : 'candidate', longHistory, samples, medianMs: sorted[2], p95Ms: sorted[4], posts }, null, 2));
-} catch (error) { console.error('recovery responses', JSON.stringify(recovered)); if (page) { console.error((await page.locator('body').innerText()).slice(-12000)); await page.screenshot({ path: '/tmp/sp02-snapshot-failure.png' }); } console.error(logs.slice(-10).join('')); throw error; } finally { if (browser) await browser.close(); await stop(frontend); await stop(backend); await rm(home, { recursive: true, force: true }); }
+} catch (error) { console.error('recovery responses', JSON.stringify(recovered)); if (page) { console.error('viewport', await page.getByTestId('chat-scroll').evaluate(el => ({top:el.scrollTop,height:el.scrollHeight,client:el.clientHeight,rows:[...el.querySelectorAll('[data-row-id]')].map(x=>({id:x.dataset.rowId,index:x.dataset.index,top:x.getBoundingClientRect().top,text:x.innerText.slice(0,60)}))}))); console.error((await page.locator('body').innerText()).slice(-12000)); await page.screenshot({ path: '/tmp/sp02-snapshot-failure.png' }); } console.error(logs.slice(-10).join('')); throw error; } finally { if (browser) await browser.close(); await stop(frontend); await stop(backend); await rm(home, { recursive: true, force: true }); }

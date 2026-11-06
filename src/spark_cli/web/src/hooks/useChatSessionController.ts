@@ -311,14 +311,15 @@ export function useChatSessionController({
         flushPendingStreamRef.current?.();
         finalizeAssistantRef.current?.();
         setStreaming(false);
-        if (snapshot.stream_text_mode === "unknown") appendRecoveredStaleTurnNoteRef.current?.(
-          "The live response is unavailable after a restart. Saved history is shown; work has not been replayed.",
-        );
       }
       mergeHistoryResponse(snapshot.history, sid, recoverySequence, {
         preferSyncedAssistants: !snapshot.turn_active,
         preserveLocalAssistantPrefix: snapshot.turn_active,
       });
+      // A complete saved-history replacement must not erase this recovery label.
+      if (!snapshot.turn_active && snapshot.stream_text_mode === "unknown") appendRecoveredStaleTurnNoteRef.current?.(
+        "The live response is unavailable after a restart. Saved history is shown; work has not been replayed.",
+      );
     } catch {
       if (isCurrentSessionResponse(recoverySequence, sid)) {
         setRecoveryFailed(true);
@@ -340,6 +341,19 @@ export function useChatSessionController({
     setTurnState,
     streamingRef,
   ]);
+
+  useEffect(() => {
+    // A proxy can keep EventSource open across backend loss. Retain the
+    // existing two-second reconciliation cadence only for confirmed stalled
+    // work (or a failed read), using the same single-response recovery path.
+    // Healthy navigation/reconnect still consumes one request. Never replay work.
+    if (!recoveryFailed && !(recoverySnapshot?.turn_active && recoverySnapshot.state === "stalled")) return;
+    const recoverySequence = sessionRecoverySeqRef.current;
+    const timer = window.setInterval(() => {
+      if (recoverySequence === sessionRecoverySeqRef.current) void resyncTurnState({ allowIdle: true });
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [recoveryFailed, recoverySnapshot, resyncTurnState]);
 
   useEffect(() => {
     if (sessionId && sessionId === activeSessionRef.current && streamingRef.current) return;
@@ -386,7 +400,9 @@ export function useChatSessionController({
       !cancelled && isCurrentSessionResponse(recoverySequence, sessionId, ...ids)
     );
 
-    setLoadingHistory(true);
+    // Keep this owner's cached transcript visible while authoritative state
+    // reconciles. Hiding it behind a skeleton adds a round trip to warm opens.
+    setLoadingHistory(initialTranscript.length === 0);
     void resyncTurnState({ allowIdle: true }).finally(() => {
       if (recoveryStillCurrent()) setLoadingHistory(false);
     });

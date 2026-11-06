@@ -139,7 +139,18 @@ export function hydrateChatStreamRecovery(
   state: ChatStreamState,
   snapshot: ChatStreamSnapshot,
 ): ChatStreamControllerTransition {
-  if (!snapshot.turn_active || (snapshot.stream_revision ?? 0) < state.streamRevision) {
+  if (!snapshot.turn_active) {
+    const transition = reduceChatStreamController(state, snapshotAction(snapshot));
+    if (!transition.accepted) return transition;
+    // The authoritative response already supplied saved history. Complete the
+    // reducer reconciliation too, without the legacy follow-up history fetch.
+    return {
+      ...transition,
+      state: { ...transition.state, turnState: "idle", statusLabel: null, finalized: true },
+      effects: [], queuedEffects: [],
+    };
+  }
+  if ((snapshot.stream_revision ?? 0) < state.streamRevision) {
     return { state, effects: [], queuedEffects: [], accepted: false };
   }
   return reduceChatStreamController({

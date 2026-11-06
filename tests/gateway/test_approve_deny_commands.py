@@ -343,6 +343,15 @@ class TestBareTextNoLongerApproves:
 class TestBlockingApprovalE2E:
     """Test the full blocking flow: agent thread blocks → user approves → agent resumes."""
 
+    @pytest.fixture(autouse=True)
+    def _synthetic_external_scan(self, monkeypatch):
+        # Exercise the real dangerous-command guard and approval waiter. The
+        # optional scanner's installer is an external network boundary, not
+        # part of this gateway replay (and can outlive the notification wait).
+        monkeypatch.setattr("tools.tirith_security.check_command_security", lambda _command: {
+            "action": "allow", "findings": [], "summary": "synthetic external scan",
+        })
+
     def setup_method(self):
         _clear_approval_state()
         os.environ.pop("SPARK_YOLO_MODE", None)

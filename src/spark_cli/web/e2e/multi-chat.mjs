@@ -165,6 +165,7 @@ async function run() {
       env: {
         ...process.env,
         SPARK_HOME: sparkHome,
+        PYTHONPATH: path.join(repoRoot, "src"),
         SPARK_WEB_FAKE_STREAMS: "1",
       },
     },
