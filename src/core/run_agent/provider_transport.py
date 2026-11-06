@@ -21,6 +21,13 @@ from typing import Any
 
 from agent.model_metadata import is_local_endpoint
 from agent.prompt_builder import DEFAULT_AGENT_IDENTITY, DEVELOPER_ROLE_MODELS
+from core.run_agent.retry_policy import (
+    RetryBudget,
+    RetryBudgetExceeded,
+    retry_budget_exhausted,
+    retry_poll_timeout,
+    wait_for_retry,
+)
 from core.utils import env_var_enabled
 
 logger = logging.getLogger(__name__)
@@ -283,7 +290,7 @@ class _ProviderTransportMixin:
         _poll_count = 0
         _last_status_emit = _call_start
         while t.is_alive():
-            t.join(timeout=0.3)
+            t.join(timeout=retry_poll_timeout(self))
             _poll_count += 1
 
             # Touch activity every ~30s so the gateway's inactivity
@@ -314,7 +321,7 @@ class _ProviderTransportMixin:
 
             # Stale-call detector: kill the connection if no response
             # arrives within the configured timeout.
-            if _silent_elapsed > _stale_timeout:
+            if _silent_elapsed > _stale_timeout and not retry_budget_exhausted(self):
                 _est_ctx = sum(len(str(v)) for v in api_kwargs.get("messages", [])) // 4
                 logger.warning(
                     "API call stale for %.0fs without provider progress (threshold %.0fs). "
@@ -354,7 +361,8 @@ class _ProviderTransportMixin:
                     )
                 break
 
-            if self._interrupt_requested:
+            budget_expired = retry_budget_exhausted(self)
+            if self._interrupt_requested or budget_expired:
                 # Force-close the in-flight worker-local HTTP connection to stop
                 # token generation without poisoning the shared client used to
                 # seed future retries.
@@ -373,6 +381,8 @@ class _ProviderTransportMixin:
                             self._close_request_openai_client(request_client, reason="interrupt_abort")
                 except Exception:
                     logger.debug("Ignoring error in _interruptible_api_call()", exc_info=True)
+                if not self._interrupt_requested and budget_expired:
+                    raise RetryBudgetExceeded("Elapsed retry budget exhausted during API call")
                 raise InterruptedError("Agent interrupted during API call")
         if result["error"] is not None:
             raise result["error"]
@@ -407,6 +417,8 @@ class _ProviderTransportMixin:
             finally:
                 self._codex_on_first_delta = None
 
+        call_retry_budget = getattr(self, "_active_retry_budget", None)
+        request_retired = threading.Event()
         result = {"response": None, "error": None}
         request_client_holder = {"client": None}
         first_delta_fired = {"done": False}
@@ -705,6 +717,12 @@ class _ProviderTransportMixin:
 
             try:
                 for _stream_attempt in range(_max_stream_retries + 1):
+                    if request_retired.is_set() or self._interrupt_requested:
+                        result["error"] = InterruptedError("Agent interrupted before stream retry")
+                        return
+                    if isinstance(call_retry_budget, RetryBudget) and call_retry_budget.exhausted:
+                        result["error"] = RetryBudgetExceeded("Elapsed retry budget exhausted before stream retry")
+                        return
                     try:
                         if self.api_mode == "anthropic_messages":
                             self._try_refresh_anthropic_client_credentials()
@@ -713,6 +731,9 @@ class _ProviderTransportMixin:
                             result["response"] = _call_chat_completions()
                         return  # success
                     except Exception as e:
+                        if request_retired.is_set():
+                            result["error"] = InterruptedError("Stream request retired")
+                            return
                         if deltas_were_sent["yes"]:
                             # Streaming failed AFTER some tokens were already
                             # delivered.  Don't retry or fall back — partial
@@ -772,11 +793,25 @@ class _ProviderTransportMixin:
                                     type(e).__name__,
                                     e,
                                 )
-                                self._emit_status(
-                                    f"⚠️ Connection to provider dropped "
-                                    f"({type(e).__name__}). Reconnecting… "
-                                    f"(attempt {_stream_attempt + 2}/{_max_stream_retries + 1})"
-                                )
+                                active_budget = call_retry_budget
+                                if isinstance(active_budget, RetryBudget):
+                                    outcome = wait_for_retry(
+                                        self, active_budget, reason="timeout" if _is_timeout else "unknown",
+                                        attempt=_stream_attempt + 2, max_attempts=_max_stream_retries + 1,
+                                        delay=0.0,  # Existing fresh-connection recovery is immediate.
+                                    )
+                                    if outcome == "interrupted" or request_retired.is_set():
+                                        result["error"] = InterruptedError("Agent interrupted before stream retry")
+                                        return
+                                    if outcome == "exhausted":
+                                        result["error"] = RetryBudgetExceeded("Elapsed retry budget exhausted before stream retry")
+                                        return
+                                else:
+                                    self._emit_status(
+                                        f"⚠️ Connection to provider dropped "
+                                        f"({type(e).__name__}). Reconnecting… "
+                                        f"(attempt {_stream_attempt + 2}/{_max_stream_retries + 1})"
+                                    )
                                 self._touch_activity(
                                     f"stream retry {_stream_attempt + 2}/{_max_stream_retries + 1} "
                                     f"after {type(e).__name__}"
@@ -864,13 +899,13 @@ class _ProviderTransportMixin:
         t = threading.Thread(target=_call, daemon=True)
         t.start()
         while t.is_alive():
-            t.join(timeout=0.3)
+            t.join(timeout=retry_poll_timeout(self))
 
             # Detect stale streams: connections kept alive by SSE pings
             # but delivering no real chunks.  Kill the client so the
             # inner retry loop can start a fresh connection.
             _stale_elapsed = time.time() - last_chunk_time["t"]
-            if _stale_elapsed > _stream_stale_timeout:
+            if _stale_elapsed > _stream_stale_timeout and not retry_budget_exhausted(self):
                 _est_ctx = sum(len(str(v)) for v in api_kwargs.get("messages", [])) // 4
                 logger.warning(
                     "Stream stale for %.0fs (threshold %.0fs) — no chunks received. "
@@ -903,7 +938,9 @@ class _ProviderTransportMixin:
                     f"stale stream detected after {int(_stale_elapsed)}s, reconnecting"
                 )
 
-            if self._interrupt_requested:
+            budget_expired = retry_budget_exhausted(self)
+            if self._interrupt_requested or budget_expired:
+                request_retired.set()
                 try:
                     if self.api_mode == "anthropic_messages":
                         from agent.anthropic_adapter import build_anthropic_client
@@ -919,6 +956,8 @@ class _ProviderTransportMixin:
                             self._close_request_openai_client(request_client, reason="stream_interrupt_abort")
                 except Exception:
                     logger.debug("Ignoring error in _interruptible_streaming_api_call()", exc_info=True)
+                if not self._interrupt_requested and budget_expired:
+                    raise RetryBudgetExceeded("Elapsed retry budget exhausted during streaming API call")
                 raise InterruptedError("Agent interrupted during streaming API call")
         if result["error"] is not None:
             if deltas_were_sent["yes"]:

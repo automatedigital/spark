@@ -4834,6 +4834,7 @@ def _make_web_chat_callbacks(
     # unrelated turns from sharing callback state.
     turn_context = _WebTurnCallbackContext(session_id)
     tool_started_monotonic: dict[str, float] = {}
+    retry_owner: WebActiveTurn | None = None
 
     def publish_status(kind: str, message: str, *, phase: str | None = None) -> None:
         _record_web_first_visible_event(turn_context.session_id, "status")
@@ -4890,6 +4891,26 @@ def _make_web_chat_callbacks(
         _publish_event("chat.reasoning", {"text": _truncate_str(text, 8000)}, current_session_id)
 
     def status_callback(kind: str, message: str) -> None:
+        nonlocal retry_owner
+        from core.run_agent.retry_policy import RetryStatus
+
+        _, current_turn = _get_web_turn(turn_context.session_id)
+        if retry_owner is None:
+            retry_owner = current_turn
+
+        if isinstance(message, RetryStatus):
+            from spark_cli.retry_projection import publish_retry_status
+
+            _, turn = _get_web_turn(turn_context.session_id)
+            if turn is None or turn is not retry_owner or turn.interrupt_requested:
+                return
+            if message.data.get("run_id") and message.data["run_id"] != turn.turn_id:
+                return
+            message = publish_retry_status(turn_context.session_id, message, turn)
+            if _get_web_turn(turn_context.session_id)[1] is not turn or turn.interrupt_requested:
+                return
+            publish_status("retry", message, phase="retry")
+            return
         publish_status(kind, message)
 
     def session_migrated_callback(old_id: str, new_id: str, reason: str) -> None:
