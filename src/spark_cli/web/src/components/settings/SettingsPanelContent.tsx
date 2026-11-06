@@ -111,10 +111,6 @@ function ModelCombobox({
 
   // Browsing settings must not connect to an inference provider.
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, baseUrl]);
 
   useEffect(() => {
     if (!open) return;

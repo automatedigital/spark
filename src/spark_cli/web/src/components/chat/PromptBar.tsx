@@ -1,3 +1,4 @@
+import { getProviderCatalog, providerLabel, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp, Box, Brain, Check, ChevronDown, FolderOpen, Loader2, Settings, Square } from "lucide-react";
@@ -460,6 +461,14 @@ function ModelQuickSettings({
   const [savingFastModel, setSavingFastModel] = useState(false);
   const [savingReasoning, setSavingReasoning] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
+  const [providers, setProviders] = useState<ProviderCatalogEntry[]>([]);
+  useEffect(() => {
+    let current = true;
+    void getProviderCatalog().then((catalog) => {
+      if (current) setProviders(catalog.providers);
+    }).catch(() => {});
+    return () => { current = false; };
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -490,7 +499,7 @@ function ModelQuickSettings({
     setSavingSmartModel(true);
     try {
       await api.setSmartModel(model);
-      onStatusChange({ smart_model: model });
+      onStatusChange(await api.getModelStatus());
     } finally {
       setSavingSmartModel(false);
     }
@@ -500,7 +509,7 @@ function ModelQuickSettings({
     setSavingFastModel(true);
     try {
       await api.setFastModel(model);
-      onStatusChange({ fast_model: model });
+      onStatusChange(await api.getModelStatus());
     } finally {
       setSavingFastModel(false);
     }
@@ -552,7 +561,7 @@ function ModelQuickSettings({
             {filteredModelChoices.map((model, index) => {
               const current = model === status.smart_model;
               const label = model.toLowerCase() === "auto" ? "Auto" : shortModelName(model);
-              const provider = model.includes("/") ? model.split("/", 1)[0] : status.smart_provider;
+              const provider = model === status.smart_model ? providerLabel(providers, status.smart_provider) : "Route determined when selected";
               return (
                 <button
                   key={`${model}-${index}`}
@@ -564,7 +573,7 @@ function ModelQuickSettings({
                   <Box className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12px] font-medium">{label}</span>
-                    <span className="block truncate text-[10px] text-muted-foreground/40">{provider || "Spark"}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground/40">{provider || "Unknown provider"}</span>
                   </span>
                   {savingSmartModel && current ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground/60" /> : current ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
                 </button>
@@ -607,7 +616,7 @@ function ModelQuickSettings({
           <ModelDropdown
             value={status.fast_model}
             suggestions={suggestions?.fast ?? []}
-            provider={status.fast_provider}
+            provider={providerLabel(providers, status.fast_provider)}
             label="Fast model"
             saving={savingFastModel}
             onChange={(v) => void saveFastModel(v)}

@@ -21,3 +21,8 @@ export async function getProviderCatalog(): Promise<ProviderCatalog> {
   if (generation !== apiConnectionGeneration()) throw new Error("Provider catalogue connection changed");
   return result;
 }
+
+/** Labels describe the reported route, never a model namespace. */
+export function providerLabel(entries: readonly ProviderCatalogEntry[], id: string): string {
+  return entries.find((entry) => entry.id === id)?.label ?? id;
+}

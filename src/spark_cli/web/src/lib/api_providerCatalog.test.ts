@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { getProviderCatalog } from "./api_providerCatalog";
+import { getProviderCatalog, providerLabel } from "./api_providerCatalog";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -26,4 +26,8 @@ it("rejects metadata from a retired backend connection", async () => {
   setDashboardToken("replacement-fixture-token");
   resolve(new Response(JSON.stringify({ providers: [], selected_provider: "retired" })));
   await expect(request).rejects.toThrow("Provider catalogue connection changed");
+});
+
+it("retains unknown route IDs without inferring a provider from a model", () => {
+  expect(providerLabel([], "private-route")).toBe("private-route");
 });
