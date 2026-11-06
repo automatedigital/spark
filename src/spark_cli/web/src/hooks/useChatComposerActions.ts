@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { api as defaultApi } from "@/lib/api";
+import { beginComposerSubmission, acknowledgeComposerSubmission } from "@/lib/api";
+export { beginComposerSubmission, acknowledgeComposerSubmission } from "@/lib/api";
 import type { ContextItem } from "@/lib/context";
 import type { ChatMessage } from "@/lib/chatTranscriptMerge";
 import {
@@ -19,17 +21,20 @@ export interface ComposerApi {
     model?: string,
     contextItems?: unknown[],
     source?: string | null,
+    submissionId?: string,
   ) => Promise<{ session_id: string; ok: boolean }>;
   postConversationMessage: (
     sessionId: string,
     message: string,
     contextItems?: unknown[],
+    submissionId?: string,
   ) => Promise<{ session_id: string; ok: boolean }>;
   startWorkspaceConversation: (
     slug: string,
     message: string,
     model?: string,
     contextItems?: unknown[],
+    submissionId?: string,
   ) => Promise<{ session_id: string; ok: boolean; source: string }>;
   interruptConversation: (
     sessionId: string,
@@ -39,6 +44,7 @@ export interface ComposerApi {
 
 export interface ComposerEffectRunner {
   apiClient?: ComposerApi;
+  submissionId?: string;
   retry: (messageIndex: number, message?: string) => Promise<void>;
   fork: (fromMessageIndex?: number) => Promise<void>;
 }
@@ -50,11 +56,11 @@ export async function executeComposerEffect(
   const client = runner.apiClient ?? defaultApi;
   switch (effect.type) {
     case "start-conversation":
-      return client.postConversation(effect.message, undefined, effect.contextItems);
+      return client.postConversation(effect.message, undefined, effect.contextItems, ...(runner.submissionId ? [undefined, runner.submissionId] as const : []));
     case "start-workspace-conversation":
-      return client.startWorkspaceConversation(effect.workspaceSlug, effect.message, undefined, effect.contextItems);
+      return client.startWorkspaceConversation(effect.workspaceSlug, effect.message, undefined, effect.contextItems, ...(runner.submissionId ? [runner.submissionId] as const : []));
     case "post-conversation-message":
-      return client.postConversationMessage(effect.sessionId, effect.message, effect.contextItems);
+      return client.postConversationMessage(effect.sessionId, effect.message, effect.contextItems, ...(runner.submissionId ? [runner.submissionId] as const : []));
     case "interrupt-conversation":
       return client.interruptConversation(effect.sessionId, effect.message);
     case "retry-conversation":
@@ -248,12 +254,21 @@ export function useChatComposerActions({
     const request = plan.action === "send" ? owner.beginRequest() : null;
     if (!isCurrent() || (plan.action === "send" && !request)) return false;
     try {
-      const result = await executeComposerEffect(effect, runner());
+      const submission = plan.action === "send" ? beginComposerSubmission(effect) : null;
+      const result = await executeComposerEffect(effect, { ...runner(), submissionId: submission?.id });
       if (result && typeof result === "object" && "ok" in result && result.ok === false) throw new Error("Submission was not accepted.");
       if (plan.action === "send" && (!result || typeof result !== "object" || !("ok" in result) || result.ok !== true || !("session_id" in result) || typeof result.session_id !== "string" || !result.session_id)) {
         throw new Error("Could not confirm submission. Your draft is kept; check the thread before retrying.");
       }
-      if (isCurrent() && request) updateSessionFromResponse(plan, result, request);
+      if (submission) acknowledgeComposerSubmission(submission);
+      if (isCurrent() && request) {
+        updateSessionFromResponse(plan, result, request);
+        void resyncTurnState({ allowIdle: true });
+        if ((result as { execution_state?: string }).execution_state === "uncertain") {
+          setError("Prompt accepted before restart; execution is uncertain. Review the thread before starting another turn.");
+          setTurn("idle");
+        }
+      }
       return true;
     } catch (error) {
       if (options.rollbackOnError && isCurrent()) {
@@ -265,7 +280,7 @@ export function useChatComposerActions({
       }
       return false;
     }
-  }, [applyIntents, currentRequest, owner, runner, setChatMessages, setError, setStatusLabel, setTurn, updateSessionFromResponse]);
+  }, [applyIntents, currentRequest, owner, runner, resyncTurnState, setChatMessages, setError, setStatusLabel, setTurn, updateSessionFromResponse]);
 
   const sendMessage = useCallback(async () => {
     if (!owner.isCurrent()) return;

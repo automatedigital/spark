@@ -1,3 +1,5 @@
+import { postRootSubmission } from "./api_submissions";
+export { beginComposerSubmission, acknowledgeComposerSubmission } from "./api_submissions";
 /** Spark web API client.
  *
  * Transport lives in apiHelpers.ts, response shapes in apiTypes.ts, and the
@@ -183,20 +185,14 @@ export const api = {
   getToolsets: () => fetchJSON<ToolsetInfo[]>("/api/tools/toolsets"),
 
   // Session search (FTS5)
-  postConversation: (message: string, model?: string, contextItems?: unknown[], source?: string | null) =>
-    fetchJSON<{ session_id: string; ok: boolean }>("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, model, context_items: contextItems ?? [], source }),
-    }),
-  postConversationMessage: (sessionId: string, message: string, contextItems?: unknown[]) =>
-    fetchJSON<{ session_id: string; ok: boolean }>(
+  postConversation: (message: string, model?: string, contextItems?: unknown[], source?: string | null, submissionId?: string) =>
+    postRootSubmission<{ session_id: string; ok: boolean; turn_id?: string; execution_state?: string }>(
+      "/api/conversations", { message, model, context_items: contextItems ?? [], source }, submissionId,
+    ),
+  postConversationMessage: (sessionId: string, message: string, contextItems?: unknown[], submissionId?: string) =>
+    postRootSubmission<{ session_id: string; ok: boolean }>(
       `/api/conversations/${encodeURIComponent(sessionId)}/messages`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, context_items: contextItems ?? [] }),
-      },
+      { message, context_items: contextItems ?? [] }, submissionId,
     ),
   getConversationSubagents: (sessionId: string, signal?: AbortSignal) =>
     fetchJSON<ConversationSubagentsResponse>(

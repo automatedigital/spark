@@ -270,6 +270,7 @@ class WebActiveTurn:
     active_agent_session_id: str | None
     phase: str
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    submission_epoch: str | None = None
     workspace_slug: str | None = None
     workspace_before: dict[str, Any] | None = None
     plan: dict[str, Any] | None = None
@@ -859,6 +860,7 @@ def _web_turn_projection_payload(
             outcome = compute_changed_files(before, after)
         return {
             "turn_id": turn.turn_id,
+            "submission_epoch": turn.submission_epoch,
             "session_id": session_id,
             "user_message_id": turn.user_message_id,
             "assistant_message_id": turn.assistant_message_id,
@@ -898,6 +900,14 @@ def _persist_web_turn_projection(
     return payload
 
 
+def _recover_root_submission_projection(projection: dict[str, Any]) -> dict[str, Any]:
+    if (projection.get("submission_epoch")
+            and projection["submission_epoch"] != _root_submission_epoch
+            and projection.get("status") == "running"):
+        return {**projection, "status": "uncertain", "recovery_reason": "process_lost"}
+    return projection
+
+
 def _latest_web_turn_projection(session_id: str) -> dict[str, Any] | None:
     from core.spark_state import SessionDB
 
@@ -910,7 +920,7 @@ def _latest_web_turn_projection(session_id: str) -> dict[str, Any] | None:
             if (row := db.get_latest_web_turn_projection(candidate)) is not None
         ]
         if rows:
-            return cast("dict[str, Any] | None", max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"])
+            return _recover_root_submission_projection(max(rows, key=lambda row: float(row.get("updated_at") or 0.0))["projection"])
     finally:
         db.close()
     return None
@@ -964,7 +974,7 @@ def _all_web_turn_projections(session_id: str) -> list[dict[str, Any]]:
                 row["turn_id"],
             )
         )
-        return [row["projection"] for row in rows]
+        return [_recover_root_submission_projection(row["projection"]) for row in rows]
     finally:
         db.close()
 
@@ -1263,6 +1273,7 @@ def _mark_web_turn_active(
     status: str = "Starting…",
     phase: str = "starting",
     active_agent_session_id: str | None = None,
+    accepted_submission: dict | None = None,
 ) -> WebActiveTurn:
     key = _web_turn_key(session_id)
     now = time.time()
@@ -1278,6 +1289,10 @@ def _mark_web_turn_active(
         workspace_before=_web_workspace_git_status(workspace_slug),
         session_aliases=_web_turn_alias_set(session_id),
     )
+    if accepted_submission:
+        turn.submission_epoch = _root_submission_epoch
+        turn.turn_id = accepted_submission["turn_id"]
+        turn.user_message_id = accepted_submission["user_message_id"]
     turn.timings["turn_registered"] = now
     with _with_web_turn_lock():
         _web_active_turns[key] = turn
@@ -4747,6 +4762,7 @@ class KanbanUpdate(BaseModel):
 
 
 class ConversationCreate(BaseModel):
+    submission_id: str | None = Field(default=None, min_length=1, max_length=200)
     message: str
     model: str | None = None
     context_items: list = []
@@ -4776,6 +4792,7 @@ class FakeStreamStart(BaseModel):
 
 
 class ConversationMessage(BaseModel):
+    submission_id: str | None = Field(default=None, min_length=1, max_length=200)
     message: str
     context_items: list = []
 
@@ -7129,6 +7146,59 @@ async def canvas_chat(body: CanvasChatBody):
     return {"ok": True, "reply": reply, "model": turn_route["model"]}
 
 
+_root_submission_epoch = uuid.uuid4().hex
+
+
+def _root_submission_session(request_id: str | None, fallback: str, namespace: str = "create") -> str:
+    if not request_id:
+        return fallback
+    import hashlib
+    return "submission_" + hashlib.sha256((namespace + ":" + request_id).encode()).hexdigest()
+
+
+def _root_submission(session_id: str, body, operation: str, *, accept: bool = False, route: str = ""):
+    """Receipt lookup never dispatches, including after an ambiguous process loss."""
+    if not body.submission_id:
+        return None
+    from core.spark_state import SessionDB
+
+    payload = {"message": body.message, "context_items": body.context_items,
+               "model": getattr(body, "model", None), "source": getattr(body, "source", None),
+               "route": route}
+    db = SessionDB()
+    receipt: dict[str, Any] | None
+    try:
+        if accept:
+            receipt = db.accept_runtime_command(
+                session_id, operation, body.submission_id, payload,
+                {"session_id": session_id, "turn_id": uuid.uuid4().hex, "ok": True},
+                {"dispatch": "root", "server_epoch": _root_submission_epoch},
+                compression_family=True, root_message=body.message,
+            )
+        else:
+            receipt = db.get_runtime_command(session_id, operation, body.submission_id, payload,
+                                             compression_family=True)
+        if receipt is None:
+            return None
+        result = dict(receipt["acceptance"])
+        result["submission_id"] = body.submission_id
+        projection = db.get_web_turn_projection(result["turn_id"])
+        status = (projection or {}).get("projection", {}).get("status")
+        result["execution_state"] = (
+            "accepted" if receipt.get("created") or (
+                receipt["intent"].get("server_epoch") == _root_submission_epoch
+                and _is_web_turn_active(result["session_id"])
+            ) else status if status in {"completed", "failed", "interrupted", "cancelled"} else "uncertain"
+        )
+        if operation == "root.workspace":
+            result["source"] = route.replace("/api/workspace/projects/", "workspace:").removesuffix("/conversations")
+        return {"created": receipt.get("created", False), "acceptance": result}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        db.close()
+
+
 @app.post("/api/conversations")
 async def create_conversation(body: ConversationCreate):
     """Start a new web chat session. Spawns AIAgent in a thread, returns session_id."""
@@ -7142,6 +7212,10 @@ async def create_conversation(body: ConversationCreate):
 
     request_received_at = time.time()
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
+    session_id = _root_submission_session(body.submission_id, session_id)
+    receipt = _root_submission(session_id, body, "root.create", route="/api/conversations")
+    if receipt:
+        return receipt["acceptance"]
     queue: asyncio.Queue = asyncio.Queue()
     _web_queues[session_id] = queue
 
@@ -7187,6 +7261,11 @@ async def create_conversation(body: ConversationCreate):
     validated_items = _validate_context_items(body.context_items, workspace_slug=workspace_slug)
     _persist_context_items(session_id, validated_items)
 
+    receipt = _root_submission(session_id, body, "root.create", accept=True, route="/api/conversations")
+    if receipt and not receipt["created"]:
+        return receipt["acceptance"]
+    accepted_submission = receipt["acceptance"] if receipt else None
+
     def _gw_notify(data: dict) -> None:
         approval = dict(data or {})
         current_session_id = _web_current_turn_session_id(session_id)
@@ -7208,7 +7287,7 @@ async def create_conversation(body: ConversationCreate):
             _touch_web_turn(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
             _, _active_turn = _get_web_turn(session_id)
             _record_web_turn_timing(session_id, "task_started")
-            eager_user_id = _persist_web_user_message(session_id, message)
+            eager_user_id = accepted_submission["user_message_id"] if accepted_submission else _persist_web_user_message(session_id, message)
             _record_web_turn_timing(session_id, "user_message_persisted")
             if _active_turn is not None:
                 _active_turn.user_message_id = eager_user_id
@@ -7272,17 +7351,28 @@ async def create_conversation(body: ConversationCreate):
                 log_context="Web chat turn",
             )
 
-    turn = await _run_blocking(
-        _mark_web_turn_active,
-        session_id,
-        status="Starting…",
-        phase="starting",
-        active_agent_session_id=session_id,
-    )
+    if accepted_submission:
+        turn = _mark_web_turn_active(
+            session_id,
+            accepted_submission=accepted_submission,
+            status="Starting…",
+            phase="starting",
+            active_agent_session_id=session_id,
+        )
+    else:
+        turn = await _run_blocking(
+            _mark_web_turn_active,
+            session_id,
+            accepted_submission=accepted_submission,
+            status="Starting…",
+            phase="starting",
+            active_agent_session_id=session_id,
+        )
+
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
     asyncio.create_task(run_agent_task())
-    return {"session_id": session_id, "ok": True}
+    return accepted_submission or {"session_id": session_id, "ok": True}
 
 
 @app.post("/api/dev/fake-streams")
@@ -7694,6 +7784,9 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         if not row:
             raise HTTPException(status_code=404, detail="Session not found")
         session_id = sid
+        receipt = _root_submission(session_id, body, "root.message", route="/api/conversations/messages")
+        if receipt:
+            return receipt["acceptance"]
         if _is_web_turn_active(session_id):
             raise HTTPException(status_code=409, detail="A turn is already running.")
         (
@@ -7770,6 +7863,11 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
     validated_items = _validate_context_items(body.context_items)
     _persist_context_items(session_id, validated_items)
 
+    receipt = _root_submission(session_id, body, "root.message", accept=True, route="/api/conversations/messages")
+    if receipt and not receipt["created"]:
+        return receipt["acceptance"]
+    accepted_submission = receipt["acceptance"] if receipt else None
+
     def _gw_notify(data: dict) -> None:
         approval = dict(data or {})
         current_session_id = _web_current_turn_session_id(session_id)
@@ -7786,7 +7884,7 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
         _record_web_turn_timing(session_id, "task_started")
         _record_web_turn_timing(session_id, "history_hydrated", when=history_hydrated_at)
         _, _active_turn = _get_web_turn(session_id)
-        eager_user_id = _persist_web_user_message(session_id, message)
+        eager_user_id = accepted_submission["user_message_id"] if accepted_submission else _persist_web_user_message(session_id, message)
         _record_web_turn_timing(session_id, "user_message_persisted")
         if _active_turn is not None:
             _active_turn.user_message_id = eager_user_id
@@ -7831,20 +7929,31 @@ async def send_conversation_message(session_id: str, body: ConversationMessage):
                 token_queue=queue,
             )
 
-    turn = await _run_blocking(
-        _mark_web_turn_active,
-        session_id,
-        status="Starting…",
-        phase="starting",
-        active_agent_session_id=getattr(agent, "session_id", session_id),
-    )
+    if accepted_submission:
+        turn = _mark_web_turn_active(
+            session_id,
+            accepted_submission=accepted_submission,
+            status="Starting…",
+            phase="starting",
+            active_agent_session_id=getattr(agent, "session_id", session_id),
+        )
+    else:
+        turn = await _run_blocking(
+            _mark_web_turn_active,
+            session_id,
+            accepted_submission=accepted_submission,
+            status="Starting…",
+            phase="starting",
+            active_agent_session_id=getattr(agent, "session_id", session_id),
+        )
+
     with turn.lock:
         turn.timings["backend_received"] = request_received_at
         turn.timings["history_hydrated"] = history_hydrated_at
         if cached_signature_matches and agent is not None:
             turn.timings["cached_agent_ready"] = history_hydrated_at
     asyncio.create_task(run_agent_task())
-    return {"session_id": session_id, "ok": True}
+    return accepted_submission or {"session_id": session_id, "ok": True}
 
 
 @app.post("/api/conversations/{session_id}/interrupt")
@@ -8841,6 +8950,7 @@ register_artifacts_routes(app)
 
 
 class WorkspaceConvCreate(BaseModel):
+    submission_id: str | None = Field(default=None, min_length=1, max_length=200)
     message: str
     model: str | None = None
     context_items: list = []
@@ -8884,6 +8994,10 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     source = f"workspace:{slug}"
 
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
+    session_id = _root_submission_session(body.submission_id, session_id, f"workspace:{slug}")
+    receipt = _root_submission(session_id, body, "root.workspace", route=f"/api/workspace/projects/{slug}/conversations")
+    if receipt:
+        return receipt["acceptance"]
     queue: asyncio.Queue = asyncio.Queue()
     _web_queues[session_id] = queue
 
@@ -8952,6 +9066,11 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
     validated_items = _validate_context_items(body.context_items, workspace_slug=slug)
     _persist_context_items(session_id, validated_items)
 
+    receipt = _root_submission(session_id, body, "root.workspace", accept=True, route=f"/api/workspace/projects/{slug}/conversations")
+    if receipt and not receipt["created"]:
+        return receipt["acceptance"]
+    accepted_submission = receipt["acceptance"] if receipt else None
+
     def _gw_notify(data: dict) -> None:
         approval = dict(data or {})
         current_session_id = _web_current_turn_session_id(session_id)
@@ -8985,7 +9104,7 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
         try:
             _touch_web_turn(session_id, status="Starting…", phase="starting", active_agent_session_id=session_id)
             _, _active_turn = _get_web_turn(session_id)
-            eager_user_id = _persist_web_user_message(session_id, raw_message)
+            eager_user_id = accepted_submission["user_message_id"] if accepted_submission else _persist_web_user_message(session_id, raw_message)
             if _active_turn is not None:
                 _active_turn.user_message_id = eager_user_id
             before_message_count = _session_message_count(session_id)
@@ -9034,15 +9153,26 @@ async def start_workspace_conversation(slug: str, body: WorkspaceConvCreate):
                 token_queue=queue,
             )
 
-    await _run_blocking(
-        _mark_web_turn_active,
-        session_id,
-        status="Starting…",
-        phase="starting",
-        active_agent_session_id=session_id,
-    )
+    if accepted_submission:
+        _mark_web_turn_active(
+            session_id,
+            accepted_submission=accepted_submission,
+            status="Starting…",
+            phase="starting",
+            active_agent_session_id=session_id,
+        )
+    else:
+        await _run_blocking(
+            _mark_web_turn_active,
+            session_id,
+            accepted_submission=accepted_submission,
+            status="Starting…",
+            phase="starting",
+            active_agent_session_id=session_id,
+        )
+
     asyncio.create_task(run_agent_task())
-    return {"session_id": session_id, "ok": True, "source": source}
+    return {**(accepted_submission or {"session_id": session_id, "ok": True}), "source": source}
 
 
 @app.get("/api/workspace/projects/{slug}/conversations")

@@ -1820,7 +1820,7 @@ class SessionDB:
         self, session_id: str, command_kind: str, request_id: str,
         payload: dict[str, Any], acceptance: dict[str, Any], intent: dict[str, Any],
         *, children: list[dict[str, Any]] | None = None, max_children: int = 3,
-        compression_family: bool = False,
+        compression_family: bool = False, root_message: str | None = None,
     ) -> dict[str, Any]:
         """Commit acceptance and dispatch intent before an external side effect.
 
@@ -1841,6 +1841,27 @@ class SessionDB:
             if row:
                 return {"created": False, **self._command_receipt_dict(row)}, []
             child_events = []
+            root_acceptance = dict(acceptance)
+            if root_message is not None:
+                cursor = conn.execute(
+                    "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, 'user', ?, ?)",
+                    (session_id, root_message, now),
+                )
+                message_id = cursor.lastrowid
+                conn.execute("UPDATE sessions SET message_count=message_count+1 WHERE id=?", (session_id,))
+                message_event, _ = self._append_session_event_row(
+                    conn, session_id, "message.appended",
+                    {"role": "user", "content": root_message, "message_id": message_id},
+                    f"root-submission:{command_kind}:{request_id}", now,
+                )
+                child_events.append(message_event)
+                root_acceptance["user_message_id"] = message_id
+                projection = {**root_acceptance, "status": "uncertain", "started_at": now,
+                              "ended_at": None, "dispatch_intent": True}
+                conn.execute(
+                    "INSERT INTO web_turn_projections (turn_id, session_id, projection_json, updated_at) VALUES (?, ?, ?, ?)",
+                    (acceptance["turn_id"], session_id, _event_json(projection), now),
+                )
             if children:
                 active = conn.execute(
                     """SELECT COUNT(*) FROM runtime_child_jobs WHERE state NOT IN
@@ -1869,7 +1890,7 @@ class SessionDB:
                  "payload_hash": payload_hash, "accepted_ids": acceptance},
                 f"runtime.command:{command_kind}:{request_id}", now,
             )
-            accepted = {**acceptance, "request_id": request_id, "committed_sequence": event["sequence"]}
+            accepted = {**root_acceptance, "request_id": request_id, "committed_sequence": event["sequence"]}
             conn.execute(
                 """INSERT INTO runtime_command_receipts
                    (session_id, command_kind, request_id, payload_hash, acceptance_json,
