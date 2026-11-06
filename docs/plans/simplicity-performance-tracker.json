@@ -190,13 +190,14 @@
       "id": "SP18",
       "title": "Separate scheduled execution history from delivery history",
       "issue": "https://github.com/automatedigital/spark/issues/205",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp18-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/218",
       "base": "9c04091e4c62ad0edaf717ae564c3f18e7d51c13",
       "prBase": "feat/cron-schedule-preview",
       "head": "805f98dcd072a4d70d001ba914b57637af109174",
-      "leadVerification": "Reviewed SQLite acceptance/execution/delivery guards and scheduler hooks; independently ran 20 cron history tests: passed. Final focused neighbors pass; full Python run predates final five added tests, disclosed in report. Hosted pytest/e2e pending."
+      "leadVerification": "Reviewed SQLite acceptance/execution/delivery guards and scheduler hooks; independently ran 20 cron history tests: passed. Final focused neighbors pass; full Python run predates final five added tests, disclosed in report. Hosted pytest/e2e pending.",
+      "hostedVerification": "T3 completion event: all seven hosted checks passed on805f98dcd072a4d70d001ba914b57637af109174. Parent independently passed20 cron history tests; integration/native/rollout acceptance remains open. No merge or release."
     },
     {
       "id": "SP19",
@@ -288,7 +289,7 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "Eight implementation PRs published;220 and214 share hosted inspector1000-to1410 failure. Active SP02/SP03/SP12/SP21. SP23 preserved unpublished atc549bc6f with final gates incomplete. Fifth slot reserved for bounded shared inspector diagnosis; avoid concurrent heavy suites on overloaded shared host. No merges/releases or acceptance closure.",
+  "dispatchNotes": "Eight implementation PRs published; confirmed hosted green213/215/216/217/218.220 and214 share hosted inspector1000-to1410 failure; bounded diagnostic active. Active SP02/SP03/SP12/SP21 plus inspector diagnostic. SP23 committed unpublished with final gates incomplete. No merges/releases or acceptance closure.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",
@@ -307,5 +308,6 @@
       "artifact": "/Users/joe/.t3/artifacts/pr214-linux-inspector-2026-11-06/evidence.tar.gz",
       "result": "Both11checks pass; hostedfailureunresolved. Containerremoved, no production/PR/CI changes. Boundeddiagnosticstopped."
     }
-  ]
+  ],
+  "sharedInspectorRepairTaskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-inspector-common-20261106-r3"
 }
