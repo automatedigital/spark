@@ -70,12 +70,13 @@
       "id": "SP07",
       "title": "Retrieve large tool results in bounded chunks",
       "issue": "https://github.com/automatedigital/spark/issues/194",
-      "state": "dispatch_prepared",
-      "taskId": null,
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-r1",
       "pr": null,
       "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
       "prBase": "feat/sp01-submission-acceptance",
-      "scheduling": "Independent bounded result read/domain client before SP04 explicitly authorised; no SessionDB/shared API/controller writer."
+      "scheduling": "Independent bounded result read/domain client before SP04 explicitly authorised; no SessionDB/shared API/controller writer.",
+      "scopeClarification": "Authorised necessary narrow TurnWorkGroup sessionId/toolCallId prop plumbing into ToolCallBubble, retaining legacy callback compatibility; no ChatPanel/controller/timeline rewrite."
     },
     {
       "id": "SP08",
