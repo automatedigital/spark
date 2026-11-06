@@ -6,7 +6,12 @@ on:
     paths:
       - "src/**/*.py"
       - "tests/**/*.py"
+      - "pyproject.toml"
       - ".github/workflows/release-contracts.yml"
+
+concurrency:
+  group: release-contracts-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
