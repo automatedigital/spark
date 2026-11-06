@@ -19,7 +19,12 @@ export * from "./apiTypes";
 
 
 const DASHBOARD_TOKEN_KEY = "spark_dashboard_token";
+export const API_CONNECTION_EVENT = "spark:api-connection";
 let connectionGeneration = 0;
+function advanceConnectionGeneration(): void {
+  connectionGeneration += 1;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(API_CONNECTION_EVENT));
+}
 export function apiConnectionGeneration(): number { return connectionGeneration; }
 
 // ── Connection mode / API base URL ──────────────────────────────────────────
@@ -56,7 +61,7 @@ export function setRemoteConnection(baseUrl: string, token: string): void {
   localStorage.setItem(CONNECTION_MODE_KEY, "remote");
   localStorage.setItem(REMOTE_BASE_URL_KEY, normalizeBaseUrl(baseUrl) ?? baseUrl.trim().replace(/\/+$/, ""));
   setDashboardToken(token);
-  if (connectionGeneration === previousGeneration && (getApiBase() !== previousBase || getConnectionMode() !== previousMode)) connectionGeneration += 1;
+  if (connectionGeneration === previousGeneration && (getApiBase() !== previousBase || getConnectionMode() !== previousMode)) advanceConnectionGeneration();
 }
 
 /** Switch back to the local sidecar: clears remote base + token. */
@@ -67,7 +72,7 @@ export function setLocalConnection(): void {
   localStorage.setItem(CONNECTION_MODE_KEY, "local");
   localStorage.removeItem(REMOTE_BASE_URL_KEY);
   clearDashboardToken();
-  if (connectionGeneration === previousGeneration && (getApiBase() !== previousBase || getConnectionMode() !== previousMode)) connectionGeneration += 1;
+  if (connectionGeneration === previousGeneration && (getApiBase() !== previousBase || getConnectionMode() !== previousMode)) advanceConnectionGeneration();
 }
 
 // Ephemeral session token for protected endpoints (reveal).
@@ -83,13 +88,13 @@ export function setDashboardToken(token: string): void {
   const next = token.trim();
   const previous = getDashboardToken() ?? "";
   localStorage.setItem(DASHBOARD_TOKEN_KEY, next);
-  if (previous !== next) connectionGeneration += 1;
+  if (previous !== next) advanceConnectionGeneration();
 }
 
 export function clearDashboardToken(): void {
   const previous = getDashboardToken();
   localStorage.removeItem(DASHBOARD_TOKEN_KEY);
-  if (previous) connectionGeneration += 1;
+  if (previous) advanceConnectionGeneration();
 }
 
 /** Build a URL for raw-file serving (binary-safe) with auth token as query param.
@@ -145,7 +150,10 @@ export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> 
     headers: authHeaders(init?.headers),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
+    const text = await res.text().catch((error: unknown) => {
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      return res.statusText;
+    });
     const err = new Error(`${res.status}: ${text}`) as Error & { status?: number };
     err.status = res.status;
     throw err;

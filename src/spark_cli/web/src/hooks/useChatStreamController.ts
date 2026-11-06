@@ -11,6 +11,7 @@ import type { ChatMessage } from "@/lib/chatTranscriptMerge";
 import { liveStreamFlushInterval } from "@/lib/liveStreamWindow";
 import {
   adoptChatStreamSession,
+  hydrateChatStreamRecovery,
   executeChatStreamEffect,
   eventAction,
   flushAction,
@@ -45,6 +46,7 @@ export interface UseChatStreamControllerResult {
   isCurrentState: (snapshot: ChatStreamState) => boolean;
   handleEvent: (event: ChatStreamEvent) => ChatStreamControllerTransition;
   applySnapshot: (snapshot: ChatStreamSnapshot) => ChatStreamControllerTransition;
+  hydrateRecovery: (snapshot: ChatStreamSnapshot) => ChatStreamControllerTransition;
   flush: (reason?: FlushReason) => ChatStreamControllerTransition;
   finalize: () => ChatStreamControllerTransition;
   syncMessages: (messages: readonly ChatMessage[]) => ChatStreamControllerTransition;
@@ -112,6 +114,10 @@ export function useChatStreamController(
 
   const dispatch = useCallback((action: ChatStreamAction): ChatStreamControllerTransition => (
     commit(reduceChatStreamController(stateRef.current, action))
+  ), [commit]);
+
+  const hydrateRecovery = useCallback((snapshot: ChatStreamSnapshot) => (
+    commit(hydrateChatStreamRecovery(stateRef.current, snapshot))
   ), [commit]);
 
   const applySnapshot = useCallback((snapshot: ChatStreamSnapshot) => dispatch(snapshotAction(snapshot)), [dispatch]);
@@ -248,6 +254,7 @@ export function useChatStreamController(
     isCurrentState,
     handleEvent,
     applySnapshot,
+    hydrateRecovery,
     flush,
     finalize,
     syncMessages,

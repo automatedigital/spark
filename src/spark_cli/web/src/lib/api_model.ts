@@ -11,10 +11,10 @@ import type {
 } from "./apiTypes";
 
 export const modelApi = {
-  getModelInfo: () => fetchJSON<ModelInfoResponse>("/api/model/info"),
-  getModelStatus: () => fetchJSON<ModelStatusResponse>("/api/model/status"),
-  getModelSuggestions: () => fetchJSON<ModelSuggestionsResponse>("/api/model/suggestions"),
-  getAvailableModels: (provider: string, baseUrl?: string) =>
+  getModelInfo: (signal?: AbortSignal) => fetchJSON<ModelInfoResponse>("/api/model/info", { signal }),
+  getModelStatus: (signal?: AbortSignal) => fetchJSON<ModelStatusResponse>("/api/model/status", { signal }),
+  getModelSuggestions: (signal?: AbortSignal) => fetchJSON<ModelSuggestionsResponse>("/api/model/suggestions", { signal }),
+  getAvailableModels: (provider: string, baseUrl?: string, signal?: AbortSignal) =>
     fetchJSON<{
       provider: string;
       models: string[];
@@ -25,6 +25,7 @@ export const modelApi = {
     }>(
       `/api/model/available?provider=${encodeURIComponent(provider)}` +
         (baseUrl ? `&base_url=${encodeURIComponent(baseUrl)}` : ""),
+      { signal },
     ),
   setSmartModel: (model: string) =>
     fetchJSON<{ ok: boolean; model: string }>("/api/model/smart", {
@@ -38,8 +39,8 @@ export const modelApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model }),
     }),
-  getConversationModels: () =>
-    fetchJSON<ConversationModelsResponse>("/api/conversations/models"),
+  getConversationModels: (signal?: AbortSignal) =>
+    fetchJSON<ConversationModelsResponse>("/api/conversations/models", { signal }),
   switchConversationModel: (sessionId: string, model: string) =>
     fetchJSON<{ ok: boolean; session_id: string; model: string }>(
       `/api/conversations/${encodeURIComponent(sessionId)}/model`,

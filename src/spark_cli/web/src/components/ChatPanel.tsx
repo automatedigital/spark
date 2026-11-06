@@ -166,7 +166,6 @@ export function ChatPanel({
   const [pendingActions, setPendingActions] = useState<WebPendingAction[]>([]);
   const [confirmedTurnStatus, setConfirmedTurnStatus] = useState<Awaited<ReturnType<typeof api.getTurnStatus>> | null>(null);
   const [statusDisconnected, setStatusDisconnected] = useState(false);
-  const turnSurfaceRefreshGenerationRef = useRef(0);
   const [busyActionIds, setBusyActionIds] = useState<Set<string>>(() => new Set());
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
   const [safeMode, setSafeMode] = useState(() => readSafeMode(sessionId));
@@ -236,6 +235,8 @@ export function ChatPanel({
     setSessionStats,
     forkInfo,
     recoveryPollCount,
+    recoverySnapshot,
+    recoveryFailed,
     activeSessionRef,
     activeSessionAliasesRef,
     sessionRecoverySeqRef,
@@ -339,7 +340,7 @@ export function ChatPanel({
     },
   });
   const syncStreamMessages = streamController.syncMessages;
-  const applyStreamSnapshot = streamController.applySnapshot;
+  const hydrateStreamRecovery = streamController.hydrateRecovery;
   const adoptStreamSession = streamController.adoptSession;
   const isCurrentStreamState = streamController.isCurrentState;
 
@@ -418,7 +419,6 @@ export function ChatPanel({
     editMessage,
     forkMessage,
     forkSession,
-    isSubmitting,
   } = composerActions;
 
   streamingRef.current = streaming;
@@ -573,6 +573,8 @@ export function ChatPanel({
     followStreamRef.current = !savedScroll;
     setEditingUser(null);
     setDiagnosticsOpen(false);
+    setConfirmedTurnStatus(null);
+    setStatusDisconnected(false);
     setConversationDiagnostics(null);
     setDiagnosticsError(null);
     const restoredSafeMode = readSafeMode(resetSessionId);
@@ -698,7 +700,6 @@ export function ChatPanel({
 
   const refreshTurnSurfaces = useCallback(async () => {
     if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner)) return;
-    const generation = ++turnSurfaceRefreshGenerationRef.current;
     const sid = activeSessionRef.current;
     if (!sid) {
       setTurnOutcomes([]);
@@ -706,20 +707,20 @@ export function ChatPanel({
       setPendingActions([]);
       return;
     }
-    const [outcomeResult, planResult, actionsResult] = await Promise.allSettled([
-      api.getConversationTurnOutcomes(sid),
-      api.getConversationPlan(sid),
-      api.getConversationPendingActions(sid),
-    ]);
-    if (!owner.isCurrent() || !isChatPanelScopeCurrent(owner) || activeSessionRef.current !== sid || generation !== turnSurfaceRefreshGenerationRef.current) return;
-    if (outcomeResult.status === "fulfilled") setTurnOutcomes(outcomeResult.value.outcomes);
-    if (planResult.status === "fulfilled") setConversationPlan(planResult.value.plan);
-    if (actionsResult.status === "fulfilled") setPendingActions(actionsResult.value.actions);
-  }, [activeSessionRef, owner]);
+    await resyncTurnState({ allowIdle: true });
+    // Adoption is owned by the session controller's generation fence.
+  }, [activeSessionRef, owner, resyncTurnState]);
 
   useEffect(() => {
-    void refreshTurnSurfaces();
-  }, [activeSessionId, refreshTurnSurfaces]);
+    if (!recoverySnapshot || !owner.isCurrent() || !activeSessionAliasesRef.current.has(recoverySnapshot.session_id)) return;
+    hydrateStreamRecovery(recoverySnapshot);
+    setTurnOutcomes(recoverySnapshot.outcomes);
+    setConversationPlan(recoverySnapshot.plan);
+    setPendingActions(recoverySnapshot.pending_actions);
+    setConfirmedTurnStatus(recoverySnapshot);
+    setStatusDisconnected(false);
+  }, [recoverySnapshot, hydrateStreamRecovery, owner, activeSessionAliasesRef]);
+
 
   useEventBus((env) => {
     if (![
@@ -735,35 +736,10 @@ export function ChatPanel({
     void refreshTurnSurfaces();
   });
 
-  useEffect(() => { setConfirmedTurnStatus(null); setStatusDisconnected(false); }, [activeSessionId]);
+  // Only a panel reset clears confirmed recovery. Compression may adopt a new
+  // active ID in the same snapshot; that continuation retains its confirmation.
+  useEffect(() => { setStatusDisconnected(recoveryFailed); }, [recoveryFailed]);
 
-  useEffect(() => {
-    const sid = activeSessionId;
-    let cancelled = false;
-    if (!sid) return;
-    const refresh = async () => {
-      try {
-        const status = await api.getTurnStatus(sid);
-        if (!cancelled && activeSessionRef.current === sid) {
-          setConfirmedTurnStatus((previous) => ({ ...status, last_event_at: status.last_event_at ?? previous?.last_event_at ?? null }));
-          setStatusDisconnected(false);
-          // Reconcile both the visible controls and the stream reducer from the
-          // same backend result. An unacknowledged submission may not yet have
-          // entered the active-turn registry, so don't finalize it prematurely.
-          if (!isSubmitting() && (status.turn_active || streamingRef.current)) applyStreamSnapshot(status);
-        }
-      } catch {
-        if (!cancelled && activeSessionRef.current === sid) setStatusDisconnected(true);
-      }
-    };
-    void refresh();
-    if (!streaming && !statusDisconnected) return () => { cancelled = true; };
-    const timer = window.setInterval(() => void refresh(), 2_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [activeSessionId, activeSessionRef, applyStreamSnapshot, isSubmitting, streaming, statusDisconnected]);
   const refreshConversationDiagnostics = useCallback(async () => {
     const sid = activeSessionRef.current;
     if (!sid) return null;
@@ -849,7 +825,6 @@ export function ChatPanel({
     try {
       if (id === "reload") {
         await resyncTurnStateRef.current?.({ allowIdle: true });
-        await refreshLatestTranscript();
       } else if (id === "retry") {
         if (latestUserMessage?.sessionIdx != null) await retryMessage(latestUserMessage.sessionIdx);
       } else if (id === "stop") {
@@ -872,7 +847,6 @@ export function ChatPanel({
     latestUserMessage,
     retryMessage,
     recoveryActionBusy,
-    refreshLatestTranscript,
     stop,
   ]);
 
@@ -1383,6 +1357,8 @@ export function ChatPanel({
     return () => el.removeEventListener("scroll", updateFollowState);
   }, [activeSessionId, activeSessionRef, loadingHistory, owner, scrollBookmarks, timelineTurns, virtualizer]);
 
+  // Cached recovery can mount rows after loading has already settled. Retry
+  // the pending bookmark when that transcript arrives, not only on navigation.
   useEffect(() => {
     const saved = pendingThreadScroll.current;
     if (!saved || saved.sessionId !== activeSessionId || loadingHistory || !timelineTurnsRef.current.length) return;
@@ -1404,7 +1380,7 @@ export function ChatPanel({
     };
     restore();
     return () => cancelAnimationFrame(frame);
-  }, [activeSessionId, loadingHistory, virtualizer]);
+  }, [activeSessionId, loadingHistory, timelineTurns, virtualizer]);
 
   // Auto-scroll to bottom when new items arrive or streaming updates.
   // Use scrollContainerRef directly to avoid stacking rAFs.
@@ -1423,16 +1399,29 @@ export function ChatPanel({
     if (bottomClampRafRef.current !== null) cancelAnimationFrame(bottomClampRafRef.current);
     let remaining = 30;
     let firstFrame = true;
+    let previousHeight = -1;
+    let stableFrames = 0;
     const step = () => {
       bottomClampRafRef.current = requestAnimationFrame(() => {
         bottomClampRafRef.current = null;
         const el = scrollContainerRef.current;
         if (!el || scrollStateRef.current.mode !== "jumping-to-bottom") return;
         const count = virtualizer.options.count;
+        // The loading skeleton has no virtual rows. Settling its bottom would
+        // let the history mount's layout scroll detach a newly opened thread.
+        // Keep the requested jump pending until the transcript is rendered.
+        if (count === 0 || !messageListRef.current) return;
         // Always clamp at least once; only settle when a frame starts with
         // the viewport already at the bottom (previous clamp survived any
         // row remeasure).
-        if (!firstFrame) {
+        const lastRow = el.querySelector<HTMLElement>(`[data-index="${count - 1}"]`);
+        const lastBottom = lastRow?.getBoundingClientRect().bottom;
+        const viewport = el.getBoundingClientRect();
+        const measuredTailVisible = lastBottom != null && lastBottom > viewport.top && lastBottom <= viewport.bottom + 1;
+        stableFrames = !firstFrame && previousHeight === el.scrollHeight && measuredTailVisible
+          ? stableFrames + 1 : 0;
+        previousHeight = el.scrollHeight;
+        if (stableFrames >= 2) {
           scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
             type: "jump-settle",
             itemCount: count,
@@ -1632,13 +1621,14 @@ export function ChatPanel({
         if (autoScrollRafRef.current !== null) cancelAnimationFrame(autoScrollRafRef.current);
         autoScrollRafRef.current = requestAnimationFrame(() => {
           autoScrollRafRef.current = null;
+          // Hydration can replace rows without changing their count and cancel
+          // an earlier scheduled jump. Never complete that jump via the ordinary
+          // stream-tick path before the measured bottom clamp has settled.
+          if (scrollStateRef.current.mode === "jumping-to-bottom") {
+            runBottomClamp();
+            return;
+          }
           if (countChanged) {
-            if (scrollStateRef.current.mode === "jumping-to-bottom") {
-              // Session open / explicit jump: keep clamping until row
-              // measurements settle instead of a single estimated jump.
-              runBottomClamp();
-              return;
-            }
             virtualizer.scrollToIndex(count - 1, { align: "end", behavior: streaming || safeMode ? "instant" : "smooth" });
             lastAutoScrollAtRef.current = Date.now();
             scrollStateRef.current = reduceChatScrollState(scrollStateRef.current, {
@@ -1959,7 +1949,11 @@ export function ChatPanel({
       {showRecoveryCard && (
         <RecoveryCard
           state={confirmedRecoveryState}
-          label={statusDisconnected ? "Connection lost. Your conversation is kept; reconnect to check whether the response is still running." : confirmedTurnStatus?.status}
+          label={statusDisconnected
+            ? "Connection lost. Your conversation is kept; reconnect to check whether the response is still running."
+            : recoverySnapshot?.stream_text_mode === "unknown"
+              ? "The live response is unavailable after a restart. Saved history is shown; work has not been replayed."
+              : confirmedTurnStatus?.status}
           lastEventAt={confirmedTurnStatus?.last_event_at ?? confirmedTurnStatus?.turn_outcome?.ended_at}
           busyAction={recoveryActionBusy === "reload" ? "reconnect" : recoveryActionBusy === "copy" ? "inspect" : recoveryActionBusy === "retry" ? "retry" : null}
           onReconnect={() => void runRecoveryAction("reload")}

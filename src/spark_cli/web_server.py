@@ -10,6 +10,7 @@ Usage:
 """
 
 import asyncio
+import contextlib
 import hashlib
 import ipaddress
 import json
@@ -8641,6 +8642,93 @@ def _conversation_turn_status_payload(session_id: str) -> dict[str, Any]:
                 }
             )
     return payload
+
+
+def _conversation_recovery_payload(session_id: str, *, after_chars: int | None = None) -> dict[str, Any]:
+    """Fence a durable read snapshot with the independent process journal.
+
+    A moving stream is retried twice. Continued churn explicitly asks the caller
+    to reconcile again instead of presenting a mixed snapshot as authoritative.
+    No execution or decision is replayed by this read path.
+    """
+    from core.spark_state import SessionDB
+    from spark_cli.web_state import web_state_journal
+
+    def watermark() -> tuple[str, int]:
+        return web_state_journal.server_epoch, web_state_journal.latest_sequence
+
+    for _attempt in range(3):
+        before = watermark()
+        db = SessionDB()
+        try:
+            durable = db.get_web_recovery_snapshot(session_id)
+        finally:
+            db.close()
+        if durable is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        latest = durable["latest_session_id"]
+        active_key, turn = _get_web_turn(latest)
+        with turn.lock if turn else contextlib.nullcontext():
+            state, reason, idle_for = _web_turn_state(turn)
+            text, start, mode, complete = _bounded_stream_snapshot_text(
+                turn.stream_text if turn else "",
+                after_chars=(after_chars if after_chars is not None
+                             and turn and len(turn.stream_text) - after_chars <= 64_000 else None),
+                tail_chars=64_000,
+            )
+            stream = {
+                "active_turn_session_id": active_key,
+                "turn_active": turn is not None,
+                "state": state, "reason": reason, "idle_for_seconds": idle_for,
+                "phase": turn.phase if turn else "idle",
+                "status": turn.status if turn else None,
+                "interrupt_requested": bool(turn and turn.interrupt_requested),
+                "started_at": turn.started_at if turn else None,
+                "last_event_at": turn.last_event_at if turn else None,
+                "active_agent_session_id": turn.active_agent_session_id if turn else None,
+                "stream_text": text, "stream_text_start": start,
+                "stream_text_mode": mode, "stream_text_complete": complete,
+                "stream_revision": turn.stream_revision if turn else 0,
+                "stream_text_chars": len(turn.stream_text) if turn else 0,
+            }
+        after = watermark()
+        # Persistence precedes publication. A second read also detects commits
+        # whose journal event has not yet been published (including compression).
+        db = SessionDB()
+        try:
+            confirmed = db.get_web_recovery_snapshot(session_id)
+        finally:
+            db.close()
+        current_key, current_turn = _get_web_turn(latest)
+        with current_turn.lock if current_turn else contextlib.nullcontext():
+            same_stream = (
+                current_turn is turn and current_key == active_key
+                and (not turn or turn.stream_revision == stream["stream_revision"])
+            )
+        if before == after == watermark() and durable == confirmed and same_stream:
+            break
+    else:
+        raise HTTPException(status_code=409, detail={"code": "reconcile_again", "reason": "stream_changed"})
+    revision = hashlib.sha256(json.dumps(durable, sort_keys=True, default=str).encode()).hexdigest()
+    outcomes = [_recover_root_submission_projection(row["projection"]) for row in durable.pop("outcomes")]
+    outcome = outcomes[-1] if outcomes else None
+    if not turn and outcome and outcome.get("status") in {"running", "uncertain"}:
+        stream.update(state="interrupted", reason="process_lost", stream_text_mode="unknown")
+    history = durable["history"]
+    history["messages"] = [_message_for_history_response(message, include_tool_results=False) for message in history["messages"]]
+    return {
+        "schema_version": 1, "session_id": session_id, **durable, **stream,
+        "projection_revision": revision,
+        "stream_watermark": {"server_epoch": after[0], "sequence": after[1]},
+        "outcomes": outcomes, "turn_outcome": outcome,
+        "plan": outcome.get("plan") if outcome else None,
+        "reconciliation_required": False,
+    }
+
+
+@app.get("/api/conversations/{session_id}/recovery")
+async def conversation_recovery(session_id: str, after_chars: int | None = None):
+    return await _run_blocking(_conversation_recovery_payload, session_id, after_chars=after_chars)
 
 
 @app.get("/api/conversations/{session_id}/stream-snapshot")
