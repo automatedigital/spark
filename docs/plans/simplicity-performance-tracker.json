@@ -79,12 +79,13 @@
       "id": "SP06",
       "title": "Update only the active tail during token streaming",
       "issue": "https://github.com/automatedigital/spark/issues/193",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp06-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/230",
       "head": "b76eeef4",
       "leadVerification": "Reviewed presentationhook: framebatches assistanttextonly, immediatelypresents session/metadata/tool/decision/terminalchanges, stablecallbackowner via latestcommittedref. Reportbaseline10kprojectionmedian1.751to0.364ms,79.2%lower; browserzero settledrowcommits and0pxanchor movement. Parent focusedprojection/presentation tests run; CIpending.",
-      "ciRepair": "Hostedlarge10kreplay exceeded5s testtimeout. Kept10kmessages/12steps/fulloracle, useNodeisDeepStrictEqual;15focusedtests+ESLintpass, exactcase1.57sto0.913slocally. MergedbaseMermaidfixturefix. CIpending."
+      "ciRepair": "Hostedlarge10kreplay exceeded5s testtimeout. Kept10kmessages/12steps/fulloracle, useNodeisDeepStrictEqual;15focusedtests+ESLintpass, exactcase1.57sto0.913slocally. MergedbaseMermaidfixturefix. CIpending.",
+      "hostedVerification": "T3completionevent: bothapplicablehostedchecks passedb76eeef4 (UI-only2checkmatrix). Parent15projection/presentationtests pass; full10k/12steporacle retained withfasterdeepcomparison. Crosspacket/nativeacceptanceopen; no merge/release."
     },
     {
       "id": "SP07",
