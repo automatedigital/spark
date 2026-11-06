@@ -20,14 +20,17 @@
       "id": "SP02",
       "title": "Reconcile chat from one authoritative recovery snapshot",
       "issue": "https://github.com/automatedigital/spark/issues/189",
-      "state": "running",
-      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-resume-r2",
+      "state": "repair_running_unpublished",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-acceptance-r3",
       "pr": null,
-      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "base": "c5bd88f70fbca7fc2abb56c65876507ff3204e3e",
       "prBase": "feat/sp01-submission-acceptance",
       "priorTaskIds": [
-        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-r1"
-      ]
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-r1",
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-resume-r2"
+      ],
+      "localHead": "c5bd88f70fbca7fc2abb56c65876507ff3204e3e",
+      "publicationBlocker": "Final recovery-card browser failure, long240message viewport failsbase+candidate, exactserial process-loss timeout; shortfixture7\u21921 requests/569frontend tests pass. No code pushed; repair authorized."
     },
     {
       "id": "SP03",
@@ -81,9 +84,9 @@
       "id": "SP09",
       "title": "Load Settings one tab at a time",
       "issue": "https://github.com/automatedigital/spark/issues/196",
-      "state": "repair_running_unpublished",
+      "state": "published_ci_pending",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-bundle-r3",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/214",
       "priorTaskIds": [
         "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-r1",
         "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-resume-r2"
@@ -91,15 +94,18 @@
       "base": "a08cf0a47453eb7370cc349130991602c8f7391e",
       "prBase": "feat/sp01-submission-acceptance",
       "localHead": "a08cf0a47453eb7370cc349130991602c8f7391e",
-      "publicationBlocker": "Initial Chat +81gzipB violates no-growth; functional/browser gates and full fast Python pass, unpublished."
+      "head": "53d527d7f61a094ae258ac5afc6c4f8c61c2e3a5",
+      "leadVerification": "Reviewed final wrappers and comparison assertion including deferred body; independently reran exact-base production graph check against retained built artifacts plus2 SettingsDraft tests under verifiedNode22. Both pass. Hosted/native broader acceptance not inferred."
     },
     {
       "id": "SP10",
       "title": "Use one provider catalogue across settings and chat",
       "issue": "https://github.com/automatedigital/spark/issues/197",
-      "state": "pending",
-      "taskId": null,
-      "pr": null
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp10-20261106-r1",
+      "pr": null,
+      "base": "53d527d7f61a094ae258ac5afc6c4f8c61c2e3a5",
+      "prBase": "fix/sp09-chat-bundle-budget"
     },
     {
       "id": "SP11",
@@ -236,5 +242,5 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "Five SolLow implementation agents: SP02,SP17,SP20 plus SP09 bundle repair and SP19 backend Stop repair. SP09/SP19 preceding local commits preserved; neither pushed failing code. SP19 now owns terminal functions only, SP20 tree/list/search only in workspace_routes; integration must rerun workspace neighbours. No threshold/assertion relaxation, no speculative pushes. Original25PR objective ongoing."
+  "dispatchNotes": "2 implementation PRs published SP01#213 andSP09#214; no merges/releases. FiveSolLow delegates: SP02acceptance repair, SP10catalogue, SP17schedule, SP19terminalStop repair, SP20filetree. SP10 stackedon214, other currenttasks on213.18 not-dispatched packets. Maintain prepublication freshCI/browser gates; no known-failing pushes. SP09 measuredChat255535<=255549B, no thresholdrelaxation."
 }
