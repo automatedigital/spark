@@ -142,8 +142,35 @@ async def main():
                     await asyncio.sleep(.5)
                     assert await page.get_by_role("button", name="Next page", exact=True).count() == 0
                     await page.unroute("**/tool-results/*?*", delayed)
+                    # Hold an actual result response across navigation. Its late
+                    # completion must not attach the old result to the new chat.
+                    pending_read = asyncio.Event()
+                    release_read = asyncio.Event()
+
+                    async def delayed_navigation(route):
+                        pending_read.set()
+                        await release_read.wait()
+                        try:
+                            await route.continue_()
+                        except Exception:
+                            # Cancellation may already have retired this route.
+                            pass
+
+                    await page.route("**/tool-results/*?*", delayed_navigation)
+                    await one.click()
+                    await asyncio.wait_for(pending_read.wait(), timeout=5)
                     await select("result_bravo")
+                    release_read.set()
+                    await asyncio.sleep(.5)
+                    assert await page.get_by_role("button", name="Next page", exact=True).count() == 0
+                    assert await page.get_by_role("button", name="Download full output", exact=True).count() == 0
+                    await page.unroute("**/tool-results/*?*", delayed_navigation)
                     await select("result_alpha")
+                    snapshot_url = api + "/api/web-state/snapshot?selected_session_id=result_alpha&session_limit=10&message_limit=10"
+                    before_refresh = await request.get(snapshot_url)
+                    assert before_refresh.ok
+                    assert (await before_refresh.json())["detail"]["turn"]["state"] == "streaming"
+                    (REPORTS / "before-refresh-snapshot.json").write_text(await before_refresh.text())
                     await page.reload()
                     await expect(page.get_by_role("textbox", name="Message composer")).to_be_editable()
                     try:
@@ -151,9 +178,12 @@ async def main():
                     except Exception:
                         await page.screenshot(path=str(REPORTS / "refresh-failure.png"))
                         (REPORTS / "refresh-failure-dom.txt").write_text(await page.locator("body").inner_text())
-                        snapshot = await request.get(api + "/api/web-state/snapshot?selected_session_id=result_alpha&session_limit=10&message_limit=10")
+                        snapshot = await request.get(snapshot_url)
                         (REPORTS / "refresh-failure-snapshot.json").write_text(await snapshot.text())
                         raise
+                    recovered_snapshot = await request.get(snapshot_url)
+                    assert recovered_snapshot.ok
+                    (REPORTS / "recovered-snapshot.json").write_text(await recovered_snapshot.text())
                     assert not errors, errors
                     await page.screenshot(path=str(REPORTS / "final.png"))
                     (REPORTS / "measurements.json").write_text(json.dumps(measurements, indent=2))
