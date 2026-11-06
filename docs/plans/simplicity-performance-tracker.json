@@ -91,7 +91,7 @@
       "id": "SP07",
       "title": "Retrieve large tool results in bounded chunks",
       "issue": "https://github.com/automatedigital/spark/issues/194",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-recovery-r2",
       "pr": "https://github.com/automatedigital/spark/pull/226",
       "base": "dd136b9a54af5379eb11b546bb5883190726487a",
@@ -104,7 +104,8 @@
       "localHead": "dd136b9a54af5379eb11b546bb5883190726487a",
       "publicationBlocker": "Local141backend/573frontend and exact large-result refresh/navigation/browser gates pass after SP02 integration. Required feat/sp02-recovery-snapshot-final branch not yet published; retain readyhead without rerunning gates.",
       "head": "8e59333e",
-      "ciRepair": "RLockcontractfixed; partialstreamtestbarrierpreservesassertions/deadlines (3focusedpass). MergedSP02Mermaidfix. CIpending."
+      "ciRepair": "RLockcontractfixed; partialstreamtestbarrierpreservesassertions/deadlines (3focusedpass). MergedSP02Mermaidfix. CIpending.",
+      "hostedVerification": "T3completionevent: all7 hostedchecks passed8e59333e. IncludesRLockcontract/partialstreamfixturebarrier/baseMermaidfix. Focused8toolresult+3fake-streamregressionspassed. Crosspacket/nativeacceptanceopen; no merge/release."
     },
     {
       "id": "SP08",
