@@ -150,9 +150,12 @@
       "id": "SP17",
       "title": "Preview schedules before they can run",
       "issue": "https://github.com/automatedigital/spark/issues/204",
-      "state": "pending",
-      "taskId": null,
-      "pr": null
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp17-20261106-r1",
+      "pr": null,
+      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "prBase": "feat/sp01-submission-acceptance",
+      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers."
     },
     {
       "id": "SP18",
@@ -166,17 +169,23 @@
       "id": "SP19",
       "title": "Stop terminal sessions whose start acknowledgement arrives too late",
       "issue": "https://github.com/automatedigital/spark/issues/206",
-      "state": "pending",
-      "taskId": null,
-      "pr": null
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp19-20261106-r1",
+      "pr": null,
+      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "prBase": "feat/sp01-submission-acceptance",
+      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers."
     },
     {
       "id": "SP20",
       "title": "Fetch project files as users expand folders",
       "issue": "https://github.com/automatedigital/spark/issues/207",
-      "state": "pending",
-      "taskId": null,
-      "pr": null
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp20-20261106-r1",
+      "pr": null,
+      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "prBase": "feat/sp01-submission-acceptance",
+      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers."
     },
     {
       "id": "SP21",
@@ -219,5 +228,5 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "SP01 hosted7 checks green on a12205a5; SP02/SP09 resume from that exact committed base in new isolated delegates, recovering old uncommitted work read-only. Sol Low reasoning, max5; currently2 independent writers. Fresh pytest9.2 dependency env and relevant exact CI selections + Node22 frozen web/browser gates mandatory before one publication push. No checkpoint pushes, speculative reruns, merges or releases. Original25 implementation PR objective remains unfinished."
+  "dispatchNotes": "Five Sol Low delegates dispatched: SP02 recovery, SP09 lazySettings, SP17 schedulePreview, SP19 terminalOwnership, SP20 incrementalFiles. All use greenSP01 a12205a5 and one scoped stackedPR; user explicitly requested more parallelism. Non-overlap paths recorded in plan scheduling refinement. Fresh pytest9.2 + relevant exact CI selections + Node22/npmci + browser checks required before single publication push; no checkpoint/speculative pushes. No merges/releases. Remaining20 tasks not dispatched; SP01 published with all7 hostedchecks green but acceptance limitations retained."
 }
