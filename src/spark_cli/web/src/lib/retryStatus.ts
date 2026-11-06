@@ -22,6 +22,15 @@ const reasons: Record<string, string> = {
   timeout: "Provider timeout", unknown: "Provider unavailable", invalid_response: "Invalid provider response",
 };
 
+/** Sparse server transitions need a fresh authoritative pill snapshot. */
+export function shouldRefreshRetryStatus(topic: string, data: unknown, confirmedPhase?: string | null): boolean {
+  const status = data && typeof data === "object" ? data as Record<string, unknown> : {};
+  if (topic === "chat.status") {
+    return confirmedPhase === "retry" || (status.kind === "retry" && typeof status.message === "string" && parseRetryStatus(status.message) !== null);
+  }
+  return confirmedPhase === "retry" && topic === "chat.token";
+}
+
 export function parseRetryStatus(label?: string | null): RetryStatus | null {
   if (!label?.startsWith(RETRY_STATUS_PREFIX)) return null;
   try {

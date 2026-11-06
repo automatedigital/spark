@@ -1,4 +1,5 @@
 import { buildComposerPromptHistoryEntries } from "@/lib/composerPromptHistory";
+import { shouldRefreshRetryStatus } from "@/lib/retryStatus";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -165,6 +166,7 @@ export function ChatPanel({
   const [conversationPlan, setConversationPlan] = useState<WebPlan | null>(null);
   const [pendingActions, setPendingActions] = useState<WebPendingAction[]>([]);
   const [confirmedTurnStatus, setConfirmedTurnStatus] = useState<Awaited<ReturnType<typeof api.getTurnStatus>> | null>(null);
+  const retryRefreshRef = useRef<{ pending: boolean; again: boolean }>({ pending: false, again: false });
   const [statusDisconnected, setStatusDisconnected] = useState(false);
   const [busyActionIds, setBusyActionIds] = useState<Set<string>>(() => new Set());
   const [editingUser, setEditingUser] = useState<{ sessionIdx: number; text: string } | null>(null);
@@ -723,7 +725,8 @@ export function ChatPanel({
 
 
   useEventBus((env) => {
-    if (![
+    const retryTransition = shouldRefreshRetryStatus(env.topic, env.data, confirmedTurnStatus?.phase);
+    if (!retryTransition && ![
       "chat.turn_done",
       "chat.plan_updated",
       "chat.approval_requested",
@@ -733,6 +736,22 @@ export function ChatPanel({
     ].includes(env.topic)) return;
     const sid = activeSessionRef.current;
     if (!sid || (env.session_id && !activeSessionAliasesRef.current.has(env.session_id))) return;
+    if (retryTransition) {
+      const flight = retryRefreshRef.current;
+      if (flight.pending) { flight.again = true; return; }
+      flight.pending = true;
+      void (async () => {
+        try {
+          // Coalesce transitions arriving during the read; no per-token poll.
+          for (let pass = 0; pass < 2; pass += 1) {
+            flight.again = false;
+            await refreshTurnSurfaces();
+            if (!flight.again) break;
+          }
+        } finally { flight.pending = false; }
+      })();
+      return;
+    }
     void refreshTurnSurfaces();
   });
 

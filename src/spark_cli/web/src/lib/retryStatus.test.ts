@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RETRY_STATUS_PREFIX, parseRetryStatus, retryDisplayLabel, retryStatusLabel } from "./retryStatus";
+import { RETRY_STATUS_PREFIX, parseRetryStatus, retryDisplayLabel, retryStatusLabel, shouldRefreshRetryStatus } from "./retryStatus";
 import { resolveChatStatus } from "./chatStatus";
 
 const data = {
@@ -10,6 +10,14 @@ const data = {
 const wire = RETRY_STATUS_PREFIX + JSON.stringify(data);
 
 describe("confirmed retry status", () => {
+  it("reconciles live retry entry and exit without polling ordinary token events", () => {
+    expect(shouldRefreshRetryStatus("chat.status", { kind: "retry", message: wire }, "api")).toBe(true);
+    expect(shouldRefreshRetryStatus("chat.status", { kind: "api", message: "Calling model" }, "retry")).toBe(true);
+    expect(shouldRefreshRetryStatus("chat.token", { t: "first" }, "retry")).toBe(true);
+    expect(shouldRefreshRetryStatus("chat.token", { t: "next" }, "streaming")).toBe(false);
+    expect(shouldRefreshRetryStatus("chat.status", { kind: "retry", message: "malformed" }, "api")).toBe(false);
+    expect(shouldRefreshRetryStatus("chat.status", { kind: "api", message: "Calling model" }, "api")).toBe(false);
+  });
   it("shows reason, attempt and countdown from one sparse backend deadline", () => {
     const status = parseRetryStatus(wire)!;
     expect(retryStatusLabel(status, 1_000_000)).toBe("Rate limit · retry 2/3 · in 10s");
