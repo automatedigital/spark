@@ -68,9 +68,11 @@
       "id": "SP05",
       "title": "Share reference-data reads and retire redundant polling",
       "issue": "https://github.com/automatedigital/spark/issues/192",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp05-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/232",
+      "head": "8ea835487584fc6090861cf405a128cd037b0d72",
+      "leadVerification": "Reviewed bounded3-resource cache, backend/auth/profile epochs, sharedconsumerabort isolation, revision-fencedmutationreads andcoalescedrefresh. Childreports71.43%idle-fetch reduction/82ms liveSSEvisibility; parentfocusedcachetests running. FullSP04integrationopen;CIpending."
     },
     {
       "id": "SP06",
@@ -207,9 +209,11 @@
       "id": "SP16",
       "title": "Make retry waits visible, bounded and cancellable",
       "issue": "https://github.com/automatedigital/spark/issues/203",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp16-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/235",
+      "head": "c489b507",
+      "leadVerification": "Parentfixeddocumentedlivegap via sparseowner-fenced authoritative recoveryreads, boundedcoalescing. Actualbrowserretry2/3 appearedWITHOUTrefresh,one navigation/oneproviderrequest,Stopinterrupts.18focusedfrontend/ESLint/types pass; cleanmypy142pass, cronerrorsnotreproduced. PRmarkedready. Combined/nativeacceptanceopen;CIpending."
     },
     {
       "id": "SP17",
