@@ -4394,10 +4394,71 @@ async def toggle_skill(body: SkillToggle):
     return {"ok": True, "name": name, "skill_id": body.skill_id, "enabled": body.enabled}
 
 
+def _skill_project_root(slug: str | None):
+    if not slug:
+        return None
+    from spark_cli.workspace_routes import _project_dir
+
+    return _project_dir(slug)
+
+
+def _selected_skill_context(item: dict, session_id: str | None = None, *, load_body: bool = False) -> str:
+    """Resolve explicit selection only after the route has validated its target."""
+    from agent.skill_commands import build_selected_skill_message, validate_selected_skill
+    from core.spark_state import SessionDB
+
+    if item.get("skill_profile") != str(get_spark_home()):
+        raise HTTPException(status_code=409, detail="Skill selection belongs to another profile.")
+    thread = item.get("skill_thread")
+    if not thread:
+        raise HTTPException(status_code=409, detail="Skill selection belongs to another thread.")
+    db = SessionDB()
+    try:
+        if session_id is not None:
+            selected_target = db.resolve_latest_descendant(db.resolve_session_id(thread) or thread) or thread
+            actual_target = db.resolve_latest_descendant(db.resolve_session_id(session_id) or session_id) or session_id
+            if selected_target != actual_target:
+                raise HTTPException(status_code=409, detail="Skill selection belongs to another thread.")
+        row = db.get_session(thread)
+    finally:
+        db.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Skill selection thread is unavailable.")
+    source = str(row.get("source") or "")
+    project = source.split(":", 1)[1] if source.startswith("workspace:") else None
+    if project != item.get("skill_project"):
+        raise HTTPException(status_code=409, detail="Skill selection project changed.")
+    try:
+        resolver = build_selected_skill_message if load_body else validate_selected_skill
+        result = resolver(item.get("skill_id") or "", item.get("skill_revision") or "",
+                          project_root=_skill_project_root(project))
+        return str(result) if load_body else ""
+    except (ValueError, OSError, UnicodeError) as exc:
+        raise HTTPException(status_code=409, detail="Selected skill is unavailable or changed; select it again.") from exc
+
+
+@app.get("/api/skills/index")
+async def get_skill_index(refresh: bool = False, query: str = "", scope: str = "all", workspace_slug: str | None = None):
+    """Discover metadata without syncing, setup, instruction or supporting-file reads."""
+    from starlette.concurrency import run_in_threadpool
+
+    from tools.skills_index import list_skill_index
+
+    if len(query) > 256 or scope not in {"all", "profile", "external", "project"}:
+        raise HTTPException(status_code=422, detail="Invalid skill search.")
+    return await run_in_threadpool(list_skill_index, refresh=refresh, query=query, scope=scope,
+                                   project_root=_skill_project_root(workspace_slug))
+
+
 @app.get("/api/skills/{skill_id}")
-async def get_skill_detail(skill_id: str):
+async def get_skill_detail(skill_id: str, workspace_slug: str | None = None):
     """Return one skill's bounded detail by opaque server-generated ID."""
-    record = _skill_record_or_404(skill_id)
+    from tools.skills_index import selected_skill
+    from tools.skills_metadata import resolve_skill
+
+    root = _skill_project_root(workspace_slug)
+    selected = selected_skill(skill_id, root)
+    record = (resolve_skill(selected["_path"], project_root=root) if selected else None) or _skill_record_or_404(skill_id)
     record = dict(record)
     from spark_cli.skills_config import get_disabled_skills
 
@@ -4406,10 +4467,10 @@ async def get_skill_detail(skill_id: str):
     skill_dir = record["_path"]
     skill_md = skill_dir / "SKILL.md"
     try:
-        size = skill_md.stat().st_size
+        size = 0 if record.get("removed") else skill_md.stat().st_size
         if size > 1_048_576:
             raise HTTPException(status_code=413, detail="SKILL.md exceeds the 1 MiB view limit.")
-        content = skill_md.read_text(encoding="utf-8")
+        content = "" if record.get("removed") else skill_md.read_text(encoding="utf-8")
     except UnicodeDecodeError as err:
         raise HTTPException(status_code=422, detail="SKILL.md is not valid UTF-8.") from err
     except OSError as err:
@@ -5869,6 +5930,9 @@ def _build_context_augmented_message(session_id: str, user_message: str, context
 
     parts: list[str] = []
     for item in context_items:
+        if item.get("type") == "skill":
+            parts.append(_selected_skill_context(item, session_id, load_body=True))
+            continue
         source_path = item.get("source_path")
         label = item.get("label") or (source_path.split("/")[-1] if source_path else "context")
         mode = item.get("inclusion_mode", "full")
@@ -5970,13 +6034,14 @@ def _run_web_agent_turn(
 ) -> Any:
     from tools.approval import reset_current_session_key, set_current_session_key
 
+    typed_message = user_message
     if context_items:
         user_message = _build_context_augmented_message(agent.session_id, user_message, context_items)
 
     _, active_turn = _get_web_turn(agent.session_id)
     agent._root_run_id = active_turn.turn_id if active_turn else None
 
-    _refresh_web_agent_for_computer_use(agent, user_message)
+    _refresh_web_agent_for_computer_use(agent, typed_message)
 
     user_message = _inject_brief_if_present(agent.session_id, user_message)
     user_message = _with_long_document_delivery_instruction(user_message)
@@ -6785,11 +6850,20 @@ def _validate_context_items(raw_items: list, workspace_slug: str | None = None) 
     project_root = _get_workspace_root(workspace_slug) if workspace_slug else workspace_root
 
     validated = []
+    selected_ids = set()
     for raw in raw_items:
         try:
             item = ContextItem.model_validate(raw)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Invalid context item: {exc}") from exc
+
+        if item.type.value == "skill":
+            if item.skill_id in selected_ids:
+                raise HTTPException(status_code=400, detail="Duplicate skill selection.")
+            selected_ids.add(item.skill_id)
+            if item.scope.value != "one_turn" or item.source_path or item.content or item.content_ref:
+                raise HTTPException(status_code=400, detail="Skills require one-turn canonical selection only.")
+            _selected_skill_context(item.model_dump())
 
         if item.source_path:
             try:
@@ -6815,6 +6889,13 @@ def _validate_context_items(raw_items: list, workspace_slug: str | None = None) 
 
 
 def _persist_context_items(session_id: str, raw_items: list) -> None:
+    # Fence selections against the route's validated target before acceptance.
+    # The canonical receipt retains identity/revision; transient selections do
+    # not belong in the legacy pinned-file table (whose schema is unchanged).
+    for item in raw_items:
+        if item.get("type") == "skill":
+            _selected_skill_context(item, session_id)
+    raw_items = [item for item in raw_items if item.get("type") != "skill"]
     if not raw_items:
         return
     try:

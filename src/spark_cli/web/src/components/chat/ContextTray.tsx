@@ -105,6 +105,7 @@ const ContextTrayItem = memo(function ContextTrayItem({
       <div className="relative shrink-0">
         <button
           type="button"
+          disabled={item.type === "skill"}
           aria-haspopup="listbox"
           aria-expanded={modeOpen}
           onClick={() => { setModeOpen((v) => !v); setFocusedModeIdx(MODE_ORDER.indexOf(item.inclusion_mode)); }}
@@ -201,6 +202,7 @@ const ContextTrayItem = memo(function ContextTrayItem({
       {/* Pin toggle */}
       <button
         type="button"
+        disabled={item.type === "skill"}
         title={isPinned ? "Unpin (one-turn only)" : "Pin across turns"}
         onClick={() => onUpdateScope(item.id, isPinned ? "one_turn" : "pinned")}
         className={cn(
