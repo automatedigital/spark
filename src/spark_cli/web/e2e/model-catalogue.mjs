@@ -51,10 +51,10 @@ try {
  await page.keyboard.press("Escape");
  await page.getByRole("button", {name: "Open settings fixture"}).click();
  await page.getByRole("button", {name: "Save changes"}).waitFor();
- await page.getByRole("button", {name: "typed-model", exact: true}).click();
+ await page.getByRole("button", {name: "Model: typed-model", exact: true}).click();
  await page.getByPlaceholder("Search or type a model name…").fill("offline-custom");
  await page.keyboard.press("Enter");
- await page.getByRole("button", {name: "offline-custom", exact: true}).waitFor();
+ await page.getByRole("button", {name: "Model: offline-custom", exact: true}).waitFor();
  assert.equal(requests.filter(p => p === "/api/model/available").length, 0);
  console.log("PASS active PromptBar catalogue labels, unknown route, Settings custom keyboard entry; zero live enumeration on open");
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

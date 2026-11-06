@@ -1,5 +1,6 @@
+import { ModelListLoader, type ModelListState, modelCredentialEpoch, subscribeModelCredentials, invalidateModelCredentials } from "@/lib/modelListLoader";
 import { getProviderCatalog, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
-import { lazy, useState, useEffect, useMemo, useRef } from "react";
+import { lazy, useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   X,
   Archive,
@@ -81,36 +82,21 @@ function ModelCombobox({
   onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [models, setModels] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [live, setLive] = useState(false);
-  const [attempted, setAttempted] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
-
-  const load = () => {
-    if (!provider) {
-      setModels([]);
-      setLive(false);
-      return;
-    }
-    setLoading(true);
-    setAttempted(true);
-    api
-      .getAvailableModels(provider, baseUrl || undefined)
-      .then((r) => {
-        setModels(r.models);
-        setLive(r.live);
-      })
-      .catch(() => {
-        setModels([]);
-        setLive(false);
-      })
-      .finally(() => setLoading(false));
-  };
-
-  // Browsing settings must not connect to an inference provider.
-
+  const credentials = useSyncExternalStore(subscribeModelCredentials, modelCredentialEpoch);
+  const loader = useMemo(() => {
+    // Credential changes retire the previous consumer even when the URL is stable.
+    void credentials;
+    const next = new ModelListLoader(provider, baseUrl, (state) => setOwned({ loader: next, state }));
+    return next;
+  }, [provider, baseUrl, credentials]);
+  const [owned, setOwned] = useState<{ loader: ModelListLoader; state: ModelListState }>(() => ({ loader, state: loader.snapshot() }));
+  const state = owned.loader === loader ? owned.state : loader.snapshot();
+  useEffect(() => () => loader.cancel(), [loader]);
+  const { models, phase, live } = state;
+  const loading = phase === "loading";
+  const load = () => { void loader.load(true); };
 
   useEffect(() => {
     if (!open) return;
@@ -149,19 +135,20 @@ function ModelCombobox({
         </button>
       </div>
       <span className="text-xs text-muted-foreground/70">
-        {provider
-          ? !attempted ? "Model discovery has not run. Type a model ID or refresh." : live
-            ? `Pulled live from ${provider}.`
-            : loading
-              ? "Loading models…"
-              : `Couldn't reach ${provider} — showing suggestions. Check the base URL / API key.`
-          : "Select a provider first."}
+        {!provider ? "Select a provider first." : phase === "loading" ? "Loading models…"
+          : phase === "error" ? "Model discovery failed. Your selected ID is preserved. Refresh to retry."
+          : phase === "stale" ? "Cached models are stale. Refresh to update."
+          : phase === "empty" ? "Provider returned no models. Type a custom ID."
+          : phase === "ready" ? live ? `Pulled live from ${provider}.` : "Showing provider suggestions (not live)."
+          : "Model discovery has not run. Type a model ID or refresh."}
       </span>
       <div ref={ref} className="relative">
         <button
           type="button"
           disabled={!provider}
-          onClick={() => setOpen((o) => !o)}
+          aria-label={`Model: ${value || "Select model"}`}
+          aria-expanded={open}
+          onClick={() => { if (!open && phase === "ready") setOwned({ loader, state: loader.snapshot() }); setOpen((o) => !o); }}
           className="flex w-full items-center justify-between rounded-md border border-input bg-background px-2.5 py-2 text-sm transition hover:border-border focus:outline-none disabled:opacity-50"
         >
           <span className="truncate">
@@ -179,7 +166,11 @@ function ModelCombobox({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") setOpen(false);
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setOpen(false);
+                  }
                   if (e.key === "Enter") {
                     if (filtered.length === 1) pick(filtered[0]);
                     else if (canUseCustom) pick(search.trim());
@@ -252,6 +243,7 @@ function ProviderApiKeyField({ envVar }: { envVar: string }) {
     setSaving(true);
     try {
       await api.setEnvVar(envVar, value.trim());
+      invalidateModelCredentials();
       showToast("API key saved", "success");
       setValue("");
       reload();
