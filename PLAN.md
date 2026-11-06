@@ -364,6 +364,12 @@ neither agent may reformat or extract the whole shared module.
 SP17 owns cron modules/routes/page/client. All three leave shared api.ts/apiTypes,
 SessionDB, web_server, SettingsPanel, config, manifests, lockfiles and bundles to
 their existing owners. SP04/SP10 later retain these domain contracts when integrated.
+SP11 may also start after SP10 using native AbortController and the existing
+signal-capable fetchJSON, with SP04 retained as a later transport compatibility
+check. Its model-search writer must first finish SP10's discovered live PromptBar
+integration and remove unintended mount-time model discovery, updating the same
+SP10 PR before making a separate SP11 PR. PromptBar is independent of the active
+SP02 ChatPanel/controller writer; do not edit those shared files.
 This changes scheduling only; every packet's full behaviour, tests and performance
 acceptance remains required. No missing prerequisite is silently counted complete.
 
