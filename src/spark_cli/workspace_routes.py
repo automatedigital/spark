@@ -1704,25 +1704,26 @@ def _run_terminal_command(run_id: str) -> None:
     proc: subprocess.Popen | None = None
 
     try:
-        with _terminal_lock:
-            run["status"] = "running"
-            run["updated_at"] = time.time()
-        _queue_terminal_event(run_id, {"type": "state", "status": "running"})
-
-        proc = subprocess.Popen(
-            _terminal_command_argv(command),
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            bufsize=1,
-            errors="replace",
-        )
-        with _terminal_lock:
-            run["pid"] = proc.pid
-            run["process"] = proc
-
+        with run["lifecycle_lock"]:
+            if run.get("stop_requested"):
+                return
+            proc = subprocess.Popen(
+                _terminal_command_argv(command),
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                bufsize=1,
+                errors="replace",
+                start_new_session=sys.platform != "win32",
+            )
+            with _terminal_lock:
+                run["pid"] = proc.pid
+                run["process"] = proc
+                run["status"] = "running"
+                run["updated_at"] = time.time()
+            _queue_terminal_event(run_id, {"type": "state", "status": "running"})
         assert proc.stdout is not None
         for line in proc.stdout:
             with _terminal_lock:
@@ -1730,9 +1731,15 @@ def _run_terminal_command(run_id: str) -> None:
                 run["updated_at"] = time.time()
             _queue_terminal_event(run_id, {"type": "output", "stream": "stdout", "text": line})
 
-        exit_code = proc.wait()
+        while True:
+            with run["lifecycle_lock"]:
+                try:
+                    exit_code = proc.wait(timeout=0.1)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
         with _terminal_lock:
-            if run.get("status") == "stopped":
+            if run.get("stop_requested"):
                 status = "stopped"
             else:
                 status = "done" if exit_code == 0 else "failed"
@@ -1782,6 +1789,8 @@ def start_terminal_run(slug: str, body: TerminalRunCreate | None = None):
         "exit_code": None,
         "pid": None,
         "process": None,
+        "lifecycle_lock": threading.RLock(),
+        "stop_requested": False,
         "output": [],
         "created_at": time.time(),
         "updated_at": time.time(),
@@ -1801,6 +1810,9 @@ def _run_terminal_shell(run_id: str) -> None:
     master_fd: int | None = None
 
     try:
+        with run["lifecycle_lock"]:
+            if run.get("stop_requested"):
+                return
         if pty is None or fcntl is None or termios is None:
             raise RuntimeError("Interactive workspace terminals are not yet supported on Windows")
         master_fd, slave_fd = pty.openpty()
@@ -1808,24 +1820,28 @@ def _run_terminal_shell(run_id: str) -> None:
             fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
         except OSError:
             _log.debug("Ignoring error in _run_terminal_shell()", exc_info=True)
-        proc = subprocess.Popen(
-            [shell, "-i"],
-            cwd=cwd,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            start_new_session=True,
-            close_fds=True,
-            env={**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor", "LINES": "24", "COLUMNS": "80"},
-        )
-        os.close(slave_fd)
-        with _terminal_lock:
-            run["status"] = "running"
-            run["pid"] = proc.pid
-            run["process"] = proc
-            run["pty_fd"] = master_fd
-            run["updated_at"] = time.time()
-        _queue_terminal_event(run_id, {"type": "state", "status": "running"})
+        with run["lifecycle_lock"]:
+            if run.get("stop_requested"):
+                os.close(slave_fd)
+                return
+            proc = subprocess.Popen(
+                [shell, "-i"],
+                cwd=cwd,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                start_new_session=True,
+                close_fds=True,
+                env={**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor", "LINES": "24", "COLUMNS": "80"},
+            )
+            os.close(slave_fd)
+            with _terminal_lock:
+                run["status"] = "running"
+                run["pid"] = proc.pid
+                run["process"] = proc
+                run["pty_fd"] = master_fd
+                run["updated_at"] = time.time()
+            _queue_terminal_event(run_id, {"type": "state", "status": "running"})
 
         while True:
             try:
@@ -1839,14 +1855,18 @@ def _run_terminal_shell(run_id: str) -> None:
                 run["output"].append(text)
                 run["updated_at"] = time.time()
             _queue_terminal_event(run_id, {"type": "output", "stream": "pty", "text": text})
-            if proc.poll() is not None:
-                break
 
-        exit_code = proc.poll()
-        if exit_code is None:
-            exit_code = proc.wait(timeout=1)
+        while True:
+            with run["lifecycle_lock"]:
+                try:
+                    exit_code = proc.wait(timeout=0.1)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
         with _terminal_lock:
-            if run.get("status") != "stopped":
+            if run.get("stop_requested"):
+                run["status"] = "stopped"
+            else:
                 run["status"] = "done" if exit_code == 0 else "failed"
             run["exit_code"] = exit_code
             run["process"] = None
@@ -1963,16 +1983,22 @@ def stop_terminal_run(slug: str, run_id: str):
     run = _terminal_runs.get(run_id)
     if not run or run.get("slug") != slug:
         raise HTTPException(status_code=404, detail="Run not found")
-    proc = run.get("process")
-    if proc is not None and proc.poll() is None:
-        run["status"] = "stopped"
-        run["updated_at"] = time.time()
+    from spark_cli.terminal_process import terminate_terminal_process
+
+    with run["lifecycle_lock"]:
+        run["stop_requested"] = True
+        proc = run.get("process")
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except Exception:
-            proc.terminate()
+            if proc is not None:
+                terminate_terminal_process(proc)
+        except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+            raise HTTPException(status_code=500, detail="Terminal exit could not be confirmed") from exc
+        with _terminal_lock:
+            run["status"] = "stopped"
+            run["exit_code"] = proc.returncode if proc is not None else None
+            run["updated_at"] = time.time()
         _queue_terminal_event(run_id, {"type": "state", "status": "stopped"})
-    return {"ok": True, "run_id": run_id, "status": run.get("status")}
+    return {"ok": True, "run_id": run_id, "status": run["status"]}
 
 
 # ── Project preview ──────────────────────────────────────────────────────────
