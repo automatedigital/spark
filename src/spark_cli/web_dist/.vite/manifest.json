@@ -1,15 +1,43 @@
 {
-  "_ConnectorsPage-DH0JHkzk.js": {
-    "file": "assets/ConnectorsPage-DH0JHkzk.js",
-    "name": "ConnectorsPage",
-    "isDynamicEntry": true,
+  "_OAuthProvidersCard-CZcPLNyu.js": {
+    "file": "assets/OAuthProvidersCard-CZcPLNyu.js",
+    "name": "OAuthProvidersCard",
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html",
-      "_card-Ok-yAAxD.js",
-      "_label-B2W-DyBW.js",
-      "_plug-D7DMAAov.js",
-      "_server-BcLLc11x.js"
+      "_card-DR6qvMfq.js",
+      "_log-out-D-cn0PV3.js"
+    ]
+  },
+  "_SettingsPanelContent--um-o4kR.js": {
+    "file": "assets/SettingsPanelContent--um-o4kR.js",
+    "name": "SettingsPanelContent",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_vendor-react-psH9patW.js",
+      "_settingsDrafts-a4_mGn12.js",
+      "_localDevice-hdeN45lg.js",
+      "_label-DodzpiuD.js",
+      "_select-B1BLME8f.js",
+      "_switch-DqxEAJSb.js",
+      "_OAuthProvidersCard-CZcPLNyu.js",
+      "_plug-C_iEYHWo.js"
+    ],
+    "dynamicImports": [
+      "index.html",
+      "src/pages/AdminPage.tsx",
+      "src/pages/AdminPage.tsx",
+      "src/pages/StatusPage.tsx",
+      "src/pages/AnalyticsPage.tsx",
+      "src/pages/LogsPage.tsx",
+      "src/pages/AdminPage.tsx",
+      "src/pages/ConfigPage.tsx",
+      "src/pages/UpdatesPage.tsx",
+      "src/pages/AppearancePage.tsx",
+      "src/pages/MemoryPage.tsx",
+      "src/pages/MessagingPage.tsx",
+      "src/pages/SkillsToolsPage.tsx"
     ]
   },
   "_SkillQualitySignals-Xuwcn8DH.js": {
@@ -19,114 +47,98 @@
       "_vendor-react-psH9patW.js"
     ]
   },
-  "_SkillsToolsPage-iywXoCgo.js": {
-    "file": "assets/SkillsToolsPage-iywXoCgo.js",
-    "name": "SkillsToolsPage",
-    "isDynamicEntry": true,
-    "imports": [
-      "_vendor-react-psH9patW.js",
-      "index.html",
-      "_switch-fhiJHwjC.js",
-      "_ConnectorsPage-DH0JHkzk.js",
-      "_card-Ok-yAAxD.js",
-      "_label-B2W-DyBW.js",
-      "_server-BcLLc11x.js",
-      "_save-DyCzgs-g.js",
-      "_SkillQualitySignals-Xuwcn8DH.js"
-    ]
-  },
-  "_arc-DVYj6bPp.js": {
-    "file": "assets/arc-DVYj6bPp.js",
+  "_arc-MHkkIWH9.js": {
+    "file": "assets/arc-MHkkIWH9.js",
     "name": "arc",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_card-Ok-yAAxD.js": {
-    "file": "assets/card-Ok-yAAxD.js",
+  "_card-DR6qvMfq.js": {
+    "file": "assets/card-DR6qvMfq.js",
     "name": "card",
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html"
     ]
   },
-  "_channel-BY0mxqbs.js": {
-    "file": "assets/channel-BY0mxqbs.js",
+  "_channel-DoSzn-Pl.js": {
+    "file": "assets/channel-DoSzn-Pl.js",
     "name": "channel",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-2E7WHVMD-DirR-hFh.js": {
-    "file": "assets/chunk-2E7WHVMD-DirR-hFh.js",
+  "_chunk-2E7WHVMD-Bz7vaZb2.js": {
+    "file": "assets/chunk-2E7WHVMD-Bz7vaZb2.js",
     "name": "chunk-2E7WHVMD",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-2Q5K7J3B-BRwI5UVY.js": {
-    "file": "assets/chunk-2Q5K7J3B-BRwI5UVY.js",
+  "_chunk-2Q5K7J3B-BSuKPxds.js": {
+    "file": "assets/chunk-2Q5K7J3B-BSuKPxds.js",
     "name": "chunk-2Q5K7J3B",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-4EMNKR2T-DCC2TVDa.js": {
-    "file": "assets/chunk-4EMNKR2T-DCC2TVDa.js",
+  "_chunk-4EMNKR2T-ft7cVBAM.js": {
+    "file": "assets/chunk-4EMNKR2T-ft7cVBAM.js",
     "name": "chunk-4EMNKR2T",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-55XCU76K-D6mZiHri.js": {
-    "file": "assets/chunk-55XCU76K-D6mZiHri.js",
+  "_chunk-55XCU76K-BaMNs_eq.js": {
+    "file": "assets/chunk-55XCU76K-BaMNs_eq.js",
     "name": "chunk-55XCU76K",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-5VM5RSS4-Clqa9MMw.js": {
-    "file": "assets/chunk-5VM5RSS4-Clqa9MMw.js",
+  "_chunk-5VM5RSS4-DaZTAAXT.js": {
+    "file": "assets/chunk-5VM5RSS4-DaZTAAXT.js",
     "name": "chunk-5VM5RSS4",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-JWPE2WC7-BYNX61-P.js": {
-    "file": "assets/chunk-JWPE2WC7-BYNX61-P.js",
+  "_chunk-JWPE2WC7-DRtsXemj.js": {
+    "file": "assets/chunk-JWPE2WC7-DRtsXemj.js",
     "name": "chunk-JWPE2WC7",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-VQ5W62QI-CkIS4FHg.js": {
-    "file": "assets/chunk-VQ5W62QI-CkIS4FHg.js",
+  "_chunk-VQ5W62QI-BBBHSwsN.js": {
+    "file": "assets/chunk-VQ5W62QI-BBBHSwsN.js",
     "name": "chunk-VQ5W62QI",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-XXDRQBXY-DB3Lj_Tn.js": {
-    "file": "assets/chunk-XXDRQBXY-DB3Lj_Tn.js",
+  "_chunk-XXDRQBXY-DejNrj6s.js": {
+    "file": "assets/chunk-XXDRQBXY-DejNrj6s.js",
     "name": "chunk-XXDRQBXY",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js"
+      "_mermaid.core-BJWuDUAM.js"
     ]
   },
-  "_chunk-ZCHMQSOR-Dm1IMZi2.js": {
-    "file": "assets/chunk-ZCHMQSOR-Dm1IMZi2.js",
+  "_chunk-ZCHMQSOR-CzYc7-uL.js": {
+    "file": "assets/chunk-ZCHMQSOR-CzYc7-uL.js",
     "name": "chunk-ZCHMQSOR",
     "imports": [
       "index.html",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_graph-D8UmR1vK.js"
     ],
     "dynamicImports": [
       "node_modules/mermaid/dist/chunks/mermaid.core/sizeCapture-INFHLROL.mjs"
     ]
   },
-  "_cynefin-EF2NZ3EQ-Cis9l5h0.js": {
-    "file": "assets/cynefin-EF2NZ3EQ-Cis9l5h0.js",
+  "_cynefin-EF2NZ3EQ-ltsCf261.js": {
+    "file": "assets/cynefin-EF2NZ3EQ-ltsCf261.js",
     "name": "cynefin-EF2NZ3EQ",
     "imports": [
       "index.html"
@@ -159,18 +171,18 @@
     "file": "assets/feature-terminal-DDGTF8rc.css",
     "src": "_feature-terminal-DDGTF8rc.css"
   },
-  "_flowDiagram-IUGLLWBU-D_Koi-UH.js": {
-    "file": "assets/flowDiagram-IUGLLWBU-D_Koi-UH.js",
+  "_flowDiagram-IUGLLWBU-BI47PVsQ.js": {
+    "file": "assets/flowDiagram-IUGLLWBU-BI47PVsQ.js",
     "name": "flowDiagram-IUGLLWBU",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-5VM5RSS4-Clqa9MMw.js",
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_chunk-55XCU76K-D6mZiHri.js",
+      "_chunk-5VM5RSS4-DaZTAAXT.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_chunk-55XCU76K-BaMNs_eq.js",
       "node_modules/dompurify/dist/purify.es.mjs",
-      "_channel-BY0mxqbs.js"
+      "_channel-DoSzn-Pl.js"
     ]
   },
   "_graph-D8UmR1vK.js": {
@@ -188,32 +200,46 @@
     "file": "assets/init-Gi6I4Gst.js",
     "name": "init"
   },
-  "_label-B2W-DyBW.js": {
-    "file": "assets/label-B2W-DyBW.js",
+  "_key-round-BQevFDL3.js": {
+    "file": "assets/key-round-BQevFDL3.js",
+    "name": "key-round",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_label-DodzpiuD.js": {
+    "file": "assets/label-DodzpiuD.js",
     "name": "label",
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html"
     ]
   },
-  "_linear-q3UVYIKy.js": {
-    "file": "assets/linear-q3UVYIKy.js",
+  "_linear-BB7_BMg6.js": {
+    "file": "assets/linear-BB7_BMg6.js",
     "name": "linear",
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_init-Gi6I4Gst.js",
       "_defaultLocale-DX6XiGOO.js"
     ]
   },
-  "_localDevice-DBUTg8jj.js": {
-    "file": "assets/localDevice-DBUTg8jj.js",
+  "_localDevice-hdeN45lg.js": {
+    "file": "assets/localDevice-hdeN45lg.js",
     "name": "localDevice",
     "imports": [
       "index.html"
     ]
   },
-  "_mermaid.core-DZ6Ueg3B.js": {
-    "file": "assets/mermaid.core-DZ6Ueg3B.js",
+  "_log-out-D-cn0PV3.js": {
+    "file": "assets/log-out-D-cn0PV3.js",
+    "name": "log-out",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_mermaid.core-BJWuDUAM.js": {
+    "file": "assets/mermaid.core-BJWuDUAM.js",
     "name": "mermaid.core",
     "isDynamicEntry": true,
     "imports": [
@@ -228,7 +254,7 @@
       "node_modules/mermaid/dist/chunks/mermaid.core/swimlanes-B3ENRKFQ.mjs",
       "node_modules/mermaid/dist/chunks/mermaid.core/cose-bilkent-JH36ORCC.mjs",
       "node_modules/mermaid/dist/chunks/mermaid.core/c4Diagram-XDPPPE54.mjs",
-      "_flowDiagram-IUGLLWBU-D_Koi-UH.js",
+      "_flowDiagram-IUGLLWBU-BI47PVsQ.js",
       "node_modules/mermaid/dist/chunks/mermaid.core/diagram-TYUNFSNR.mjs",
       "node_modules/mermaid/dist/chunks/mermaid.core/swimlanesDiagram-AYQRV4AK.mjs",
       "node_modules/mermaid/dist/chunks/mermaid.core/erDiagram-KYQIGQAA.mjs",
@@ -243,7 +269,7 @@
       "node_modules/mermaid/dist/chunks/mermaid.core/classDiagram-v2-4MYWR3UA.mjs",
       "node_modules/mermaid/dist/chunks/mermaid.core/stateDiagram-v2-A6IESKWZ.mjs",
       "node_modules/mermaid/dist/chunks/mermaid.core/journeyDiagram-BOSHW7O7.mjs",
-      "_flowDiagram-IUGLLWBU-D_Koi-UH.js",
+      "_flowDiagram-IUGLLWBU-BI47PVsQ.js",
       "node_modules/mermaid/dist/chunks/mermaid.core/timeline-definition-JXYKGLGB.mjs",
       "node_modules/mermaid/dist/chunks/mermaid.core/mindmap-definition-6OY57UG3.mjs",
       "node_modules/mermaid/dist/chunks/mermaid.core/kanban-definition-FNSA4HC5.mjs",
@@ -266,13 +292,6 @@
       "node_modules/mermaid/dist/chunks/mermaid.core/pegDiagram-ECIUJNBX.mjs"
     ]
   },
-  "_message-circle-C9-mngqm.js": {
-    "file": "assets/message-circle-C9-mngqm.js",
-    "name": "message-circle",
-    "imports": [
-      "index.html"
-    ]
-  },
   "_ordinal-Cboi1Yqb.js": {
     "file": "assets/ordinal-Cboi1Yqb.js",
     "name": "ordinal",
@@ -280,37 +299,45 @@
       "_init-Gi6I4Gst.js"
     ]
   },
-  "_plug-D7DMAAov.js": {
-    "file": "assets/plug-D7DMAAov.js",
+  "_plug-C_iEYHWo.js": {
+    "file": "assets/plug-C_iEYHWo.js",
     "name": "plug",
     "imports": [
       "index.html"
     ]
   },
-  "_save-DyCzgs-g.js": {
-    "file": "assets/save-DyCzgs-g.js",
+  "_save-DMSJiQdM.js": {
+    "file": "assets/save-DMSJiQdM.js",
     "name": "save",
     "imports": [
       "index.html"
     ]
   },
-  "_select-B8pxAKWj.js": {
-    "file": "assets/select-B8pxAKWj.js",
+  "_select-B1BLME8f.js": {
+    "file": "assets/select-B1BLME8f.js",
     "name": "select",
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html"
     ]
   },
-  "_server-BcLLc11x.js": {
-    "file": "assets/server-BcLLc11x.js",
+  "_server-OQYmPHe2.js": {
+    "file": "assets/server-OQYmPHe2.js",
     "name": "server",
     "imports": [
       "index.html"
     ]
   },
-  "_switch-fhiJHwjC.js": {
-    "file": "assets/switch-fhiJHwjC.js",
+  "_settingsDrafts-a4_mGn12.js": {
+    "file": "assets/settingsDrafts-a4_mGn12.js",
+    "name": "settingsDrafts",
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "index.html"
+    ]
+  },
+  "_switch-DqxEAJSb.js": {
+    "file": "assets/switch-DqxEAJSb.js",
     "name": "switch",
     "imports": [
       "_vendor-react-psH9patW.js",
@@ -322,15 +349,16 @@
     "name": "vendor-react"
   },
   "index.html": {
-    "file": "assets/index-HDfy-rjo.js",
+    "file": "assets/index-PIKTxYtY.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
+    "isDynamicEntry": true,
     "imports": [
       "_vendor-react-psH9patW.js"
     ],
     "dynamicImports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "node_modules/dompurify/dist/purify.es.mjs",
       "node_modules/@tauri-apps/api/event.js",
       "node_modules/@tauri-apps/api/event.js",
@@ -340,8 +368,8 @@
       "src/pages/KanbanPage.tsx",
       "src/pages/FilesPage.tsx",
       "src/pages/SkillsPage.tsx",
-      "_ConnectorsPage-DH0JHkzk.js",
-      "_SkillsToolsPage-iywXoCgo.js",
+      "src/pages/ConnectorsPage.tsx",
+      "src/pages/SkillsToolsPage.tsx",
       "src/pages/MessagingPage.tsx",
       "src/components/SettingsPanel.tsx",
       "src/components/CommandPalette.tsx",
@@ -349,7 +377,7 @@
       "src/components/OnboardingWizard.tsx"
     ],
     "css": [
-      "assets/index-CswAumBa.css"
+      "assets/index-vkL90s7d.css"
     ]
   },
   "node_modules/@codemirror/lang-cpp/dist/index.js": {
@@ -508,7 +536,7 @@
     "isDynamicEntry": true
   },
   "node_modules/@tauri-apps/api/event.js": {
-    "file": "assets/event-C9FBqQVK.js",
+    "file": "assets/event-DUGu-P2D.js",
     "name": "event",
     "src": "node_modules/@tauri-apps/api/event.js",
     "isDynamicEntry": true,
@@ -524,7 +552,7 @@
     "isDynamicEntry": true
   },
   "node_modules/highlight.js/es/common.js": {
-    "file": "assets/common-MlGWj4NQ.js",
+    "file": "assets/common-2IITy7Bl.js",
     "name": "common",
     "src": "node_modules/highlight.js/es/common.js",
     "isDynamicEntry": true,
@@ -540,29 +568,29 @@
     "isDynamicEntry": true
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/abnfDiagram-WEYOIA3C.mjs": {
-    "file": "assets/abnfDiagram-WEYOIA3C-BNU96mBR.js",
+    "file": "assets/abnfDiagram-WEYOIA3C-qC80274B.js",
     "name": "abnfDiagram-WEYOIA3C",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/abnfDiagram-WEYOIA3C.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-2E7WHVMD-DirR-hFh.js",
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-2E7WHVMD-Bz7vaZb2.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/architectureDiagram-ZHVYKT53.mjs": {
-    "file": "assets/architectureDiagram-ZHVYKT53-C_GvhjC_.js",
+    "file": "assets/architectureDiagram-ZHVYKT53-C22EriBD.js",
     "name": "architectureDiagram-ZHVYKT53",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/architectureDiagram-ZHVYKT53.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "_cytoscape.esm-BDkkwuE4.js",
       "_vendor-react-psH9patW.js",
       "index.html",
@@ -570,56 +598,56 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/blockDiagram-RJAE7QA3.mjs": {
-    "file": "assets/blockDiagram-RJAE7QA3-BCG0nms_.js",
+    "file": "assets/blockDiagram-RJAE7QA3-BJ4LT_TF.js",
     "name": "blockDiagram-RJAE7QA3",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/blockDiagram-RJAE7QA3.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-5VM5RSS4-Clqa9MMw.js",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_chunk-5VM5RSS4-DaZTAAXT.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_graph-D8UmR1vK.js",
-      "_channel-BY0mxqbs.js",
+      "_channel-DoSzn-Pl.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/c4Diagram-XDPPPE54.mjs": {
-    "file": "assets/c4Diagram-XDPPPE54-BGwPcNNE.js",
+    "file": "assets/c4Diagram-XDPPPE54-BhcLk2xI.js",
     "name": "c4Diagram-XDPPPE54",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/c4Diagram-XDPPPE54.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-55XCU76K-D6mZiHri.js",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_chunk-55XCU76K-BaMNs_eq.js",
+      "_mermaid.core-BJWuDUAM.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/classDiagram-v2-4MYWR3UA.mjs": {
-    "file": "assets/classDiagram-v2-4MYWR3UA-B5CPb1BI.js",
+    "file": "assets/classDiagram-v2-4MYWR3UA-BDJELPZv.js",
     "name": "classDiagram-v2-4MYWR3UA",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/classDiagram-v2-4MYWR3UA.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-5VM5RSS4-Clqa9MMw.js",
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_chunk-55XCU76K-D6mZiHri.js",
+      "_chunk-5VM5RSS4-DaZTAAXT.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_chunk-55XCU76K-BaMNs_eq.js",
       "node_modules/dompurify/dist/purify.es.mjs",
       "index.html",
       "_vendor-react-psH9patW.js"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/cose-bilkent-JH36ORCC.mjs": {
-    "file": "assets/cose-bilkent-JH36ORCC-C6BM_Nik.js",
+    "file": "assets/cose-bilkent-JH36ORCC-Ckn4ifUA.js",
     "name": "cose-bilkent-JH36ORCC",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/cose-bilkent-JH36ORCC.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_cytoscape.esm-BDkkwuE4.js",
       "_vendor-react-psH9patW.js",
       "index.html",
@@ -627,27 +655,27 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/cynefinDiagram-WF24UDRP.mjs": {
-    "file": "assets/cynefinDiagram-WF24UDRP-D_WHt6T1.js",
+    "file": "assets/cynefinDiagram-WF24UDRP-CD3E7yl9.js",
     "name": "cynefinDiagram-WF24UDRP",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/cynefinDiagram-WF24UDRP.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/dagre-NK4GIZVX.mjs": {
-    "file": "assets/dagre-NK4GIZVX-D8W6U-fN.js",
+    "file": "assets/dagre-NK4GIZVX-C5t1nM44.js",
     "name": "dagre-NK4GIZVX",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/dagre-NK4GIZVX.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-ZCHMQSOR-Dm1IMZi2.js",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_chunk-ZCHMQSOR-CzYc7-uL.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_graph-D8UmR1vK.js",
       "index.html",
       "_vendor-react-psH9patW.js",
@@ -655,15 +683,15 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/diagram-CBK3MWTC.mjs": {
-    "file": "assets/diagram-CBK3MWTC-Cm9HGlTa.js",
+    "file": "assets/diagram-CBK3MWTC-C2vOLh0p.js",
     "name": "diagram-CBK3MWTC",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/diagram-CBK3MWTC.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "_defaultLocale-DX6XiGOO.js",
       "_ordinal-Cboi1Yqb.js",
       "index.html",
@@ -673,103 +701,103 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/diagram-I5XIIV2D.mjs": {
-    "file": "assets/diagram-I5XIIV2D-C7aHUM12.js",
+    "file": "assets/diagram-I5XIIV2D-D0kpqbOO.js",
     "name": "diagram-I5XIIV2D",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/diagram-I5XIIV2D.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/diagram-ODIL2UCW.mjs": {
-    "file": "assets/diagram-ODIL2UCW-DUO9sOPP.js",
+    "file": "assets/diagram-ODIL2UCW-DwCWbcnt.js",
     "name": "diagram-ODIL2UCW",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/diagram-ODIL2UCW.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-2Q5K7J3B-BRwI5UVY.js",
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-2Q5K7J3B-BSuKPxds.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/diagram-PFBEJUXE.mjs": {
-    "file": "assets/diagram-PFBEJUXE-CeWc4Vh4.js",
+    "file": "assets/diagram-PFBEJUXE-D8CPDhjQ.js",
     "name": "diagram-PFBEJUXE",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/diagram-PFBEJUXE.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/diagram-RJA3I4VV.mjs": {
-    "file": "assets/diagram-RJA3I4VV-DcpMgkAP.js",
+    "file": "assets/diagram-RJA3I4VV-HzEYXp-R.js",
     "name": "diagram-RJA3I4VV",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/diagram-RJA3I4VV.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/diagram-TYUNFSNR.mjs": {
-    "file": "assets/diagram-TYUNFSNR-D3X89bkO.js",
+    "file": "assets/diagram-TYUNFSNR-B5dNR07q.js",
     "name": "diagram-TYUNFSNR",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/diagram-TYUNFSNR.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-5VM5RSS4-Clqa9MMw.js",
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_chunk-55XCU76K-D6mZiHri.js",
+      "_chunk-5VM5RSS4-DaZTAAXT.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_chunk-55XCU76K-BaMNs_eq.js",
       "node_modules/dompurify/dist/purify.es.mjs",
-      "_channel-BY0mxqbs.js",
+      "_channel-DoSzn-Pl.js",
       "index.html",
       "_vendor-react-psH9patW.js"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/ebnfDiagram-V4P3TTPT.mjs": {
-    "file": "assets/ebnfDiagram-V4P3TTPT-wo1mTB07.js",
+    "file": "assets/ebnfDiagram-V4P3TTPT-CVgB2Dn4.js",
     "name": "ebnfDiagram-V4P3TTPT",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/ebnfDiagram-V4P3TTPT.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-2E7WHVMD-DirR-hFh.js",
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-2E7WHVMD-Bz7vaZb2.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/elk-QONTBCTQ.mjs": {
-    "file": "assets/elk-QONTBCTQ-Cpws3y52.js",
+    "file": "assets/elk-QONTBCTQ-Dej240QE.js",
     "name": "elk-QONTBCTQ",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/elk-QONTBCTQ.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-4EMNKR2T-DCC2TVDa.js",
-      "_chunk-ZCHMQSOR-Dm1IMZi2.js",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_chunk-4EMNKR2T-ft7cVBAM.js",
+      "_chunk-ZCHMQSOR-CzYc7-uL.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_vendor-react-psH9patW.js",
       "index.html",
       "_graph-D8UmR1vK.js",
@@ -777,29 +805,29 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/erDiagram-KYQIGQAA.mjs": {
-    "file": "assets/erDiagram-KYQIGQAA-d688UCJL.js",
+    "file": "assets/erDiagram-KYQIGQAA-BN37eEdN.js",
     "name": "erDiagram-KYQIGQAA",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/erDiagram-KYQIGQAA.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_channel-BY0mxqbs.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_channel-DoSzn-Pl.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/ganttDiagram-R7GPNTJY.mjs": {
-    "file": "assets/ganttDiagram-R7GPNTJY-BLFLKp6g.js",
+    "file": "assets/ganttDiagram-R7GPNTJY-Cjn76z0w.js",
     "name": "ganttDiagram-R7GPNTJY",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/ganttDiagram-R7GPNTJY.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_vendor-react-psH9patW.js",
-      "_linear-q3UVYIKy.js",
+      "_linear-BB7_BMg6.js",
       "_init-Gi6I4Gst.js",
       "index.html",
       "node_modules/dompurify/dist/purify.es.mjs",
@@ -807,112 +835,112 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/gitGraphDiagram-PDYL7XHY.mjs": {
-    "file": "assets/gitGraphDiagram-PDYL7XHY-iXIccNP2.js",
+    "file": "assets/gitGraphDiagram-PDYL7XHY-BPzwTpoz.js",
     "name": "gitGraphDiagram-PDYL7XHY",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/gitGraphDiagram-PDYL7XHY.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-2Q5K7J3B-BRwI5UVY.js",
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-2Q5K7J3B-BSuKPxds.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/infoDiagram-MVDRKAX5.mjs": {
-    "file": "assets/infoDiagram-MVDRKAX5-CTtZGIej.js",
+    "file": "assets/infoDiagram-MVDRKAX5-DJT_UcQI.js",
     "name": "infoDiagram-MVDRKAX5",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/infoDiagram-MVDRKAX5.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/ishikawaDiagram-HPEHV2GE.mjs": {
-    "file": "assets/ishikawaDiagram-HPEHV2GE-BALn57ds.js",
+    "file": "assets/ishikawaDiagram-HPEHV2GE-BCoqeaL6.js",
     "name": "ishikawaDiagram-HPEHV2GE",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/ishikawaDiagram-HPEHV2GE.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/journeyDiagram-BOSHW7O7.mjs": {
-    "file": "assets/journeyDiagram-BOSHW7O7-Dq-ml4Bh.js",
+    "file": "assets/journeyDiagram-BOSHW7O7-CM1OVBMS.js",
     "name": "journeyDiagram-BOSHW7O7",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/journeyDiagram-BOSHW7O7.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-5VM5RSS4-Clqa9MMw.js",
-      "_chunk-55XCU76K-D6mZiHri.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_arc-DVYj6bPp.js",
+      "_chunk-5VM5RSS4-DaZTAAXT.js",
+      "_chunk-55XCU76K-BaMNs_eq.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_arc-MHkkIWH9.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/kanban-definition-FNSA4HC5.mjs": {
-    "file": "assets/kanban-definition-FNSA4HC5-NeGxVj9d.js",
+    "file": "assets/kanban-definition-FNSA4HC5-CubQae4B.js",
     "name": "kanban-definition-FNSA4HC5",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/kanban-definition-FNSA4HC5.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_chunk-5VM5RSS4-Clqa9MMw.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_chunk-5VM5RSS4-DaZTAAXT.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/mindmap-definition-6OY57UG3.mjs": {
-    "file": "assets/mindmap-definition-6OY57UG3-DLcmZfWz.js",
+    "file": "assets/mindmap-definition-6OY57UG3-B-qkLpDo.js",
     "name": "mindmap-definition-6OY57UG3",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/mindmap-definition-6OY57UG3.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_mermaid.core-BJWuDUAM.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/pegDiagram-ECIUJNBX.mjs": {
-    "file": "assets/pegDiagram-ECIUJNBX-B8BWQAfI.js",
+    "file": "assets/pegDiagram-ECIUJNBX-a_lrceC-.js",
     "name": "pegDiagram-ECIUJNBX",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/pegDiagram-ECIUJNBX.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-2E7WHVMD-DirR-hFh.js",
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-2E7WHVMD-Bz7vaZb2.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/pieDiagram-GNMPY74T.mjs": {
-    "file": "assets/pieDiagram-GNMPY74T-BeULYmCp.js",
+    "file": "assets/pieDiagram-GNMPY74T-DmpUjsKR.js",
     "name": "pieDiagram-GNMPY74T",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/pieDiagram-GNMPY74T.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
-      "_arc-DVYj6bPp.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
+      "_arc-MHkkIWH9.js",
       "_ordinal-Cboi1Yqb.js",
       "index.html",
       "_vendor-react-psH9patW.js",
@@ -921,13 +949,13 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/quadrantDiagram-D57K4MC3.mjs": {
-    "file": "assets/quadrantDiagram-D57K4MC3-xmjTmrHI.js",
+    "file": "assets/quadrantDiagram-D57K4MC3-Dgr2b5v8.js",
     "name": "quadrantDiagram-D57K4MC3",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/quadrantDiagram-D57K4MC3.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_linear-q3UVYIKy.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_linear-BB7_BMg6.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs",
@@ -936,41 +964,41 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/railroadDiagram-Y72NRBL7.mjs": {
-    "file": "assets/railroadDiagram-Y72NRBL7-DpbgY0RN.js",
+    "file": "assets/railroadDiagram-Y72NRBL7-BfiUwT-A.js",
     "name": "railroadDiagram-Y72NRBL7",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/railroadDiagram-Y72NRBL7.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-2E7WHVMD-DirR-hFh.js",
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-2E7WHVMD-Bz7vaZb2.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/requirementDiagram-EQYSW5RA.mjs": {
-    "file": "assets/requirementDiagram-EQYSW5RA-Bon7kU4t.js",
+    "file": "assets/requirementDiagram-EQYSW5RA-DZfJhHX5.js",
     "name": "requirementDiagram-EQYSW5RA",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/requirementDiagram-EQYSW5RA.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_mermaid.core-BJWuDUAM.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/sankeyDiagram-SY24JHO5.mjs": {
-    "file": "assets/sankeyDiagram-SY24JHO5-D7GtE80f.js",
+    "file": "assets/sankeyDiagram-SY24JHO5-ux6H3mz1.js",
     "name": "sankeyDiagram-SY24JHO5",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/sankeyDiagram-SY24JHO5.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_ordinal-Cboi1Yqb.js",
       "index.html",
       "_vendor-react-psH9patW.js",
@@ -979,55 +1007,55 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/sequenceDiagram-BLEHNHQU.mjs": {
-    "file": "assets/sequenceDiagram-BLEHNHQU-Bi86VOka.js",
+    "file": "assets/sequenceDiagram-BLEHNHQU-CeX3s_SH.js",
     "name": "sequenceDiagram-BLEHNHQU",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/sequenceDiagram-BLEHNHQU.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-2Q5K7J3B-BRwI5UVY.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_chunk-55XCU76K-D6mZiHri.js",
+      "_chunk-2Q5K7J3B-BSuKPxds.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_chunk-55XCU76K-BaMNs_eq.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/sizeCapture-INFHLROL.mjs": {
-    "file": "assets/sizeCapture-INFHLROL-B3rJIaH5.js",
+    "file": "assets/sizeCapture-INFHLROL-CxRJW-Dm.js",
     "name": "sizeCapture-INFHLROL",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/sizeCapture-INFHLROL.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/stateDiagram-v2-A6IESKWZ.mjs": {
-    "file": "assets/stateDiagram-v2-A6IESKWZ-CkLp5et8.js",
+    "file": "assets/stateDiagram-v2-A6IESKWZ-BiVF6pv5.js",
     "name": "stateDiagram-v2-A6IESKWZ",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/stateDiagram-v2-A6IESKWZ.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_chunk-55XCU76K-D6mZiHri.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_chunk-55XCU76K-BaMNs_eq.js",
       "node_modules/dompurify/dist/purify.es.mjs",
       "index.html",
       "_vendor-react-psH9patW.js"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/swimlanes-B3ENRKFQ.mjs": {
-    "file": "assets/swimlanes-B3ENRKFQ-Chg6bcHk.js",
+    "file": "assets/swimlanes-B3ENRKFQ-2eaF4O38.js",
     "name": "swimlanes-B3ENRKFQ",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/swimlanes-B3ENRKFQ.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-4EMNKR2T-DCC2TVDa.js",
-      "_chunk-ZCHMQSOR-Dm1IMZi2.js",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_chunk-4EMNKR2T-ft7cVBAM.js",
+      "_chunk-ZCHMQSOR-CzYc7-uL.js",
+      "_mermaid.core-BJWuDUAM.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "_graph-D8UmR1vK.js",
@@ -1035,86 +1063,86 @@
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/swimlanesDiagram-AYQRV4AK.mjs": {
-    "file": "assets/swimlanesDiagram-AYQRV4AK-DxLpMeq4.js",
+    "file": "assets/swimlanesDiagram-AYQRV4AK-BHz1YlG1.js",
     "name": "swimlanesDiagram-AYQRV4AK",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/swimlanesDiagram-AYQRV4AK.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_flowDiagram-IUGLLWBU-D_Koi-UH.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_chunk-5VM5RSS4-Clqa9MMw.js",
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_chunk-55XCU76K-D6mZiHri.js",
+      "_flowDiagram-IUGLLWBU-BI47PVsQ.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_chunk-5VM5RSS4-DaZTAAXT.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_chunk-55XCU76K-BaMNs_eq.js",
       "node_modules/dompurify/dist/purify.es.mjs",
-      "_channel-BY0mxqbs.js",
+      "_channel-DoSzn-Pl.js",
       "index.html",
       "_vendor-react-psH9patW.js"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/timeline-definition-JXYKGLGB.mjs": {
-    "file": "assets/timeline-definition-JXYKGLGB-DENAZAu5.js",
+    "file": "assets/timeline-definition-JXYKGLGB-BMsBOe3d.js",
     "name": "timeline-definition-JXYKGLGB",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/timeline-definition-JXYKGLGB.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_arc-DVYj6bPp.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_arc-MHkkIWH9.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/usecaseDiagram-WPOLBNNX.mjs": {
-    "file": "assets/usecaseDiagram-WPOLBNNX-CG6yoOtC.js",
+    "file": "assets/usecaseDiagram-WPOLBNNX-Co_d5dmZ.js",
     "name": "usecaseDiagram-WPOLBNNX",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/usecaseDiagram-WPOLBNNX.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-XXDRQBXY-DB3Lj_Tn.js",
-      "_chunk-VQ5W62QI-CkIS4FHg.js",
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_chunk-XXDRQBXY-DejNrj6s.js",
+      "_chunk-VQ5W62QI-BBBHSwsN.js",
+      "_mermaid.core-BJWuDUAM.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/vennDiagram-Q3Y3IDCW.mjs": {
-    "file": "assets/vennDiagram-Q3Y3IDCW-BouI2o7y.js",
+    "file": "assets/vennDiagram-Q3Y3IDCW-CxXdcciu.js",
     "name": "vennDiagram-Q3Y3IDCW",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/vennDiagram-Q3Y3IDCW.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/wardleyDiagram-IVAIDKWA.mjs": {
-    "file": "assets/wardleyDiagram-IVAIDKWA-DRnwXRAk.js",
+    "file": "assets/wardleyDiagram-IVAIDKWA-CbcnNFKE.js",
     "name": "wardleyDiagram-IVAIDKWA",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/wardleyDiagram-IVAIDKWA.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_chunk-JWPE2WC7-BYNX61-P.js",
-      "_mermaid.core-DZ6Ueg3B.js",
-      "_cynefin-EF2NZ3EQ-Cis9l5h0.js",
+      "_chunk-JWPE2WC7-DRtsXemj.js",
+      "_mermaid.core-BJWuDUAM.js",
+      "_cynefin-EF2NZ3EQ-ltsCf261.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs"
     ]
   },
   "node_modules/mermaid/dist/chunks/mermaid.core/xychartDiagram-4URNHDU4.mjs": {
-    "file": "assets/xychartDiagram-4URNHDU4-tYPH_L8M.js",
+    "file": "assets/xychartDiagram-4URNHDU4-DlrZD8lp.js",
     "name": "xychartDiagram-4URNHDU4",
     "src": "node_modules/mermaid/dist/chunks/mermaid.core/xychartDiagram-4URNHDU4.mjs",
     "isDynamicEntry": true,
     "imports": [
-      "_mermaid.core-DZ6Ueg3B.js",
+      "_mermaid.core-BJWuDUAM.js",
       "_init-Gi6I4Gst.js",
       "_ordinal-Cboi1Yqb.js",
-      "_linear-q3UVYIKy.js",
+      "_linear-BB7_BMg6.js",
       "index.html",
       "_vendor-react-psH9patW.js",
       "node_modules/dompurify/dist/purify.es.mjs",
@@ -1122,19 +1150,18 @@
     ]
   },
   "src/components/CommandPalette.tsx": {
-    "file": "assets/CommandPalette-QywVTJrc.js",
+    "file": "assets/CommandPalette-BfMxnkWo.js",
     "name": "CommandPalette",
     "src": "src/components/CommandPalette.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html",
-      "_message-circle-C9-mngqm.js",
-      "_plug-D7DMAAov.js"
+      "_plug-C_iEYHWo.js"
     ]
   },
   "src/components/KeyboardShortcutsModal.tsx": {
-    "file": "assets/KeyboardShortcutsModal-CcR06wsC.js",
+    "file": "assets/KeyboardShortcutsModal-CGBi2sFy.js",
     "name": "KeyboardShortcutsModal",
     "src": "src/components/KeyboardShortcutsModal.tsx",
     "isDynamicEntry": true,
@@ -1144,42 +1171,33 @@
     ]
   },
   "src/components/OnboardingWizard.tsx": {
-    "file": "assets/OnboardingWizard-kre1agEp.js",
+    "file": "assets/OnboardingWizard-B1Tk8OlP.js",
     "name": "OnboardingWizard",
     "src": "src/components/OnboardingWizard.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html",
-      "_localDevice-DBUTg8jj.js",
-      "_server-BcLLc11x.js"
+      "_localDevice-hdeN45lg.js",
+      "_key-round-BQevFDL3.js",
+      "_server-OQYmPHe2.js"
     ]
   },
   "src/components/SettingsPanel.tsx": {
-    "file": "assets/SettingsPanel-CV7N65Zy.js",
+    "file": "assets/SettingsPanel-BRNP03M7.js",
     "name": "SettingsPanel",
     "src": "src/components/SettingsPanel.tsx",
     "isDynamicEntry": true,
     "imports": [
-      "_vendor-react-psH9patW.js",
       "index.html",
-      "_card-Ok-yAAxD.js",
-      "_localDevice-DBUTg8jj.js",
-      "_switch-fhiJHwjC.js",
-      "_label-B2W-DyBW.js",
-      "_server-BcLLc11x.js",
-      "_plug-D7DMAAov.js",
-      "_SkillsToolsPage-iywXoCgo.js",
-      "_select-B8pxAKWj.js",
-      "_save-DyCzgs-g.js",
-      "src/pages/MessagingPage.tsx",
-      "_message-circle-C9-mngqm.js",
-      "_ConnectorsPage-DH0JHkzk.js",
-      "_SkillQualitySignals-Xuwcn8DH.js"
+      "_vendor-react-psH9patW.js"
+    ],
+    "dynamicImports": [
+      "_SettingsPanelContent--um-o4kR.js"
     ]
   },
   "src/components/files/CodeEditor.tsx": {
-    "file": "assets/CodeEditor-DoEyvBRw.js",
+    "file": "assets/CodeEditor-B6-DHoYZ.js",
     "name": "CodeEditor",
     "src": "src/components/files/CodeEditor.tsx",
     "isDynamicEntry": true,
@@ -1219,8 +1237,57 @@
       "node_modules/@codemirror/legacy-modes/mode/toml.js"
     ]
   },
+  "src/components/settings/ConnectorsPage.tsx": {
+    "file": "assets/ConnectorsPage-RjabKBaz.js",
+    "name": "ConnectorsPage",
+    "src": "src/components/settings/ConnectorsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "index.html",
+      "_card-DR6qvMfq.js",
+      "_label-DodzpiuD.js",
+      "_plug-C_iEYHWo.js",
+      "_log-out-D-cn0PV3.js",
+      "_key-round-BQevFDL3.js",
+      "_server-OQYmPHe2.js"
+    ]
+  },
+  "src/components/settings/MessagingPage.tsx": {
+    "file": "assets/MessagingPage-CrIwa6Wa.js",
+    "name": "MessagingPage",
+    "src": "src/components/settings/MessagingPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "_settingsDrafts-a4_mGn12.js",
+      "index.html",
+      "_switch-DqxEAJSb.js",
+      "_save-DMSJiQdM.js"
+    ]
+  },
+  "src/components/settings/SkillsToolsPage.tsx": {
+    "file": "assets/SkillsToolsPage-BaflvSOw.js",
+    "name": "SkillsToolsPage",
+    "src": "src/components/settings/SkillsToolsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "_settingsDrafts-a4_mGn12.js",
+      "index.html",
+      "_switch-DqxEAJSb.js",
+      "src/pages/ConnectorsPage.tsx",
+      "_OAuthProvidersCard-CZcPLNyu.js",
+      "_card-DR6qvMfq.js",
+      "_label-DodzpiuD.js",
+      "_key-round-BQevFDL3.js",
+      "_save-DMSJiQdM.js",
+      "_SkillQualitySignals-Xuwcn8DH.js",
+      "_log-out-D-cn0PV3.js"
+    ]
+  },
   "src/components/workspace/WorkspaceTerminalPanel.tsx": {
-    "file": "assets/WorkspaceTerminalPanel-CYHm4bxx.js",
+    "file": "assets/WorkspaceTerminalPanel-CXgbfegC.js",
     "name": "WorkspaceTerminalPanel",
     "src": "src/components/workspace/WorkspaceTerminalPanel.tsx",
     "isDynamicEntry": true,
@@ -1230,35 +1297,113 @@
       "index.html"
     ]
   },
+  "src/pages/AdminPage.tsx": {
+    "file": "assets/AdminPage-3PmiT1_3.js",
+    "name": "AdminPage",
+    "src": "src/pages/AdminPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "_settingsDrafts-a4_mGn12.js",
+      "index.html",
+      "_SettingsPanelContent--um-o4kR.js",
+      "_server-OQYmPHe2.js",
+      "_plug-C_iEYHWo.js",
+      "_localDevice-hdeN45lg.js",
+      "_label-DodzpiuD.js",
+      "_select-B1BLME8f.js",
+      "_switch-DqxEAJSb.js",
+      "_OAuthProvidersCard-CZcPLNyu.js",
+      "_card-DR6qvMfq.js",
+      "_log-out-D-cn0PV3.js"
+    ]
+  },
+  "src/pages/AnalyticsPage.tsx": {
+    "file": "assets/AnalyticsPage-CwBj6UAL.js",
+    "name": "AnalyticsPage",
+    "src": "src/pages/AnalyticsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "index.html",
+      "_card-DR6qvMfq.js",
+      "_localDevice-hdeN45lg.js"
+    ]
+  },
+  "src/pages/AppearancePage.tsx": {
+    "file": "assets/AppearancePage-DCrWkm_X.js",
+    "name": "AppearancePage",
+    "src": "src/pages/AppearancePage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "index.html",
+      "_switch-DqxEAJSb.js"
+    ]
+  },
+  "src/pages/ConfigPage.tsx": {
+    "file": "assets/ConfigPage-DGUis5w-.js",
+    "name": "ConfigPage",
+    "src": "src/pages/ConfigPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "index.html",
+      "_settingsDrafts-a4_mGn12.js",
+      "_OAuthProvidersCard-CZcPLNyu.js",
+      "_SettingsPanelContent--um-o4kR.js",
+      "_label-DodzpiuD.js",
+      "_switch-DqxEAJSb.js",
+      "_select-B1BLME8f.js",
+      "_save-DMSJiQdM.js",
+      "_card-DR6qvMfq.js",
+      "_log-out-D-cn0PV3.js",
+      "_localDevice-hdeN45lg.js",
+      "_plug-C_iEYHWo.js"
+    ]
+  },
+  "src/pages/ConnectorsPage.tsx": {
+    "file": "assets/ConnectorsPage-Lj0HrYIx.js",
+    "name": "ConnectorsPage",
+    "src": "src/pages/ConnectorsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_vendor-react-psH9patW.js"
+    ],
+    "dynamicImports": [
+      "src/components/settings/ConnectorsPage.tsx"
+    ]
+  },
   "src/pages/CronPage.tsx": {
-    "file": "assets/CronPage-D_P9StxH.js",
+    "file": "assets/CronPage-DH9lKL6X.js",
     "name": "CronPage",
     "src": "src/pages/CronPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html",
-      "_card-Ok-yAAxD.js",
-      "_label-B2W-DyBW.js",
-      "_select-B8pxAKWj.js"
+      "_card-DR6qvMfq.js",
+      "_label-DodzpiuD.js",
+      "_select-B1BLME8f.js"
     ]
   },
   "src/pages/FilesPage.tsx": {
-    "file": "assets/FilesPage-BbimHEjl.js",
+    "file": "assets/FilesPage-Dwzw7FPB.js",
     "name": "FilesPage",
     "src": "src/pages/FilesPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
       "_vendor-react-psH9patW.js",
-      "_save-DyCzgs-g.js"
+      "_save-DMSJiQdM.js"
     ],
     "dynamicImports": [
       "src/components/files/CodeEditor.tsx"
     ]
   },
   "src/pages/KanbanPage.tsx": {
-    "file": "assets/KanbanPage-BH61lezq.js",
+    "file": "assets/KanbanPage-DCzRoYxB.js",
     "name": "KanbanPage",
     "src": "src/pages/KanbanPage.tsx",
     "isDynamicEntry": true,
@@ -1267,29 +1412,97 @@
       "index.html"
     ]
   },
-  "src/pages/MessagingPage.tsx": {
-    "file": "assets/MessagingPage-DvNO0MJo.js",
-    "name": "MessagingPage",
-    "src": "src/pages/MessagingPage.tsx",
+  "src/pages/LogsPage.tsx": {
+    "file": "assets/LogsPage-B7iV-Ig3.js",
+    "name": "LogsPage",
+    "src": "src/pages/LogsPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html",
-      "_switch-fhiJHwjC.js",
-      "_save-DyCzgs-g.js"
+      "_card-DR6qvMfq.js",
+      "_switch-DqxEAJSb.js",
+      "_label-DodzpiuD.js"
+    ]
+  },
+  "src/pages/MemoryPage.tsx": {
+    "file": "assets/MemoryPage-D-nns9Ej.js",
+    "name": "MemoryPage",
+    "src": "src/pages/MemoryPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "_settingsDrafts-a4_mGn12.js",
+      "index.html"
+    ]
+  },
+  "src/pages/MessagingPage.tsx": {
+    "file": "assets/MessagingPage-DiN32_G8.js",
+    "name": "MessagingPage",
+    "src": "src/pages/MessagingPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_vendor-react-psH9patW.js"
+    ],
+    "dynamicImports": [
+      "src/components/settings/MessagingPage.tsx"
     ]
   },
   "src/pages/SkillsPage.tsx": {
-    "file": "assets/SkillsPage-ULbE-nzk.js",
+    "file": "assets/SkillsPage-DXSbIazF.js",
     "name": "SkillsPage",
     "src": "src/pages/SkillsPage.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_vendor-react-psH9patW.js",
       "index.html",
-      "_card-Ok-yAAxD.js",
-      "_switch-fhiJHwjC.js",
+      "_card-DR6qvMfq.js",
+      "_switch-DqxEAJSb.js",
       "_SkillQualitySignals-Xuwcn8DH.js"
+    ]
+  },
+  "src/pages/SkillsToolsPage.tsx": {
+    "file": "assets/SkillsToolsPage-BXad6noJ.js",
+    "name": "SkillsToolsPage",
+    "src": "src/pages/SkillsToolsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_vendor-react-psH9patW.js"
+    ],
+    "dynamicImports": [
+      "src/components/settings/SkillsToolsPage.tsx"
+    ]
+  },
+  "src/pages/StatusPage.tsx": {
+    "file": "assets/StatusPage-B6Zi_Oem.js",
+    "name": "StatusPage",
+    "src": "src/pages/StatusPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "index.html",
+      "_card-DR6qvMfq.js",
+      "_localDevice-hdeN45lg.js",
+      "_SettingsPanelContent--um-o4kR.js",
+      "_settingsDrafts-a4_mGn12.js",
+      "_label-DodzpiuD.js",
+      "_select-B1BLME8f.js",
+      "_switch-DqxEAJSb.js",
+      "_OAuthProvidersCard-CZcPLNyu.js",
+      "_log-out-D-cn0PV3.js",
+      "_plug-C_iEYHWo.js"
+    ]
+  },
+  "src/pages/UpdatesPage.tsx": {
+    "file": "assets/UpdatesPage-D-vZ2vn0.js",
+    "name": "UpdatesPage",
+    "src": "src/pages/UpdatesPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-react-psH9patW.js",
+      "index.html"
     ]
   }
 }
