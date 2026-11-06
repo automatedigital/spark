@@ -10,6 +10,11 @@ function graph(root, source) {
   const keys = new Set();
   function visit(key) { if (keys.has(key)) return; keys.add(key); for (const dep of manifest[key].imports || []) visit(dep); }
   visit(start);
+  // Include the deferred Model body, not just its small dialog entry.
+  if (source?.endsWith("SettingsPanel.tsx")) {
+    const body = Object.keys(manifest).find((key) => key.endsWith("SettingsPanelContent.tsx") || manifest[key].name === "SettingsPanelContent");
+    if (body) visit(body);
+  }
   const js = [...keys].filter((key) => manifest[key].file.endsWith(".js"));
   return { keys: [...keys], bytes: js.reduce((n, key) => n + gzipSync(readFileSync(path.join(root, manifest[key].file))).length, 0) };
 }

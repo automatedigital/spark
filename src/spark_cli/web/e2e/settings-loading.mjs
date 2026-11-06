@@ -31,6 +31,8 @@ try {
   for (let run = 0; run < 5; run++) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
+    page.on("pageerror", (error) => console.error(error));
+    page.on("console", (message) => { if (message.type() === "error") console.error(message.text()); });
     const requests = [];
     await page.route("**/api/**", async (route) => {
       const url = new URL(route.request().url());
@@ -80,8 +82,29 @@ try {
       await tab("MCP").click();
       assert.equal(await page.getByPlaceholder("filesystem").inputValue(), "");
       await page.getByPlaceholder("filesystem").fill("remote-profile-draft");
-      // Retire the entire draft owner on the existing profile scope event.
+      // Retire the entire draft owner while an old scope's config is in flight.
+      let releaseOldConfig, observeOldConfig;
+      const oldConfigGate = new Promise((resolve) => { releaseOldConfig = resolve; });
+      const oldConfigSeen = new Promise((resolve) => { observeOldConfig = resolve; });
+      let heldConfig = false;
+      await page.route("**/api/config", async (route) => {
+        if (heldConfig) return route.fallback();
+        heldConfig = true;
+        observeOldConfig();
+        await oldConfigGate;
+        await route.fulfill({ json: { model_provider: "custom", model: "retired-model", model_base_url: "http://retired-scope.invalid" } });
+      });
+      await tab("Model").click();
+      await oldConfigSeen;
       await page.getByRole("button", { name: "Switch fixture profile" }).evaluate((el) => el.click());
+      await page.locator('input[value="http://synthetic.invalid"]').waitFor();
+      const oldConfigReturned = page.waitForResponse((response) => response.url().endsWith("/api/config") && response.request().method() === "GET");
+      releaseOldConfig();
+      await oldConfigReturned;
+      await tab("Chat").click();
+      await tab("Model").click();
+      await page.locator('input[value="http://synthetic.invalid"]').waitFor();
+      assert.equal(await page.locator('input[value="http://retired-scope.invalid"]').count(), 0);
       await tab("MCP").click();
       assert.equal(await page.getByPlaceholder("filesystem").inputValue(), "");
       await page.getByRole("button", { name: "Close settings" }).click();
