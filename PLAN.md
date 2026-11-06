@@ -344,6 +344,23 @@ Each task below is a separate agent assignment and PR. No implementation agents 
 
 **Accept.** Keyboard-only flows: change model, find memory, test MCP, edit a schedule, return to the originating thread. Each common setting is reachable in at most two explicit navigation selections after opening Settings; search takes users to the exact labelled control. Test old deep links, remote/local profile switch, unsaved changes and small screens. No duplicate destinations/dead palette actions; SP09 lazy chunk/network budgets remain satisfied.
 
+## Scheduling refinement — 2026-11-06
+
+To use all five authorised parallel slots without shared-file writers, SP17,
+SP19 and SP20 may implement from green SP01 head `a12205a5` now. Source review
+confirms cron already exposes provider resolution/catalogue seams, terminal
+ownership can be fixed within its own component, and file browsing can use native
+AbortController plus a dedicated domain client. Their original SP10/SP04 links
+remain integration ordering/compatibility checks, not hard implementation blockers.
+SP17 reuses existing runtime/provider resolution (no new catalogue); SP19/SP20
+must not invent a competing generic transport. SP20 owns workspace tree/list routes
+and a new file-tree client; SP19 must not edit workspace routes or api_workspace.
+SP17 owns cron modules/routes/page/client. All three leave shared api.ts/apiTypes,
+SessionDB, web_server, SettingsPanel, config, manifests, lockfiles and bundles to
+their existing owners. SP04/SP10 later retain these domain contracts when integrated.
+This changes scheduling only; every packet's full behaviour, tests and performance
+acceptance remains required. No missing prerequisite is silently counted complete.
+
 ## Dispatch and integration map
 
 Priority numbers above are authoritative; this map prevents concurrent writers from turning 25 independent PRs into an integration rewrite.
