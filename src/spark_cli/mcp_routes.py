@@ -6,18 +6,12 @@ Extracted from web_server.py, which declared these directly on the app.
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from spark_cli.admin_runs import (
-    AdminAction,
-    _new_admin_run,
-    _run_admin_action,
-    _spark_command,
-)
+from spark_cli.mcp_readiness import owner
 
 _log = logging.getLogger(__name__)
 
@@ -30,18 +24,21 @@ class McpServerCreate(BaseModel):
     command: str | None = None
     args: list[str] = []
     env: dict[str, str] = {}
+    headers: dict[str, str] = {}
 
 
 @router.get("/servers")
 async def mcp_servers_list():
     from spark_cli.mcp_config import _get_mcp_servers
 
-    return {"ok": True, "servers": _get_mcp_servers()}
+    servers = _get_mcp_servers()
+    return {"ok": True, "servers": {name: {"configured": True} for name in servers},
+            "readiness": owner.summaries(servers)}
 
 
 @router.post("/servers")
 async def mcp_servers_create(payload: McpServerCreate):
-    from spark_cli.mcp_config import _save_mcp_server
+    from spark_cli.mcp_config import _get_mcp_servers, _save_mcp_server
 
     if not payload.url and not payload.command:
         raise HTTPException(status_code=400, detail="Provide url or command")
@@ -54,11 +51,14 @@ async def mcp_servers_create(payload: McpServerCreate):
         server["args"] = payload.args
     if payload.env:
         server["env"] = payload.env
+    if payload.headers:
+        server["headers"] = payload.headers
     try:
         _save_mcp_server(payload.name, server)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "name": payload.name, "server": server}
+        raise HTTPException(status_code=400, detail="Unable to save MCP configuration") from exc
+    owner.summaries(_get_mcp_servers())
+    return {"ok": True, "name": payload.name, "server": {"configured": True}}
 
 
 @router.delete("/servers/{name}")
@@ -69,6 +69,9 @@ async def mcp_servers_delete(name: str, confirm: bool = False):
 
     if not _remove_mcp_server(name):
         raise HTTPException(status_code=404, detail="MCP server not found")
+    from spark_cli.mcp_config import _get_mcp_servers
+
+    owner.summaries(_get_mcp_servers())
     return {"ok": True}
 
 
@@ -79,12 +82,11 @@ async def mcp_servers_test(name: str):
     servers = _get_mcp_servers()
     if name not in servers:
         raise HTTPException(status_code=404, detail="MCP server not found")
-    command = _spark_command("mcp", "test", name)
-    action_id = f"mcp.test.{name}"
-    run_id, _queue = _new_admin_run(action_id, {"name": name})
-    temp_action = AdminAction(action_id, "Test MCP server", "Probe one MCP server.", "low", lambda _args: command)
-    threading.Thread(target=_run_admin_action, args=(run_id, temp_action, {"name": name}), daemon=True).start()
-    return {"run_id": run_id, "status": "queued"}
+    try:
+        return owner.start(name, servers[name])
+    except OverflowError:
+        raise HTTPException(status_code=429, detail="MCP test queue is full; retry later") from None
+
 
 
 def register_mcp_routes(app) -> None:

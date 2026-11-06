@@ -1,3 +1,4 @@
+import { McpReadinessStatus } from "./McpReadinessStatus";
 import { getProviderCatalog, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
 import { lazy, useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -481,6 +482,7 @@ function McpSection() {
   const [servers, setServers] = useState<McpServersResponse | null>(null);
   const [name, setName] = useSettingsDraft("mcp-name", "");
   const [json, setJson] = useSettingsDraft("mcp-json", MCP_JSON_TEMPLATE);
+  const [generation, setGeneration] = useState(0);
   const [saving, setSaving] = useState(false);
   const { toast, showToast } = useToast();
 
@@ -516,6 +518,7 @@ function McpSection() {
       showToast(`Saved MCP server "${name.trim()}"`, "success");
       setName("");
       setJson(MCP_JSON_TEMPLATE);
+      setGeneration((value) => value + 1);
       reload();
     } catch (e) {
       showToast(`Failed to save server: ${e}`, "error");
@@ -539,7 +542,7 @@ function McpSection() {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {entries.map(([serverName, cfg]) => (
+            {entries.map(([serverName]) => (
               <div key={serverName} className="rounded-md border border-border bg-card/40 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium text-foreground">{serverName}</span>
@@ -557,9 +560,7 @@ function McpSection() {
                     Remove
                   </Button>
                 </div>
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
-                  {JSON.stringify(cfg, null, 2)}
-                </pre>
+                <McpReadinessStatus key={generation} name={serverName} />
               </div>
             ))}
           </div>
