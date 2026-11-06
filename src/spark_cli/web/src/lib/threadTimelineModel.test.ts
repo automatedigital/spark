@@ -233,3 +233,89 @@ describe("thread timeline model", () => {
     expect(second).toBe(first);
   });
 });
+
+/** Keep one full projection as an independent grouping oracle for each delta. */
+describe("incremental timeline replay", () => {
+  const replay = (history: ThreadTimelineMessage[][]) => {
+    let previous = buildThreadTimeline(history[0]);
+    for (const messages of history.slice(1)) {
+      const next = buildThreadTimeline(messages, { previous });
+      expect(next).toEqual(buildThreadTimeline(messages));
+      previous = next;
+    }
+    return previous;
+  };
+
+  it("matches full grouping across append, tools, children, redirects and historical updates", () => {
+    let messages = [user("u0"), assistant("a0", "settled"), user("u1"), tool("t1", "shell", { done: false, result: undefined })];
+    const history = [messages];
+    messages = [...messages, assistant("a1", "partial", { streaming: true })];
+    history.push(messages);
+    messages = messages.map((message) => message.id === "a1" ? { ...message, content: "partial plus token", subagents: [{ id: "run-1", status: "running" }] } as ThreadTimelineMessage : message);
+    history.push(messages);
+    messages = messages.map((message) => message.id === "t1" ? { ...message, done: true, result: "exact\nresult" } as ThreadTimelineMessage : message);
+    history.push(messages);
+    messages = messages.map((message) => message.id === "a1" ? { ...message, streaming: false, subagents: [{ id: "run-1", status: "completed" }] } as ThreadTimelineMessage : message);
+    history.push(messages);
+    messages = [...messages, user("u2", "redirect", { redirect: true }), assistant("a2", "new response")];
+    history.push(messages);
+    messages = messages.map((message) => message.id === "a0" ? { ...message, content: "edited historical answer" } as ThreadTimelineMessage : message);
+    history.push(messages);
+    replay(history);
+  });
+
+  it("matches full grouping after prepend, replacement, fork, compression and explicit interleaving", () => {
+    const original = [user("u1"), assistant("a1", "one"), user("u2"), assistant("a2", "two")];
+    replay([original, [user("earlier"), assistant("earlier-a", "older"), ...original], original.map((message) => ({ ...message })), original.slice(0, 2), [user("compressed"), assistant("summary", "summary")]]);
+    const interleaved = [user("x", "x", { turnId: "x" }), user("y", "y", { turnId: "y" }), assistant("ax", "x", { turnId: "x" }), assistant("ay", "y", { turnId: "y", streaming: true })];
+    replay([interleaved, [...interleaved, tool("tx", "shell", { turnId: "x" })], [...interleaved, user("z"), assistant("az", "z")]]);
+    // Appended metadata can refer back to a prefix turn, even in a previously contiguous history.
+    replay([original.map((message, index) => ({ ...message, turnId: index < 2 ? "one" : "two" })), [...original.map((message, index) => ({ ...message, turnId: index < 2 ? "one" : "two" })), tool("late", "shell", { turnId: "one" })]]);
+  });
+
+  it("matches full projection through a deterministic mixed 10,000-message replay", () => {
+    let messages: ThreadTimelineMessage[] = Array.from({ length: 2500 }, (_, index) => [
+      user(`u${index}`, `prompt ${index}`, { turnId: `run-${index}` }),
+      tool(`t${index}`, "shell", { turnId: `run-${index}` }),
+      assistant(`a${index}-intermediate`, "progress", { turnId: `run-${index}` }),
+      assistant(`a${index}`, `answer ${index}`, { turnId: `run-${index}`, streaming: index === 2499 }),
+    ]).flat();
+    let previous = buildThreadTimeline(messages);
+    for (let index = 0; index < 12; index += 1) {
+      const target = index % 4 === 0 ? 4 * (index * 179 % 2499) + 1 : messages.length - 1;
+      messages = messages.map((message, position) => position === target ? {
+        ...message,
+        ...(message.role === "tool" ? { result: `result ${index}`, done: true } : { content: `answer 2499 token ${index}`, subagents: [{ id: "child", status: index % 2 ? "running" : "completed" }] }),
+      } as ThreadTimelineMessage : message);
+      const next = buildThreadTimeline(messages, { previous });
+      expect(next).toEqual(buildThreadTimeline(messages));
+      previous = next;
+    }
+  });
+
+  it("visits and rebuilds zero settled turns for a live token, with lower projection CPU", () => {
+    const messages = Array.from({ length: 5000 }, (_, index) => [user(`u${index}`), assistant(`a${index}`, `answer ${index}`, { streaming: index === 4999 })]).flat();
+    const first = buildThreadTimeline(messages);
+    const nextMessages = [...messages.slice(0, -1), assistant("a4999", "answer 4999 plus token", { streaming: true })];
+    const stats = { comparedMessages: 0, reusedTurns: 0, visitedTurns: 0, rebuiltTurns: 0, visitedSettledTurns: 0, rebuiltSettledTurns: 0, incremental: false };
+    const next = buildThreadTimeline(nextMessages, { previous: first, stats });
+    expect(stats).toMatchObject({ incremental: true, reusedTurns: 4999, visitedTurns: 1, rebuiltTurns: 1, visitedSettledTurns: 0, rebuiltSettledTurns: 0 });
+    expect(next.turns[0]).toBe(first.turns[0]);
+    expect(next).toEqual(buildThreadTimeline(nextMessages));
+    const samples = (incremental: boolean) => {
+      let previous = first;
+      const timings: number[] = [];
+      for (let token = 0; token < 35; token += 1) {
+        const delta = [...messages.slice(0, -1), assistant("a4999", `answer 4999 token ${token}`, { streaming: true })];
+        const start = performance.now();
+        previous = buildThreadTimeline(delta, { previous, incremental });
+        if (token >= 5) timings.push(performance.now() - start);
+      }
+      return timings.sort((a, b) => a - b)[Math.floor(timings.length / 2)];
+    };
+    // Record wall CPU evidence without adding a flaky host-load timing assertion.
+    const baselineMs = samples(false);
+    const incrementalMs = samples(true);
+    console.info("SP06 projection replay", JSON.stringify({ messages: 10000, baselineMs, incrementalMs, reductionPercent: 100 * (1 - incrementalMs / baselineMs), stats }));
+  });
+});

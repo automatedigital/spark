@@ -212,11 +212,35 @@ export interface ThreadTimeline {
   readonly items: readonly TimelineTurn[];
 }
 
-export interface BuildThreadTimelineOptions {
-  readonly previous?: ThreadTimeline;
+/** Optional per-projection counters for replay profiling; no global instrumentation. */
+export interface TimelineProjectionStats {
+  comparedMessages: number;
+  reusedTurns: number;
+  visitedTurns: number;
+  rebuiltTurns: number;
+  visitedSettledTurns: number;
+  rebuiltSettledTurns: number;
+  incremental: boolean;
 }
 
+export interface BuildThreadTimelineOptions {
+  readonly previous?: ThreadTimeline;
+  readonly stats?: TimelineProjectionStats;
+  /** Disable suffix reuse for reference replay and baseline profiling. */
+  readonly incremental?: boolean;
+}
+
+interface TimelineSources {
+  messages: readonly ThreadTimelineMessage[];
+  starts: readonly number[];
+  /** Interleaved explicit turn IDs require the full grouping algorithm. */
+  contiguous: boolean;
+}
+
+const timelineSources = new WeakMap<ThreadTimeline, TimelineSources>();
+
 interface TurnDraft {
+  start: number;
   id: string;
   messages: ThreadTimelineMessage[];
   interrupted: boolean;
@@ -224,6 +248,7 @@ interface TurnDraft {
 
 const turnKeys = new WeakMap<object, string>();
 const itemKeys = new WeakMap<object, string>();
+const turnInterrupted = new WeakMap<TimelineTurn, boolean>();
 const turnSourceMessages = new WeakMap<TimelineTurn, readonly ThreadTimelineMessage[]>();
 
 function normalizeTimestamp(value: TimelineTimestamp | undefined): number | undefined {
@@ -533,19 +558,19 @@ function buildDrafts(messages: readonly ThreadTimelineMessage[]): TurnDraft[] {
     let draft = explicit ? byExplicitId.get(explicit) : undefined;
     if (!draft && message.role === "user") {
       userCount += 1;
-      draft = { id: explicit ? `turn:${explicit}` : `turn:user:${message.id || message.sessionIdx || userCount}`, messages: [], interrupted: false };
+      draft = { start: index, id: explicit ? `turn:${explicit}` : `turn:user:${message.id || message.sessionIdx || userCount}`, messages: [], interrupted: false };
       drafts.push(draft);
       if (explicit) byExplicitId.set(explicit, draft);
     }
     if (!draft) {
       if (explicit) {
-        draft = { id: `turn:${explicit}`, messages: [], interrupted: false };
+        draft = { start: index, id: `turn:${explicit}`, messages: [], interrupted: false };
         drafts.push(draft);
         byExplicitId.set(explicit, draft);
       } else if (current) {
         draft = current;
       } else {
-        draft = { id: `turn:orphan:${orphanCount++}`, messages: [], interrupted: false };
+        draft = { start: index, id: `turn:orphan:${orphanCount++}`, messages: [], interrupted: false };
         drafts.push(draft);
       }
     }
@@ -562,6 +587,7 @@ function buildTurn(draft: TurnDraft, previous: TimelineTurn | undefined): Timeli
   const previousSources = previous ? turnSourceMessages.get(previous) : undefined;
   if (
     previous
+    && turnInterrupted.get(previous) === draft.interrupted
     && previousSources?.length === messages.length
     && messages.every((message, index) => message === previousSources[index])
   ) {
@@ -658,9 +684,11 @@ function buildTurn(draft: TurnDraft, previous: TimelineTurn | undefined): Timeli
   };
   const key = turnSignature(turn);
   turnKeys.set(turn, key);
+  turnInterrupted.set(turn, draft.interrupted);
   const previousKey = previous ? turnKeys.get(previous) : undefined;
   if (previous && previousKey === key) {
     turnSourceMessages.set(previous, messages);
+    turnInterrupted.set(previous, draft.interrupted);
     return previous;
   }
   turnSourceMessages.set(turn, messages);
@@ -669,18 +697,87 @@ function buildTurn(draft: TurnDraft, previous: TimelineTurn | undefined): Timeli
 
 /**
  * Build a deterministic, UI-ready timeline without React, transport, or clock state.
- * Pass the previous result to retain settled turns and unaffected active items by identity.
+ * Inputs and their metadata are immutable snapshots. Pass the previous result to
+ * retain settled turns and unaffected active items by identity.
  */
 export function buildThreadTimeline(
   messages: readonly ThreadTimelineMessage[],
   options: BuildThreadTimelineOptions = {},
 ): ThreadTimeline {
-  const previousById = new Map((options.previous?.turns ?? []).map((turn) => [turn.id, turn]));
-  const turns = buildDrafts(messages).map((draft) => buildTurn(draft, previousById.get(draft.id)));
-  if (options.previous && turns.length === options.previous.turns.length && turns.every((turn, index) => turn === options.previous?.turns[index])) {
-    return options.previous;
+  const previous = options.previous;
+  const sources = previous && timelineSources.get(previous);
+  const stats = options.stats;
+  if (stats) Object.assign(stats, { comparedMessages: 0, reusedTurns: 0, visitedTurns: 0, rebuiltTurns: 0, visitedSettledTurns: 0, rebuiltSettledTurns: 0, incremental: false });
+  let prefixCount = 0;
+  let start = 0;
+  if (options.incremental !== false && previous && sources?.contiguous && messages.length >= sources.messages.length) {
+    let changed = 0;
+    while (changed < sources.messages.length && messages[changed] === sources.messages[changed]) {
+      changed += 1;
+      if (stats) stats.comparedMessages += 1;
+    }
+    // Same-ID live replacements and appends can invalidate a suffix. An edit,
+    // replacement, prepend, fork or compression uses the full reference path.
+    const before = sources.messages[changed];
+    const after = messages[changed];
+    const liveChange = !before || (after && before.id === after.id && before.role === after.role
+      && (before.role !== "user")
+      && !(before.role === "assistant" && !before.streaming && after.role === "assistant" && before.content !== after.content));
+    const sameOrder = liveChange && sources.messages.slice(changed).every((message, offset) => (
+      message.id === messages[changed + offset]?.id && message.role === messages[changed + offset]?.role
+    ));
+    if (sameOrder && changed > 0) {
+      // Always include the containing turn (including the old tail on append):
+      // a redirect or unkeyed append may change that turn's status/content.
+      prefixCount = sources.starts.findIndex((index) => index > changed);
+      prefixCount = prefixCount < 0 ? previous.turns.length - 1 : Math.max(0, prefixCount - 1);
+      start = sources.starts[prefixCount] ?? 0;
+      const suffixIds = new Set(messages.slice(start).flatMap((message) => {
+        const explicit = explicitTurnId(message);
+        return explicit ? [`turn:${explicit}`] : [];
+      }));
+      if (suffixIds.size && previous.turns.slice(0, prefixCount).some((turn) => suffixIds.has(turn.id))) {
+        prefixCount = 0;
+        start = 0;
+      }
+    }
   }
-  return { turns, items: turns };
+  const previousById = new Map((previous?.turns.slice(prefixCount) ?? []).map((turn) => [turn.id, turn]));
+  const drafts = buildDrafts(start ? messages.slice(start) : messages);
+  const turns = [
+    ...(previous?.turns.slice(0, prefixCount) ?? []),
+    ...drafts.map((draft) => {
+      const previousTurn = previousById.get(draft.id);
+      const previousMessages = previousTurn && turnSourceMessages.get(previousTurn);
+      const rebuilt = stats && (!previousMessages || (previousTurn && turnInterrupted.get(previousTurn) !== draft.interrupted) || previousMessages.length !== draft.messages.length
+        || draft.messages.some((message, index) => message !== previousMessages[index]));
+      const turn = buildTurn(draft, previousTurn);
+      if (stats) {
+        stats.visitedTurns += 1;
+        if (turn.isSettled) stats.visitedSettledTurns += 1;
+        if (rebuilt) {
+          stats.rebuiltTurns += 1;
+          if (turn.isSettled) stats.rebuiltSettledTurns += 1;
+        }
+      }
+      return turn;
+    }),
+  ];
+  if (stats) {
+    stats.reusedTurns = prefixCount;
+    stats.incremental = prefixCount > 0;
+  }
+  const starts = [...(sources?.starts.slice(0, prefixCount) ?? []), ...drafts.map((draft) => draft.start + start)];
+  // Grouping can revisit an earlier explicit turn. Never resume a partial
+  // grouping in that case; its current-message semantics need the whole input.
+  const contiguous = drafts.every((draft, index) => (
+    draft.messages.length === (drafts[index + 1]?.start ?? messages.length - start) - draft.start
+  )) && messages.every((message) => message.role !== "user" || Boolean(message.id || explicitTurnId(message)));
+  const next = previous && turns.length === previous.turns.length && turns.every((turn, index) => turn === previous.turns[index])
+    ? previous
+    : { turns, items: turns };
+  timelineSources.set(next, { messages: messages.slice(), starts, contiguous });
+  return next;
 }
 
 export const deriveThreadTimeline = buildThreadTimeline;

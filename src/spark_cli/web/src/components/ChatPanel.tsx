@@ -34,6 +34,7 @@ import { ContextTray } from "@/components/chat/ContextTray";
 import { BriefPanel } from "@/components/chat/BriefPanel";
 import { SessionInfoBar } from "@/components/chat/SessionInfoBar";
 import { TimelineMinimap } from "@/components/chat/TimelineMinimap";
+import { useTimelineCallback, useTimelinePresentation } from "@/components/chat/useTimelinePresentation";
 import { TimelineTurnGroup } from "@/components/chat/MessagesTimeline";
 import { ChangedFilesCard } from "@/components/chat/ChangedFilesCard";
 import { PlanCard } from "@/components/chat/PlanCard";
@@ -82,6 +83,9 @@ import {
 } from "@/lib/chatTimeline";
 import {
   buildThreadTimeline,
+  type TimelineAssistantMessage,
+  type TimelineApprovalItem,
+  type TimelineFeedbackItem,
   type ThreadTimeline,
   type ThreadTimelineMessage,
 } from "@/lib/threadTimelineModel";
@@ -990,11 +994,11 @@ export function ChatPanel({
   }, [setContextItems]);
 
   // Stable handlers passed to memoized row components
-  const handleEdit = useCallback((idx: number) => {
+  const handleEdit = useTimelineCallback((idx: number) => {
     editMessage(idx);
-  }, [editMessage]);
-  const handleRetry = useCallback((idx: number) => { void retryMessage(idx); }, [retryMessage]);
-  const handleFork = useCallback((idx: number) => { void forkMessage(idx); }, [forkMessage]);
+  });
+  const handleRetry = useTimelineCallback((idx: number) => { void retryMessage(idx); });
+  const handleFork = useTimelineCallback((idx: number) => { void forkMessage(idx); });
 
   const summarizeContextItem = useCallback(async (id: string) => {
     const item = contextItems.find((i) => i.id === id);
@@ -1169,12 +1173,38 @@ export function ChatPanel({
     if (files.length > 0) void uploadFiles(files);
   }, [uploadFiles]);
 
+  // These adapters stay stable during tokens so settled row memo boundaries hold.
+  const handleTimelineApproval = useTimelineCallback((item: TimelineApprovalItem, choice: "once" | "session" | "always" | "deny") => {
+    void submitApproval(choice, typeof item.approval.action_id === "string" ? item.approval.action_id : undefined);
+  });
+  const handleTimelinePromote = useTimelineCallback((message: TimelineAssistantMessage) => {
+    handlePromoteToBrief(message.source as AssistantMsg);
+  });
+  const handleTimelineCopy = useTimelineCallback((message: TimelineAssistantMessage) => {
+    copyAssistant(message.source as AssistantMsg);
+  });
+  const handleTimelineSave = useTimelineCallback((message: TimelineAssistantMessage) => {
+    const source = message.source as AssistantMsg;
+    saveOutput({ id: source.id, title: "Saved answer", sourceSessionId: activeSessionId ?? "", projectSlug: workspaceSlug ?? null, content: source.content });
+  });
+  const handleTimelineAttach = useTimelineCallback((path: string, sizeBytes?: number) => attachPath(path, sizeBytes));
+  const handleTimelineFetchResult = useTimelineCallback((toolId: string) => fetchFullToolResult(toolId));
+  const handleTimelineSubagent = useTimelineCallback((id: string) => onSubagentSelect?.(id));
+  const handleTimelineFeedback = useTimelineCallback(async (item: TimelineFeedbackItem, data: { name: string; email: string; area: string; note: string }) => {
+    if (!activeSessionId) throw new Error("No active session");
+    await api.submitFeedback(activeSessionId, data);
+    setChatMessages((previous) => previous.map((message) => (
+      item.sourceMessageIds.includes(message.id) ? { ...message, submitted: true } : message
+    )));
+  });
+
+  const presentationMessages = useTimelinePresentation(chatMessages, activeSessionId);
   const previousTimelineRef = useRef<ThreadTimeline | undefined>(undefined);
   const timelineSessionRef = useRef<string | null>(null);
   const threadTimeline = useMemo(() => {
     const sessionChanged = timelineSessionRef.current !== activeSessionId;
     const previous = sessionChanged ? undefined : previousTimelineRef.current;
-    const messages = chatMessages as readonly ThreadTimelineMessage[];
+    const messages = presentationMessages as readonly ThreadTimelineMessage[];
     const projectedMessages = subagents.length > 0 && messages.length > 0
       ? messages.map((message, index) => index === messages.length - 1 ? {
           ...message,
@@ -1193,7 +1223,7 @@ export function ChatPanel({
     timelineSessionRef.current = activeSessionId;
     previousTimelineRef.current = next;
     return next;
-  }, [activeSessionId, chatMessages, subagents]);
+  }, [activeSessionId, presentationMessages, subagents]);
   const timelineTurns = threadTimeline.turns;
 
   const streamingAssistantVisibleChars = useMemo(
@@ -2023,32 +2053,18 @@ export function ChatPanel({
                     sessionId={activeSessionId}
                     defaultWrap={chatWordWrap}
                     approvalBusy={approvalBusy}
-                    onApprovalChoice={(item, choice) => void submitApproval(
-                      choice,
-                      typeof item.approval.action_id === "string" ? item.approval.action_id : undefined,
-                    )}
+                    onApprovalChoice={handleTimelineApproval}
                     onEdit={handleEdit}
                     onRetry={handleRetry}
                     onFork={handleFork}
                     onCopyText={copyText}
-                    onPromoteToBrief={activeSessionId ? (message) => handlePromoteToBrief(message.source as AssistantMsg) : undefined}
-                    onCopyExact={(message) => copyAssistant(message.source as AssistantMsg)}
-                    onSaveOutput={(message) => {
-                      const source = message.source as AssistantMsg;
-                      saveOutput({ id: source.id, title: "Saved answer", sourceSessionId: activeSessionId ?? "", projectSlug: workspaceSlug ?? null, content: source.content });
-                    }}
-                    onAttachPath={attachPath}
-                    onFetchFullResult={fetchFullToolResult}
-                    onSubagentSelect={onSubagentSelect}
-                    onFeedbackSubmit={async (item, data) => {
-                      if (!activeSessionId) throw new Error("No active session");
-                      await api.submitFeedback(activeSessionId, data);
-                      setChatMessages((previous) => previous.map((message) => (
-                        item.sourceMessageIds.includes(message.id)
-                          ? { ...message, submitted: true }
-                          : message
-                      )));
-                    }}
+                    onPromoteToBrief={activeSessionId ? handleTimelinePromote : undefined}
+                    onCopyExact={handleTimelineCopy}
+                    onSaveOutput={handleTimelineSave}
+                    onAttachPath={handleTimelineAttach}
+                    onFetchFullResult={handleTimelineFetchResult}
+                    onSubagentSelect={onSubagentSelect ? handleTimelineSubagent : undefined}
+                    onFeedbackSubmit={handleTimelineFeedback}
                   />
                   {turnOutcome && (
                     <div className="ml-8 mt-3 max-w-[85%] space-y-2">
