@@ -10,6 +10,8 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
 import httpx
 from openai import OpenAI
@@ -18,7 +20,7 @@ import core.run_agent as runtime
 from spark_cli import web_server as web
 
 assert os.environ.get("SPARK_HOME", "").startswith(("/tmp/", "/private/tmp/"))
-observations = {"requests": [], "retry_events": [], "interrupts": []}
+observations: dict[str, list[Any]] = {"requests": [], "retry_events": [], "interrupts": []}
 
 
 def provider(request):
@@ -52,7 +54,8 @@ class ReplayAgent(runtime.AIAgent):
 
 
 runtime.OpenAI = client
-runtime.AIAgent = ReplayAgent
+agent_patch = patch("core.run_agent.AIAgent", ReplayAgent)
+agent_patch.start()
 runtime.get_tool_definitions = lambda **kwargs: []
 runtime.check_toolset_requirements = lambda: {}
 web._resolve_web_turn_route = lambda *a, **kw: {
