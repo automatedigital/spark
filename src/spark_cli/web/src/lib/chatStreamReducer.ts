@@ -489,13 +489,15 @@ function reduceSnapshot(state: ChatStreamState, snapshot: ChatStreamSnapshot): C
 function reduceEvent(state: ChatStreamState, event: ChatStreamEvent): ChatStreamTransition {
   const topic = event.topic as ChatStreamTopic;
   if (!RECOVERY_TOPICS.has(topic) && !CHAT_TOPICS.has(topic)) return { state, effects: [], accepted: false };
-  if (event.sequence !== undefined && state.lastEventSequence !== null && event.sequence <= state.lastEventSequence) {
+  if (!RECOVERY_TOPICS.has(topic) && event.sequence !== undefined && state.lastEventSequence !== null && event.sequence <= state.lastEventSequence) {
     return { state, effects: [], accepted: false };
   }
   const data = dataOf(event);
   if (!isSessionAccepted(state, event, data)) return { state, effects: [], accepted: false };
 
-  let next = withSequence(state, event.sequence);
+  // Transport lifecycle signals reuse the current journal cursor. They are
+  // not journal deliveries and must neither deduplicate nor advance it.
+  let next = RECOVERY_TOPICS.has(topic) ? state : withSequence(state, event.sequence);
   const effects: ChatStreamEffect[] = [];
 
   if (RECOVERY_TOPICS.has(topic)) {

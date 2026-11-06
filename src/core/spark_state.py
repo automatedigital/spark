@@ -327,7 +327,7 @@ class SessionDB:
         self.db_path = db_path or _default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._event_subscribers: list[Callable[[dict[str, Any]], None]] = []
         self._write_count = 0
         self._conn = sqlite3.connect(
@@ -2204,6 +2204,45 @@ class SessionDB:
 
     # =========================================================================
     # Web turn projections
+
+    def get_web_recovery_snapshot(self, session_id: str, *, limit: int = 80) -> dict[str, Any] | None:
+        """Read lineage, history, runs and decisions from one SQLite snapshot.
+
+        The reentrant connection lock lets existing read accessors participate in
+        this explicit transaction. No backfill or lifecycle writer belongs here.
+        The durable event cursor is deliberately not a web delivery cursor.
+        """
+        with self._lock:
+            self._conn.execute("BEGIN")
+            try:
+                resolved = self.resolve_session_id(session_id)
+                if not resolved:
+                    return None
+                lineage = self.resolve_compression_chain(resolved)
+                latest = self.resolve_latest_descendant(resolved)
+                outcomes = [row for sid in lineage for row in self.list_web_turn_projections(sid)]
+                outcomes.sort(key=lambda row: (
+                    float(row["projection"].get("started_at") or row["updated_at"] or 0.0),
+                    row["updated_at"], row["turn_id"],
+                ))
+                actions = [action for sid in lineage for action in self.list_web_pending_actions(sid)]
+                sequences = {
+                    sid: int(self._conn.execute(
+                        "SELECT COALESCE(MAX(sequence), 0) FROM session_events WHERE session_id = ?",
+                        (sid,),
+                    ).fetchone()[0]) for sid in lineage
+                }
+                return {
+                    "resolved_session_id": resolved,
+                    "latest_session_id": latest,
+                    "lineage": lineage,
+                    "durable_cursor": {"session_sequences": sequences},
+                    "outcomes": outcomes,
+                    "pending_actions": actions,
+                    "history": {"session_id": latest, **self.get_web_message_page(latest, limit=min(max(limit, 1), 200))},
+                }
+            finally:
+                self._conn.execute("ROLLBACK")
 
     def upsert_web_turn_projection(
         self,

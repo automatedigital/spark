@@ -10,7 +10,7 @@ const webRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const repoRoot = path.resolve(webRoot, "../../..");
+const repoRoot = process.env.SP02_SOURCE_ROOT || path.resolve(webRoot, "../../..");
 const python = process.env.PYTHON || path.join(repoRoot, ".venv/bin/python");
 const port = () =>
   new Promise((resolve) => {
@@ -83,8 +83,8 @@ async function run() {
   ];
   let backend = start(python, backendArgs, { cwd: repoRoot, env });
   const vite = start(
-    "npm",
-    ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(webPort)],
+    path.join(webRoot, "node_modules/.bin/vite"),
+    [path.join(repoRoot, "src/spark_cli/web"), "--host", "127.0.0.1", "--port", String(webPort)],
     {
       cwd: webRoot,
       env: { ...process.env, SPARK_API_TARGET: `http://127.0.0.1:${apiPort}` },
@@ -110,7 +110,9 @@ async function run() {
     await fake(api, "recovery_stalled", "Recovery stalled", [
       { type: "token", text: "before disconnect" },
       { type: "stall", phase: "api", text: "network stalled" },
-      { type: "token", text: "after reconnect", delay_ms: 5000 },
+      // Hold the provider until the test restarts its owning backend. A five-
+      // second stream could finish during page startup, before card assertions.
+      { type: "token", text: "after reconnect", delay_ms: 60000 },
     ]);
     await fake(api, "recovery_failed", "Recovery failed", [
       { type: "token", text: "partial failure" },
@@ -134,6 +136,14 @@ async function run() {
         .first()
         .waitFor({ timeout: 15000 });
     };
+    // Establish the backend precondition rather than race the stale threshold.
+    let stalled = false;
+    for (let i = 0; i < 40; i++) {
+      const status = await (await fetch(`${api}/api/conversations/recovery_stalled/turn-status`)).json();
+      if (status.turn_active && status.state === "stalled") { stalled = true; break; }
+      await page.waitForTimeout(100);
+    }
+    if (!stalled) throw new Error("Fixture did not retain a stalled backend turn");
     await page.getByText("Running", { exact: false }).first().click();
     await open("Recovery stalled", "before disconnect");
     await page.getByTestId("recovery-card").waitFor({ timeout: 15000 });
@@ -145,7 +155,10 @@ async function run() {
       if (r.method() === "POST" && r.url().includes("/api/conversations/"))
         posts++;
     });
-    await card.getByRole("button", { name: "Reconnect" }).click();
+    const reconnect = card.getByRole("button", { name: "Reconnect" });
+    await reconnect.focus();
+    if (!(await reconnect.evaluate(el => el === document.activeElement))) throw new Error("Reconnect did not receive keyboard focus");
+    await page.keyboard.press("Enter");
     if (posts !== 0)
       throw new Error("Reconnect unexpectedly submitted a prompt");
     await page.screenshot({
@@ -167,6 +180,7 @@ async function run() {
       throw new Error(
         `approval phase was not retained by backend: ${JSON.stringify(approvalStatus)}`,
       );
+    await page.getByText("Running", { exact: false }).first().click();
     await open("Recovery stalled", "before disconnect");
     const preservedText = page
       .getByText("before disconnect", { exact: false })
@@ -175,6 +189,18 @@ async function run() {
     await stop(backend);
     backend = start(python, backendArgs, { cwd: repoRoot, env });
     await wait(`${api}/api/status`);
+    // A persisted decision survives process loss, but no dead waiter can
+    // accept an answer or make its durable state appear resolved.
+    const pending = await (await fetch(`${api}/api/conversations/recovery_approval/recovery`)).json();
+    const approval = pending.pending_actions.find(action => action.kind === "approval" && action.status === "pending");
+    if (!approval) throw new Error("Restart lost the pending approval");
+    const rejected = await fetch(`${api}/api/conversations/recovery_approval/approval`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action_id: approval.action_id, choice: "once" }),
+    });
+    if (rejected.status !== 404) throw new Error("Dead approval waiter accepted a response");
+    const afterRejection = await (await fetch(`${api}/api/conversations/recovery_approval/recovery`)).json();
+    if (!afterRejection.pending_actions.some(action => action.action_id === approval.action_id && action.status === "pending")) throw new Error("Rejected approval changed durable state");
     const restartPosts = posts;
     await page
       .getByText("before disconnect", { exact: false })
@@ -183,6 +209,7 @@ async function run() {
     if (posts !== restartPosts)
       throw new Error("gateway restart caused an automatic conversation POST");
     await page.getByRole("button", { name: "Send message", exact: true }).waitFor({ timeout: 5000 });
+    await page.getByText("The live response is unavailable after a restart. Saved history is shown; work has not been replayed.", { exact: true }).waitFor({ timeout: 5000 });
     if (await page.getByRole("button", { name: "Stop response", exact: true }).count()) {
       throw new Error("gateway restart left stale running controls visible");
     }
@@ -195,6 +222,10 @@ async function run() {
       ),
       fullPage: true,
     });
+    await page.getByText("Needs you", { exact: false }).first().click();
+    await open("Recovery approval", "Approval required");
+    await page.getByTestId("recovery-card").waitFor();
+    if ((await page.getByTestId("recovery-card").getAttribute("data-recovery-state")) !== "waiting-approval") throw new Error("Restart concealed an unresolved decision");
     console.log(
       "recovery-state: stalled reconnect, no POST, failure outcome, approval, three-chat switching, and gateway restart passed",
     );
@@ -211,6 +242,8 @@ async function run() {
           fullPage: true,
         });
     }
+    if (browser) console.error("UI", await browser.contexts()[0].pages()[0].locator("body").innerText());
+    console.error("FINAL", await (await fetch(`http://127.0.0.1:${apiPort}/api/conversations/recovery_stalled/recovery`)).text());
     throw error;
   } finally {
     if (browser) await browser.close();

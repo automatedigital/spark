@@ -1,3 +1,5 @@
+import type { ChatRecoveryResponse } from "./apiTypes";
+import { isAuthoritativeRecoveryFor } from "./chatRecovery";
 import { describe, expect, it } from "vitest";
 import {
   consumeRecoverySignal,
@@ -166,5 +168,22 @@ describe("recovery signal budget", () => {
     }
     expect(consumeRecoverySignal(budget, 7_000).allowed).toBe(false);
     expect(consumeRecoverySignal(budget, 1_000 + RECOVERY_SIGNAL_WINDOW_MS).allowed).toBe(true);
+  });
+});
+
+
+describe("authoritative snapshot identity", () => {
+  const snapshot = {
+    schema_version: 1, session_id: "old", resolved_session_id: "old",
+    latest_session_id: "new", lineage: ["old", "new"], reconciliation_required: false,
+  } as ChatRecoveryResponse;
+  it("accepts compression aliases together without conflating cursors", () => {
+    expect(isAuthoritativeRecoveryFor(snapshot, "old")).toBe(true);
+  });
+  it("rejects an unrelated reply, unknown schema, or incomplete assembly", () => {
+    expect(isAuthoritativeRecoveryFor(snapshot, "other")).toBe(false);
+    expect(isAuthoritativeRecoveryFor({ ...snapshot, schema_version: 2 } as unknown as ChatRecoveryResponse, "old")).toBe(false);
+    expect(isAuthoritativeRecoveryFor({ ...snapshot, reconciliation_required: true }, "old")).toBe(false);
+    expect(isAuthoritativeRecoveryFor({ ...snapshot, latest_session_id: "fork" }, "old")).toBe(false);
   });
 });

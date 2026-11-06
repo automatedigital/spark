@@ -56,6 +56,14 @@ _log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/providers", tags=["providers"])
 
 
+@router.get("/catalogue")
+async def get_provider_catalogue():
+    from spark_cli.config import load_config
+    from spark_cli.provider_catalog import provider_catalog
+
+    return provider_catalog(load_config())
+
+
 def _truncate_str(s: Any, max_len: int = 16000) -> str:
     if s is None:
         return ""

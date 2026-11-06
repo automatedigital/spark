@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { resolve } from "node:path";
 
-const distDir = resolve(process.cwd(), "../web_dist");
+const distDir = process.argv[2] ? resolve(process.argv[2]) : resolve(process.cwd(), "../web_dist");
 const manifestPath = resolve(distDir, ".vite/manifest.json");
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const initialBudgetBytes = 600 * 1024;
@@ -36,7 +36,9 @@ const requiredDeferredSources = [
   "src/components/CommandPalette.tsx",
 ];
 for (const source of requiredDeferredSources) {
-  const key = Object.keys(manifest).find((candidate) => candidate.endsWith(source));
+  // Rollup may use a shared dynamic chunk key after nested tab splitting.
+  const key = Object.keys(manifest).find((candidate) => candidate.endsWith(source)
+    || (source.endsWith("SettingsPanel.tsx") && manifest[candidate].name === "SettingsPanel"));
   if (!key) throw new Error(`Bundle budget: expected deferred module is missing: ${source}`);
   if (initialKeys.has(key)) throw new Error(`Bundle budget: deferred module leaked into startup: ${source}`);
   if (!manifest[key].isDynamicEntry) {

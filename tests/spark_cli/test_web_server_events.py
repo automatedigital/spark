@@ -115,7 +115,10 @@ def web_client(monkeypatch, tmp_path):
 
     web_state_journal.reset_for_test()
 
-    yield TestClient(web_server.app)
+    # Accepted chat preparation outlives its HTTP response. Keep the ASGI
+    # lifespan/event loop alive until background work has settled.
+    with TestClient(web_server.app) as client:
+        yield client
 
     # Drain before the next test. Clearing this state at setup is not enough:
     # a turn started by the previous test runs on a background thread and can
@@ -595,6 +598,15 @@ def test_fake_stream_routes_through_turn_status_snapshot_and_persistence(web_cli
         return original_publish(topic, data, session_id)
 
     monkeypatch.setattr(web_server, "_publish_event", capture_event)
+    finish_gate = threading.Event()
+    original_delay = web_server._event_delay_seconds
+
+    def hold_final_token(event):
+        if event.type == "token" and event.text == "done":
+            assert finish_gate.wait(15.0), "test did not release the final token"
+        return original_delay(event)
+
+    monkeypatch.setattr(web_server, "_event_delay_seconds", hold_final_token)
 
     resp = web_client.post(
         "/api/dev/fake-streams",
@@ -615,18 +627,21 @@ def test_fake_stream_routes_through_turn_status_snapshot_and_persistence(web_cli
     )
     assert resp.status_code == 200
 
-    assert _wait_for(
-        lambda: web_client.get("/api/conversations/fake_stream_alpha/stream-snapshot").json()[
-            "stream_text"
-        ]
-        == "Alpha "
-    )
-    snapshot = web_client.get("/api/conversations/fake_stream_alpha/stream-snapshot").json()
-    status = web_client.get("/api/conversations/fake_stream_alpha/turn-status").json()
-    assert snapshot["turn_active"] is True
-    assert snapshot["state"] in {"streaming", "running"}
-    assert status["turn_active"] is True
-    assert status["timings"]["relative_seconds"]["turn_registered"] == 0.0
+    try:
+        assert _wait_for(
+            lambda: web_client.get("/api/conversations/fake_stream_alpha/stream-snapshot").json()[
+                "stream_text"
+            ]
+            == "Alpha "
+        )
+        snapshot = web_client.get("/api/conversations/fake_stream_alpha/stream-snapshot").json()
+        status = web_client.get("/api/conversations/fake_stream_alpha/turn-status").json()
+        assert snapshot["turn_active"] is True
+        assert snapshot["state"] in {"streaming", "running"}
+        assert status["turn_active"] is True
+        assert status["timings"]["relative_seconds"]["turn_registered"] == 0.0
+    finally:
+        finish_gate.set()
 
     assert _wait_for(
         lambda: web_client.get("/api/conversations/fake_stream_alpha/turn-status").json()[
@@ -1980,7 +1995,7 @@ class TestConversationControl:
         resp = web_client.post("/api/conversations/stored_web/messages", json={"message": "again"})
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "stored_web"
-        assert "stored_web" in web_server._web_agents
+        assert _wait_for(lambda: "stored_web" in web_server._web_agents)
         assert web_server._web_agents["stored_web"].model == "m1"
         assert _wait_for(lambda: "history" in captured)
         assert captured["user_message"] == "again"
@@ -2021,7 +2036,7 @@ class TestConversationControl:
         resp = web_client.post("/api/conversations/stored_cli/messages", json={"message": "continue"})
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "stored_cli"
-        assert "stored_cli" in web_server._web_agents
+        assert _wait_for(lambda: "stored_cli" in web_server._web_agents)
         assert web_server._web_agents["stored_cli"].model == "m1"
         assert _wait_for(lambda: "history" in captured)
         assert captured["user_message"] == "continue"
@@ -2076,7 +2091,7 @@ class TestConversationControl:
 
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "compressed_leaf"
-        assert "compressed_leaf" in web_server._web_agents
+        assert _wait_for(lambda: "compressed_leaf" in web_server._web_agents)
         assert "compressed_parent" not in web_server._web_agents
         assert _wait_for(lambda: "history" in captured), "the agent turn never ran"
         assert captured["agent"].session_id == "compressed_leaf"

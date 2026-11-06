@@ -1,3 +1,4 @@
+import { useSettingsDraft } from "@/components/settings/settingsDrafts";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -488,17 +489,17 @@ function numberValue(value: unknown, fallback = 0): number {
 /* ------------------------------------------------------------------ */
 
 export default function ConfigPage() {
-  const [config, setConfig] = useState<Record<string, unknown> | null>(null);
+  const [config, setConfig] = useSettingsDraft<Record<string, unknown> | null>("config", null);
   const [schema, setSchema] = useState<Record<string, Record<string, unknown>> | null>(null);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [defaults, setDefaults] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [yamlMode, setYamlMode] = useState(false);
-  const [yamlText, setYamlText] = useState("");
+  const [searchQuery, setSearchQuery] = useSettingsDraft("searchQuery", "");
+  const [yamlMode, setYamlMode] = useSettingsDraft("yamlMode", false);
+  const [yamlText, setYamlText] = useSettingsDraft<string | null>("yamlText", null);
   const [yamlLoading, setYamlLoading] = useState(false);
   const [yamlSaving, setYamlSaving] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string>("");
+  const [activeCategory, setActiveCategory] = useSettingsDraft<string>("activeCategory", "");
   const { toast, showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { t } = useI18n();
@@ -510,7 +511,7 @@ export default function ConfigPage() {
   }
 
   useEffect(() => {
-    api.getConfig().then(setConfig).catch(() => {});
+    api.getConfig().then((next) => setConfig((draft) => draft ?? next)).catch(() => {});
     api
       .getSchema()
       .then((resp) => {
@@ -519,14 +520,14 @@ export default function ConfigPage() {
       })
       .catch(() => {});
     api.getDefaults().then(setDefaults).catch(() => {});
-  }, []);
+  }, [setConfig]);
 
   // Set active category when categories load
   useEffect(() => {
     if (categoryOrder.length > 0 && !activeCategory) {
       setActiveCategory(categoryOrder[0]);
     }
-  }, [categoryOrder, activeCategory]);
+  }, [categoryOrder, activeCategory, setActiveCategory]);
 
   // Load YAML when switching to YAML mode
   useEffect(() => {
@@ -534,11 +535,11 @@ export default function ConfigPage() {
       setYamlLoading(true);
       api
         .getConfigRaw()
-        .then((resp) => setYamlText(resp.yaml))
+        .then((resp) => setYamlText((draft) => draft ?? resp.yaml))
         .catch(() => showToast(t.config.failedToLoadRaw, "error"))
         .finally(() => setYamlLoading(false));
     }
-  }, [showToast, t.config.failedToLoadRaw, yamlMode]);
+  }, [showToast, t.config.failedToLoadRaw, yamlMode, setYamlText]);
 
   /* ---- Categories ---- */
   const categories = useMemo(() => {
@@ -604,7 +605,7 @@ export default function ConfigPage() {
   const handleYamlSave = async () => {
     setYamlSaving(true);
     try {
-      await api.saveConfigRaw(yamlText);
+      await api.saveConfigRaw(yamlText ?? "");
       showToast(t.config.yamlConfigSaved, "success");
       api.getConfig().then(setConfig).catch(() => {});
     } catch (e) {
@@ -1060,7 +1061,7 @@ export default function ConfigPage() {
             ) : (
               <textarea
                 className="flex min-h-[600px] w-full bg-transparent px-4 py-3 text-sm font-mono leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none"
-                value={yamlText}
+                value={yamlText ?? ""}
                 onChange={(e) => setYamlText(e.target.value)}
                 spellCheck={false}
               />
