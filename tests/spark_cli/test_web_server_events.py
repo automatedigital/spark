@@ -115,7 +115,10 @@ def web_client(monkeypatch, tmp_path):
 
     web_state_journal.reset_for_test()
 
-    yield TestClient(web_server.app)
+    # Accepted chat preparation outlives its HTTP response. Keep the ASGI
+    # lifespan/event loop alive until background work has settled.
+    with TestClient(web_server.app) as client:
+        yield client
 
     # Drain before the next test. Clearing this state at setup is not enough:
     # a turn started by the previous test runs on a background thread and can
@@ -1980,7 +1983,7 @@ class TestConversationControl:
         resp = web_client.post("/api/conversations/stored_web/messages", json={"message": "again"})
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "stored_web"
-        assert "stored_web" in web_server._web_agents
+        assert _wait_for(lambda: "stored_web" in web_server._web_agents)
         assert web_server._web_agents["stored_web"].model == "m1"
         assert _wait_for(lambda: "history" in captured)
         assert captured["user_message"] == "again"
@@ -2021,7 +2024,7 @@ class TestConversationControl:
         resp = web_client.post("/api/conversations/stored_cli/messages", json={"message": "continue"})
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "stored_cli"
-        assert "stored_cli" in web_server._web_agents
+        assert _wait_for(lambda: "stored_cli" in web_server._web_agents)
         assert web_server._web_agents["stored_cli"].model == "m1"
         assert _wait_for(lambda: "history" in captured)
         assert captured["user_message"] == "continue"
@@ -2076,7 +2079,7 @@ class TestConversationControl:
 
         assert resp.status_code == 200
         assert resp.json()["session_id"] == "compressed_leaf"
-        assert "compressed_leaf" in web_server._web_agents
+        assert _wait_for(lambda: "compressed_leaf" in web_server._web_agents)
         assert "compressed_parent" not in web_server._web_agents
         assert _wait_for(lambda: "history" in captured), "the agent turn never ran"
         assert captured["agent"].session_id == "compressed_leaf"
