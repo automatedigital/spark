@@ -124,7 +124,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
       group: groups[item.kind], icon: icons[item.kind],
       action: () => {
         if (scope !== paletteScope()) return;
-        setGlobalNavTarget({ type: item.kind === "message" ? "thread" : item.kind, id: item.destination ?? item.id });
+        setGlobalNavTarget({ type: item.kind === "message" ? "thread" : item.kind, id: item.destination ?? item.id, ...(item.kind === "message" ? { messageId: item.id } : {}) });
         onNavigate(item.kind === "skill" ? "skills" : item.kind === "scheduled-task" ? "cron" : "chat");
         onClose();
       },

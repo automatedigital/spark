@@ -9295,6 +9295,13 @@ def _sidebar_settle_block_reason(session_id: str) -> str | None:
     return None
 
 
+def _register_message_anchor_routes():
+    from spark_cli.message_anchor_routes import router
+
+    app.include_router(router)
+
+
+_register_message_anchor_routes()
 app.include_router(sidebar_router)
 app.dependency_overrides[get_sidebar_settle_guard] = lambda: _sidebar_settle_block_reason
 
