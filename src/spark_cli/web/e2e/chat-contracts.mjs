@@ -77,6 +77,13 @@ try:
     db.append_message("contracts_actions", "user", content="Original user prompt")
     db.append_message("contracts_actions", "assistant", content="Original assistant response")
 
+    # The mocked fork acknowledgement must refer to durable state: recovery now
+    # reads the authoritative snapshot rather than the legacy mocked messages.
+    db.create_session("contracts_forked", "e2e", model="fake-model")
+    db.set_session_title("contracts_forked", "Contract forked")
+    db.append_message("contracts_forked", "user", content="Forked prompt")
+    db.append_message("contracts_forked", "assistant", content="Fork result visible")
+
     for session_id, title in (
         ("contracts_tool", "Contract tool result"),
         ("contracts_approval", "Contract approval"),
