@@ -31,4 +31,3 @@ export async function postRootSubmission<T extends { ok: boolean; session_id: st
   if (submission) acknowledgeComposerSubmission(submission);
   return result;
 }
-
