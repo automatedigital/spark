@@ -106,9 +106,11 @@
       "id": "SP08",
       "title": "Make warmed-agent retention cost-aware",
       "issue": "https://github.com/automatedigital/spark/issues/195",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp08-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/234",
+      "head": "bb66142cb64521bf203013e0c3170e22b873276b",
+      "leadVerification": "Reviewed profile/database/session generation and SQL mutation revision triggers, prefixguards and durable owner protection helper. Parent22cache regressions run. Childcoldprepp95+0.83% within10%guard; verifiedwarm100sampleszero full-historyreads/requesthashesmatch. Logicalbytebudget notRSS; boundedRSS remainsunproven. No installed/liveproviderclaim; hostedpending."
     },
     {
       "id": "SP09",
