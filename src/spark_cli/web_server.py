@@ -8938,6 +8938,15 @@ register_canvas_routes(app)
 from spark_cli.memory_routes import register_memory_routes
 
 register_memory_routes(app)
+
+
+def _register_palette_routes():
+    from spark_cli.palette_routes import register_palette_routes
+
+    register_palette_routes(app)
+
+
+_register_palette_routes()
 register_workflow_routes(app)
 from spark_cli.artifacts_routes import register_artifacts_routes
 from spark_cli.messaging_routes import register_messaging_routes
