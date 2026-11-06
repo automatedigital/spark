@@ -43,6 +43,7 @@ try {
       if (url.pathname === "/api/config/schema") json = { fields: { model: { type: "string", category: "general" }, timezone: { type: "string", category: "general" } }, category_order: ["general"] };
       if (url.pathname.includes("available")) json = { models: ["fixture-model"], strict: false };
       if (url.pathname.includes("oauth")) json = { providers: [] };
+      if (url.pathname === "/api/providers/catalogue") json = { schema_version: 1, providers: [], selected_provider: "custom" };
       if (url.pathname === "/api/config/raw") json = { yaml: "model: fixture-model\n" };
       if (url.pathname === "/api/logs") json = { lines: ["synthetic log"], total: 1 };
       await route.fulfill({ json });
