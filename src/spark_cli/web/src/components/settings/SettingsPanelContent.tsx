@@ -1,10 +1,15 @@
 import { ModelListLoader, type ModelListState, modelCredentialEpoch, subscribeModelCredentials, invalidateModelCredentials } from "@/lib/modelListLoader";
 import { McpReadinessStatus } from "./McpReadinessStatus";
+import { COMMON_SETTINGS, SETTINGS_SECTIONS, isCommonSetting, resolveSettingsDestination, schemaSettings, searchSettings, settingBreadcrumb, type SettingDestination, type SettingsSectionId, type SettingsChildId } from "@/lib/settingsRegistry";
+import { labelSettingControls, focusSetting } from "@/components/settings/settingFocus";
+import { useI18n } from "@/i18n";
 import { getProviderCatalog, type ProviderCatalogEntry } from "@/lib/api_providerCatalog";
 import { lazy, useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   X,
   Archive,
+  Bell,
+  Users,
   Brain,
   Check,
   ChevronDown,
@@ -49,10 +54,13 @@ import { Toast } from "@/components/Toast";
 
 
 
+const NotificationSettings = lazy(() => import("@/components/NotificationSoundSettings").then((module) => ({ default: module.NotificationSoundSettings })));
+const ProfilesSettings = lazy(() => import("@/pages/AdminPage").then((module) => ({ default: () => <module.default initialTab="profiles" /> })));
+const McpTestSettings = lazy(() => import("@/pages/AdminPage").then((module) => ({ default: () => <module.default initialTab="mcp" /> })));
 const StatusPage = lazy(() => import("@/pages/StatusPage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const LogsPage = lazy(() => import("@/pages/LogsPage"));
-const AdminPage = lazy(() => import("@/pages/AdminPage"));
+const AdminPage = lazy(() => import("@/pages/AdminPage").then((module) => ({ default: () => <module.default /> })));
 const ConfigPage = lazy(() => import("@/pages/ConfigPage"));
 const UpdatesPage = lazy(() => import("@/pages/UpdatesPage"));
 const AppearancePage = lazy(() => import("@/pages/AppearancePage"));
@@ -420,11 +428,7 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
     );
   }
 
-  return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-1">
-      <Toast toast={toast} />
-      {intro && <p className="pb-3 text-xs text-muted-foreground">{intro}</p>}
-      {fields.map(([key, s]) => {
+  const renderFields = (items: typeof fields) => items.map(([key, s]) => {
         // The model / provider / base-URL trio is rendered by a single
         // provider-aware editor (dropdown that pulls live models), so swap the
         // generic AutoField for ModelProviderBlock at the "model" anchor and
@@ -432,13 +436,13 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
         if (key === "model_provider" || key === "model_base_url") return null;
         if (key === "model") {
           return (
-            <div key={key} className="border-t border-border/60 py-3 first:border-t-0 first:pt-0">
+            <div key={key} data-setting-key={key} className="border-t border-border/60 py-3 first:border-t-0 first:pt-0">
               <ModelProviderBlock config={config} setConfig={setConfig} />
             </div>
           );
         }
         return (
-          <div key={key} className="border-t border-border/60 py-3 first:border-t-0 first:pt-0">
+          <div key={key} data-setting-key={key} className="border-t border-border/60 py-3 first:border-t-0 first:pt-0">
             <AutoField
               schemaKey={key}
               schema={s}
@@ -447,7 +451,17 @@ function ConfigSectionForm({ categories, includeKeys = [], excludeKeys = [], int
             />
           </div>
         );
-      })}
+      });
+
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-1">
+      <Toast toast={toast} />
+      {intro && <p className="pb-3 text-xs text-muted-foreground">{intro}</p>}
+      {renderFields(fields.filter(([key]) => isCommonSetting(key)))}
+      {fields.some(([key]) => !isCommonSetting(key)) && <details className="mt-3">
+        <summary className="cursor-pointer py-2 text-xs text-muted-foreground">Advanced fields</summary>
+        {renderFields(fields.filter(([key]) => !isCommonSetting(key)))}
+      </details>}
       {fields.length === 0 && (
         <p className="py-8 text-center text-sm text-muted-foreground">No settings in this section.</p>
       )}
@@ -805,110 +819,177 @@ function ConnectionSection() {
 }
 
 interface SectionChild {
-  id: string;
+  id: SettingsChildId;
   label: string;
-  component: React.ComponentType;
+  component: React.ComponentType<{ initialField?: string }>;
 }
 
 interface SectionDef {
-  id: string;
+  id: SettingsSectionId;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  component?: React.ComponentType;
+  component?: React.ComponentType<{ initialField?: string }>;
   children?: SectionChild[];
   fullBleed?: boolean;
 }
 
-const SECTION_GROUPS: SectionDef[][] = [
-  [
-    { id: "model", label: "Model", icon: Cpu, component: ModelSection },
-    { id: "chat", label: "Chat", icon: MessageCircle, component: ChatSection },
-    { id: "appearance", label: "Appearance", icon: Palette, component: AppearancePage },
-    { id: "workspace", label: "Workspace", icon: Monitor, component: WorkspaceSection },
-    { id: "safety", label: "Safety", icon: Shield, component: SafetySection },
-    { id: "memory", label: "Memory & Context", icon: Brain, component: MemoryContextSection },
-    { id: "voice", label: "Voice", icon: Mic, component: VoiceSection },
-    {
-      id: "advanced",
-      label: "Advanced",
-      icon: SlidersHorizontal,
-      children: [
-        { id: "config", label: "Settings", component: ConfigPage },
-        { id: "admin", label: "Admin", component: AdminPage },
-        { id: "logs", label: "Logs", component: LogsPage },
-        { id: "analytics", label: "Analytics", component: AnalyticsPage },
-      ],
-    },
-  ],
-  [
-    // Desktop-only — filtered out on web (no local-sidecar choice there).
-    { id: "connection", label: "Connection", icon: Network, component: ConnectionSection },
-    { id: "gateway", label: "Gateway", icon: Radio, component: StatusPage },
-    { id: "messaging", label: "Messaging Connections", icon: MessageCircle, component: MessagingPage, fullBleed: true },
-    { id: "skills-tools", label: "Skills & Tools", icon: Wrench, component: SkillsToolsPage, fullBleed: true },
-    { id: "mcp", label: "MCP", icon: Plug, component: McpSection },
-    { id: "archived", label: "Archived Chats", icon: Archive, component: ArchivedChatsSection },
-  ],
-  [{ id: "about", label: "About", icon: Info, component: UpdatesPage }],
-];
-
-// Hide the desktop-only "Connection" section when running in a browser.
-const VISIBLE_SECTION_GROUPS: SectionDef[][] = isTauri()
-  ? SECTION_GROUPS
-  : SECTION_GROUPS.map((g) => g.filter((s) => s.id !== "connection"));
-
-const ALL_SECTIONS = SECTION_GROUPS.flat();
-
-type SettingsTabId = (typeof ALL_SECTIONS)[number]["id"];
-
-// Legacy tab ids (pre-Hermes layout) → new section ids, so existing
-// callers passing initialTab keep working.
-const LEGACY_TAB_MAP: Record<string, SettingsTabId> = {
-  status: "gateway",
-  analytics: "advanced",
-  logs: "advanced",
-  admin: "advanced",
-  config: "advanced",
-  keys: "skills-tools",
-  updates: "about",
-  providers: "model", // Providers merged into the Model section.
+const SECTION_COMPONENTS: Record<SettingsSectionId, Omit<SectionDef, "id" | "label">> = {
+  connection: { icon: Network, component: ConnectionSection },
+  profiles: { icon: Users, component: ProfilesSettings },
+  model: { icon: Cpu, component: ModelSection },
+  memory: { icon: Brain, component: MemoryContextSection },
+  "skills-tools": { icon: Wrench, component: SkillsToolsPage, fullBleed: true },
+  mcp: { icon: Plug, component: McpSection },
+  "mcp-tests": { icon: Plug, component: McpTestSettings },
+  notifications: { icon: Bell, component: NotificationSettings },
+  chat: { icon: MessageCircle, component: ChatSection },
+  appearance: { icon: Palette, component: AppearancePage },
+  workspace: { icon: Monitor, component: WorkspaceSection },
+  safety: { icon: Shield, component: SafetySection },
+  voice: { icon: Mic, component: VoiceSection },
+  gateway: { icon: Radio, component: StatusPage },
+  messaging: { icon: MessageCircle, component: MessagingPage, fullBleed: true },
+  archived: { icon: Archive, component: ArchivedChatsSection },
+  advanced: { icon: SlidersHorizontal, children: [
+    { id: "config", label: "Settings", component: ConfigPage },
+    { id: "admin", label: "Admin", component: AdminPage },
+    { id: "logs", label: "Logs", component: LogsPage },
+    { id: "analytics", label: "Analytics", component: AnalyticsPage },
+  ] },
+  about: { icon: Info, component: UpdatesPage },
 };
+// Registry order puts common controls first without importing their page chunks.
+const orderedSections: SectionDef[] = SETTINGS_SECTIONS.map((item) => ({
+  id: item.id, label: item.label, ...SECTION_COMPONENTS[item.id],
+}));
+const SECTION_GROUPS = [
+  orderedSections.filter((section) => SETTINGS_SECTIONS.some((item) => item.id === section.id && "common" in item)),
+  orderedSections.filter((section) => !SETTINGS_SECTIONS.some((item) => item.id === section.id && "common" in item)),
+];
+const VISIBLE_SECTION_GROUPS = SECTION_GROUPS.map((group) => group.filter((section) => isTauri() || section.id !== "connection"));
+const ALL_SECTIONS = SECTION_GROUPS.flat();
+type SettingsTabId = SettingsSectionId;
 
 interface SettingsPanelProps {
   onClose: () => void;
   initialTab?: string;
+  onNavigate?: (page: string) => void;
 }
 
 export default function SettingsPanel(props: SettingsPanelProps) {
   useEffect(() => {
     const opener = document.activeElement;
-    return () => { if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected && opener.getClientRects().length) opener.focus();
+      else [...document.querySelectorAll<HTMLButtonElement>('button[aria-label="Settings"], button[title="Settings"]')].find((button) => button.getClientRects().length)?.focus();
+    };
   }, []);
 
   return <SettingsDraftProvider><SettingsPanelContent {...props} /></SettingsDraftProvider>;
 }
 
-function SettingsPanelContent({ onClose, initialTab = "model" }: SettingsPanelProps) {
-  const resolvedInitial =
-    ALL_SECTIONS.find((s) => s.id === initialTab)?.id ?? LEGACY_TAB_MAP[initialTab] ?? "model";
-  const [activeTab, setActiveTab] = useState<SettingsTabId>(resolvedInitial);
-  const [activeChild, setActiveChild] = useState<string>("");
+function SettingsPanelContent({ onClose, onNavigate, initialTab = "model" }: SettingsPanelProps) {
+  const initialDestination = resolveSettingsDestination(initialTab);
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialDestination.section);
+  const [activeChild, setActiveChild] = useState<string>(initialDestination.child ?? "");
+  const [query, setQuery] = useState("");
+  const [indexedFields, setIndexedFields] = useState<SettingDestination[]>([]);
+  const [searchError, setSearchError] = useState(false);
+  const [searchLoaded, setSearchLoaded] = useState(false);
+  const [target, setTarget] = useState<SettingDestination | null>(() => COMMON_SETTINGS.find((item) => item.id === initialTab) ?? null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const enterHeld = useRef(false);
+  const { t } = useI18n();
+  const searchActive = query.trim().length > 0;
+  const previousInitialTab = useRef(initialTab);
+  const results = searchSettings(query, indexedFields, isTauri()).filter((item) => !item.page || onNavigate);
+
+  // Fetch metadata only when search is used. Never mount inactive editors to index them.
+  useEffect(() => {
+    if (!searchActive || searchLoaded) return;
+    let alive = true;
+    api.getSchema().then((response) => {
+      if (alive) { setIndexedFields(schemaSettings(response.fields as Record<string, Record<string, unknown>>)); setSearchLoaded(true); setSearchError(false); }
+    }).catch(() => { if (alive) { setSearchError(true); setSearchLoaded(true); } });
+    return () => { alive = false; };
+  }, [searchActive, searchLoaded]);
+
+  // A palette destination can change while the dialog is already open.
+  useEffect(() => {
+    if (previousInitialTab.current === initialTab) return;
+    previousInitialTab.current = initialTab;
+    const destination = resolveSettingsDestination(initialTab);
+    setActiveTab(destination.section);
+    setActiveChild(destination.child ?? "");
+    setTarget(destination);
+    setQuery("");
+  }, [initialTab]);
+
+  useEffect(() => { searchRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => { if (event.key === "Enter") enterHeld.current = true; };
+    const up = (event: KeyboardEvent) => { if (event.key === "Enter") enterHeld.current = false; };
+    document.addEventListener("keydown", down, true);
+    document.addEventListener("keyup", up, true);
+    return () => { document.removeEventListener("keydown", down, true); document.removeEventListener("keyup", up, true); };
+  }, []);
+
+  // Lazy sections may arrive after navigation. Observe only this live section;
+  // keep label associations and dropdown focus owned by this live section.
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    let focused = false;
+    const update = () => {
+      labelSettingControls(root);
+      if (target && !enterHeld.current && (!focused || document.activeElement === document.body)) focused = focusSetting(root, target);
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { childList: true, subtree: true });
+    // Refocusing during Enter keydown can activate the newly focused button and
+    // reopen a dropdown. Restore only after that key's activation has finished.
+    const onKeyUp = (event: KeyboardEvent) => { if (event.key === "Enter") update(); };
+    document.addEventListener("keyup", onKeyUp);
+    return () => { observer.disconnect(); document.removeEventListener("keyup", onKeyUp); };
+  }, [activeTab, activeChild, target]);
+
+  const openDestination = (destination: SettingDestination) => {
+    if (destination.page) { onNavigate?.(destination.page); onClose(); return; }
+    setActiveTab(destination.section);
+    setActiveChild(destination.child ?? "");
+    setTarget({ ...destination });
+    setQuery("");
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.defaultPrevented || (e.target instanceof Node && !dialogRef.current?.contains(e.target))) return;
+      if (e.key === "Escape") { if (query) { setQuery(""); searchRef.current?.focus(); } else onClose(); }
+      if (e.key === "Tab") {
+        const items = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? [])].filter((item) => item.getClientRects().length > 0);
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, query]);
 
   const handleTabChange = (id: SettingsTabId) => {
+    setTarget(null);
+    setQuery("");
     setActiveTab(id);
     const section = ALL_SECTIONS.find((s) => s.id === id);
     setActiveChild(section?.children?.[0]?.id ?? "");
   };
 
   const handleChildChange = (id: string) => {
+    setTarget(null);
     setActiveChild(id);
   };
 
@@ -927,6 +1008,14 @@ function SettingsPanelContent({ onClose, initialTab = "model" }: SettingsPanelPr
       aria-selected={activeTab === id}
       aria-label={label}
       onClick={() => handleTabChange(id)}
+      onKeyDown={(event) => {
+        if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...event.currentTarget.closest('[role="tablist"]')!.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+        const index = tabs.indexOf(event.currentTarget);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (["ArrowUp", "ArrowLeft"].includes(event.key) ? -1 : 1) + tabs.length) % tabs.length;
+        tabs[next]?.focus(); tabs[next]?.click();
+      }}
       className={
         mobile
           ? `flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
@@ -962,6 +1051,7 @@ function SettingsPanelContent({ onClose, initialTab = "model" }: SettingsPanelPr
       >
         <div
           className="flex h-[86vh] w-full max-w-6xl overflow-hidden rounded-lg border border-border bg-background/88 shadow-2xl shadow-black/45 backdrop-blur-2xl"
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-label="Settings"
@@ -1009,6 +1099,20 @@ function SettingsPanelContent({ onClose, initialTab = "model" }: SettingsPanelPr
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col">
+            <div className="border-b border-border px-3 py-2">
+              <Input ref={searchRef} type="search" aria-label="Search settings" placeholder={`${t.common.search} Settings…`} value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") { event.preventDefault(); dialogRef.current?.querySelector<HTMLButtonElement>('[data-settings-result]')?.focus(); }
+                  if (event.key === "Enter" && results[0]) { event.preventDefault(); openDestination(results[0]); }
+                }} />
+              {searchActive && <div className="max-h-48 overflow-y-auto" aria-label={t.config.searchResults}>
+                {!searchLoaded && <p role="status" className="py-2 text-xs">{t.common.loading}</p>}
+                {searchError && <p role="status" className="py-2 text-xs">Field index unavailable. Browse Advanced for all configuration fields.</p>}
+                {results.map((item) => <button key={item.id} type="button" data-settings-result className="block w-full rounded px-2 py-2 text-left text-xs hover:bg-accent focus-visible:outline focus-visible:outline-ring" onClick={() => openDestination(item)}>{settingBreadcrumb(item)}</button>)}
+                {searchLoaded && !results.length && <p role="status" className="py-2 text-xs">{t.config.noFieldsMatch.replace("{query}", query)}</p>}
+              </div>}
+            </div>
             <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card/34 px-3 backdrop-blur-xl">
               <span className="text-sm font-semibold text-foreground md:hidden">Settings</span>
               <div
@@ -1049,15 +1153,22 @@ function SettingsPanelContent({ onClose, initialTab = "model" }: SettingsPanelPr
               </button>
             </div>
 
+            <p className="border-b border-border px-3 py-1 text-xs text-muted-foreground" aria-live="polite">{target ? settingBreadcrumb(target) : `Settings › ${headerLabel}`}</p>
+            {activeSection.children && <div className="flex flex-wrap gap-1 px-3 py-1 md:hidden">{activeSection.children.map((child) => <button key={child.id} type="button" className="rounded border border-border px-2 py-1 text-xs" aria-pressed={activeChildDef?.id === child.id} onClick={() => handleChildChange(child.id)}>{child.label}</button>)}</div>}
             <div className={activeSection.fullBleed ? "flex min-h-0 flex-1 overflow-hidden" : "flex-1 overflow-y-auto"}>
               <div
+                ref={contentRef}
+                id="settings-active-section"
+                role="region"
+                aria-label={headerLabel}
+                tabIndex={-1}
                 key={activeChildDef?.id ?? activeTab}
                 className={activeSection.fullBleed ? "min-h-0 w-full" : "mx-auto w-full px-4 py-5 sm:px-8 sm:py-8"}
                 style={{ animation: "fade-in 120ms ease-out" }}
               >
                 <SettingsDraftProvider tab={activeChildDef?.id ?? activeTab}>
                   <LazyLoadBoundary label={activeChildDef?.id === "config" ? "Config" : activeChildDef?.label ?? activeSection.label}>
-                    <ActiveComponent />
+                    <ActiveComponent initialField={target?.fieldKey} />
                   </LazyLoadBoundary>
                 </SettingsDraftProvider>
               </div>

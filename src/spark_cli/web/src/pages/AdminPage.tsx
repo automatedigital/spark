@@ -74,8 +74,8 @@ function ShellButton({
   );
 }
 
-export default function AdminPage() {
-  const [tab, setTab] = useState<TabId>("setup");
+export default function AdminPage({ initialTab = "setup" }: { initialTab?: TabId }) {
+  const [tab, setTab] = useState<TabId>(initialTab);
   const [query, setQuery] = useState("");
   const [actions, setActions] = useState<AdminActionMeta[]>([]);
   const [gateway, setGateway] = useState<GatewayAdminStatus | null>(null);
