@@ -1,3 +1,4 @@
+import { schemaSettings } from "@/lib/settingsRegistry";
 import { useSettingsDraft } from "@/components/settings/settingsDrafts";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
@@ -488,7 +489,7 @@ function numberValue(value: unknown, fallback = 0): number {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function ConfigPage() {
+export default function ConfigPage({ initialField }: { initialField?: string }) {
   const [config, setConfig] = useSettingsDraft<Record<string, unknown> | null>("config", null);
   const [schema, setSchema] = useState<Record<string, Record<string, unknown>> | null>(null);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
@@ -521,6 +522,13 @@ export default function ConfigPage() {
       .catch(() => {});
     api.getDefaults().then(setDefaults).catch(() => {});
   }, [setConfig]);
+
+  useEffect(() => {
+    if (!initialField || !schema?.[initialField]) return;
+    setSearchQuery("");
+    setYamlMode(false);
+    setActiveCategory(String(schema[initialField].category ?? "general"));
+  }, [initialField, schema, setActiveCategory, setSearchQuery, setYamlMode]);
 
   // Set active category when categories load
   useEffect(() => {
@@ -574,7 +582,8 @@ export default function ConfigPage() {
         key.toLowerCase().includes(lowerSearch) ||
         humanLabel.toLowerCase().includes(lowerSearch) ||
         String(s.category ?? "").toLowerCase().includes(lowerSearch) ||
-        String(s.description ?? "").toLowerCase().includes(lowerSearch)
+        String(s.description ?? "").toLowerCase().includes(lowerSearch) ||
+        schemaSettings({ [key]: s })[0]?.label.toLowerCase().includes(lowerSearch)
       );
     });
   }, [isSearching, lowerSearch, schema]);
@@ -957,7 +966,7 @@ export default function ConfigPage() {
       lastCat = cat;
 
       return (
-        <div key={key}>
+        <div key={key} data-setting-key={key}>
           {showCatBadge && (
             <div className="flex items-center gap-2 pt-4 pb-2 first:pt-0">
               <span className="text-xs font-semibold text-muted-foreground">
@@ -1075,10 +1084,11 @@ export default function ConfigPage() {
           <div className="sm:w-48 sm:shrink-0">
             <div className="flex flex-col gap-1 sm:sticky sm:top-4">
               {/* Search */}
-              <div className="relative mb-2 hidden sm:block">
+              <div className="relative mb-2">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   className="pl-8 h-8 text-xs"
+                  aria-label={`${t.common.search} Settings`}
                   placeholder={t.common.search}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -1168,7 +1178,10 @@ export default function ConfigPage() {
                 <div className="grid gap-0 pt-3">
                   {activeCategory === "general" && renderModelEditor()}
                   {activeCategory === "compression" && renderContextManagementCard()}
-                  {activeCategory !== "compression" && renderFields(activeFields)}
+                  {activeCategory !== "compression" && activeFields.length > 0 && <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">Advanced fields</summary>
+                    <div className="mt-2 grid gap-2">{renderFields(activeFields)}</div>
+                  </details>}
                   {activeCategory === "compression" && activeFields.length > 0 && (
                     <details className="mt-2">
                       <summary className="text-[11px] text-muted-foreground cursor-pointer select-none">Advanced fields</summary>

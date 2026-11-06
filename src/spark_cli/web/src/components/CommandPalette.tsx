@@ -1,5 +1,6 @@
+import { PAGE_DESTINATIONS, SETTINGS_SECTIONS } from "@/lib/settingsRegistry";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, MessageSquare, MessageCircle, Clock, Package, Plug, Settings, FolderOpen, Loader2, Brain, Blocks } from "lucide-react";
+import { Search, MessageSquare, Clock, Package, Plug, Settings, FolderOpen, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CronJob, SessionInfo, SessionSearchResult, SkillInfo, WorkspaceProject } from "@/lib/api";
 import { setGlobalNavTarget } from "@/lib/globalNavigation";
@@ -22,15 +23,12 @@ interface CommandPaletteProps {
   onOpenSettings: () => void;
 }
 
+const PAGE_ICONS = { chat: MessageSquare, files: FolderOpen, cron: Clock, skills: Package, connectors: Plug };
 const PAGE_ITEMS = [
-  { id: "skillsTools", label: "Skills & Tools", description: "Skills and connectable tools", icon: Blocks },
-  { id: "messaging", label: "Messaging", description: "Connect messaging platforms", icon: MessageCircle },
-  { id: "chat", label: "Chat", description: "Projects and conversations", icon: MessageSquare },
-  { id: "files", label: "Files", description: "Workspace files", icon: FolderOpen },
-  { id: "cron", label: "Schedule", description: "Scheduled jobs", icon: Clock },
-  { id: "skills", label: "Skills", description: "Skill manager", icon: Package },
-  { id: "connectors", label: "Connectors", description: "External app connectors", icon: Plug },
-  { id: "memory", label: "Memory", description: "What the agent remembers", icon: Brain },
+  ...PAGE_DESTINATIONS.map((item) => ({ ...item, icon: PAGE_ICONS[item.id] })),
+  ...SETTINGS_SECTIONS.filter((item) => "common" in item && !("desktopOnly" in item)).map((item) => ({
+    id: `settings:${item.id}`, destination: item.id, label: item.label, description: `Settings › ${item.label}`, icon: Settings,
+  })),
 ];
 
 export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: CommandPaletteProps) {
@@ -149,7 +147,7 @@ export function CommandPalette({ open, onClose, onNavigate, onOpenSettings }: Co
     ...PAGE_ITEMS.map((p) => ({
       ...p,
       group: "Pages",
-      action: () => { onNavigate(p.id); onClose(); },
+      action: () => { onNavigate("destination" in p ? p.destination : p.id); onClose(); },
     })),
     {
       id: "settings",
