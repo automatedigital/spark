@@ -370,6 +370,13 @@ check. Its model-search writer must first finish SP10's discovered live PromptBa
 integration and remove unintended mount-time model discovery, updating the same
 SP10 PR before making a separate SP11 PR. PromptBar is independent of the active
 SP02 ChatPanel/controller writer; do not edit those shared files.
+SP23 may proceed from SP10's catalogue base using existing MCP config/admin-run
+interfaces; SP05 resource-cache adoption is a later integration check, not a
+reason to block domain readiness/testing work. SP23 owns MCP routes/helpers/new
+readiness UI and only the McpSection function/imports in SettingsPanelContent;
+SP11 owns ModelCombobox/provider sections in that file. Keep those slices narrow,
+serialize final shared-file integration and rerun Settings neighbours. Do not
+replace either with a whole-file rewrite or introduce another generic transport.
 This changes scheduling only; every packet's full behaviour, tests and performance
 acceptance remains required. No missing prerequisite is silently counted complete.
 
