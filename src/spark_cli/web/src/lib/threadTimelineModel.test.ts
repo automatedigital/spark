@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isDeepStrictEqual } from "node:util";
 import type { ChatMessage } from "./chatTranscriptMerge";
 import {
   buildThreadTimeline,
@@ -288,7 +289,9 @@ describe("incremental timeline replay", () => {
         ...(message.role === "tool" ? { result: `result ${index}`, done: true } : { content: `answer 2499 token ${index}`, subagents: [{ id: "child", status: index % 2 ? "running" : "completed" }] }),
       } as ThreadTimelineMessage : message);
       const next = buildThreadTimeline(messages, { previous });
-      expect(next).toEqual(buildThreadTimeline(messages));
+      // Compare every field at every replay step without assertion-library
+      // bookkeeping for each node of the 10,000-message object graph.
+      expect(isDeepStrictEqual(next, buildThreadTimeline(messages))).toBe(true);
       previous = next;
     }
   });
