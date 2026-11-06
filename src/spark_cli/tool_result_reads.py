@@ -25,7 +25,7 @@ def _reader(home: Path):
     # a writable SessionDB. This facade never escapes the owning worker.
     db = SessionDB.__new__(SessionDB)
     db._conn = conn
-    db._lock = threading.Lock()
+    db._lock = threading.RLock()
     try:
         conn.execute("BEGIN")
         yield db, conn
