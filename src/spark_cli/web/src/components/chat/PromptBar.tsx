@@ -1176,6 +1176,10 @@ export function PromptBar({
 
           {/* Token budget indicator */}
           <ContextWindowMeter
+            key={historyOwner}
+            sessionId={sessionId}
+            promptText={input}
+            streaming={streaming}
             estimate={estimate}
             loading={estimateLoading}
             contextItems={contextItems}
