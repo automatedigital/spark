@@ -2002,6 +2002,7 @@ async def _lifespan(_app: FastAPI):
         asyncio.create_task(_run_blocking(function))
         for function in warmup_functions
     ]
+    warmup_tasks.append(asyncio.create_task(_maintain_web_agent_cache()))
     # Desktop app: keep the messaging gateway running in the background so
     # platforms stay reachable while the app is open. No-ops outside the
     # desktop sidecar or when disabled via config. Only stops a gateway we own.
@@ -4235,56 +4236,47 @@ async def warm_session_agent(session_id: str):
     if _is_web_turn_active(sid):
         return {"ok": True, "warm": False}
 
-    # Already warm — nothing to do.
-    if sid in _web_agents:
-        _touch_web_agent_cache(sid)
-        return {"ok": True, "warm": True}
-    now = time.time()
-    if sid in _web_warm_inflight or now - _web_warm_recent.get(sid, 0.0) < 5.0:
-        _streaming_pipeline_metrics.record_warm_deduped()
-        return {"ok": True, "warm": False}
+    now = time.monotonic()
+    with _web_agent_cache_lock:
+        if sid in _web_warm_inflight:
+            _streaming_pipeline_metrics.record_warm_deduped()
+            return {"ok": True, "warm": False}
+        _web_warm_inflight.add(sid)
+        _web_warm_recent[sid] = now
+        while len(_web_warm_recent) > 256:
+            _web_warm_recent.pop(next(iter(_web_warm_recent)))
 
-    # Resolve routing (model, provider, etc.) using an empty-string message
-    # so routing heuristics use the same defaults as a real turn.
     try:
-        turn_route = await _chat_preparation.run(_resolve_web_turn_route, "")
-    except Exception:
-        return {"ok": True, "warm": False}
-    _web_warm_inflight.add(sid)
-    _web_warm_recent[sid] = now
-
-    def _warm_in_thread() -> None:
-        try:
-            from core.spark_state import SessionDB as _DB
-            _db = _DB()
-            try:
-                conversation_history = _db.get_messages_as_conversation(sid)
-            finally:
-                _db.close()
-            if sid in _web_agents:
-                _touch_web_agent_cache(sid)
-                return
-            _new_web_agent(
-                session_id=sid,
-                model=turn_route["model"],
-                runtime=turn_route["runtime"],
-                request_overrides=turn_route.get("request_overrides"),
-                signature=turn_route["signature"],
-                token_callback=None,
-                tool_start_callback=None,
-                tool_complete_callback=None,
-                reasoning_callback=None,
-                status_callback=None,
-            )
-            # Load conversation history so the system prompt is built and cached.
-            agent = _get_web_cached_agent(sid)
-            if agent and conversation_history:
-                _hydrate_web_agent_from_history(agent, conversation_history)
-        finally:
+        turn_route = await _chat_preparation.run(
+            _resolve_web_turn_route, "", explicit_model=str(preparation.row.get("model") or "").strip() or None
+        )
+    except asyncio.CancelledError:
+        with _web_agent_cache_lock:
             _web_warm_inflight.discard(sid)
+        raise
+    except Exception:
+        with _web_agent_cache_lock:
+            _web_warm_inflight.discard(sid)
+        return {"ok": True, "warm": False}
 
-    warming = _chat_preparation.start(_warm_in_thread)
+    def _warm_in_thread() -> bool:
+        try:
+            return _warm_web_agent(preparation, turn_route)
+        finally:
+            with _web_agent_cache_lock:
+                _web_warm_inflight.discard(sid)
+            _evict_web_agent_cache_if_needed()
+
+    was_cached = sid in _web_agents
+    try:
+        warming = _chat_preparation.start(_warm_in_thread)
+    except Exception:
+        with _web_agent_cache_lock:
+            _web_warm_inflight.discard(sid)
+        raise
     _chat_preparation.handoff_claim(warming)
+    if was_cached:
+        return {"ok": True, "warm": await asyncio.shield(asyncio.wrap_future(warming))}
     return {"ok": True, "warm": False}
 
 
@@ -4733,6 +4725,10 @@ _web_agent_signatures: dict[str, Any] = {}    # session_id → effective model/r
 _web_agent_last_used: dict[str, float] = {}
 _web_warm_inflight: set[str] = set()
 _web_warm_recent: dict[str, float] = {}
+_web_agent_cache_lock = threading.RLock()
+_web_agent_context_estimates: dict[str, tuple[Any, int]] = {}
+# Only stamps, never another transcript copy. Removed with the LRU entry.
+_web_agent_history_revisions: dict[str, tuple[Any, Any, Any]] = {}
 
 
 def _web_turn_worker_count() -> int:
@@ -4779,50 +4775,230 @@ async def _run_web_turn_in_executor(loop: asyncio.AbstractEventLoop, fn: Callabl
     )
 
 
+def _web_agent_cache_policy() -> tuple[float, int]:
+    try:
+        cfg = load_config().get("dashboard") or {}
+    except Exception:
+        cfg = {}
+    values = []
+    for key, env, default in (
+        ("agent_cache_idle_seconds", "SPARK_WEB_AGENT_CACHE_IDLE_SECONDS", 1800),
+        ("agent_cache_context_bytes", "SPARK_WEB_AGENT_CACHE_CONTEXT_BYTES", 64 * 1024 * 1024),
+    ):
+        try:
+            values.append(max(0, int(os.getenv(env, str(cfg.get(key, default))))))
+        except (ValueError, TypeError):
+            values.append(default)
+    return float(values[0]), values[1]
+
+
 def _touch_web_agent_cache(session_id: str) -> None:
-    if session_id in _web_agents:
-        _web_agents.move_to_end(session_id)
-        _web_agent_last_used[session_id] = time.time()
+    with _web_agent_cache_lock:
+        if session_id in _web_agents:
+            _web_agents.move_to_end(session_id)
+            _web_agent_last_used[session_id] = time.monotonic()
 
 
 def _get_web_cached_agent(session_id: str) -> Any:
-    agent = _web_agents.get(session_id)
-    if agent is not None:
-        _touch_web_agent_cache(session_id)
-    return agent
+    if _web_agents:
+        _evict_web_agent_cache_if_needed()
+    with _web_agent_cache_lock:
+        agent = _web_agents.get(session_id)
+        if agent is not None:
+            _touch_web_agent_cache(session_id)
+        return agent
 
 
 def _has_pending_web_approval(session_id: str) -> bool:
     try:
         from tools import approval as approval_mod
 
-        pending = getattr(approval_mod, "_gateway_pending", None)
-        if isinstance(pending, dict):
-            return session_id in pending
+        if approval_mod.has_blocking_approval(session_id):
+            return True
+        with approval_mod._lock:
+            return session_id in approval_mod._pending
     except Exception:
         _log.debug("Ignoring error in _has_pending_web_approval()", exc_info=True)
     return False
 
 
+def _web_agent_cache_owned(session_id: str, agent: Any, *, include_warming: bool = True) -> bool:
+    from spark_cli.web_agent_cache import has_live_children
+
+    return (
+        _is_web_turn_active(session_id)
+        or (include_warming and session_id in _web_warm_inflight)
+        or _has_pending_web_approval(session_id)
+        or vars(agent).get("_session_db") is not None
+        or has_live_children(agent)
+    )
+
+
 def _evict_web_agent_cache_if_needed() -> None:
-    limit = _web_agent_cache_limit()
-    if len(_web_agents) <= limit:
-        return
-    for sid in list(_web_agents.keys()):
-        if len(_web_agents) <= limit:
-            break
-        if _is_web_turn_active(sid) or _has_pending_web_approval(sid):
-            continue
-        _close_web_agent(sid)
-        _web_agent_last_used.pop(sid, None)
-        _streaming_pipeline_metrics.record_agent_eviction()
+    from spark_cli.web_agent_cache import durable_cache_owners, retained_context_bytes
+
+    # Count cannot be over its minimum of one for a singleton cache. Avoid a
+    # second config read on cold creation; this is the common preparation path.
+    limit = _web_agent_cache_limit() if len(_web_agents) > 1 else 1
+    idle_seconds, byte_limit = _web_agent_cache_policy()
+    now = time.monotonic()
+    with _web_agent_cache_lock:
+        for metadata in (
+            _web_agent_last_used, _web_agent_signatures,
+            _web_agent_history_revisions, _web_agent_context_estimates,
+        ):
+            for sid in list(metadata):
+                if sid not in _web_agents:
+                    metadata.pop(sid, None)
+        sizes = {}
+        for sid, agent in _web_agents.items():
+            fields = ("_session_messages", "messages", "_cached_system_prompt",
+                      "_system_prompt", "system_prompt", "tools")
+            key = tuple(
+                (id(value), len(value) if isinstance(value, (list, dict, str)) else 0)
+                for value in (getattr(agent, name, None) for name in fields)
+            )
+            estimate = _web_agent_context_estimates.get(sid)
+            if estimate is None or estimate[0] != key or sid not in _web_agent_history_revisions:
+                estimate = (key, retained_context_bytes(agent))
+                _web_agent_context_estimates[sid] = estimate
+            sizes[sid] = estimate[1]
+        total = sum(sizes.values())
+        candidates = [
+            sid for sid in _web_agents
+            if len(_web_agents) > limit or (byte_limit > 0 and total > byte_limit)
+            or (idle_seconds > 0 and now - _web_agent_last_used.get(sid, now) >= idle_seconds)
+        ]
+        try:
+            protected = durable_cache_owners(candidates)
+        except Exception:
+            # Uncertain durable ownership must not cause destructive cleanup.
+            _log.debug("cache ownership read failed", exc_info=True)
+            protected = set(candidates)
+        for sid in list(_web_agents):
+            expired = idle_seconds > 0 and now - _web_agent_last_used.get(sid, now) >= idle_seconds
+            pressure = len(_web_agents) > limit or (byte_limit > 0 and total > byte_limit)
+            if not expired and not pressure:
+                continue
+            agent = _web_agents.get(sid)
+            if agent is None or sid in protected or _web_agent_cache_owned(sid, agent):
+                continue
+            _close_web_agent(sid)
+            total -= sizes[sid]
+            _streaming_pipeline_metrics.record_agent_eviction()
+        # Recent warm-request bookkeeping is independent of durable session count.
+        for sid, touched in list(_web_warm_recent.items()):
+            if now - touched >= 5.0:
+                _web_warm_recent.pop(sid, None)
+        while len(_web_warm_recent) > 256:
+            _web_warm_recent.pop(next(iter(_web_warm_recent)))
+
+
+async def _maintain_web_agent_cache() -> None:
+    """One sequential sweep on existing workers, cancelled by server lifespan."""
+    def sweep() -> float:
+        _evict_web_agent_cache_if_needed()
+        idle_seconds, _ = _web_agent_cache_policy()
+        return min(30.0, max(0.05, idle_seconds)) if idle_seconds else 30.0
+
+    while True:
+        try:
+            delay = await _run_blocking(sweep)
+        except Exception:
+            _log.debug("web agent cache maintenance failed", exc_info=True)
+            delay = 30.0
+        await asyncio.sleep(delay)
 
 
 def _store_web_agent(session_id: str, agent: Any, signature: Any) -> None:
-    _web_agents[session_id] = agent
-    _web_agent_signatures[session_id] = signature
-    _touch_web_agent_cache(session_id)
+    with _web_agent_cache_lock:
+        _web_agents[session_id] = agent
+        _web_agent_signatures[session_id] = signature
+        _web_agent_history_revisions.pop(session_id, None)
+        _web_agent_context_estimates.pop(session_id, None)
+        _touch_web_agent_cache(session_id)
     _evict_web_agent_cache_if_needed()
+
+
+def _web_agent_history_for_preparation(preparation: Any, agent: Any, signature: Any):
+    """Reuse only a verified durable prefix in this profile, route and agent.
+
+    A send consumes the stamp before its worker mutates agent history. A later
+    warm request can establish a new stamp. The eager accepted prompt is outside
+    preparation.history_count and is never replayed as past history.
+    """
+    from core.spark_state import SessionDB
+    from spark_cli.web_agent_cache import history_revision, same_history_prefix
+
+    revision = preparation.revision
+    with _web_agent_cache_lock:
+        stamp = _web_agent_history_revisions.get(preparation.session_id)
+    if revision is not None and stamp is not None and agent is not None:
+        db = SessionDB()
+        try:
+            db._conn.execute("BEGIN")
+            current = history_revision(db, preparation.session_id)
+        finally:
+            db.close()
+        if (
+            stamp[0] is agent and stamp[1] == revision
+            and stamp[2] is getattr(agent, "_session_messages", None)
+            and _web_agent_signatures.get(preparation.session_id) == signature
+            and len(getattr(agent, "_session_messages", [])) == revision.count
+            and same_history_prefix(revision, current)
+        ):
+            with _web_agent_cache_lock:
+                _web_agent_history_revisions.pop(preparation.session_id, None)
+            db = SessionDB()
+            try:
+                db.reopen_session(preparation.session_id)
+            finally:
+                db.close()
+            return agent._session_messages, True
+    with _web_agent_cache_lock:
+        _web_agent_history_revisions.pop(preparation.session_id, None)
+    return preparation.history(), False
+
+
+def _warm_web_agent(preparation: Any, turn_route: dict[str, Any]) -> bool:
+    """Worker-owned snapshot read and connectionless cache hydration."""
+    from core.spark_state import SessionDB
+    from spark_cli.web_agent_cache import history_revision
+
+    sid = preparation.session_id
+    agent = _get_web_cached_agent(sid)
+    if agent is not None and _web_agent_cache_owned(sid, agent, include_warming=False):
+        return False
+    signature_matches = agent is not None and _web_agent_signatures.get(sid) == turn_route["signature"]
+    db = SessionDB()
+    try:
+        db._conn.execute("BEGIN")
+        revision = history_revision(db, sid)
+        with _web_agent_cache_lock:
+            stamp = _web_agent_history_revisions.get(sid)
+        if signature_matches and stamp is not None and stamp[0] is agent and stamp[1] == revision:
+            history = stamp[2]
+            if isinstance(history, list) and len(history) == revision.count and history is getattr(agent, "_session_messages", None):
+                return True
+        conversation_history = db.get_messages_as_conversation(sid)
+    finally:
+        db.close()
+    if not signature_matches:
+        agent = _new_web_agent(
+            session_id=sid, model=turn_route["model"], runtime=turn_route["runtime"],
+            request_overrides=turn_route.get("request_overrides"), signature=turn_route["signature"],
+            token_callback=None, tool_start_callback=None, tool_complete_callback=None,
+            reasoning_callback=None, status_callback=None,
+        )
+    if agent is None:
+        raise RuntimeError("Warm preparation did not create an agent")
+    _hydrate_web_agent_from_history(agent, conversation_history)
+    hydrated_history = agent._session_messages
+    with _web_agent_cache_lock:
+        if _web_agents.get(sid) is agent:
+            _web_agent_context_estimates.pop(sid, None)
+            _web_agent_history_revisions[sid] = (agent, revision, hydrated_history)
+    return False
 
 
 def _web_max_iterations() -> int:
@@ -6227,11 +6403,21 @@ def _maybe_capture_codex_usage_limit(agent: Any, result: Any) -> None:
 
 
 def _close_web_agent(session_id: str) -> None:
-    _web_agents.pop(session_id, None)
-    _web_agent_signatures.pop(session_id, None)
-    _web_agent_last_used.pop(session_id, None)
-    # Cached agents are connectionless. A running worker owns its attached DB
-    # until its finally block, even when another thread retires the cache entry.
+    with _web_agent_cache_lock:
+        agent = _web_agents.pop(session_id, None)
+        _web_agent_signatures.pop(session_id, None)
+        _web_agent_last_used.pop(session_id, None)
+        _web_agent_history_revisions.pop(session_id, None)
+        _web_agent_context_estimates.pop(session_id, None)
+    # SP03: a running worker exclusively owns its attached physical DB. Never
+    # close its agent here, nor cancel children when retiring a route entry.
+    if agent is not None and not _web_agent_cache_owned(session_id, agent, include_warming=False):
+        close = getattr(agent, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                _log.debug("web agent resource cleanup failed session=%s", session_id, exc_info=True)
 
 
 def _default_web_chat_model() -> str:

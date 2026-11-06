@@ -1098,16 +1098,17 @@ class TestEventBus:
 
         class FakeClock:
             def __init__(self):
-                self._times = [1000.0, 1000.1, 1012.5, 1012.6]
-                self._monotonic = [50.0, 62.5]
+                self.wall = 1000.0
+                self.elapsed = 50.0
 
             def time(self):
-                return self._times.pop(0) if self._times else 1012.6
+                return self.wall
 
             def monotonic(self):
-                return self._monotonic.pop(0) if self._monotonic else 62.5
+                return self.elapsed
 
-        monkeypatch.setattr(web_server, "time", FakeClock())
+        clock = FakeClock()
+        monkeypatch.setattr(web_server, "time", clock)
 
         async def run():
             loop = asyncio.get_running_loop()
@@ -1120,6 +1121,8 @@ class TestEventBus:
                 tool_start = callbacks[1]
                 tool_complete = callbacks[2]
                 tool_start("tid_1", "web_extract", {"urls": ["https://example.com"]})
+                clock.wall = 1012.5
+                clock.elapsed = 62.5
                 tool_complete("tid_1", "web_extract", {"urls": ["https://example.com"]}, "{}")
                 items = []
                 while len(items) < 4:

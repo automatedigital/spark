@@ -185,7 +185,7 @@ def test_warm_route_caches_agent_without_open_connection(owned_agent, monkeypatc
     web._close_web_agent("owned")
     monkeypatch.setattr(web, "_web_warm_inflight", set())
     monkeypatch.setattr(web, "_web_warm_recent", {})
-    monkeypatch.setattr(web, "_resolve_web_turn_route", lambda *a: {"model": "fixture", "runtime": {}, "signature": "fixture"})
+    monkeypatch.setattr(web, "_resolve_web_turn_route", lambda *a, **kw: {"model": "fixture", "runtime": {}, "signature": "fixture"})
     original_start = web._chat_preparation.start
     futures = []
 
@@ -202,6 +202,9 @@ def test_warm_route_caches_agent_without_open_connection(owned_agent, monkeypatc
         await asyncio.wrap_future(futures[-1])
         assert web._get_web_cached_agent("owned") is not seed
         assert web._get_web_cached_agent("owned")._session_db is None
+        # The general ownership fixture carries a fake live child; this warm
+        # reuse case represents an idle agent, which has no active children.
+        web._get_web_cached_agent("owned")._active_children = []
         assert await web.warm_session_agent("owned") == {"ok": True, "warm": True}
 
     asyncio.run(warm())

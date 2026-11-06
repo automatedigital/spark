@@ -179,6 +179,7 @@ class ChatPreparation:
     session_id: str
     row: dict[str, Any]
     history_count: int
+    revision: Any = None
 
     def history(self):
         from core.spark_state import SessionDB
@@ -201,7 +202,9 @@ class ChatPreparation:
             explicit_model=selected_model or None,
         )
         agent = server._get_web_cached_agent(self.session_id)
-        conversation_history = self.history()
+        conversation_history, verified_warm = server._web_agent_history_for_preparation(
+            self, agent, turn_route["signature"]
+        )
         history_hydrated_at = time.time()
         history_count = len(conversation_history)
         if cancelled():
@@ -221,11 +224,12 @@ class ChatPreparation:
         if (
             agent
             and cached_signature_matches
-            and server._cached_web_agent_matches_history(
+            and (verified_warm or server._cached_web_agent_matches_history(
                 self.session_id, agent, conversation_history
-            )
+            ))
         ):
-            server._hydrate_web_agent_from_history(agent, conversation_history)
+            if not verified_warm:
+                server._hydrate_web_agent_from_history(agent, conversation_history)
             agent.stream_delta_callback = callbacks["token_callback"]
             agent.tool_start_callback = callbacks["tool_start_callback"]
             agent.tool_complete_callback = callbacks["tool_complete_callback"]
@@ -261,6 +265,10 @@ def load_chat_preparation(session_id: str) -> ChatPreparation:
 
     db = SessionDB()
     try:
+        from spark_cli.web_agent_cache import ensure_history_revisions, history_revision
+
+        ensure_history_revisions(db)
+        db._conn.execute("BEGIN")
         sid = db.resolve_session_id(session_id)
         if not sid:
             raise HTTPException(404, "Session not found")
@@ -268,14 +276,13 @@ def load_chat_preparation(session_id: str) -> ChatPreparation:
         row = db.get_session(sid)
         if not row:
             raise HTTPException(404, "Session not found")
+        revision = history_revision(db, sid)
         return ChatPreparation(
             session_id,
             sid,
             row,
-            db._conn.execute(
-                "SELECT COUNT(*) FROM messages WHERE session_id = ?",
-                (sid,),
-            ).fetchone()[0],
+            revision.count,
+            revision,
         )
     finally:
         db.close()
