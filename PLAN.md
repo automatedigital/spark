@@ -1,309 +1,362 @@
-# Spark issue and feature PR plan
+# Spark simplicity and performance improvement plan
 
-Updated: 2026-10-22. Baseline: `64af0d26976714b747dd4f1cc5b495c47c7f7567` (`main`).
+Prepared 2026-11-06. **25 proposed improvements, in priority order; one implementation PR per item.** All checkboxes start unchecked. This is an implementation brief, not a claim that the changes or performance gains have been verified.
 
-Deliver ten independently scoped defect fixes and ten useful features, each implemented by a delegated agent in an isolated worktree with a GitHub issue and pull request. Reference research uses current pinned revisions of [T3 Code](https://github.com/pingdotgg/t3code) and [Hermes Agent](https://github.com/nousresearch/hermes-agent), checked against existing Spark functionality.
+## Research baseline and scope
 
-## Status
+- Spark reviewed at `13d7f767b056a4e8661c0af4118e3f1ad43c2433`, branch `docs/october-issue-feature-plan`. Working tree was clean before this planning work. Future implementers must inspect their actual committed base: this branch is not evidence of current `main` or installed-app behaviour.
+- Hermes Agent reviewed at [`90d6b98fd86d20981ee06ddd5b7d93e4320f26a4`](https://github.com/nousresearch/hermes-agent/tree/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4), fetched 2026-11-06. Reviewed its README, selected feature documentation and runtime sources. References below are pinned to that revision; upstream documentation describes intended behaviour, not independently measured performance.
+- Spark analysis covered the domain glossary, structure map, all three accepted ADRs, chat lifecycle/routes, client transport/session loading, timeline projection, navigation/settings, providers, tools, memory and scheduler seams. Findings below are source observations and design recommendations. No new runtime defect reproductions, browser tests, benchmarks or installed-package tests were run for this document.
+- The preceding plan is preserved verbatim in [the October delivery archive](docs/plans/issue-feature-plan-2026-10-22.md). The earlier [app upgrade plan](docs/plans/app-upgrade-2026-10-15.md), linked issues and open browser/native gates remain historical obligations. Archiving does not accept or close them.
+- Spark already implements lazy tool manifests, bounded async execution, effect-aware tool scheduling, chat/sidebar virtualisation, shared SSE, durable run/child state, drafts, FTS search and context compression. Improve these existing paths; do not rebuild them. The October plan also records separate PRs for prompt history/stash, Markdown export/rendering, sounds, skill edit history and saved cron output. Check those PRs before editing overlapping areas; none is re-proposed here as a new feature.
 
-**Complete: all twenty code PRs merged and Desktop 1.4.0 released.** All twenty code PRs and tracker #144 merged through [#185](https://github.com/automatedigital/spark/pull/185) into main at `824ea1e4e17444e34fe1c14b6581d29d54d205e9`. GitHub confirms all twenty issues closed. Exact reviewed head `98e393d4` passed all eight hosted checks, including native Windows persistence and every retained browser gate. Desktop **1.4.0** is [published](https://github.com/automatedigital/spark/releases/tag/desktop-v1.4.0) from that merge commit. macOS is Developer ID signed/notarized/stapled; Windows is an unsigned x64 beta. All three public release downloads were retrieved without authentication and verified against local SHA-256 hashes.
+Priority weighs lost/duplicated work first, then latency and resource use on common paths, then reductions in everyday configuration and navigation effort. Dependencies constrain merge order, not relative product value. Sizes are indicative: S = 1–2 focused days, M = 3–5, L = 5–8 including tests/review; these are planning estimates, not commitments.
 
-Publication and merge evidence are retained below. Historical failed checks are superseded by final exact-head passing acceptance, with all source repairs and test preconditions documented. Package signing/notarization/lifecycle and public asset verification passed separately, as recorded below.
+Implementation update: the starting checkout was behind current main. Implementation PRs must use current `main` (`679916c4` at dispatch preparation), retaining this plan's research baseline for provenance. Revalidate source observations against the actual base and extend already-merged features rather than duplicating them. The latest main-branch [release ledger](docs/plans/release-ledger-before-2026-11-06.md) is also preserved.
 
-The previous upgrade plan and its unfinished performance/native gates are preserved in [the historical plan](docs/plans/app-upgrade-2026-10-15.md). Existing issues #130, #139 and #140 retain those gates. No historical acceptance is silently carried forward.
+## Pinned Hermes references
 
-## Delivery rules
+| Ref | Inspected feature/source | Relevant lesson for Spark |
+| --- | --- | --- |
+| H1 | [README](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/README.md) | Broad provider support, learning, scheduling and delegation are useful only when their controls remain understandable. |
+| H2 | [Context compressor](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/agent/context_compressor.py) | Protected head/tail, tool-output pruning, bounded summarisation and explicit failure handling inform context management. |
+| H3 | [Session search tool](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/tools/session_search_tool.py) | Search and bounded historical recall should retrieve the relevant conversation context. |
+| H4 | [Memory guide](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/website/docs/user-guide/features/memory.md) | Persistent memory and recall need visible user controls; distinguish memory types and their roles. |
+| H5 | [Skills guide](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/website/docs/user-guide/features/skills.md) | Progressive disclosure, project-local skills, bundles and setup requirements can reduce repeated instructions. |
+| H6 | [Scheduled tasks guide](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/website/docs/user-guide/features/cron.md) | Timezone, execution history, admission checks and separate delivery status make unattended work understandable. |
+| H7 | [Code execution guide](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/website/docs/user-guide/features/code-execution.md) | Bounded output, lifecycle limits and retrieving saved output avoid repeated execution and oversized context. |
+| H8 | [MCP implementation](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/tools/mcp_tool.py) | Connection, discovery, pagination and timeout handling are explicit integration concerns. |
+| H9 | [Context files guide](https://github.com/nousresearch/hermes-agent/blob/90d6b98fd86d20981ee06ddd5b7d93e4320f26a4/website/docs/user-guide/features/context-files.md) | Project instructions and their scope should be discoverable without bloating normal chat. |
 
-- Confirm each defect from current source and a focused reproduction; identify upstream source and the absent Spark capability for every feature.
-- Each packet records issue, agent task ID, allowed paths, dependencies, acceptance flow and PR evidence. Use descriptive `fix/` and `feat/` branches.
-- Isolated worktrees start at the committed baseline. Preserve unrelated dirty work; use synthetic `SPARK_HOME`; activate `.venv` for Python and verify Node 22 for frontend checks.
-- Keep one writer for shared migrations, manifests, lockfiles and production bundles. Source PRs must disclose pending bundle/browser/package gates.
-- Agents create and link their PRs, report exact head SHA/check results, and do not merge, publish releases or poll PRs. The lead checks results and links all deliverables to this thread.
-- Run focused regressions and relevant lint/type/manifest/cache gates. Web/chat/gateway behavior also requires the documented browser flows. Do not mark unexecuted checks as passed.
+H references identify inspiration, not missing-feature or parity claims. Spark-specific improvements are explicitly identified below. Adapt concepts to Spark's architecture; preserve notices for any copied code and review the pinned upstream licence.
 
-## Packet tracker
+## Implementation and acceptance contract
 
-| ID | Outcome | Status | Issue | Agent task | PR / evidence |
-| --- | --- | --- | --- | --- | --- |
-| I01 | Prevent uploads from following symlinks outside their storage root | Merged via #185; final CI passed | [#145](https://github.com/automatedigital/spark/issues/145) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I01-r1 | [#155](https://github.com/automatedigital/spark/pull/155) / `6ef55a4ef7ea` |
-| I02 | Preserve existing attachments when uploading duplicate filenames | Merged via #185; final CI passed | [#146](https://github.com/automatedigital/spark/issues/146) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I02-r1 | [#171](https://github.com/automatedigital/spark/pull/171) / `10ba28f595c5` |
-| I03 | Route context and brief requests to the selected backend | Merged via #185; final CI passed | [#147](https://github.com/automatedigital/spark/issues/147) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I03-r1 | [#167](https://github.com/automatedigital/spark/pull/167) / `f60fc342a7ad` |
-| I04 | Fence stale token estimate responses after prompt or session changes | Merged via #185; final CI passed | [#148](https://github.com/automatedigital/spark/issues/148) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I04-r1 | [#172](https://github.com/automatedigital/spark/pull/172) / `810b8f62dbb8` |
-| I05 | Preserve exact Unicode and quoted paths in Git Changes | Merged via #185; final CI passed | [#149](https://github.com/automatedigital/spark/issues/149) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I05-r1 | [#168](https://github.com/automatedigital/spark/pull/168) / `797c0667b6c6` |
-| I06 | List nested untracked files and reject directory discard | Merged via #185; final CI passed | [#150](https://github.com/automatedigital/spark/issues/150) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I06-r1 | [#173](https://github.com/automatedigital/spark/pull/173) / `f3c76d3a6df8` |
-| I07 | Make canvas revision checks atomic with saves and deletion | Merged via #185; final CI passed | [#151](https://github.com/automatedigital/spark/issues/151) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I07-resume-r3 | [#177](https://github.com/automatedigital/spark/pull/177) / `64ced2ca8271` |
-| I08 | Preserve healthy memory databases during SQLite lock contention | Merged via #185; final CI passed | [#152](https://github.com/automatedigital/spark/issues/152) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I08-r1 | [#166](https://github.com/automatedigital/spark/pull/166) / `4e8828a6ed22` |
-| I09 | Prevent lost cron updates with cross-process mutation locking | Merged via #185; final CI passed | [#153](https://github.com/automatedigital/spark/issues/153) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I09-r1 | [#169](https://github.com/automatedigital/spark/pull/169) / `4231e200ea55` |
-| I10 | Preserve file permissions during atomic file and skill edits | Merged via #185; final CI passed | [#154](https://github.com/automatedigital/spark/issues/154) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I10-r1 | [#175](https://github.com/automatedigital/spark/pull/175) / `0d3caa4cb141` |
-| F01 | Recall sent prompts from composer history | Merged via #185; final CI passed | [#156](https://github.com/automatedigital/spark/issues/156) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F01-r1 | [#176](https://github.com/automatedigital/spark/pull/176) / `a667b806b3b2` |
-| F02 | Configure per-job models providers and skills in Schedule | Merged via #185; final CI passed | [#157](https://github.com/automatedigital/spark/issues/157) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F02-resume-r3 | [#179](https://github.com/automatedigital/spark/pull/179) / `eb31f7fbfc02` |
-| F03 | Export sessions as readable redacted Markdown | Merged via #185; final CI passed | [#158](https://github.com/automatedigital/spark/issues/158) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F03-resume-r3 | [#182](https://github.com/automatedigital/spark/pull/182) / `314b876c4bde` |
-| F04 | Save and restore a bounded prompt stash | Merged via #185; final CI passed | [#159](https://github.com/automatedigital/spark/issues/159) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F04-ci-review-r2 | [#170](https://github.com/automatedigital/spark/pull/170) / `a94d5487b6f7` |
-| F05 | Render safe Mermaid diagrams in chat | Merged via #185; final CI passed | [#160](https://github.com/automatedigital/spark/issues/160) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F05-resume-r3 | [#184](https://github.com/automatedigital/spark/pull/184) / `2a64ae895e08` |
-| F06 | Render GitHub-style Markdown callouts | Merged via #185; final CI passed | [#161](https://github.com/automatedigital/spark/issues/161) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F06-ci-review-r2 | [#174](https://github.com/automatedigital/spark/pull/174) / `752034ee380b` |
-| F07 | Render safe collapsible details in chat Markdown | Merged via #185; final CI passed | [#162](https://github.com/automatedigital/spark/issues/162) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F07-resume-r3 | [#183](https://github.com/automatedigital/spark/pull/183) / `bab154185503` |
-| F08 | Add opt-in notification sounds with preview | Merged via #185; final CI passed | [#163](https://github.com/automatedigital/spark/issues/163) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F08-resume-r3 | [#180](https://github.com/automatedigital/spark/pull/180) / `7dcdcc106b98` |
-| F09 | Browse bounded history of dashboard skill edits | Merged via #185; final CI passed | [#164](https://github.com/automatedigital/spark/issues/164) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F09-resume-r3 | [#178](https://github.com/automatedigital/spark/pull/178) / `5b125dccd120` |
-| F10 | Browse saved scheduled-job output | Merged via #185; final CI passed | [#165](https://github.com/automatedigital/spark/issues/165) | node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-F10-resume-r3 | [#181](https://github.com/automatedigital/spark/pull/181) / `e4081d9053b0` |
+Each task below is a separate agent assignment and PR. No implementation agents are being started by this plan.
 
-## Research and acceptance evidence
+1. Before dispatch, create/link a GitHub issue using `docs/agents/issue-tracker.md`, record the packet ID, exact committed base, prerequisites, allowed paths and contract fixtures. Recheck whether the capability already landed elsewhere. A dependency means start from its merged commit or an explicitly recorded local stacked base, never assume another worktree includes uncommitted changes.
+2. Own only listed paths and focused tests; new helper paths below are proposals. Keep shared-file PRs sequential, even if they modify different functions. One writer owns `spark_state.py` migrations, schemas/config, tool manifests, npm lockfile and production bundle at any time. Do not run several bundle/lockfile writers. No runtime rewrite or new orchestration framework.
+3. Keep ADR-0001 cache goldens, ADR-0012 lazy discovery and ADR-0013 identity/ownership intact. No mid-thread system/toolset changes, implicit Dream, silent provider substitution, automatic replay of uncertain work, or child completion closing a root run. Use profile-aware storage and synthetic `SPARK_HOME`.
+4. Baseline and candidate must use the same fixture, provider replay, machine, build mode and recorded Node/Python versions. Separate cold startup, warm reuse, acceptance time, first visible event, actual first token, tool time and completion. Capture at least five repeats for latency comparisons and report median/p95, sample size, payload bytes, request/commit counts and relevant memory. Targets below are **acceptance targets**, not measured claims. If missed, record the result and leave the checkbox open; do not weaken a threshold to obtain a pass.
+5. Activate `.venv` for Python/server checks; verify Node 22 and its executable for frontend acceptance. Run focused regression tests while iterating, `ruff check src/` plus relevant pytest (`not integration`, `-n 0` for serial/shared state), and affected frontend lint/tests/build. Runtime/tool work also runs cache goldens, `tests/test_minimal_startup.py`, lazy-manifest tests and manifest `--check`. Report existing debt separately. Full suite when practical; disclose omissions. Tests should exercise real persistence at provider/process boundaries with replay fixtures.
+6. Every UI/chat/gateway task needs browser evidence of its stated flow, including long conversations, two active chats, switching during generation, refresh/reconnect and isolated-profile state. Preserve project chat grouping and auto-opening its folder. Include keyboard/focus/error states. Web source/build, served bundle, macOS installation and Windows installation are separate gates. Each PR records what was actually verified; bundle regeneration and releases require their own coordinated gate.
+7. Completion evidence goes in the issue and PR: exact head, source changes, baseline/candidate results, browser flow, limitations and rollback. Check an item only after its acceptance evidence passes, not when an agent finishes or opens a PR. Normal rollback disables additive behaviour or restores a compatible implementation; never delete newer user data or restore an old database blindly.
 
-- Backend/tool audit: [six confirmed defects](docs/reviews/spark-backend-audit-2026-10-22.md), with 149 existing focused tests passing. B1, B2 and B5 selected for I08–I10; B3/B4/B6 retained as follow-up findings outside the requested ten fixes.
-- Web/API/gateway audit: [seven current findings](docs/reviews/spark-web-audit-2026-10-22.md); five isolated API reproductions, two frontend source traces. Browser acceptance remains open.
-- Current upstream comparison: [pinned source review](docs/reviews/spark-reference-audit-2026-10-22.md). T3 `f054d1b8018721bd997d99cbb918a7b17bf098a4`; Hermes `8237c7f8ec179c88857f24a174509d985af704b7`. Selected research F01/F02/F03/F07/F08/F09/F10/F12/F13/F14; packet numbering below is the authoritative delivery mapping.
+## Prioritised improvements
 
-### Lead source checks
+### 01 — Accept each submitted prompt once
 
-Isolated cron CRUD probes on the baseline confirmed three candidates: `every 0m` is accepted, `update_job` permits changing the durable job ID, and updating legacy `skill` leaves the old canonical `skills` value in place. These require audit reconciliation and separate acceptance scoping before selection; they are not yet counted as delivered fixes.
+- [ ] **SP01 · Backend + composer · L · Dependencies: none**
 
-### Research task identities
+**Evidence and benefit.** `web_server.py` has durable receipts for child controls, but root create/send follow separate paths; `send_conversation_message` rejects an active turn with 409 rather than returning a previously accepted submission. Network ambiguity should not make users choose between losing a prompt and submitting it twice. This is Spark-specific reliability work, informed by H1's unattended/delegated workflows.
 
-All use inherited Codex `gpt-6.1-sol`, medium reasoning, default service tier, read-only source scope.
+**Implement.** Add an optional client-generated submission ID to new-chat and follow-up bodies. Reuse the existing receipt mechanism, scoped to profile, originating conversation/create request and operation; hash the canonical prompt, attachment/context references and explicit route. Commit acceptance, root turn identity and dispatch intent together. Repeated identical requests return the original IDs; reused IDs with different payloads conflict. Preserve existing clients. On restart expose accepted-but-uncertain execution without redispatch. Composer retains the same ID until acceptance is resolved and only clears the originating acknowledged draft.
 
-- backend: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-backend-r1` (running).
-- web: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-web-r1` (running).
-- features: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-audit-features-r1` (running).
+**PR boundary.** Own submission handlers/models in `src/spark_cli/web_server.py`, receipt extensions in `src/core/spark_state.py`, `web/src/hooks/useChatComposerActions.ts`, conversation API/types and focused tests. Sole migration writer. Do not change retries or child receipts.
 
-## Packet scopes and dependencies
+**Accept.** Drop the HTTP response after commit; retry from the same draft and prove one persisted user prompt, one root run and one dispatch in replay. Test simultaneous duplicate requests, mismatched bodies, two profiles, compression aliases and process loss before/after dispatch. Browser retry recovers the accepted turn without duplicate output. Legacy payloads still work.
 
-- **I01**: src/spark_cli/workspace_routes.py upload handlers and a new focused upload safety test module. Dependency: none. Acceptance: finding W05 in the web audit.
-- **I02**: workspace upload handlers, upload response mapping in ChatPanel if needed, focused attachment tests. Dependency: I01: same upload handlers; launch after its PR is ready. Acceptance: finding W06 in the web audit.
-- **I03**: web/src/lib/context.ts, summarize-file call in ChatPanel.tsx, focused transport tests. Dependency: none. Acceptance: finding W01 in the web audit.
-- **I04**: web/src/hooks/useTokenEstimate.ts, optional signal parameter in context.ts, hook tests. Dependency: I03: shared context client; launch after its PR is ready. Acceptance: finding W02 in the web audit.
-- **I05**: workspace_routes.py Git status/numstat parser and focused Git route tests. Dependency: none; keep away from upload handler changes. Acceptance: finding W03 in the web audit.
-- **I06**: workspace_routes.py Git status invocation and revert validation, focused Git tests. Dependency: I05: shared Git parser; launch after its PR is ready. Acceptance: finding W04 in the web audit.
-- **I07**: src/spark_cli/canvas_routes.py and new focused concurrency tests. Dependency: none. Acceptance: finding W07 in the web audit.
+### 02 — Reconcile chat from one authoritative recovery snapshot
 
-- **I08**: src/plugins/memory/holographic/store.py and tests/plugins/memory/test_holographic_recovery.py. Dependency: none. Acceptance: finding B1 in the backend audit.
+- [ ] **SP02 · Backend + chat UI · L · Dependencies: SP01**
 
-- **I09**: src/cron/jobs.py and focused tests/cron concurrency tests. Dependency: none. Acceptance: finding B2 in the backend audit.
+**Evidence and benefit.** `web_server.py` exposes turn status, stream snapshot, outcomes, plan and pending actions separately; `chatRecovery.ts` and the session/stream controllers coordinate multiple responses. Consolidating recovery reduces round trips and inconsistent combinations of statuses. Existing journal recovery remains; this is an extension, not a new replay system.
 
-- **I10**: src/tools/file_operations.py, src/tools/skill_manager_tool.py and their focused tests. Dependency: none. Acceptance: finding B5 in the backend audit.
+**Implement.** Introduce a versioned recovery response containing resolved session/lineage, durable run state, pending decisions, bounded stream tail and projection revision. Read related durable fields in one database snapshot; explicitly identify the separate process-epoch stream watermark. Retry a bounded number of times or request re-reconciliation if those sources change during assembly. Adapt controllers to one recovery action while preserving legacy routes. Never combine the two cursor types or reissue work to rebuild the screen.
 
-- **F01** (F01): new lib/composerPromptHistory.ts, PromptBar.tsx, narrow ChatPanel history prop, focused tests. Dependency: coordinate composer props with F04; no source dependency. Acceptance: History from loaded user messages only, Up/Down caret guards, restore unsent draft, editable recall with no automatic send; thread changes retire history ownership.
+**PR boundary.** Recovery assembly in `web_server.py`/new helper, read-only SessionDB accessor, API types, `chatRecovery.ts`, session/stream controllers and replay tests. No new lifecycle writer.
 
-- **F02** (F02): cron_routes.py, api_cron.ts, CronJob type in apiTypes.ts, CronPage.tsx, focused tests. Dependency: I09 owns jobs.py locking; do not edit jobs.py. F10 owns separate output component/module.. Acceptance: Expose existing backend model/provider/ordered skills on create/edit/clear. Reuse resolved providers and installed skills. Do not hardcode providers or add custom URLs/scripts. Prefer canonical skills patches to avoid legacy-skill bug. Real fixture round trips, no provider calls.
+**Accept.** Simulate expired retention, server restart, compression during fetch, delayed old replies and unresolved approvals. Browser refresh matches persisted state; an unknown tail is labelled/reconciled. Target one recovery HTTP request in the ordinary reconnect path instead of the measured multi-fetch baseline, with no duplicate prompts/actions and no regression in first restored content time.
 
-- **F03** (F03 and B01): new spark_cli/session_export_markdown.py, session_export.py, core/cli/session_ops_mixin.py export dispatch, commands.py export help, focused tests. Dependency: include mandatory B01 nested export sanitation as a bounded prerequisite in this PR. Acceptance: Add /export --format markdown, retain JSON default. Recursively redact nested tool arguments/outputs and preserve input objects; synthetic fake secrets absent in final bytes. Treat nested redaction as required prerequisite, no automatic publishing or Gist calls. Include roles/timestamps and safely fenced code.
+### 03 — Keep expensive chat preparation off the API event loop
 
-- **F04** (F07): new lib/promptStashStore.ts and chooser component, narrow ComposerMoreMenu/PromptBar integration, tests. Dependency: F01 also touches composer; keep helper/component independent and minimal integration hunks. Acceptance: Explicitly saved text-only prompts, bounded list, restore without silently discarding a nonempty draft, delete, backend/profile-scoped persistence, honest storage failure. No attachment capture claim.
+- [ ] **SP03 · Backend · M · Dependencies: SP01–SP02**
 
-- **F05** (F08): new diagram component/helper, Markdown.tsx minimal dispatch, focused tests; sole owner web/package.json and package-lock.json if needed. Dependency: sole lockfile writer; F06/F07 may touch Markdown.tsx but own separate components/parser variants. Acceptance: Lazy strict Mermaid rendering completed fences only; partial streaming remains code. Source/copy/error fallback, safeMode and size caps, block hostile links/HTML. Exact-pin dependency using verified Node22 nested lockfile. Do not update unrelated deps.
+**Evidence and benefit.** The async follow-up handler in `web_server.py` synchronously opens SessionDB, resolves lineage and hydrates `get_messages_as_conversation` before executor dispatch. Warm-session and model preparation have additional blocking seams. Other chats' heartbeats and controls should remain responsive during long-history preparation.
 
-- **F06** (F09): markdownParse.ts callout parser variant, Markdown renderer dispatch, small callout component, tests. Dependency: F07 shares parser: keep separate named parse helper and discriminated variant; document integration order F06 then F07. Acceptance: NOTE TIP IMPORTANT WARNING CAUTION accessible callouts, generic blockquotes unchanged. Test multiline, stream splits, unknown markers, code fences, keyboard/screenreader labels/theme.
+**Implement.** Profile preparation stages, then move demonstrated SQLite/file/provider setup blocking into the existing bounded runtime. Create/use/close each DB connection in its owning worker. Separate preparation from commit/dispatch so SP01 ownership remains atomic; keep locks short and never hold the global turn lock across I/O. Put an explicit bound on queued preparations and return an actionable busy response when saturated. Do not increase thread counts as the default solution.
 
-- **F07** (F10): markdownParse.ts details parser variant, new Details renderer, Markdown minimal dispatch, tests. Dependency: F06 shares parser; avoid wholesale parser rewrite, integrate F06 before F07. Acceptance: Narrow details/summary grammar only, native accessible disclosure, literal malformed/streaming fallback. No arbitrary HTML/events/attributes. Fences inside details, escaping, copyability and bounded rendering.
+**PR boundary.** Chat preparation helper extracted from `web_server.py`, narrow `core/async_runtime.py` integration if required, focused concurrency/replay tests. No wholesale server extraction or provider payload edits.
 
-- **F08** (F12): notificationPolicy.ts, small sound helper, NotificationBell.tsx and existing settings controls, tests. Dependency: none; no lockfile or external audio asset required. Acceptance: Opt-in completion/input sounds, explicit gesture preview, respect existing quiet/project mute/dedupe policy. Cooldown across simultaneous completions, handle autoplay denial, no per-token audio and no external sound services.
+**Accept.** With four concurrent submissions and a synthetic 10,000-message history/slow DB fixture, measure an independent status request and SSE heartbeat. Target p95 control response below 250 ms on the recorded fixture machine and at least 50% lower event-loop delay than baseline. Stop/cancel during preparation must fence dispatch; unchanged single-chat ordering/cache goldens must pass.
 
-- **F09** (F13): new profile-local skill history helper, dashboard skill save route seam, SkillsToolsPage history drawer, focused tests. Dependency: I10 edits skill_manager_tool.py permissions; do not edit that file. No DB migration.. Acceptance: Read-only before/after history for dashboard edits ONLY; clearly label coverage excludes external editors and agent edits. Atomic bounded snapshots, profile isolation, concurrent save behavior; no rollback button or broad ledger claims.
+### 04 — Cancel obsolete reads across navigation and connection changes
 
-- **F10** (F14): new cron output route/helper or focused cron_routes extension, API helper, standalone output drawer and CronPage entry point, tests. Dependency: F02 edits cron types/page; keep separate module/component and minimal entry-point hunk. Do not edit jobs.py.. Acceptance: List/read/copy existing saved per-job Markdown output, newest first. Call it saved output history, not authoritative attempts/delivery. Bound page size/read bytes, validate IDs and exact safe filenames, reject symlink/traversal, missing/pruned files gracefully. No provider run needed.
+- [ ] **SP04 · UI transport · M · Dependencies: SP02**
 
-### I01 draft review
+**Evidence and benefit.** `apiHelpers.ts` tracks connection generations and some APIs accept signals, but session list/history/search methods in `api_session.ts` do not expose cancellation. Session controllers fence stale responses, yet obsolete network/server work can continue. Cancellation saves resources during rapid navigation; fencing still provides correctness.
 
-PR #155 at `4ab637f8087e683a0c5ce9afcc2db2ac4ffb33b0`: 25 focused and 69 combined neighbor tests pass; 13 regression tests failed before repair. Scoped Ruff passes; full-source 299 errors match baseline. Browser-origin multipart smoke passes, shipped UI unverified. **Unaccepted:** unsupported platforms including Windows return 501 for normal uploads; lead requires a portability correction before acceptance.
+**Implement.** Add optional AbortSignals to read-only session/history/search/model calls without changing existing signatures' defaults. Provide a small owner-scoped read controller tied to backend, credential/profile epoch and view generation. Abort on retirement and treat AbortError as expected; continue checking identity on resolve/reject/finally. Never auto-abort an accepted mutation or share an abort controller across independent consumers.
 
-### Implementation delegation
+**PR boundary.** `web/src/lib/apiHelpers.ts`, affected `api_*.ts`, small read-owner helper and read consumers/tests. Coordinate session-controller hunks after SP02; leave query deduplication to SP05.
 
-All **20 dedicated implementation agents have been created**: I01–I10 and F01–F10, each in an isolated worktree with its own scoped branch/PR assignment. The three completed research agents are additional. Agent tasks preserve inherited Codex gpt-6.1-sol, medium reasoning and default service tier. Concurrent shared-file hunks are reviewed/rebased in the recorded integration order; only F05 may write the npm lockfile. No agent may write the tracker or production bundle.
+**Accept.** Deferred-response tests cover A→B→A, same-ID different backend, credential replacement and unmount. Browser rapidly switches 20 threads under throttling: no stale messages/loading/errors and obsolete reads are cancelled. Compare completed bytes/requests with baseline and show a reduction; mutation acceptance remains recoverable through SP01.
 
-I01 portability correction is delegated in a fresh isolated worktree, starting from PR155 head; it updates that same PR and must preserve normal Windows uploads rather than returning blanket 501.
+### 05 — Share reference-data reads and retire redundant polling
 
-### I08 lead verification
+- [ ] **SP05 · Backend + UI data layer · M · Dependencies: SP04**
 
-PR [#166](https://github.com/automatedigital/spark/pull/166), head `4e8828a6ed220ed3d098030f3773ea2a27335970`: lead reviewed the two-file diff and independently ran recovery/dedup/auto-extract neighbors with isolated SPARK_HOME and this worktree src: **25 passed**, exit 0. Agent records 11 failing-before regressions, 16 focused/25 neighbors passing, scoped Ruff clean, identical 299 full-source baseline Ruff errors. CI snapshot: frontend lint/types/tests and mypy passed; remaining checks still running. No full-suite/package/provider acceptance claimed; not merged.
+**Evidence and benefit.** `sessionStore.tsx` reloads sidebar metadata on focus/visibility and a 15-second timer; `CronPage.tsx` also polls. Each Memory target card independently calls the all-target memory endpoint. Shared SSE already exists, so adding another transport would increase complexity.
 
-### I03 lead review
+**Implement.** Add a bounded, profile/backend/auth-scoped resource cache for sidebar metadata, cron summaries and memory targets only. Deduplicate in-flight identical reads, expose freshness/error state and invalidate from existing committed events plus successful mutations. Coalesce reconnect/focus refreshes; retain a low-frequency visibility-aware fallback for missing events and disconnected transports. Abort one consumer without cancelling other subscribers. Use ETags/revisions where useful; no generic cache of secrets or mutation responses.
 
-PR [#167](https://github.com/automatedigital/spark/pull/167), head `f60fc342a7adb265c8073b278149089032357b28`: lead reviewed the three-file transport/test diff and independently reran **39 focused tests**, exit 0, using verified Node v22.22.1. Agent records 13 baseline failures, **468 full frontend tests**, clean lint/TypeScript and rendered Summarize/brief fixtures passing against the selected backend with authorization. Synthetic provider responses; stale token estimate behavior belongs to I04. Hosted CI and package/bundle acceptance remain unverified.
+**PR boundary.** New resource-store helper, sidebar metadata read integration, `CronPage.tsx`, `MemoryPage.tsx`, narrow domain ETag/event support and tests. No package dependency required; no broad session-store rewrite.
 
-I03 lead environment correction: the first independent 39-test run passed under the shell-default Node **25.8.0**, so it was not valid Node-22 acceptance. The lead then explicitly prepended `/Users/joe/.nvm/versions/node/v22.22.1/bin`, verified version/executable, and repeated the same 39 tests successfully under **v22.22.1**. The earlier run is retained as a non-acceptance attempt.
+**Accept.** Two memory cards cause one read; simultaneous focus/reconnect produces one fetch per resource. Test lost events, TTL expiry, failed fetch, offline recovery and two profiles. Target at least 70% fewer idle reference-data requests over a recorded five-minute visible session, with committed changes shown within one second while connected and eventual fallback reconciliation when events are unavailable.
 
-## Resume checkpoint — 2026-10-22
+### 06 — Update only the active tail during token streaming
 
-- User requested all sub-agent work finished and every PR on GitHub. Pause revoked; stopped checkouts are preserved read-only while new delegated tasks recover their work.
-- GitHub confirms twelve code PRs: #155, #166–#176. All twelve are registered to the parent T3 thread; #144 is the separate tracker PR.
-- Snapshot passes on #155, #166–#168, #171–#173, #175–#176; #169 e2e still running. #155 still has a known Windows compatibility blocker despite passing CI.
-- #170 fails the third repeated longthread browser attempt after two passes; #174 fails inspector scroll drift `(1000, 1410)`. F04/F06 bounded review tasks must inspect exact artifacts and compare/reproduce before any fix or retry. No assertion is waived, no blind CI rerun.
-- Original interrupted tasks I04/I06/I10/F01/F06 produced committed/pushed PRs around interruption; their PR bodies and source/check snapshots are retained as evidence, not inferred from terminal task status.
+- [ ] **SP06 · Chat UI performance · M · Dependencies: SP02; coordinate ChatPanel edits after SP04**
 
-I01 capacity reassignment: recovery round3 failed before execution with `Selected model is at capacity. Please try a different model.` Original work remains preserved. A fresh live-catalog Codex `gpt-6-astra` task (medium/default options) owns the same PR155 correction: `node:delegated-task:command%3Amcp%3A273d5d45-83a6-415e-b4af-fa08d28d167f%3Adelegate-task%3Aspark-20261022-I01-portability-astra-r4`. No duplicate live worker or new PR.
+**Evidence and benefit.** `ChatPanel.tsx` already virtualises turns and passes a previous timeline, but reprojects when `chatMessages` or subagents change. `threadTimelineModel.ts` must still be profiled for historical scan/allocation cost. Virtual DOM limits do not automatically bound projection or Markdown work.
 
-### I07 delivery and lead verification
+**Implement.** Instrument completed-turn visits and React commits. Reuse immutable settled-turn projections; rebuild the dirty suffix identified by changed message/run IDs, falling back to a full projection for history replacement, edits, forks or compression. Memoise settled turn rows with stable callbacks. Batch active-tail presentation to animation frames without delaying terminal/approval events. Do not mutate persisted content or discard streamed text.
 
-GitHub PR [#177](https://github.com/automatedigital/spark/pull/177), exact published head `64ced2ca82718903da24cb53f4c34eaaa5c9f022`, preserves the stopped commit. Lead reviewed the canvas source diff and independently reran concurrency/routes/tool neighbors: **26 passed**, exit 0. Agent two-tab fixture demonstrates 200/409 conflict, reload and stale-save-after-delete rejection. Windows lock runtime and full-app/package flows remain unverified; CI pending. [Full evidence](docs/reviews/I07-canvas-delivery-result.md).
+**PR boundary.** `ChatPanel.tsx`, `lib/threadTimelineModel.ts`, `components/chat/MessagesTimeline.tsx`, active assistant rendering and focused performance/property tests. Preserve the existing virtualiser and scroll model.
 
-## Published feature checkpoint
+**Accept.** Full and incremental projections match across append, prepend, tool completion, subagent updates, fork and compression fixtures. On 10,000-message replay, target no settled-turn rebuilds for an ordinary token append and at least 50% lower projection CPU than baseline. Browser selection, exact copy, minimap, scroll anchoring and switching between two streams remain correct; record frame/commit evidence.
 
-GitHub confirms F09 #178, F02 #179, F08 #180, F10 #181, F03 #182 and F07 #183 in addition to the earlier thirteen code PRs. All are registered to this thread. **F05 Mermaid is the sole unpublished packet**. Reports arriving after PR publication are still reconciled before delivery acceptance.
+### 07 — Retrieve large tool results in bounded chunks
 
-F02 #179: published head `eb31f7fbfc02e8ba2b78d6c3c09de894fc36ab4e`; agent evidence **129 Python / 448 frontend tests**, browser create/edit/order/clear round trip, lint/types/mypy and isolated build pass. F08 #180 reports **456 frontend tests** and real Chromium sound preview; installed desktop audio unverified. F09 #178 reports **65 Python / 448 frontend tests** and read-only history browser flow; Windows/packages unverified.
+- [ ] **SP07 · Backend + tool-result UI · M · Dependencies: SP04**
 
-I01 portability recovery is published at `8987f857f2dd2ce1da96a4f04de7e738402faaf7`: **74 tests pass, 11 native-Windows cases skip** locally. Blanket501 is removed, but draft acceptance still requires Windows runtime evidence. New Ubuntu mypy-ratchet has ten Windows-API attribute/return errors; the lead fetched the actual completed job log via jobs API and delegated a focused platform-typing correction, not a blind rerun.
+**Evidence and benefit.** History already supports compact tool payloads and `getSessionToolResult`; that detail endpoint returns one complete content string. `ToolCallBubble.tsx` limits rich detection for large content, but an expanded result can still fetch/render a very large string. H7's saved-output retrieval motivates extending the existing path.
 
-### Final handoff receipts for F03 / F07 / F10
+**Implement.** Add a capped cursor/range read to tool-result detail with total length, truncation and content revision. Keep raw stored output intact. Open collapsed results with a small preview, load further pages explicitly and support an authenticated streaming download for exact full content. Avoid loading the entire result merely to copy a preview. Keep permission/session ownership validation on every read, bound media detection and cancel stale expansions.
 
-- F03 #182: published head `314b876c4bde42f7696235461c4729ce80d94472`; **166 focused tests**, changed-file Ruff/full app mypy and real SQLite CLI export flow pass. Mandatory nested redaction included; manifest import check timed out twice and remains unverified.
-- F07 #183: published head `bab15418550385c1ca73a3480900733a6f98a962`; **464 frontend tests**, Node22 lint/types/build/budget and toggle/copy/safety browser fixture pass. Browser find did not reveal collapsed content; F06 must integrate first.
-- F10 #181: published head `e4081d9053b004e375eca472c86aaa00027ddce9`; **88 Python / 448 frontend tests**, browser saved-output flow, lint/types/build/budget pass. Windows output browsing remains unsupported/unverified; no claim of native Windows feature acceptance.
+**PR boundary.** Tool-result read handler, read-only SessionDB accessor if needed, `api_session.ts`, `ToolCallBubble.tsx` and focused tests. No changes to model-visible truncation, exports or tool execution.
 
-All three stopped checkouts remain preserved, recovery checkouts clean, and exact commands/limits are in the corresponding linked delivery reports.
+**Accept.** A 10 MB synthetic result opens with at most 64 KiB of initial result content; pagination reconstructs exact bytes, including Unicode boundaries. Test concurrent output revision, missing result, wrong thread/profile and cancellation. Browser expanding/collapsing two results stays responsive; explicit full download matches the stored hash and does not block token streaming.
 
-### F06 bounded CI review complete
+### 08 — Make warmed-agent retention cost-aware
 
-PR #174 remains at `752034ee380b03e8d64de172543900582915e38c`. The original hosted `(1000, 1410)` scroll failure is **unverified/open**. One unchanged candidate inspector gate and one baseline gate pass all 11 checks with `1000 → 1000px`, no page errors. No introduced cause reproduced, no source change/push/CI rerun or threshold relaxation. Fresh lint/types/**457 frontend tests**, isolated build/budget, six pytest cases and callout browser flow pass. [Review evidence](docs/reviews/F06-ci-delivery-result.md). This closes the bounded investigation, not the failed hosted acceptance gate.
+- [ ] **SP08 · Backend resource use · M · Dependencies: SP03**
 
-### F04 bounded CI review complete
+**Evidence and benefit.** `web_server.py` already has an LRU/count cap, pending-approval protection and warm deduplication. Its cache is count-based; last-used bookkeeping offers a seam for idle expiry and measuring retained histories. H7's explicit lifecycle limits inform the policy; do not claim Spark lacks caching.
 
-PR #170 remains at `a94d5487b6f747a612a11591b0a9fac1c0350fbf`. Latest hosted artifact establishes duplicate history cursor failure. Local candidate fixed-three-attempt batch: **startup navigation timeout**, then **two passes**; baseline comparison passes. Hosted duplicate-cursor failure remains unreproduced/unresolved. Lint/types, eight stash tests and feature browser flow pass. No source change/push/speculative fix/CI rerun or relaxed assertion. [Exact evidence](docs/reviews/F04-ci-delivery-result.md). Bounded review is finished; hosted acceptance is still open.
+**Implement.** Add configurable idle expiry and a conservative retained-context byte estimate alongside the existing count cap. Evict only idle agents without live root/child ownership or pending decisions; close owned clients/resources using their existing lifecycle contracts. Bound warm bookkeeping and queued warm requests. Avoid rehydrating unchanged full history on warm hits when a verified durable revision matches; invalidate on external writes, route changes and compression. Keep disk history authoritative.
 
-### I01 type correction delivered
+**PR boundary.** Agent-cache/warm helpers in `web_server.py`, optional config metadata and cache tests. No provider cache-key or prompt-content changes. Sole config writer while this PR is active.
 
-PR #155 published head `6ef55a4ef7ea53924c94ed962f776cd9db582151`, verified via GitHub. Eight-line platform-guard/narrowing repair resolves the ten introduced Ubuntu mypy errors without suppressions. Standard and explicit Linux mypy pass **133 files**; upload neighbors **74 pass / 11 native-Windows skips**; scoped Ruff passes. Windows-target static diagnostics fall from 40 to 31 with no new upload-helper errors, but native Windows runtime remains unverified. PR stays draft. [Exact evidence](docs/reviews/I01-type-delivery-result.md). This assigned correction is complete; no CI success or native acceptance inferred.
+**Accept.** Cycle 100 large sessions; demonstrate bounded estimates/cache entries and report measured process memory before/after quiescence. Live turns/approvals/children survive pressure. Eviction/reload produces byte-equivalent requests to baseline. Separate cold/warm first-token measurements; warm-hit preparation should improve without worsening cold preparation p95 by more than 10% on matched fixtures.
 
-## Final publication verification — 2026-10-22
+### 09 — Load Settings one tab at a time
 
-- [x] Ten independently scoped issue-fix code PRs published, linked and remote heads verified.
-- [x] Ten independently scoped feature code PRs published, linked and remote heads verified.
-- [x] Original paused worktrees, uncommitted source and unrelated handoff move preserved.
-- [x] All assigned sub-agent implementation/review work has ended; no queued/running child remains.
-- [x] PRs, exact heads and check snapshot retained in [the publication manifest](docs/reviews/october-2026-pr-manifest.json).
+- [ ] **SP09 · UI loading · S · Dependencies: none**
 
-F05 #184 publishes lazy strict Mermaid rendering with source/copy/error fallback, size caps, sanitation, themes and cancellation. Agent checks: **470 frontend / 14 backend tests**, lint/types/build/initial bundle budget and persisted-chat browser flows pass. Exact-pinned Mermaid/DOMPurify are the sole programme dependency changes. Existing Vite audit advisory is byte-identical to baseline; repository Ruff retains 299 baseline errors. [Full handoff](docs/reviews/F05-delivery-result.md).
+**Evidence and benefit.** `App.tsx` defers SettingsPanel, but `SettingsPanel.tsx` eagerly imports Analytics, Logs, Admin, Config, Memory, Messaging and SkillsTools pages. Opening Model settings therefore crosses many unrelated module boundaries. Existing route splitting is good; finish the nested boundary.
 
-### Remaining acceptance and integration boundaries
+**Implement.** Lazy-load secondary settings tabs behind `LazyLoadBoundary`, with a cheap tab skeleton and explicit chunk-failure retry. Mount only the active tab. Preserve unsaved edits when switching through a small per-tab draft owner rather than mounting every page; background polling/subscriptions must stop when inactive. Keep Model settings immediately usable.
 
-- I01 #155 remains draft: Windows implementation and cross-platform typing are present, but native Windows runtime proof is missing (11 tests skipped locally). F10 Windows saved-output browsing remains unsupported/unverified.
-- F04 #170 and F06 #174 retain failed hosted browser gates after bounded candidate/base comparisons did not reproduce an attributable source defect. No speculative fix, blind rerun or threshold relaxation was made.
-- Other hosted checks may still be queued/running; the manifest is a snapshot, not a monitoring claim. F03 manifest-import timeout and baseline lint/type/audit findings remain disclosed in reports.
-- Independent PRs require integration/rebase in recorded order: I01→I02 upload handlers, I03→I04 context transport, I05→I06 Git status, F06→F07 Markdown parser; retain F05 diagram dispatch alongside both. F01/F04 composer and F02/F10 Schedule page hunks also need reconciliation. Source PRs do not include a combined production bundle.
-- No full integrated branch/browser/package/rollout acceptance is claimed. These PRs are delivered for review; merging and release remain separate work.
+**PR boundary.** `web/src/components/SettingsPanel.tsx`, tab loader/draft helper and bundle/loading tests. No settings navigation redesign or dependency upgrades; existing package/lockfile unchanged.
 
-## Merge and release review — 2026-10-22
+**Accept.** Built browser network trace shows no Analytics/Logs/Admin feature chunk or data fetch when opening only Model settings. Compare transferred JavaScript and time to interactive controls with baseline; require a reduction in both on the throttled fixture. Test tab switch with an unsaved draft, close/reopen, chunk error recovery, focus restoration and remote profile changes. Initial Chat bundle must not grow.
 
-User authorized: independently review every PR, merge safe work, rebuild apps and release. Four review agents cover all twenty actual heads; lead owns the isolated combined branch and all bundle/lockfile/version writes.
+### 10 — Use one provider catalogue across settings and chat
 
-- Backend: #166/#169/#175/#178 source-safe; #182 blocked by structured/numeric credential export leakage.
-- Composer: #167/#172 source-safe, #180 source-safe pending required e2e; #176 blocked by demonstrated unsent-draft loss on recall/navigation; #170 held for the unresolved hosted history gate.
-- Rendering/Schedule: #183 source-safe; #174 hosted browser failure; #184 inherited Vite audit and independent browser validation; #179 stable skill identity mismatch; #181 Windows unsupported output API exposed by UI.
-- Workspace: all five original heads held for demonstrated file/lock boundary defects. No blanket merge of the original heads.
+- [ ] **SP10 · Backend + model UI · M · Dependencies: none; serialize config/schema edits with SP08**
 
-Integration now retains all twenty original heads and expected conflict resolutions in a separate checkout. Upload containment/identity composition, credential redaction, composer draft preservation and cron identity/capability repairs are separately delegated. Vite exact pin updated to **7.3.7**, npm reports **zero vulnerabilities**; existing audit/security threshold retained. Added Linux/Windows persistence contract gate so native Windows upload/lock proof cannot be inferred from macOS-only checks.
+**Evidence and benefit.** SettingsPanel defines hardcoded provider options, endpoints and env-key mappings, explicitly saying they must mirror the backend schema. `runtime_provider.py` already resolves real routes. H1's provider flexibility is best served by a single trustworthy catalogue.
 
-Apple agreement: service returned 403; account holder reports agreement accepted. Immediate recheck still returned 403 for team GW2S46PJR7. Recheck at notarization stage; do not distribute an ad-hoc or unnotarized Mac release as signed/notarized.
+**Implement.** Expose a lightweight catalogue derived from existing provider definitions/resolution metadata: stable ID, label, credential mechanism, base-URL policy and supported controls. Return configured/available/unknown capability states without exposing credentials or performing network probes on catalogue reads. Consume it in Settings and ModelPicker, retaining typed custom models/endpoints. Keep secrets server-side and distinguish disabled capability from unverified support.
 
-### Review findings and first integrated repairs
+**PR boundary.** Catalogue helper/API in `providers_routes.py`, metadata integration with `runtime_provider.py`, Settings provider form, `ModelPicker.tsx`, API/types and contract tests. Do not replace provider resolution or silently migrate routes.
 
-All twenty original heads independently reviewed. Workspace review holds #155/#171/#168/#173/#177 for demonstrated permission, UTF-8 component budget, Git raw-byte transport, newly exposed symlink discard and canvas target/lock lifetime defects. Full verdicts are in docs/reviews/october-merge-* reports. No original unsafe head is approved merely because CI passed.
+**Accept.** Parameterised tests cover every registered provider plus custom/local endpoints, missing credentials and unavailable optional SDKs. Browser select/save/reopen agrees with effective runtime configuration. Adding a fixture provider requires no new frontend option list. Catalogue fetch triggers no provider connection; runtime imports/minimal startup/cache goldens remain unchanged.
 
-Integrated anchored/exclusive upload allocation (`a38698e`), structured credential-field redaction (`a0662f6`), and lead upload permission/byte-budget fix. New permission/multibyte tests fail **3/3 before** and focused upload set passes **51 / 11 Windows skips** after; an ancestor substitution at root-open is rejected. First combined frontend checks pass **548 tests**, lint and TypeScript. Standard mypy with explicit checkout PYTHONPATH passes **137 files**; an initial run lacking checkout import ownership produced unrelated import-scope errors and is not acceptance.
+### 11 — Make model search fast and immune to stale responses
 
-Remaining source repairs: composer durable original draft, cron skill identity/output capability, Git unsupported-name/exact-discard boundaries, canvas lexical target and profile-owned lock identity. Native Linux/Windows persistence contracts and final integrated browser/runtime checks remain required before merge.
+- [ ] **SP11 · Backend + UI · S · Dependencies: SP04, SP10**
 
-### Integrated repair checkpoint
+**Evidence and benefit.** SettingsPanel's `ModelCombobox.load` updates models/loading after any request resolves; provider/base URL changes can overlap. H1 motivates preserving custom model choice while simplifying discovery. This is a source-observed race candidate, not a reproduced production incident.
 
-- Anchored immutable uploads and structured export credential redaction integrated. Lead added UTF-8 byte-budget collision allocation and restored search-only ancestor compatibility with inode confirmation.
-- Scheduler-resolvable skill identities and honest saved-output capability/UI integrated; **100 backend tests pass** independently.
-- Git non-UTF-8 rows are safely disabled; normal names remain exact; literal pathspecs and lexical symlink discard preserve unrelated targets. Combined Git/files/upload set: **118 pass / 11 Windows-only skips**, exit 0.
-- Canvas and composer source repairs remain active; no merge or release yet.
-- **Apple notarization preflight now succeeds** after the account holder accepted the agreement: service reports successfully received submission history. The earlier 403 blocker is cleared. This is credential/service readiness, not artifact notarization.
+**Implement.** Extract the combobox loader with a route/credential generation fence, AbortSignal, short-lived bounded catalogue cache and explicit refresh. Cache by full effective route and auth epoch, not provider name alone. Keep a valid selected custom model visible even if a list call fails. Separate loading, stale cached results, empty provider response and connection failure; never write a late default into config.
 
-### Canvas repair integrated
+**PR boundary.** Model-loading helper, Settings combobox, narrow available-models API cache if server-side dedupe is needed and tests. SP10 owns catalogue semantics; this PR owns live list freshness only.
 
-Canvas lexical target validation and profile-owned stable lock identities integrated at `3a3e2005`. Lead independently reran concurrency/routes/tool cases: **38 passed**, exit 0. Unsafe final symlinks are rejected, reads verify file identity, and project Files/Git actions cannot remove the new profile lock sidecars. Detailed evidence: [canvas repair](docs/reviews/october-canvas-boundaries-result.md).
+**Accept.** Resolve A/B provider requests in reverse order, change URL/token mid-request and retry a failure: only current-route results appear. Reopening an unchanged selector within TTL makes no second live list call; explicit refresh does. Browser keyboard selection and custom entry survive offline mode and route switches. No secret, auth token or unbounded list is persisted to browser storage.
 
-A fresh independent storage/backend review now examines the corrected combined snapshot. Composer repair is still running. Full non-network Python suites are running sequentially (parallel-safe selection followed by serial selection). Native Windows persistence proof and final combined browser gates remain unchecked; no GitHub merge or desktop release yet.
+### 12 — Open the command palette without bulk-fetching the app
 
-### Composer recovery and production bundle
+- [ ] **SP12 · UI + search API · M · Dependencies: SP04–SP05**
 
-Integrated composer repair `2424ad77` preserves the original unsent draft in the existing durable draft store before recall, captured by backend/profile/project/thread identity. Restore swaps safely with edited recall, survives explicit accepted/rejected sends, and retires history when stash is restored. Agent pinned-base reproduction fails before the fix; real ChatPanel/replay/SQLite browser flow passes after. [Exact evidence](docs/reviews/october-composer-draft-recovery-result.md).
+**Evidence and benefit.** `CommandPalette.tsx` fetches projects, 500 sessions, cron jobs and skills on every open, then separately searches message text. This makes a navigation shortcut pay for data users may never search. H3's targeted recall suggests bounded query-driven lookup.
 
-Final combined Node **22.22.1** validation: **555 tests**, ESLint, TypeScript/build and bundle budget pass; npm audit reports **zero vulnerabilities**. Canonical tracked web bundle regenerated by the lead alone. Fresh UI review targets `2424ad77`; final hosted browser/native checks remain pending.
+**Implement.** Show static actions and cached recent items immediately. Fetch a small recent list only when absent; debounce server-backed search by category with bounded results/cursors. Reuse SP05 resources for skills/jobs, never enumerate them solely to open the palette. Fence query/open generations, support cancellation and partial category errors. Preserve explicit project/thread/task destinations and keyboard grouping.
 
-The first new persistence workflow failed at configuration parsing before any job: actionlint confirms `runner` context is invalid in job-level env. Corrected those paths to the valid `github.workspace` context; no test/gate was removed. Local actionlint now passes. GitHub draft integration PR: [#185](https://github.com/automatedigital/spark/pull/185), linked to T3.
+**PR boundary.** CommandPalette, palette search adapter, narrow existing search endpoint extensions and API tests. No new global search database or search-summary LLM call.
 
-### Independent storage re-review — hold
+**Accept.** Cold open issues at most one bounded recent-items request and never calls `getSessions(500)`. On 10,000 sessions, initial actionable menu target is under 100 ms using cached/static items; record actual query latency separately. Search beyond the first 500 sessions succeeds. Test close/reopen mid-search, offline cached actions, one failed category and keyboard navigation while results arrive.
 
-Fresh review of `3a3e2005` confirms all earlier concrete upload/Git/export/canvas target/sidecar findings repaired, with **18 targeted tests passed**. It reproduces a new P1 case-alias lock split on the actual case-insensitive macOS filesystem: `board` and `Board` address one data file but `normcase` creates different lock keys, allowing two acknowledged same-revision saves. [Report](docs/reviews/october-storage-r2.md). A narrowly scoped canvas case-identity repair is delegated; candidate remains draft/unmerged. The independent UI review is running.
+### 13 — Jump directly to the message found by search
 
-### Final review repairs and Windows evidence
+- [ ] **SP13 · Backend + chat navigation · M · Dependencies: SP12**
 
-Canvas case-alias repair `fa3653ab` uses owning directory identity plus a conservatively case-folded ASCII filename. Real case-insensitive APFS contention now yields one success and one 409; distinct data paths remain independent on case-sensitive APFS. Agent checks: **43 passed** on case-insensitive APFS and **41 passed / 2 alias skips** on a temporary case-sensitive APFS volume. Lead combined upload/canvas contracts: **94 passed / 11 Windows-only skips**. [Exact report](docs/reviews/october-canvas-case-result.md). The original pinned probe's release schedule deadlocks a correctly shared lock; its post-fix timeout is disclosed, and corrected event-scheduled regressions prove contention instead.
+**Evidence and benefit.** Session search returns message IDs, but CommandPalette currently navigates only to the result's thread. Users must search again inside a long conversation. H3 provides a concrete recall use case; Spark already has FTS and timeline navigation primitives.
 
-Native Windows workflow now executes. Job `119919216239` reports **176 passed / 32 skipped / 4 failed**. Two upload assertions assumed Windows always prevented a directory rename, but a successful rename preserved the old attachment under the pinned directory and left the outside sentinel unchanged; lead corrected the assertion to track the actual rename outcome. Two real source defects are delegated: cron malformed-JSON repair publishes while its read handle is open (Windows denies replacement), and skill history reads a byte before acquiring the Windows byte lock (Windows denies that read during contention). Neither native failure is waived.
+**Implement.** Extend the global navigation target with an optional message anchor. Add a bounded history-window read around a validated message ID and resolved lineage, with stable surrounding cursors. Load that window, scroll/highlight the exact turn and allow loading older/newer pages; resume normal live-tail handling independently. For missing/deleted/compacted messages, explain the limitation and open the nearest valid thread context without inventing a match.
 
-Independent UI re-review discharges original draft/skill-ID/output-capability blockers, but reproduces a combined details/Mermaid completion-index mismatch. A complete code fence inside details can lend its completion flag to a later incomplete Mermaid fence. A narrow parsed-block completion repair is delegated. [Review](docs/reviews/october-ui-r2.md).
+**PR boundary.** `globalNavigation.ts`, palette result action, session history API/read accessor, session controller and timeline anchor tests. Coordinate `spark_state.py` read helpers; no index migration or changed FTS semantics.
 
-Full non-serial non-network Python selection: **12,692 passed / 163 skipped**, exit 0 in 490.33s. Serial selection is still running. Lead composer and stash browser flows pass. Mermaid source/safety fixtures pass, but the persisted-chat harness initially required a conditional Jump button while already at the latest row; the harness now establishes a loaded, detached scroll state before requiring the actual button. Its final result remains pending.
+**Accept.** Search a message in the middle of 10,000 messages and open it with a bounded window, not the entire transcript. Test compression lineage, two equal snippets, deleted messages, query escaping and active-stream arrival. Browser highlight is visible and keyboard focus remains usable; returning to latest follows the current stream without duplicate rows or lost cursors.
 
-Lead Mermaid browser gate now passes all ten fixture/persisted-chat/stream-navigation flows with no page errors at `/tmp/spark-merge-review-20261022/final-mermaid-browser-r3`. Harness fixes are committed separately: establish loaded history and scroll away before clicking the conditional Jump control; preserve exact diagram and navigation assertions. This existing gate does not cover the newly found disclosure completion mismatch, whose separate repair/probe remains required.
+### 14 — Explain context pressure and make compaction controllable
 
-### Windows persistence repair integrated
+- [ ] **SP14 · Runtime + context UI · L · Dependencies: SP02**
 
-Integrated `e368615b` from repair commit `168e89d2`: cron closes the permissive source reader before atomic repair publication while retaining its encompassing mutation lock; skill history acquires its Windows byte lock before initializing the lock byte and never reads a potentially locked byte. Four portable regressions fail against the pinned old source and pass after; agent broader checks **296 passed**, scoped/CI Ruff and CI mypy pass. [Evidence](docs/reviews/october-windows-persistence-result.md). Native Windows rerun remains pending final source/bundle push; no native success inferred from macOS tests.
+**Evidence and benefit.** Spark has `ContextCompressor`, checkpoints, manual compression feedback and a ContextWindowMeter with estimated usage and attachment controls. H2 adds useful design references for pruning first, protecting head/tail and reporting summary failure. Extend those existing mechanisms rather than adding a second compressor.
 
-### Full Python validation complete
+**Implement.** Show a compact breakdown of history, tools, instructions, memory and attachments, distinguishing estimates from provider counts. Offer a preflight view of the existing compaction policy and an explicit compact action at an idle/safe boundary. Use deterministic tool-output reduction before an LLM summary where compatible with current policy; protect unresolved decisions, tool-call/result pairs, recent instructions and requested attachments. Bound summary time/cost; keep the last valid checkpoint on failure. Record lineage and reduction statistics without rewriting cached history mid-turn.
 
-Both required local non-network selections passed sequentially: **12,692 passed / 163 skipped** in the parallel-safe selection, then **182 passed / 15 skipped** in the serial selection (396.43s). No failures. These broad runs started before the last narrow canvas/Windows repair commits; their final affected persistence subset was rerun after integration: **210 passed / 11 Windows-only skipped**, exit 0. Final CI Ruff family gate and mypy (**137 source files**) also pass, exit 0. The full tool manifest check passes (**70 tools, 28 isolated modules, four optional guards**). Native Windows and final combined hosted gates remain separately required.
+**PR boundary.** `agent/context_compressor.py`, `context_checkpoint.py`, existing compaction entry point, context estimate/controls and tests. No memory/Dream behaviour changes.
 
-### Final source repair integrated
+**Accept.** Replay context-overflow fixtures with tools/approvals and verify every protected fact/pair. Failure/timeout preserves resumability. Browser action cannot race an active turn and shows before/after estimated versus actual usage honestly. Report compaction latency/token reduction and answer-quality checks against baseline; reject a cheaper summary that loses required facts.
 
-Integrated `f84744d8` from `f177392a`: each parsed code node now owns its real closing-fence flag, and memo equality includes closure. The renderer no longer indexes an independent fence list that includes disclosure contents. Agent pinned before/after probe fails then passes; **38 mounted-browser checks**, **562 frontend tests**, lint and TypeScript pass. [Exact repair evidence](docs/reviews/october-mermaid-completion-result.md). No remaining concrete source finding is left unassigned; lead final combined checks are running, followed by the final hosted native/browser gates.
+### 15 — Show where a slow turn spent its time
 
-Hosted web-quality now retains composer/history+stash, Mermaid+disclosure completion, and Schedule override/output capability browser flows in addition to existing multi-chat/recovery/production inspector/navigation/sidebar/three-attempt longthread gates. Actionlint passes both modified workflows; no original gate or assertion was removed.
+- [ ] **SP15 · Backend + chat diagnostics · M · Dependencies: SP02–SP03**
 
-### Final integrated frontend and bundle
+**Evidence and benefit.** Spark already records streaming pipeline timings, lock/executor waits and efficiency counters; `SessionInfoBar`/timeline usage and Analytics offer display seams. These measurements should answer why a specific turn is slow without opening logs. H1/H2 motivate separating provider/context overhead from UI delay.
 
-Lead final source run under Node **22.22.1** passes **562 tests**, frontend lint, TypeScript, canonical production build/budget and **38 mounted completion checks**, all exit 0. Tracked production bundle regenerated from the repaired parser source. Persisted Mermaid gate reached the final switch-away/return stage with no page errors; its snapshot showed the restored earlier viewport, where virtualized latest diagram nodes are absent. The harness now invokes the actual Jump to latest control after returning before requiring two completed SVGs, retaining both exact count and stream/navigation assertions. This is a viewport precondition correction, not a source-failure waiver.
+**Implement.** Persist a bounded per-turn timing summary using existing root IDs: accepted, queue/preparation, provider start/first token, tool duration and finish; include provider-reported usage/cache counters where available. Use monotonic server durations and separate browser marks; never subtract unsynchronised clocks. Add an optional details popover with plain-language stages and unknown/estimated labels. Reuse existing diagnostics; no per-token database writes or external telemetry service.
 
-### Final candidate pushed for hosted acceptance
+**PR boundary.** Existing pipeline metrics helper/turn summary persistence, `agent/efficiency_metrics.py` if needed, turn-outcome API/types and a small SessionInfoBar/detail component. Coordinate sole migration writer; avoid ChatPanel refactoring.
 
-All concrete source findings from both independent review rounds were repaired; the subsequent native Windows gate exposed the additional upload pinning blocker below. Lead final persisted Mermaid gate now passes **10 checks**, including two complete SVGs after switching away during the synthetic stream, returning and using the actual Jump to latest control; no page errors. Earlier harness failures and their viewport preconditions remain in the evidence. Final canonical bundle, **562 frontend tests**, lint/types/build/budget, **38 completion-browser checks**, **210 persistence tests** (11 native Windows skips locally), CI Ruff, mypy, manifest and both broad Python selections pass.
+**Accept.** Deterministic delayed queue/provider/tool replays produce expected nonnegative spans; first status is not mislabelled first token. Two simultaneous chats show their own timings after refresh. UI is quiet by default and works when usage is absent. Added instrumentation target: under 2% local replay wall-time overhead, measured on baseline/candidate; no transcript/secret capture.
 
-PR #185 retains all twenty original heads and tracker ancestry. Source fixes are ready for final hosted acceptance; the candidate remains draft until final native Windows/Linux, Python, supply-chain and all browser gates pass. Main remains unchanged; no app release is claimed.
+### 16 — Make retry waits visible, bounded and cancellable
 
-### Native Windows containment blocker — candidate remains held
+- [ ] **SP16 · Runtime + status UI · M · Dependencies: SP15**
 
-Final-head Windows job [119931403494](https://github.com/automatedigital/spark/actions/runs/39809449513/job/119931403494) reports **185 passed / 32 skipped / four upload failures**. The earlier cron reader/skill byte-lock defects now pass. The corrected directory-swap test exposes a real containment escape: Windows metadata-only directory handles permit rename; the route returns 200 for a new collision-safe filename written through the replacement directory link, outside the pinned original directory. Preserving the outside `note.txt` alone was insufficient evidence because a different newly allocated filename escaped. The earlier harness-only interpretation is withdrawn.
+**Evidence and benefit.** Retry policy, rate-limit tracking and error classification already exist. Waiting is still a different state from generating content; users need to see whether the provider is retrying or the app has stalled. H6's explicit provider-unavailable handling informs this extension.
 
-A focused repair is delegated to correct actual Windows access/share pinning semantics and add a direct native handle rename/release contract plus an assertion that the entire outside directory remains unchanged. No test is skipped, no failure waived, and no merge/build/release is authorized by the passing local macOS tests alone. Current source/CI candidate remains held until this native boundary is proven.
+**Implement.** Consolidate the existing retry decision into a structured status with reason class, attempt, next-attempt delay and a total elapsed retry budget. Respect Retry-After, jitter and current provider-specific policy. Emit sparse countdown/deadline data rather than per-second backend events. Cancellation interrupts backoff promptly. Do not retry uncertain side-effecting tools, replay accepted submissions, change provider/model silently or mutate request prefixes between attempts.
 
-### Windows pinning repair and remaining protocol boundary
+**PR boundary.** `core/run_agent/retry_policy.py`, existing retry/error helpers, status callbacks and `StatusPill.tsx`/status model with tests. No new routing policy.
 
-Integrated `54677d12` from `9401af29`: directory handles request FILE_LIST_DIRECTORY as well as FILE_READ_ATTRIBUTES so rename/delete sharing restrictions participate in Windows access checks. Whole-outside-tree assertions now detect new unique escaped filenames; new native cross-process tests require rename and generic-write denial while pinned and success after release. Lead local upload subset passes; native proof remains pending. [Repair report](docs/reviews/october-windows-upload-pinning-result.md).
+**Accept.** Replay 429, temporary 5xx, auth failure, timeout and stream failure after partial output. Permanent errors stop; transient retries respect the budget; Stop during backoff prevents another provider request within 250 ms in the fixture. Browser shows retry reason/next delay and restores confirmed state after reconnect. Cache goldens and payload equivalence across retries pass.
 
-One bounded protocol objection remains in that report: a metadata-only FILE_WRITE_ATTRIBUTES handle may set a junction on an empty directory without requesting generic write. [Microsoft MS-FSA](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fsa/4aeefef8-92c3-4abc-af7a-a610caf8a165) explicitly permits FSCTL_SET_REPARSE_POINT when either FILE_WRITE_DATA or FILE_WRITE_ATTRIBUTES is granted. A final targeted task must exercise the actual FSCTL with a valid unpinned control, and retain whole-outside-tree containment at that boundary. If sharing does not exclude it, child creation/descent must be anchored to the owned Windows directory handle rather than following mutable paths. No further Windows CI push/merge occurs until that boundary is handled; no generic-write-only test is treated as metadata proof.
+### 17 — Preview schedules before they can run
 
-### Windows metadata boundary repair integrated
+- [ ] **SP17 · Scheduler + Schedule UI · M · Dependencies: SP10; rebase after earlier cron mutation-lock PR if integrated**
 
-Integrated `39aabc9c` from `85571413`: Windows directory descent, exclusive file creation and collision inspection now use single-basename NtCreateFile operations relative to owned directory handles. Every open retains no-reparse/type checks; synchronous CRT transfer and handle cleanup remain explicit. Return-path verification compares native volume/file identities and rejects changed/reparse destinations. The containment mechanism no longer relies on pathname traversal remaining stable during a metadata-only mutation.
+**Evidence and benefit.** `cron/jobs.py` parses schedules and computes next times; CronPage edits a schedule string. H6 documents timezone, catch-up and pre-dispatch validation. A readable preview prevents timezone mistakes and unexpectedly frequent work.
 
-New native tests construct an actual mount-point FSCTL_SET_REPARSE_POINT request using FILE_WRITE_ATTRIBUTES only, first requiring a successful unpinned control. Six project/global endpoint injection cases exercise upload-read, final-file-open and directory-descent boundaries, requiring the entire outside tree unchanged and no false successful acknowledgement. Rename/generic-write/ordinary/collision/linked-profile cases remain. Portable API/identity tests fail before and pass after. Agent local final uploads: **60 passed / 20 native Windows skips**, CI Ruff and mypy pass. [Full report](docs/reviews/october-windows-upload-metadata-result.md). Lead integrated upload/neighbors and native CI remain required before closing the blocker.
+**Implement.** Add a side-effect-free validation/preview API returning the next five execution times, explicit timezone and effective model/skills/delivery availability. Reuse the same parser for preview, create, update and dispatch; reject nonpositive intervals and unsupported/invalid values at every boundary. Add an optional per-job IANA timezone with legacy jobs retaining existing semantics. Mark malformed legacy schedules paused/requiring repair rather than hot-looping. Clearly describe missed-run policy; do not execute or contact a provider during preview.
 
-Lead integrated Windows-handle repair verification: **127 upload/files/Git tests passed / 20 native Windows skips**, CI Ruff and mypy (**137 files**) exit 0. Candidate is pushed for native validation including actual metadata-only FSCTL controls and all six injection cases. No further source repair is currently active; merge waits for exact-head hosted gates.
+**PR boundary.** Schedule parser/next-run code, cron request models/routes/API, isolated preview component in CronPage and tests. Preserve or integrate existing cross-process mutation locking; no attempt ledger here.
 
-### Native handle gate: error classification correction
+**Accept.** Frozen-clock fixtures cover DST gaps/folds, UTC, local/remote timezones, invalid intervals, one-shots and structured updates. Preview and actual next-run computation agree. Browser shows absolute times/timezone and actionable validation; editing an existing job preserves its ID and unrelated fields. No provider call or job creation occurs from preview.
 
-Windows job [119942605618](https://github.com/automatedigital/spark/actions/runs/39812611488/job/119942605618) at `5c54f7f9` reports **205 passed / 32 skipped / two failures**. Ordinary/linked/collision uploads, rename controls, metadata FSCTL control/read/descent cases and the repaired persistence contracts pass. Final-open FSCTL cases receive native **WinError 1921** (filename cannot be resolved) before file creation; the helper classifies it as an unexpected OS error and returns 500 instead of the required unsafe-target 400. Lead adds 1921 to the existing reparse/unsafe error mapping and keeps every native assertion; whole-outside-tree assertions now run before HTTP assertions so containment is checked even on status failures. Three portable new-file/descent/collision regressions fail against the previous mapping and are rerun after correction. Final native rerun remains required.
+### 18 — Separate scheduled execution history from delivery history
 
-The three new error-classification cases fail before and pass after; final local upload selection **63 passed / 20 native Windows skips**, scoped/CI Ruff and mypy pass. Native error 1921 remains a rejection; the source changes its API status to 400 and does not enable a retry/fallback or modify the handle-relative writer. Pushed for final native and hosted acceptance.
+- [ ] **SP18 · Scheduler persistence + Schedule UI · L · Dependencies: SP17**
 
-## Final merge and release evidence
+**Evidence and benefit.** `scheduler.tick` saves output, delivers and updates aggregate job state; the preceding plan adds saved-output browsing, which is not authoritative attempt history. H6 explicitly distinguishes execution and delivery. Users need to know whether a job failed to run or merely failed to send its result.
 
-- [x] All 20 original code PRs, tracker #144 and integration #185 verified merged on GitHub; original heads retained.
-- [x] All 20 outcome issues verified closed, with final acceptance evidence recorded.
-- [x] Exact accepted head `98e393d4`: all eight hosted gates pass. Windows persistence: **210 passed / 32 platform skips**.
-- [x] Final hosted browser job: **505 backend lifecycle/cache/discovery tests**, 38 mounted completion checks, composer/stash/Schedule/Mermaid flows, multi-chat/recovery, production inspector/navigation, three sidebar and three longthread attempts pass. Inspector detached scroll **1000 → 1000 px**.
-- [x] Final main merge commit verified: `824ea1e4e17444e34fe1c14b6581d29d54d205e9`. Desktop manifests agree at **1.4.0**.
-- [x] macOS signed/notarized/stapled DMG; actual DMG app passes Gatekeeper and isolated native lifecycle/UI checks. SHA-256 recorded.
-- [x] Windows unsigned x64 beta installer and packaged lifecycle. [Run 39817219208](https://github.com/automatedigital/spark/actions/runs/39817219208) uses exact main merge SHA.
-- [x] GitHub desktop-v1.4.0 release published; tag target and all public asset bytes/hashes verified.
+**Implement.** Add a small profile-local SQLite attempt ledger owned by a new cron history module, leaving existing job definitions in their current store. Record attempt ID, job ID, scheduled/manual cause, start/finish, execution outcome, delivery outcome and safe output reference. Persist before publishing events. On restart reconcile abandoned attempts to interrupted/unknown; never rerun them silently. Present a paginated history drawer that links saved output when available and displays delivery failure independently. Retain bounded history with explicit pruning rules.
 
-Windows output browsing is honestly disabled where secure filesystem capability is absent. Existing full Ruff debt remains 298 findings outside the enforced clean families; no acceptance threshold was weakened. Unrelated dirty handoff work and all stopped child checkouts remain preserved.
+**PR boundary.** New cron history module/schema, narrow scheduler lifecycle hooks, read API and standalone history UI. One writer owns this schema; do not migrate job definitions or duplicate the earlier output browser.
 
-### Package/release completion
-Both builds succeeded from 824ea1e4. macOS DMG notarization was Accepted, stapling validates, and the app extracted from the DMG passes strict signing and Gatekeeper as Notarized Developer ID. Normal native app launch, chat/files rendering, terminal/preview/SSE checks, process suspend/resume and clean quit/relaunch persistence pass in isolated state. Windows build and packaged lifecycle pass in run 39817219208; installer remains explicitly unsigned beta. [Full release evidence](docs/reviews/october-desktop-1.4.0-release.md). Public release and checksum file are published; final download verification remains to be recorded below.
+**Accept.** Real SQLite replay covers success+delivery failure, silent suppression, cancellation, crash before/after delivery and repeated callbacks. No duplicate attempt/notification; unknown delivery remains unknown. Browser refresh preserves history and pages without loading outputs. Existing scheduling/mutation-lock tests pass; legacy output remains readable without fabricated historical attempts.
 
-### Final public verification
-Unauthenticated public downloads of Spark.dmg, Spark_1.4.0_x64-setup.exe and SHA256SUMS.txt all match their local and GitHub SHA-256 digests and byte sizes. Release desktop-v1.4.0 is published as latest, not draft/prerelease; tag resolves to the exact source build commit 824ea1e4. [Public verification](docs/reviews/october-release-public-verification.json). All original implementation and corrective sub-agent work is finished. No programme acceptance gate remains unchecked; older measurements/failures above are historical evidence, not current status. Windows retains its stated unsigned-beta/output-capability limitations.
+### 19 — Stop terminal sessions whose start acknowledgement arrives too late
+
+- [ ] **SP19 · Terminal UI lifecycle · M · Dependencies: SP04**
+
+**Evidence and benefit.** `WorkspaceTerminalPanel.tsx` has a pending-start/cleanup seam: a retired request can return before its run ID was adopted. The prior reference audit records this candidate outside the selected October packets. Reproduce on the actual base before fixing. H7's explicit process lifetimes inform the intended behaviour.
+
+**Implement.** Bind terminal start, acknowledgement and stream handlers to one owner/generation. If a newly created owned run is acknowledged after retirement, stop that exact run once; never stop a replacement or an intentionally reattached terminal. Define reconnect as reattachment where supported and restart as an explicit new process. Bound retries and show disconnected/reconnecting state without silently launching another shell.
+
+**PR boundary.** `components/workspace/WorkspaceTerminalPanel.tsx`, terminal lifecycle helper/tests; narrow terminal API changes only if needed to identify create versus attach ownership. No generic process manager rewrite.
+
+**Accept.** Deferred start→navigate→late acknowledgement cleans up the old run; replacement survives. Test reversed restart responses, stream loss, reconnect failure and project switch. Browser flow uses a temporary project plus a harmless process marker to verify one surviving terminal and no orphan after close. Record Windows limitations separately; never infer cleanup from a closed UI panel.
+
+### 20 — Fetch project files as users expand folders
+
+- [ ] **SP20 · File API + project UI · M · Dependencies: SP04**
+
+**Evidence and benefit.** `workspace_routes.py` has both recursive tree construction and per-directory list endpoints. FileTreePane should prefer the bounded directory path for large repositories. H9's project-scoped context is useful without enumerating every file when opening Chat.
+
+**Implement.** Trace the live FileTreePane request path and reuse directory listing for expanded nodes only. Add stable sort, bounded page size/cursor and a cancellable filename search using existing filesystem/Git ignore policy. Cache expanded directory results by root/revision and invalidate only affected ancestors on edits/events. Explicitly handle symlinks/cycles and intentionally linked project roots; keep all reads inside the authorised root. Do not replace the file editor or silently hide user files.
+
+**PR boundary.** Tree/list helpers in `workspace_routes.py`, file APIs, FileTreePane and tests. Integrate after any existing upload/Git route PRs; do not touch their handlers.
+
+**Accept.** A synthetic 100,000-entry repo opens with one directory page of at most 200 entries, without recursive traversal. Expand/page/search reaches omitted files; refresh after create/delete updates the correct folder. Test hidden/ignored files, deep paths, external symlinks and project switch. Record p95 tree-ready latency and payload reduction against baseline; streaming remains smooth during expansion.
+
+### 21 — Give memory one coherent, searchable review surface
+
+- [ ] **SP21 · Memory backend + UI · M · Dependencies: SP05**
+
+**Evidence and benefit.** MemoryPage currently shows two Markdown targets; `memory_routes.py` loads MemoryStore for those targets. Spark also has a holographic store/retrieval provider and explicit Dream outputs. H4 motivates making those distinctions visible instead of presenting two lists as the whole memory system.
+
+**Implement.** Keep existing editable Memory/About-you cards, fed by one shared read. Add bounded read-only holographic search/details and a link to explicit Dream review output, labelling source/category/time when actually stored and unknown otherwise. Show whether edits affect the next conversation/compaction rather than promising mid-thread reload. Preserve drafts on read errors; show mutation failures inline. Existing explicit forgetting remains limited to the store it actually updates.
+
+**PR boundary.** `memory_routes.py`, new bounded holographic read adapter, MemoryPage/subcomponents and tests. No retrieval ranking rewrite, new automatic extraction, implicit Dream or fabricated provenance.
+
+**Accept.** Fixtures demonstrate Markdown-only, holographic-only, optional-provider unavailable and empty memory. Search pages without full-store reads; results are profile-isolated and safe to render. Browser can edit an entry, recover from a failed save, find a holographic fact and open a real Dream review when present. Measure initial request count and response size; no LLM invocation on browsing/searching local facts.
+
+### 22 — Make skills easy to choose without loading every instruction
+
+- [ ] **SP22 · Skills metadata + UI · M · Dependencies: SP10, SP21; respect earlier skill-history PR**
+
+**Evidence and benefit.** SkillsToolsPage fetches skills/toolsets together and has a detail panel; Spark already has skill metadata, guards and usage helpers. H5's progressive disclosure/project-local requirements suggest a simpler discovery path, not another skills engine.
+
+**Implement.** Build a lightweight indexed metadata view from existing skill discovery: name, short description, scope, provenance and declared requirements. Cache by discovered-file metadata with explicit refresh/external-change invalidation; load body/supporting files only on selection. Separate available, disabled and missing-requirement states; check presence of required credentials without returning values or running arbitrary setup. Offer explicit project/thread skill selection through existing next-turn user-message injection, never alter the live toolset/system prefix.
+
+**PR boundary.** Skill list metadata/cache helper, skills routes, SkillsToolsPage list/filter/detail integration and tests. Keep skill edit-history ownership intact; no automatic installation, marketplace, bundle format or skill generation in this PR.
+
+**Accept.** With 1,000 skills, initial list omits full instruction bodies and shows scoped search without opening each file. Test user/project name collisions, external edits, missing requirements and unavailable optional dependencies. Browser selection injects the intended skill once into the correct thread, retains unsent input and cannot silently activate untrusted setup. Compare list-ready time/payload with baseline.
+
+### 23 — Show integration readiness and bounded MCP tests
+
+- [ ] **SP23 · MCP backend + Settings UI · M · Dependencies: SP05, SP10**
+
+**Evidence and benefit.** `mcp_routes.py` lists configuration and starts a background admin-run test. Spark already supports MCP timeouts and dynamic discovery. Configuration presence alone is not proof of a usable integration; H8 provides connection/discovery/pagination reference points.
+
+**Implement.** Project a safe readiness summary: configured, testing, ready, failed or unknown, last test time, elapsed time and tool count from an actual completed test. Bound concurrent tests/timeouts, dedupe tests for the same config revision and retire outdated results. Show a single Test/Retry action linked to the existing admin run. Redact env/header/URL secrets in summaries and errors. Do not perform probes on every page open or mutate active-conversation schemas in response to tests.
+
+**PR boundary.** MCP routes/config test adapter, existing admin-run integration, MCP settings component and focused tests. Leave live discovery ownership in `tools/mcp_tool.py`; no new transport.
+
+**Accept.** Fake stdio/HTTP servers cover timeout, malformed schema, pagination, auth error and success. A slow server cannot stall other integrations or exceed the configured test pool. Config edits prevent old success being adopted. Browser distinguishes saved from verified configuration and can inspect a bounded error safely; tests never disclose synthetic secrets and normal startup does not connect to unconfigured servers.
+
+### 24 — Explain Auto model choices before users need logs
+
+- [ ] **SP24 · Routing UI + read API · M · Dependencies: SP10, SP15**
+
+**Evidence and benefit.** `agent/smart_model_routing.py` already returns deterministic decision signals, scores and reasons; response budgets/model-role configuration also exist. H1's broad provider choice reinforces the value of making Spark's existing Auto mode understandable. Do not add another classifier or routing framework.
+
+**Implement.** Expose the effective configured role routes and a concise explanation of the selected route on a turn's details. Let users choose Auto or pin an explicit model through existing controls; provide one settings view for current role mappings and capability/credential gaps. Use existing route validation. Mark estimates and unavailable capabilities honestly. Changing a role applies only at supported future-turn/new-thread boundaries; surface any required new thread rather than silently rebuilding the cached prefix.
+
+**PR boundary.** Routing projection/helper, read API/types, ModelPicker/role-settings panel and tests. Do not tune classifier weights, add provider fallback or change budgets automatically in this PR.
+
+**Accept.** Deterministic fixtures cover direct answer, attachments, high-risk action, missing route credentials and explicit pinned model. Visible explanation matches the route actually used after refresh and reconnect; an explicit model is never overridden. Browser can inspect/change a role without raw YAML and retains custom endpoints. No extra model request is made to explain a decision; cache goldens pass.
+
+### 25 — Replace scattered configuration with a searchable common-settings view
+
+- [ ] **SP25 · UI simplicity · M · Dependencies: SP09–SP11, SP14, SP22–SP24**
+
+**Evidence and benefit.** App navigation, CommandPalette page items, SettingsPanel tabs and schema-driven ConfigPage expose overlapping destinations; some page concepts are settings rather than live top-level routes. H1/H5/H9 demonstrate a broad agent's discoverability challenge. This task simplifies the existing information architecture after the underlying controls stabilise.
+
+**Implement.** Create a small typed destination/settings index shared by navigation, palette and Settings search. Show common controls first: connection/profile, model, memory/context, skills/integrations and notifications; retain advanced fields behind a named disclosure with the same backend validation. Search opens the exact section/field with a breadcrumb. Preserve existing deep links, custom values, translations and unsaved drafts; unknown advanced fields remain reachable. Do not create “Fast” presets with unmeasured performance claims or move project tasks out of Chat.
+
+**PR boundary.** Navigation/settings registry helper, `App.tsx`, SettingsPanel/ConfigPage navigation, CommandPalette destination mapping, relevant translations and accessibility tests. No backend defaults, branding or unrelated layout redesign.
+
+**Accept.** Keyboard-only flows: change model, find memory, test MCP, edit a schedule, return to the originating thread. Each common setting is reachable in at most two explicit navigation selections after opening Settings; search takes users to the exact labelled control. Test old deep links, remote/local profile switch, unsaved changes and small screens. No duplicate destinations/dead palette actions; SP09 lazy chunk/network budgets remain satisfied.
+
+## Dispatch and integration map
+
+Priority numbers above are authoritative; this map prevents concurrent writers from turning 25 independent PRs into an integration rewrite.
+
+| Shared area | Required ownership/order |
+| --- | --- |
+| Root lifecycle/server/SessionDB | SP01 → SP02 → SP03. SP08 follows SP03; SP15 follows SP02/SP03. Serialize any migration/read-helper edits for SP07/SP13/SP15 through one owner. |
+| Client transport/cache | SP04 → SP05; SP07 can follow SP04 independently. SP12 follows SP05, then SP13. |
+| ChatPanel/session controllers | Merge SP02/SP04 controller changes before SP06; SP13 rebases afterwards. Keep visual seams for SP14/SP15/SP16 minimal and coordinate the same writer. |
+| Settings/model selection/config | SP09 is independent loading work. SP10 catalogue precedes SP11; SP24 follows SP10/SP15. Serialize their SettingsPanel hunks. SP25 integrates last. |
+| Cron | Recheck October mutation-lock/output/model-fields PRs, then SP17 → SP18. SP05 changes refresh only; rebase before editing the page again. |
+| Memory/skills/MCP | SP21 follows SP05; SP22 follows SP21/SP10; SP23 follows SP05/SP10. Separate domain modules, shared settings integration serialized. |
+| Files/terminal | SP19/SP20 follow SP04 and can be dispatched separately, with the existing upload/Git/terminal PR state checked first. |
+| Dependencies/build artifacts | No packet assumes a new npm package. If necessary, one designated writer updates nested lockfile. Do not commit web_dist in parallel feature PRs; regenerate at the coordinated verified web release gate. |
+
+For each assignment, attach representative fixtures (long thread, parallel chats, temporary Git project, slow provider/integration, two isolated profiles) relevant to that packet. Scope any uncovered prerequisite explicitly; do not silently expand a single PR into several roadmap items. Keep all 25 checkboxes open until their own acceptance record is complete.
