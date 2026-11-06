@@ -161,9 +161,15 @@ try {
   const revealLatestAlpha = async () => {
     const panel = page.locator('[data-testid="chat-panel"][data-session-id="mermaid-a"]');
     await panel.locator('[data-row-id]').first().waitFor();
-    await panel.locator('[data-testid="chat-scroll"]').hover();
-    await page.mouse.wheel(0, -1500);
-    await panel.getByTitle("Jump to latest", { exact: true }).click();
+    const jump = panel.getByTitle("Jump to latest", { exact: true });
+    // Returning history can still be restoring its bookmark when rows first
+    // mount. Establish actual detachment before exercising the jump control.
+    for (let attempt = 0; attempt < 40 && !await jump.isVisible(); attempt += 1) {
+      await panel.locator('[data-testid="chat-scroll"]').hover();
+      await page.mouse.wheel(0, -1500);
+      await page.waitForTimeout(50);
+    }
+    await jump.click();
   };
   await revealLatestAlpha();
   await page.locator('[role="img"][aria-label="Rendered Mermaid diagram"] svg').waitFor();
