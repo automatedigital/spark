@@ -184,9 +184,11 @@
       "id": "SP14",
       "title": "Explain context pressure and make compaction controllable",
       "issue": "https://github.com/automatedigital/spark/issues/201",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp14-20261106-r1",
-      "pr": null
+      "pr": "https://github.com/automatedigital/spark/pull/233",
+      "head": "87885af0096c99d201e408e5b4864607c306d409",
+      "leadVerification": "Reviewed worker-owned persistence helper: durable idle/revision recheck inside transaction, atomic continuation/checkpoint/lineage, child reservation before commit. Existing provider summary reused withboundedtime/tokens andlate-result isolation. Child82Python/14frontend/build/realbrowserpass; focusedparentcompactiontests running. Hosted pending; no liveprovider/installedclaim."
     },
     {
       "id": "SP15",
