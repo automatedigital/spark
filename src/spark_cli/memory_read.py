@@ -91,7 +91,7 @@ def dream_reviews(after: str = "", limit: int = 20) -> dict[str, Any]:
             raise MemoryReadUnavailable("Too many review files.")
         items = []
         for path in sorted(candidates, key=lambda p: p.name):
-            if path.name <= after or path.name == "index.md" or path.suffix != ".md":
+            if path.name <= after or path.name == "index.md" or path.suffix != ".md" or path.is_symlink():
                 continue
             safe = _contained(path)
             if safe.is_file():
@@ -107,7 +107,10 @@ def dream_reviews(after: str = "", limit: int = 20) -> dict[str, Any]:
 def read_dream(name: str) -> str:
     if Path(name).name != name or not name.endswith(".md") or name == "index.md":
         raise MemoryReadUnavailable("Invalid review name.")
-    path = _contained(get_spark_home() / "workspace/wiki/dreams" / name)
+    path = get_spark_home() / "workspace/wiki/dreams" / name
+    if path.is_symlink():
+        raise MemoryReadUnavailable("Review links are not browsable.")
+    path = _contained(path)
     with path.open("r", encoding="utf-8") as stream:
         content = stream.read(65537)
     if len(content) > 65536:

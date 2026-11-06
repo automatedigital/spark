@@ -125,6 +125,12 @@ def test_real_reviews_safe_paths_and_limits(client, home):
     (root / "outside.md").symlink_to(outside)
     assert client.get("/api/memory/reviews/outside.md").status_code == 404
     (root / "outside.md").unlink()
+    private = home / "private-config.md"
+    private.write_text("synthetic private configuration")
+    (root / "linked-review.md").symlink_to(private)
+    assert client.get("/api/memory/reviews/linked-review.md").status_code == 404
+    assert dream_reviews()["items"] == [{"name": "2026-review.md"}]
+    (root / "linked-review.md").unlink()
     (root / "huge.md").write_text("a" * 65537)
     assert client.get("/api/memory/reviews/huge.md").status_code == 404
     for i in range(25):
