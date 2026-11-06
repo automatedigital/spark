@@ -63,8 +63,7 @@ jobs:
   # multi-chat isolation, refresh/reconnect, gateway restart, and persisted
   # history, so a failure must block the merge rather than report as advisory.
   e2e:
-    # Keep the browser image within the locked Playwright support matrix.
-    # ubuntu-latest can advance before the pinned browser package supports it.
+    # Playwright 1.59.1 does not support Ubuntu 26 dependency provisioning.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

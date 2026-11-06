@@ -1240,7 +1240,12 @@ class TestExecuteToolCalls:
         captured = io.StringIO()
         agent._print_fn = lambda *args, **kw: print(*args, file=captured, **kw)
 
-        with patch("core.run_agent.time.sleep", return_value=None):
+        # This contract checks retry output, not the post-turn curator scheduler.
+        # Keep its persistence/background work out of this isolated unit test.
+        with (
+            patch("core.run_agent.time.sleep", return_value=None),
+            patch("agent.curator.maybe_run_curator"),
+        ):
             result = agent.run_conversation("hello")
 
         assert result["completed"] is True
