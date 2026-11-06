@@ -10,6 +10,7 @@ from contextlib import AsyncExitStack
 
 
 async def probe(config: dict) -> int:
+    from jsonschema.validators import validator_for
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
@@ -18,7 +19,7 @@ async def probe(config: dict) -> int:
     config = _interpolate_env_vars(config)
 
     async with AsyncExitStack() as stack:
-        if config.get("auth") == "oauth":
+        if str(config.get("auth") or "").lower().strip() == "oauth":
             # A readiness test must never start an interactive authorization flow.
             raise NotImplementedError
         if config.get("url"):
@@ -48,6 +49,8 @@ async def probe(config: dict) -> int:
         seen = set()
         for _ in range(100):
             page = await session.list_tools(cursor=cursor)
+            for tool in page.tools:
+                validator_for(tool.inputSchema).check_schema(tool.inputSchema)
             count += len(page.tools)
             if count > 10000:
                 raise ValueError

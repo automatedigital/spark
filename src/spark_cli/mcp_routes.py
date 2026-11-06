@@ -9,13 +9,30 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from spark_cli.mcp_readiness import owner
 
 _log = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/mcp", tags=["mcp"])
+class SafeMcpRoute(APIRoute):
+    """Keep rejected credential fields out of validation error responses."""
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handle(request):
+            try:
+                return await original(request)
+            except RequestValidationError:
+                raise HTTPException(status_code=400, detail="Invalid MCP configuration") from None
+
+        return handle
+
+
+router = APIRouter(prefix="/api/mcp", tags=["mcp"], route_class=SafeMcpRoute)
 
 
 class McpServerCreate(BaseModel):

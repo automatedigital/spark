@@ -34,7 +34,7 @@ import {
 import { validateRemoteConnection, displayHost } from "@/lib/connection";
 import { localDeviceLabel } from "@/lib/localDevice";
 import { isTauri } from "@/sidecar";
-import type { McpServersResponse } from "@/lib/api";
+import { getMcpReadiness, saveMcpConfiguration, type McpReadinessResponse } from "@/lib/mcpReadiness";
 import { getNestedValue, setNestedValue } from "@/lib/nested";
 import { AutoField } from "@/components/AutoField";
 import { LazyLoadBoundary } from "@/components/LazyLoadBoundary";
@@ -479,7 +479,7 @@ const MCP_JSON_TEMPLATE = `{
 }`;
 
 function McpSection() {
-  const [servers, setServers] = useState<McpServersResponse | null>(null);
+  const [servers, setServers] = useState<McpReadinessResponse | null>(null);
   const [name, setName] = useSettingsDraft("mcp-name", "");
   const [json, setJson] = useSettingsDraft("mcp-json", MCP_JSON_TEMPLATE);
   const [generation, setGeneration] = useState(0);
@@ -487,7 +487,7 @@ function McpSection() {
   const { toast, showToast } = useToast();
 
   const reload = () => {
-    api.getMcpServers().then(setServers).catch(() => setServers({ ok: false, servers: {} }));
+    getMcpReadiness().then(setServers).catch(() => setServers({ ok: false, servers: {}, readiness: {} }));
   };
   useEffect(reload, []);
 
@@ -505,17 +505,25 @@ function McpSection() {
     }
     setSaving(true);
     try {
-      await api.addMcpServer({
+      await saveMcpConfiguration({
         name: name.trim(),
         url: typeof parsed.url === "string" ? parsed.url : null,
         command: typeof parsed.command === "string" && parsed.command ? parsed.command : null,
         args: Array.isArray(parsed.args) ? (parsed.args as string[]) : undefined,
+        headers: parsed.headers && typeof parsed.headers === "object"
+          ? (parsed.headers as Record<string, string>) : undefined,
         env:
           parsed.env && typeof parsed.env === "object"
             ? (parsed.env as Record<string, string>)
             : undefined,
       });
       showToast(`Saved MCP server "${name.trim()}"`, "success");
+      setServers((current) => {
+        if (!current) return current;
+        const readiness = { ...current.readiness };
+        delete readiness[name.trim()];
+        return { ...current, readiness };
+      });
       setName("");
       setJson(MCP_JSON_TEMPLATE);
       setGeneration((value) => value + 1);
@@ -560,7 +568,7 @@ function McpSection() {
                     Remove
                   </Button>
                 </div>
-                <McpReadinessStatus key={generation} name={serverName} />
+                <McpReadinessStatus key={generation} name={serverName} summary={servers?.readiness?.[serverName] ?? null} />
               </div>
             ))}
           </div>

@@ -1,4 +1,5 @@
 import { fetchJSON } from "./apiHelpers";
+import type { McpServerCreate } from "./apiTypes";
 
 export interface McpReadiness {
   state: "unknown" | "testing" | "ready" | "failed";
@@ -8,6 +9,13 @@ export interface McpReadiness {
   error: string | null;
   run_id: string | null;
 }
-export const getMcpReadiness = () => fetchJSON<{
+export interface McpReadinessResponse {
+  ok: boolean;
+  servers: Record<string, { configured: boolean }>;
   readiness: Record<string, McpReadiness>;
-}>("/api/mcp/servers");
+}
+export const getMcpReadiness = () => fetchJSON<McpReadinessResponse>("/api/mcp/servers");
+export const saveMcpConfiguration = (body: McpServerCreate & { headers?: Record<string, string> }) =>
+  fetchJSON("/api/mcp/servers", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });

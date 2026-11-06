@@ -13,9 +13,10 @@ const errors: Record<string, string> = {
   cancelled: "Configuration changed; test retired.",
 };
 
-export function McpReadinessStatus({ name }: { name: string }) {
-  const [value, setValue] = useState<McpReadiness | null>(null);
+export function McpReadinessStatus({ name, summary }: { name: string; summary: McpReadiness | null }) {
+  const [value, setValue] = useState<McpReadiness | null>(summary);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const [starting, setStarting] = useState(false);
   useEffect(() => {
     let active = true;
@@ -31,14 +32,16 @@ export function McpReadinessStatus({ name }: { name: string }) {
         if (active) setError("Readiness unavailable. Retry the test explicitly.");
       }
     };
-    void read();
+    if (attempt || summary?.state === "testing") void read();
+    else setValue(summary);
     return () => { active = false; clearTimeout(timer); };
-  }, [name, starting]);
+  }, [name, summary, attempt]);
   const test = async () => {
     setStarting(true);
     setError("");
     try {
       await mcpApi.testMcpServer(name);
+      setAttempt((value) => value + 1);
     } catch {
       setError("Unable to start test. The queue may be full; retry later.");
     } finally {

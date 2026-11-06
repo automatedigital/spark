@@ -101,3 +101,66 @@ def test_real_http_auth_failure_is_safe():
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_sdk_missing_is_safe_and_does_not_import_live_discovery(monkeypatch, tmp_path):
+    stub = tmp_path / 'mcp.py'
+    stub.write_text('raise ImportError("SYNTHETIC_SECRET")\n')
+    monkeypatch.setenv('PYTHONPATH', str(tmp_path) + os.pathsep + str(FIXTURE.parents[3] / 'src'))
+    result = readiness.run_probe(config(), threading.Event())
+    assert result['error'] == 'sdk_unavailable'
+    assert 'SYNTHETIC_SECRET' not in json.dumps(result)
+
+
+def test_two_real_probes_slow_does_not_block_fast(monkeypatch, tmp_path):
+    import time
+    monkeypatch.setenv('SPARK_HOME', str(tmp_path))
+    owner = readiness.ReadinessOwner(workers=2, capacity=2)
+    pidfile = tmp_path / 'slow-pid'
+    slow = config('stall', pidfile)
+    fast = config('success')
+    try:
+        owner.start('slow', slow)
+        owner.start('fast', fast)
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            result = owner.summaries({'slow': slow, 'fast': fast})
+            if result['fast']['state'] == 'ready':
+                break
+            time.sleep(0.05)
+        assert result['fast']['state'] == 'ready'
+        assert result['slow']['state'] == 'testing'
+        owner.summaries({'fast': fast})  # Removing configuration cancels owned work.
+    finally:
+        owner.summaries({})
+        owner.pool.shutdown(wait=True)
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pidfile.read_text()), 0)
+
+
+def test_create_keeps_credentials_out_of_response(monkeypatch):
+    import asyncio
+    from spark_cli import mcp_config, mcp_routes
+    secret = 'SYNTHETIC_SECRET'
+    saved = {}
+    monkeypatch.setattr(mcp_config, '_save_mcp_server', lambda name, cfg: saved.update({name: cfg}))
+    monkeypatch.setattr(mcp_config, '_get_mcp_servers', lambda: saved)
+    result = asyncio.run(mcp_routes.mcp_servers_create(mcp_routes.McpServerCreate(
+        name='fixture', url='https://invalid/?token=' + secret,
+        headers={'Authorization': secret}, env={'KEY': secret})))
+    assert saved['fixture']['headers']['Authorization'] == secret
+    assert secret not in json.dumps(result)
+
+
+def test_invalid_credentials_never_echo_in_validation_errors():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from spark_cli.mcp_routes import register_mcp_routes
+    app = FastAPI()
+    register_mcp_routes(app)
+    with TestClient(app) as client:
+        response = client.post('/api/mcp/servers', json={
+            'name': 'fixture', 'url': 'http://invalid',
+            'env': {'KEY': {'secret': 'SYNTHETIC_SECRET'}}})
+    assert response.status_code == 400
+    assert 'SYNTHETIC_SECRET' not in response.text

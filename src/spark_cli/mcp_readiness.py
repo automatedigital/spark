@@ -10,12 +10,19 @@ import sys
 import tempfile
 import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from typing import Any
 
 from core.spark_constants import get_spark_home
-from spark_cli.admin_runs import _admin_run_queues, _admin_runs, _new_admin_run, _queue_admin_event
+from spark_cli.admin_runs import (
+    _admin_run_queues,
+    _admin_runs,
+    _append_admin_output,
+    _new_admin_run,
+    _queue_admin_event,
+)
 
 ERRORS = {"connection_failed", "sdk_unavailable", "auth_unsupported", "timeout",
           "invalid_result", "unsupported_platform", "cancelled"}
@@ -25,8 +32,13 @@ def run_probe(config: dict, cancel: threading.Event, timeout: float = 15, *, pro
     if os.name != "posix":
         return {"error": "unsupported_platform", "tool_count": None, "duration_ms": 0}
 
-    subprocess.run(["ps", "-axo", "pid=,ppid="], stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL, timeout=1, check=True)
+    if cancel.is_set():
+        return {"error": "cancelled", "tool_count": None, "duration_ms": 0}
+    try:
+        subprocess.run(["ps", "-axo", "pid=,ppid="], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=1, check=True)
+    except (OSError, subprocess.SubprocessError):
+        return {"error": "unsupported_platform", "tool_count": None, "duration_ms": 0}
     start = time.monotonic()
     result = {"error": "invalid_result", "tool_count": None, "duration_ms": 0}
     with tempfile.TemporaryFile() as output:
@@ -101,6 +113,7 @@ class ReadinessOwner:
         self.lock = threading.RLock()
         self.records: dict[tuple[str, str], dict[str, Any]] = {}
         self.pending = 0
+        self.completed: deque[str] = deque()
 
     def _record(self, name: str, config: dict) -> dict:
         key = (str(get_spark_home().resolve()), name)
@@ -162,7 +175,15 @@ class ReadinessOwner:
             run.update(status="failed" if result["error"] else "done",
                        finished_at=time.time(), exit_code=1 if result["error"] else 0,
                        error=result["error"], readiness=self._summary(record))
+            message = json.dumps({"state": record["state"], **result}, sort_keys=True)
+            _append_admin_output(run_id, "system", message)
+            _queue_admin_event(run_id, {"type": "output", "stream": "system", "text": message})
             _queue_admin_event(run_id, {"type": "done", "run": run})
+            self.completed.append(run_id)
+            while len(self.completed) > 64:
+                retired = self.completed.popleft()
+                _admin_runs.pop(retired, None)
+                _admin_run_queues.pop(retired, None)
 
 
 owner = ReadinessOwner()
