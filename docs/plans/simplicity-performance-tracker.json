@@ -9,21 +9,23 @@
       "id": "SP01",
       "title": "Accept each submitted prompt once",
       "issue": "https://github.com/automatedigital/spark/issues/188",
-      "state": "published_acceptance_open",
+      "state": "published_ci_repair_pending",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp01-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/213",
-      "head": "968f4e7d3d2258fe7ca681ebbd8821ce5519f857",
-      "leadVerification": "Reviewed diff/report; independently reran tests/spark_cli/test_root_submissions.py with worktree src, isolated test home, -n 0 not integration: 9 passed in 2.29s. Broader multi-chat/native acceptance remains open."
+      "head": "5ee7ae6c",
+      "leadVerification": "Reviewed diff/report; independently reran tests/spark_cli/test_root_submissions.py with worktree src, isolated test home, -n 0 not integration: 9 passed in 2.29s. Broader multi-chat/native acceptance remains open.",
+      "ciRepair": "Pytest9.2 mock isolation and Ubuntu24 browser runner; local fast parallel12711, serial191, persistence222 passed; hosted pending."
     },
     {
       "id": "SP02",
       "title": "Reconcile chat from one authoritative recovery snapshot",
       "issue": "https://github.com/automatedigital/spark/issues/189",
-      "state": "running",
+      "state": "publication_stopped_preserved",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-r1",
       "pr": null,
       "base": "968f4e7d3d2258fe7ca681ebbd8821ce5519f857",
-      "prBase": "feat/sp01-submission-acceptance"
+      "prBase": "feat/sp01-submission-acceptance",
+      "stopReason": "User requires failing CI fixed before further publication; delegated task_cancel issued, preserve checkout work."
     },
     {
       "id": "SP03",
@@ -77,9 +79,10 @@
       "id": "SP09",
       "title": "Load Settings one tab at a time",
       "issue": "https://github.com/automatedigital/spark/issues/196",
-      "state": "running",
+      "state": "publication_stopped_preserved",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-r1",
-      "pr": null
+      "pr": null,
+      "stopReason": "User requires failing CI fixed before further publication; delegated task_cancel issued, preserve checkout work."
     },
     {
       "id": "SP10",
@@ -210,5 +213,5 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "SP02 stacked on published SP01; SP09 continues as sole SettingsPanel writer, SP10 follows SP09. Max five delegates, Sol Low reasoning. Follow delegate completion wakes; no polling. One scoped PR per packet, no merge/release authorization. Publication does not close acceptance."
+  "dispatchNotes": "Publication held pending hosted CI repair on PR213, head5ee7ae6c. SP02/SP09 cancellation requested; preserve all work. No replacement/feature dispatch until repair results reconciled. User original25-PR goal remains unfinished. Sol Low reasoning, max5 when resumed; actual dependency bases must include repair."
 }
