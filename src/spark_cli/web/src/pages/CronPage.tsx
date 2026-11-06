@@ -1,3 +1,4 @@
+import { CronHistoryDrawer } from "@/components/CronHistoryDrawer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clock, Edit3, Pause, Play, Plus, Trash2, X, Zap } from "lucide-react";
 import { CronSchedulePreview } from "@/components/CronSchedulePreview";
@@ -185,6 +186,7 @@ export default function CronPage() {
       .catch(() => { if (active) setOutputCapability({ supported: false, reason: "Could not verify saved output availability. Reload to retry." }); });
     return () => { active = false; };
   }, []);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [outputJob, setOutputJob] = useState<CronJob | null>(null);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -407,6 +409,9 @@ export default function CronPage() {
     <div className="flex flex-col gap-6">
       <Toast toast={toast} />
       {outputJob && <CronOutputDrawer key={outputJob.id} jobId={outputJob.id} name={outputJob.name || outputJob.id} onClose={() => setOutputJob(null)} />}
+
+      <Button variant="outline" onClick={() => setHistoryOpen(true)}>Execution history</Button>
+      {historyOpen && <CronHistoryDrawer onClose={() => setHistoryOpen(false)} />}
 
       {/* Create new job form */}
       <Card>

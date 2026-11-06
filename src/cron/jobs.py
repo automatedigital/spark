@@ -301,7 +301,7 @@ def preview_schedule(schedule: Any, timezone: str | None = None) -> dict[str, An
         cursor = datetime.fromisoformat(value)
     return {"schedule": parsed, "occurrences": occurrences,
             "timezone": parsed.get("timezone") or str(now.tzinfo),
-            "missed_run_policy": "Recurring runs catch up once within half a period (minimum 120 seconds, maximum 2 hours); older runs are skipped. Saved due one-shots execute on restart; one-shots without a saved next time recover within 120 seconds. Recurring runs advance before execution; uncertain one-shot attempts may retry after restart.",
+            "missed_run_policy": "Recurring runs catch up once within half a period (minimum 120 seconds, maximum 2 hours); older runs are skipped. Saved due one-shots execute on restart; one-shots without a saved next time recover within 120 seconds. Recurring runs advance before execution; accepted uncertain attempts are recorded as interrupted with unknown delivery and are not automatically retried.",
             "dst_policy": "Skip nonexistent cron wall times; ambiguous wall times run once, at the first occurrence. Naive one-shots in a gap are rejected; folds use the first occurrence."}
 
 
@@ -777,16 +777,23 @@ def resume_job(job_id: str) -> dict[str, Any] | None:
     )
 
 
+@_locked_jobs
 def trigger_job(job_id: str) -> dict[str, Any] | None:
     """Schedule a job to run on the next scheduler tick."""
-    return update_job(
+    from cron.history import History
+
+    occurrence = _spark_now().isoformat()
+    # Commit intent first so a tick cannot consume the jobs.json update before
+    # its cause is recorded. Failed mutations leave harmless unmatched intent.
+    History().manual(job_id, occurrence)
+    return _update_job(
         job_id,
         {
             "enabled": True,
             "state": "scheduled",
             "paused_at": None,
             "paused_reason": None,
-            "next_run_at": _spark_now().isoformat(),
+            "next_run_at": occurrence,
         },
     )
 

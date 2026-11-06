@@ -223,6 +223,17 @@ def list_cron_providers():
     return providers
 
 
+@router.get("/history")
+def read_cron_history(job_id: str | None = None, before: int | None = None,
+                      limit: int = 20):
+    from cron.history import History
+
+    try:
+        return History().page(job_id, before, limit)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get("/jobs")
 async def list_cron_jobs():
     from cron.jobs import list_jobs

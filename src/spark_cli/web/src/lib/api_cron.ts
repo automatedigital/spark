@@ -65,3 +65,13 @@ export const cronApi = {
 
   // Skills & Toolsets
 };
+
+export type CronAttempt = {
+  seq: number; attempt_id: string; job_id: string; cause: "schedule" | "manual";
+  accepted_at: string; started_at: string | null; finished_at: string | null;
+  execution: string; delivery: string; execution_error: string | null;
+  delivery_error: string | null; output_ref: string | null;
+};
+export const readCronHistory = (before?: number, signal?: AbortSignal) =>
+  fetchJSON<{ attempts: CronAttempt[]; next_before: number | null }>(
+    `/api/cron/history?limit=20${before ? `&before=${before}` : ""}`, { signal });
