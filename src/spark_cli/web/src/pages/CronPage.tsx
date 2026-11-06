@@ -16,7 +16,9 @@ import { CronCardSkeleton } from "@/components/Skeleton";
 import { timeUntil } from "@/lib/format";
 import { GLOBAL_NAV_EVENT, takeGlobalNavTarget, type GlobalNavTarget } from "@/lib/globalNavigation";
 import { cn } from "@/lib/utils";
-import { CRON_REFRESH_INTERVAL_MS, shouldRefreshCronJobs } from "@/lib/cronRefresh";
+import { referenceResources } from "@/lib/referenceResources";
+import { fetchJSON } from "@/lib/apiHelpers";
+import { useReferenceRefresh } from "@/hooks/useReferenceRefresh";
 
 function formatTime(iso?: string | null): string {
   if (!iso) return "—";
@@ -217,28 +219,18 @@ export default function CronPage() {
   const [schedMonth, setSchedMonth] = useState("1");   // month (1-12)
   const [customExpr, setCustomExpr] = useState("");
 
-  const loadJobs = useCallback(() => {
-    api
-      .getCronJobs()
-      .then(setJobs)
-      .catch(() => showToast(t.common.loading, "error"))
-      .finally(() => setLoading(false));
+  const jobsRequest = useRef(0);
+  const loadJobs = useCallback((invalidate = true) => {
+    if (invalidate) referenceResources.invalidate("cron");
+    const request = ++jobsRequest.current;
+    referenceResources.read("cron", (signal) => fetchJSON<CronJob[]>("/api/cron/jobs", { signal }))
+      .then((data) => { if (request === jobsRequest.current) setJobs(data); })
+      .catch((error: unknown) => { if (request === jobsRequest.current && !(error instanceof DOMException && error.name === "AbortError")) showToast(t.common.loading, "error"); })
+      .finally(() => { if (request === jobsRequest.current) setLoading(false); });
   }, [showToast, t.common.loading]);
 
-  useEffect(() => {
-    loadJobs();
-    const refresh = window.setInterval(() => {
-      if (shouldRefreshCronJobs(document.visibilityState)) loadJobs();
-    }, CRON_REFRESH_INTERVAL_MS);
-    const refreshWhenVisible = () => {
-      if (shouldRefreshCronJobs(document.visibilityState)) loadJobs();
-    };
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.clearInterval(refresh);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, [loadJobs]);
+  useReferenceRefresh("cron", () => loadJobs(false));
+  useEffect(() => () => { jobsRequest.current += 1; }, []);
 
   const focusJob = (id: string) => {
     setHighlightedJobId(id);
