@@ -205,12 +205,17 @@
       "id": "SP20",
       "title": "Fetch project files as users expand folders",
       "issue": "https://github.com/automatedigital/spark/issues/207",
-      "state": "running",
-      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp20-20261106-r1",
+      "state": "gate_repair_running_unpublished",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp20-20261106-gates-r2",
       "pr": null,
-      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "base": "d0de5a7bdf9f9a794a80cc323ba0dac080a9c705",
       "prBase": "feat/sp01-submission-acceptance",
-      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers."
+      "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers.",
+      "priorTaskIds": [
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp20-20261106-r1"
+      ],
+      "localHead": "d0de5a7bdf9f9a794a80cc323ba0dac080a9c705",
+      "publicationBlocker": "Lastparallelgate2unchangedgatewayapprovalnotificationfailures; earliercheckpointbudgetfailure. Focusedisolatedpassnotacceptance. Parentreadlogs: noexplicitTirithline, causeunproven; boundedthread/dependencydiagnostic beforeonecorrectedfullrun, notblindrerun."
     },
     {
       "id": "SP21",
@@ -253,7 +258,7 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "5implementationPRs published213/214/215/216/217; SP10 acceptanceOPEN pendingrealUI+discoverycorrection. FiveSolLow tasks active: SP02repair,SP20filetree,SP18history,SP11(firstcorrect217 then ownPR), Linuxinspector diagnostic.16packetsundispatched. No merges/releases/knownfailedgatepushes; PR214Linuxfailureunresolved.",
+  "dispatchNotes": "FiveSolLowdelegatesactive: SP02acceptance, SP11SP10correction+modelsearch, SP18history, SP20publicationgatediagnostic, PR214Linuxinspector.5publishedimplementationPRs;16otherpacketsundispatched. SP20localfunctional/performance/browserdone butpublishblocked; maintainstrictno-knownfailurepush. No merges/releases/checkboxclosure.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",
