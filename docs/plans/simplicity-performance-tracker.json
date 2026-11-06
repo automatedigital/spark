@@ -148,14 +148,15 @@
       "id": "SP12",
       "title": "Open the command palette without bulk-fetching the app",
       "issue": "https://github.com/automatedigital/spark/issues/199",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp12-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/222",
       "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
       "prBase": "feat/sp10-provider-catalogue",
       "scheduling": "PLAN explicitly permits domain implementation before SP04/SP05; later transport/resource-cache integration remains open.",
       "head": "42ab3cc91f44d5edaa00820c7eea296f49d01cd8",
-      "leadVerification": "Reviewed dedicated bounded synchronous worker routes and source/report. Parent focused8 palette API tests pass. Agent exact12746+191Python/576frontend/browser pass. Payload243013 to957bytes (99.61% lower); coldlazy median120.6ms misses100ms, warm3.2ms. Hostcontention limits timing attribution. Hosted pending; no acceptanceclosure."
+      "leadVerification": "Reviewed dedicated bounded synchronous worker routes and source/report. Parent focused8 palette API tests pass. Agent exact12746+191Python/576frontend/browser pass. Payload243013 to957bytes (99.61% lower); coldlazy median120.6ms misses100ms, warm3.2ms. Hostcontention limits timing attribution. Hosted pending; no acceptanceclosure.",
+      "hostedVerification": "All seven hosted checks passed on42ab3cc91f44d5edaa00820c7eea296f49d01cd8 per T3 completion event. Parent focused8 API tests passed. Cold lazy-open100ms target miss and SP04/SP05 integration remain open. No merge/release."
     },
     {
       "id": "SP13",
