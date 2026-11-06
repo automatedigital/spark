@@ -81,6 +81,22 @@ async def main():
                         "events": [{"type": "token", "text": "Fixture answer " + marker}],
                     })
                     assert response.ok, await response.text()
+                # These are settled draft fixtures, not active-stream fixtures.
+                # The start acknowledgement precedes assistant persistence.
+                for marker in ("alpha", "bravo", "charlie"):
+                    for _ in range(100):
+                        response = await request.get(api_url + f"/api/conversations/recovery_{marker}/recovery")
+                        if response.ok:
+                            snapshot = await response.json()
+                            saved = snapshot.get("history", {}).get("messages", [])
+                            if not snapshot.get("turn_active") and any(
+                                row.get("role") == "assistant" and row.get("content") == "Fixture answer " + marker
+                                for row in saved
+                            ):
+                                break
+                        await asyncio.sleep(0.1)
+                    else:
+                        raise AssertionError("Seed stream did not settle durably: " + marker)
                 browser = await playwright.chromium.launch()
                 context = await browser.new_context(viewport={"width": 1440, "height": 980})
                 page = await context.new_page()

@@ -1,3 +1,4 @@
+import type { TurnTimingSummary } from "./turnTiming";
 /** Response and payload types for the Spark web API.
  *
  * Split out of api.ts, which was 3,052 lines. api.ts re-exports everything
@@ -243,6 +244,7 @@ export interface WebPlan {
 }
 
 export interface WebTurnOutcome {
+  timing_summary?: TurnTimingSummary | null;
   turn_id: string;
   session_id: string;
   user_message_id: number | string | null;
