@@ -1,5 +1,13 @@
 # Simplicity and performance delivery — 2026-11-06
 
+## Final integration
+
+All25 feature heads are preserved in main through [PR239](https://github.com/automatedigital/spark/pull/239), merge commit `1b619a0a7ba72c8cacf50858870f3f918d3e7420`. All seven hosted checks passed on candidate `96425c6d`: Python tests, Ruff, mypy, frontend lint/types/tests, browser e2e, and persistence contracts on Ubuntu/Windows. Parent independently verified ancestry. PR213 was automatically marked merged; stacked PR214–237 were closed as incorporated because GitHub rejects retargeting branches with no new commits against main. No changes discarded.
+
+The snapshot and blockers below are historical. Combined inspector acceptance passed1000→1000 with unchanged assertion. Native package/release and remaining packet-specific performance acceptance are still separate; PLAN checkboxes remain open where required. No release was performed.
+
+## Historical publication snapshot
+
 All 25 planned feature PRs were published before the 21:35:58 UTC deadline. This is PR delivery, not integrated or released app acceptance. PLAN checkboxes and issues remain open until their acceptance evidence passes.
 
 ## Hosted CI snapshot

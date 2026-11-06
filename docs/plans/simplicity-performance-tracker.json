@@ -9,19 +9,20 @@
       "id": "SP01",
       "title": "Accept each submitted prompt once",
       "issue": "https://github.com/automatedigital/spark/issues/188",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp01-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/213",
       "head": "a12205a5737d7539875d6af16b3bb58c194e8edb",
       "leadVerification": "Reviewed diff/report; independently reran tests/spark_cli/test_root_submissions.py with worktree src, isolated test home, -n 0 not integration: 9 passed in 2.29s. Broader multi-chat/native acceptance remains open.",
       "ciRepair": "All7 hosted checks passed on a12205a5, reported by T3 check-completion event. Pytest9.2 mock isolation, Ubuntu24 browser image and direct backend launch retained. No merge/release or native/full packet acceptance inferred.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP02",
       "title": "Reconcile chat from one authoritative recovery snapshot",
       "issue": "https://github.com/automatedigital/spark/issues/189",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-publication-r4",
       "pr": "https://github.com/automatedigital/spark/pull/224",
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
@@ -38,13 +39,14 @@
       "ciFailure": "e2e42289307299/job128138239116 chat-contracts Fork result visible timeout. Mockforkack/legacymessages have no authoritativeDBsession; parentseededrealfixture, affectedflowverificationrunning.",
       "ciRepair": "Durableforkfixture+Mermaiddetachmentprecondition fixes; originalassertions/timeouts preserved. Completechat-contracts andMermaid10checks pass locally. CIpending.",
       "hostedVerification": "T3completionevent: all7 hostedchecks passed95fd191c62ad1501538071a4ba46ad230fc1ab1d. Parent8recoverysnapshot tests andaffectedchat/Mermaidflows passed; integrated/nativeacceptance remainsopen. No merge/release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP03",
       "title": "Keep expensive chat preparation off the API event loop",
       "issue": "https://github.com/automatedigital/spark/issues/190",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp03-20261106-ownership-r2",
       "pr": "https://github.com/automatedigital/spark/pull/227",
       "base": "1c2ae85bff12cfd5215c5abe3cfc461e225b1086",
@@ -54,51 +56,55 @@
       ],
       "publicationBlocker": "Physical cachedDBownership probe fails create runtimeworker/use turnworker/close mainthread. Expanded narrow lifetime scope authorised; regression passes are insufficient.",
       "head": "0057bccf2e24d70076caafe9bc7c94a38ddcf314",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP04",
       "title": "Cancel obsolete reads across navigation and connection changes",
       "issue": "https://github.com/automatedigital/spark/issues/191",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp04-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/228",
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
       "prBase": "feat/sp02-recovery-snapshot-final",
       "head": "4a19f40b8d3e3687ee0668b4fd44d6a12ab67c38",
       "ciRepair": "MergedSP02Mermaidfixturefix aftersamehostedfailure; actualSP04Mermaidflow10checks/zeroerrors pass. CIpending.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP05",
       "title": "Share reference-data reads and retire redundant polling",
       "issue": "https://github.com/automatedigital/spark/issues/192",
-      "state": "published_ci_failed_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp05-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/232",
       "head": "8ea835487584fc6090861cf405a128cd037b0d72",
       "leadVerification": "Reviewed bounded3-resource cache, backend/auth/profile epochs, sharedconsumerabort isolation, revision-fencedmutationreads andcoalescedrefresh. Childreports71.43%idle-fetch reduction/82ms liveSSEvisibility; parentfocusedcachetests running. FullSP04integrationopen;CIpending.",
       "finalAuditCi": "FAILURE",
-      "finalAuditBlocker": "Hosted inspector1000\u21921410; pytest quiet retry test timed out at curator.save_state os.replace after60s. Causes unresolved; no speculative production change or rerun."
+      "finalAuditBlocker": "Hosted inspector1000\u21921410; pytest quiet retry test timed out at curator.save_state os.replace after60s. Causes unresolved; no speculative production change or rerun.",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP06",
       "title": "Update only the active tail during token streaming",
       "issue": "https://github.com/automatedigital/spark/issues/193",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp06-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/230",
       "head": "b76eeef4ecc2fb1b9238bd73e7fc7779fc431d46",
       "leadVerification": "Reviewed presentationhook: framebatches assistanttextonly, immediatelypresents session/metadata/tool/decision/terminalchanges, stablecallbackowner via latestcommittedref. Reportbaseline10kprojectionmedian1.751to0.364ms,79.2%lower; browserzero settledrowcommits and0pxanchor movement. Parent focusedprojection/presentation tests run; CIpending.",
       "ciRepair": "Hostedlarge10kreplay exceeded5s testtimeout. Kept10kmessages/12steps/fulloracle, useNodeisDeepStrictEqual;15focusedtests+ESLintpass, exactcase1.57sto0.913slocally. MergedbaseMermaidfixturefix. CIpending.",
       "hostedVerification": "T3completionevent: bothapplicablehostedchecks passedb76eeef4 (UI-only2checkmatrix). Parent15projection/presentationtests pass; full10k/12steporacle retained withfasterdeepcomparison. Crosspacket/nativeacceptanceopen; no merge/release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP07",
       "title": "Retrieve large tool results in bounded chunks",
       "issue": "https://github.com/automatedigital/spark/issues/194",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-recovery-r2",
       "pr": "https://github.com/automatedigital/spark/pull/226",
       "base": "dd136b9a54af5379eb11b546bb5883190726487a",
@@ -113,24 +119,26 @@
       "head": "8e59333ea015f3023a4e8a06e7491ea67a0dfed3",
       "ciRepair": "RLockcontractfixed; partialstreamtestbarrierpreservesassertions/deadlines (3focusedpass). MergedSP02Mermaidfix. CIpending.",
       "hostedVerification": "T3completionevent: all7 hostedchecks passed8e59333e. IncludesRLockcontract/partialstreamfixturebarrier/baseMermaidfix. Focused8toolresult+3fake-streamregressionspassed. Crosspacket/nativeacceptanceopen; no merge/release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP08",
       "title": "Make warmed-agent retention cost-aware",
       "issue": "https://github.com/automatedigital/spark/issues/195",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp08-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/234",
       "head": "4fb7dfe6d62ae122451bef44a7bd1ce0a44fc5d7",
       "leadVerification": "Reviewed profile/database/session generation and SQL mutation revision triggers, prefixguards and durable owner protection helper. Parent22cache regressions run. Childcoldprepp95+0.83% within10%guard; verifiedwarm100sampleszero full-historyreads/requesthashesmatch. Logicalbytebudget notRSS; boundedRSS remainsunproven. No installed/liveproviderclaim; hostedpending.",
-      "finalAuditCi": "PENDING"
+      "finalAuditCi": "PENDING",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP09",
       "title": "Load Settings one tab at a time",
       "issue": "https://github.com/automatedigital/spark/issues/196",
-      "state": "published_ci_failed_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp09-20261106-bundle-r3",
       "pr": "https://github.com/automatedigital/spark/pull/214",
       "priorTaskIds": [
@@ -144,13 +152,14 @@
       "leadVerification": "Reviewed final wrappers and comparison assertion including deferred body; independently reran exact-base production graph check against retained built artifacts plus2 SettingsDraft tests under verifiedNode22. Both pass. Hosted/native broader acceptance not inferred.",
       "ciFailure": "e2e inspector run42262987028/job128047482455 at53d527d: detached scroll1000\u21921410; earlier workflow stagespass; no rerun/push. Artifact retained for matched A/B diagnostic.",
       "ciInvestigation": "BoundedmacOS and emulatedamd64Ubuntu24 matchedbase/candidate both11checks passed1000\u21921000 samekey/offset. Hosted1000\u21921410 unproven; sparseframes/Python3.12/emulation/font/timinglimits recorded. No fix/assertionchange/push/CIrerun justified. Evidence archived, gate remainsOPEN.",
-      "finalAuditCi": "FAILURE"
+      "finalAuditCi": "FAILURE",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP10",
       "title": "Use one provider catalogue across settings and chat",
       "issue": "https://github.com/automatedigital/spark/issues/197",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp10-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/217",
       "base": "53d527d7f61a094ae258ac5afc6c4f8c61c2e3a5",
@@ -160,13 +169,14 @@
       "correctionTaskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp11-20261106-r1",
       "correctionVerified": "Parent reviewed actualPromptBar ModelQuickSettings catalogueintegration, removalofSettingsmount-time load effect, realmodelstatus refreshafterselection, labelrawIDfallback/non-inference frommodelnamespace. Dedicatedbuiltactualcomponents fixture reportszero modelavailablecalls onbothopens; local571tests andbrowserspass. T3eventall7hostedchecks pass9acb185. Priorreportedgaps closed; no merge/release/liveprovider/nativeclaim.",
       "hostedVerification": "All7checks passed on9acb185aeba859fade1b83b8171db85bf5b0b6c0 perT3completionevent.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP11",
       "title": "Make model search fast and immune to stale responses",
       "issue": "https://github.com/automatedigital/spark/issues/198",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp11-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/219",
       "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
@@ -175,13 +185,14 @@
       "head": "88097547172754d8eb953c7f604a6bd51ad12e23",
       "leadVerification": "Reviewed bounded loader cache, per-consumer AbortController/generation and profile/backend/auth fences. Independently ran 11 modelListLoader tests under verified Node22: passed. Browser evidence reported by child; hosted e2e pending.",
       "hostedVerification": "T3 completion event: both hosted checks passed on88097547172754d8eb953c7f604a6bd51ad12e23. This UI-only PR ran two checks, not the seven-check backend matrix. Parent independently passed11 modelListLoader regressions; combined transport/integration/native acceptance remains open. No merge or release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP12",
       "title": "Open the command palette without bulk-fetching the app",
       "issue": "https://github.com/automatedigital/spark/issues/199",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp12-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/222",
       "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
@@ -190,58 +201,63 @@
       "head": "42ab3cc91f44d5edaa00820c7eea296f49d01cd8",
       "leadVerification": "Reviewed dedicated bounded synchronous worker routes and source/report. Parent focused8 palette API tests pass. Agent exact12746+191Python/576frontend/browser pass. Payload243013 to957bytes (99.61% lower); coldlazy median120.6ms misses100ms, warm3.2ms. Hostcontention limits timing attribution. Hosted pending; no acceptanceclosure.",
       "hostedVerification": "All seven hosted checks passed on42ab3cc91f44d5edaa00820c7eea296f49d01cd8 per T3 completion event. Parent focused8 API tests passed. Cold lazy-open100ms target miss and SP04/SP05 integration remain open. No merge/release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP13",
       "title": "Jump directly to the message found by search",
       "issue": "https://github.com/automatedigital/spark/issues/200",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp13-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/236",
       "head": "866f036524c889b64e921086f4baa7d36b6e3f75",
       "leadVerification": "Parentreviewcaughtfull exacttoolanchorSQLmaterialization1.3Mchars; regressionfailedbefore, fixedsame2001characterprojectionasneighbors.16anchor/palette tests+Ruffpass. Childbuiltsearch/highlight/paging/SSE/latestflowpass. CorrectedheadCIpending, crosspacket/nativeacceptanceopen.",
-      "finalAuditCi": "PENDING"
+      "finalAuditCi": "PENDING",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP14",
       "title": "Explain context pressure and make compaction controllable",
       "issue": "https://github.com/automatedigital/spark/issues/201",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp14-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/233",
       "head": "87885af0096c99d201e408e5b4864607c306d409",
       "leadVerification": "Reviewed worker-owned persistence helper: durable idle/revision recheck inside transaction, atomic continuation/checkpoint/lineage, child reservation before commit. Existing provider summary reused withboundedtime/tokens andlate-result isolation. Child82Python/14frontend/build/realbrowserpass; focusedparentcompactiontests running. Hosted pending; no liveprovider/installedclaim.",
-      "finalAuditCi": "PENDING"
+      "finalAuditCi": "PENDING",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP15",
       "title": "Show where a slow turn spent its time",
       "issue": "https://github.com/automatedigital/spark/issues/202",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp15-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/229",
       "head": "1ef4d97cc946e8b91a4781d9c2e107c5b83ce0e1",
       "leadVerification": "Reviewed bounded monotonic timing helper/unknown usage/actual routing field contract; parent independently11 timing regressions passed0.64s. Existing route scores typedint, preserved. Childreports0.12%syntheticreplayoverhead andreal2chatrefreshdetailsflowpass. Hostedpending; no integration/nativeclaim.",
       "ciRepair": "Addedexplicitdurableseedsettlementprecondition for draft fixture afterhostedCharlievisibilityfailure; original9assertionspreserved, completeflowpassed. Historicalproductioncauseunproven; correctedheadCIpending.",
-      "finalAuditCi": "PENDING"
+      "finalAuditCi": "PENDING",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP16",
       "title": "Make retry waits visible, bounded and cancellable",
       "issue": "https://github.com/automatedigital/spark/issues/203",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp16-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/235",
       "head": "c489b507f23cf92b96898d5a1acbb25ea7adb0a5",
       "leadVerification": "Parentfixeddocumentedlivegap via sparseowner-fenced authoritative recoveryreads, boundedcoalescing. Actualbrowserretry2/3 appearedWITHOUTrefresh,one navigation/oneproviderrequest,Stopinterrupts.18focusedfrontend/ESLint/types pass; cleanmypy142pass, cronerrorsnotreproduced. PRmarkedready. Combined/nativeacceptanceopen;CIpending.",
-      "finalAuditCi": "PENDING"
+      "finalAuditCi": "PENDING",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP17",
       "title": "Preview schedules before they can run",
       "issue": "https://github.com/automatedigital/spark/issues/204",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp17-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/216",
       "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
@@ -250,13 +266,14 @@
       "head": "9c04091e4c62ad0edaf717ae564c3f18e7d51c13",
       "leadVerification": "Reviewed parser/validation/timezone/admission diff and report; independently reran18 schedule_preview tests with freshpytest9.2 ownsrc -n0: pass0.55s. Agentfullgates used realSHAverifiedTirithdependency beforetimedfixtures; hosted/native/SP10integration notinferred.",
       "hostedVerification": "T3 event: all7checks passed at9c04091e4c62ad0edaf717ae564c3f18e7d51c13. No merge/release/native/SP10integration acceptance inferred. SP18 continuesfromexactbase.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP18",
       "title": "Separate scheduled execution history from delivery history",
       "issue": "https://github.com/automatedigital/spark/issues/205",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp18-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/218",
       "base": "9c04091e4c62ad0edaf717ae564c3f18e7d51c13",
@@ -264,13 +281,14 @@
       "head": "805f98dcd072a4d70d001ba914b57637af109174",
       "leadVerification": "Reviewed SQLite acceptance/execution/delivery guards and scheduler hooks; independently ran 20 cron history tests: passed. Final focused neighbors pass; full Python run predates final five added tests, disclosed in report. Hosted pytest/e2e pending.",
       "hostedVerification": "T3 completion event: all seven hosted checks passed on805f98dcd072a4d70d001ba914b57637af109174. Parent independently passed20 cron history tests; integration/native/rollout acceptance remains open. No merge or release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP19",
       "title": "Stop terminal sessions whose start acknowledgement arrives too late",
       "issue": "https://github.com/automatedigital/spark/issues/206",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp19-20261106-process-r2",
       "pr": "https://github.com/automatedigital/spark/pull/215",
       "base": "fa52522c8039ad00c8e94955cec5f8671715942f",
@@ -283,13 +301,14 @@
       "head": "61a37907c8fdbc23afd5a6d2e5816f0fc1b06c58",
       "leadVerification": "Reviewed terminal process/group ownership/queued-start fencing diff; independently reran7 terminal_process_lifecycle tests withfreshpytest9.2/ownsrc: pass2.05s. Agent realprocessbrowser reports4shells/0survivors. Hosted/native/combinedSP20 integration not inferred.",
       "hostedVerification": "T3 check-completion event: all7checks passed at61a3790. Existing parent7focusedprocess tests pass; agentrealprocessbrowser4shells/0survivors. No native/process-tree-parity/combinedSP20 integration or merge/release inferred.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP20",
       "title": "Fetch project files as users expand folders",
       "issue": "https://github.com/automatedigital/spark/issues/207",
-      "state": "published_ci_failed_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp20-20261106-gates-r2",
       "pr": "https://github.com/automatedigital/spark/pull/220",
       "base": "d0de5a7bdf9f9a794a80cc323ba0dac080a9c705",
@@ -303,13 +322,14 @@
       "head": "3d71089ea4fb5f33596ebe4be119195ba372f49a",
       "leadVerification": "Reviewed directory-page bounds/containment/cursors and independently passed6 test_sp20_filetree tests with fresh pytest9.2/own src (10.18s). Agent exact parallel12717/serial191 passed; historical approval failure not claimed proven. Shared inspector gate remains open.",
       "ciFailure": "Hosted e2e run42271396220/job128076576320 fails unchanged inspector line261: scroll1000 to1410, identical to214. Only capability check reached, zero page errors; artifact13531975662 retained. No speculative push/rerun.",
-      "finalAuditCi": "FAILURE"
+      "finalAuditCi": "FAILURE",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP21",
       "title": "Give memory one coherent, searchable review surface",
       "issue": "https://github.com/automatedigital/spark/issues/208",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp21-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/221",
       "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
@@ -318,13 +338,14 @@
       "head": "ae027cef24f3b3480259c31907ae76bb02518284",
       "leadVerification": "Parent reviewed read-only SQL/profile path/text bounds. Independently18 browse tests passed0.35s; added within-profile Dream symlink regression failed with200 before fix. Corrected list/detail rejection in same221; all56 memory browse/routes/tool tests passed0.96s, Ruff ratchet and mypy140 pass. Full12758+191 and574frontend/browser evidence belongs earlier92a43a46, not claimed rerun after narrow correction. Hosted corrected-head checks pending.",
       "hostedVerification": "All seven hosted checks passed on ae027cef24f3b3480259c31907ae76bb02518284 per T3 event, including parent Dream symlink correction. Integration/native/rollout acceptance remains open; no merge/release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP22",
       "title": "Make skills easy to choose without loading every instruction",
       "issue": "https://github.com/automatedigital/spark/issues/209",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp22-20261106-invocation-r2",
       "pr": "https://github.com/automatedigital/spark/pull/225",
       "base": "ae027cef24f3b3480259c31907ae76bb02518284",
@@ -336,13 +357,14 @@
       "scopeClarification": "Stable-ID setup-free formatter and validated context augmentation authorised; preserve receipt hash and target fencing. Prior run mistakenly based ondocs1c92, ancestryverifiedfalse; scoped dirtywork committed and must replay ontoactualae027featurebase.",
       "head": "3224c032a542900edc79ada36e9aaf24d82d1a42",
       "hostedVerification": "T3 event: all7 hostedchecks passed3224c032a542900edc79ada36e9aaf24d82d1a42. Parent acceptance/integration remains open; no merge/release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP23",
       "title": "Show integration readiness and bounded MCP tests",
       "issue": "https://github.com/automatedigital/spark/issues/210",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp23-20261106-acceptance-r3",
       "pr": "https://github.com/automatedigital/spark/pull/223",
       "base": "c549bc6fcd53458f6391c8cdc16f10d8756b3b0f",
@@ -358,31 +380,34 @@
       "head": "1c2c74954fab875ebf97c5d66429f16fe6f7ab04",
       "leadVerification": "Reviewed isolated stdin config/SDK transport/deadline/bounded structured output and no raw exception disclosure. Independently3 cancellation/owner bounds-profile-revision/secret-safe passive-read tests passed. Child reports79focused/12754parallel191serial/571frontend andbrowser gates pass. Hosted CI pending; process/native/integration acceptance not inferred.",
       "hostedVerification": "T3 event confirms all7 hostedchecks passed1c2c74954fab875ebf97c5d66429f16fe6f7ab04. Parent3focusedowner/cancel/secret-safe tests passed. No merge/release/packetclosure.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP24",
       "title": "Explain Auto model choices before users need logs",
       "issue": "https://github.com/automatedigital/spark/issues/211",
-      "state": "published_ci_green_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp24-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/231",
       "head": "76cf5a72e8bc235e10fd50ab9ac2271e47f3e6f3",
       "leadVerification": "Read actualrole-config/recordeddecision report; SP15contract communicated andconsumed, combinedproductionwriterintegration remainsopen. Reportedcronmypydebt not reproduced by parent clean targetedcron check; cleanwhole-domaincheck and22routingtests running. No liveproviderclaim.",
       "hostedVerification": "T3completionevent: all7 hostedchecks passed76cf5a72e8bc235e10fd50ab9ac2271e47f3e6f3. Parent22routingtests andcleanmypy142files passed. CombinedSP15writer/readintegration/nativeacceptanceopen; no merge/release.",
-      "finalAuditCi": "SUCCESS"
+      "finalAuditCi": "SUCCESS",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     },
     {
       "id": "SP25",
       "title": "Replace scattered configuration with a searchable common-settings view",
       "issue": "https://github.com/automatedigital/spark/issues/212",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "integrated_main_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp25-20261106-r1",
       "pr": "https://github.com/automatedigital/spark/pull/237",
       "base": "3224c032a542900edc79ada36e9aaf24d82d1a42",
       "head": "2edaa11132e38693a724410e5bfefaabe8ff1fe2",
       "finalAuditCi": "PENDING",
-      "leadVerification": "Parent inspected metadata registry and independently ran five settingsRegistry tests with verified Node22.22.1: passed. Child13 focused tests/build/browser evidence retained. SP14/SP23/SP24/native integration remains open."
+      "leadVerification": "Parent inspected metadata registry and independently ran five settingsRegistry tests with verified Node22.22.1: passed. Child13 focused tests/build/browser evidence retained. SP14/SP23/SP24/native integration remains open.",
+      "integratedVia": "https://github.com/automatedigital/spark/pull/239"
     }
   ],
   "dispatchNotes": "Ten PRs published; five preserved implementations SP02/SP03/SP07/SP22/SP23 being resumed immediately from correct committed feature bases. Two shared local acceptance slots prevent five full suites saturating host; reuse immutable-source passing gates and run missing/newlyaffected checks. No merges/releases/acceptanceclosure.",
@@ -418,5 +443,8 @@
     "SUCCESS": 16,
     "FAILURE": 3,
     "PENDING": 6
-  }
+  },
+  "integrationPr": "https://github.com/automatedigital/spark/pull/239",
+  "integrationMergeCommit": "1b619a0a7ba72c8cacf50858870f3f918d3e7420",
+  "integrationAcceptance": "All seven hosted checks passed96425c6; merged239. All25 feature heads verified ancestors of main. Original213 auto-merged;214\u2013237 closed as incorporated, not individually merged."
 }
