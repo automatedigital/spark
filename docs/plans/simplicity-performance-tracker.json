@@ -20,17 +20,18 @@
       "id": "SP02",
       "title": "Reconcile chat from one authoritative recovery snapshot",
       "issue": "https://github.com/automatedigital/spark/issues/189",
-      "state": "repair_running_unpublished",
-      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-acceptance-r3",
+      "state": "resume_dispatch_prepared",
+      "taskId": null,
       "pr": null,
-      "base": "c5bd88f70fbca7fc2abb56c65876507ff3204e3e",
+      "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
       "prBase": "feat/sp01-submission-acceptance",
       "priorTaskIds": [
         "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-r1",
-        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-resume-r2"
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-resume-r2",
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-acceptance-r3"
       ],
-      "localHead": "c5bd88f70fbca7fc2abb56c65876507ff3204e3e",
-      "publicationBlocker": "Final recovery-card browser failure, long240message viewport failsbase+candidate, exactserial process-loss timeout; shortfixture7\u21921 requests/569frontend tests pass. No code pushed; repair authorized."
+      "localHead": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
+      "publicationBlocker": "Final serial failed/interrupted during measuredload200 on12cores. Same source parallel12712 passed; no acceptance superseded by earlier passes. Resume exact remaining serial first at currentquieterload, no needless repeatparallel ifsourceunchanged."
     },
     {
       "id": "SP03",
@@ -74,13 +75,18 @@
       "id": "SP07",
       "title": "Retrieve large tool results in bounded chunks",
       "issue": "https://github.com/automatedigital/spark/issues/194",
-      "state": "running",
-      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-r1",
+      "state": "resume_dispatch_prepared",
+      "taskId": null,
       "pr": null,
-      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "base": "39835a4f259c414f1b5df96c23e23a494d2b9b85",
       "prBase": "feat/sp01-submission-acceptance",
       "scheduling": "Independent bounded result read/domain client before SP04 explicitly authorised; no SessionDB/shared API/controller writer.",
-      "scopeClarification": "Authorised necessary narrow TurnWorkGroup sessionId/toolCallId prop plumbing into ToolCallBubble, retaining legacy callback compatibility; no ChatPanel/controller/timeline rewrite."
+      "scopeClarification": "Authorised necessary narrow TurnWorkGroup sessionId/toolCallId prop plumbing into ToolCallBubble, retaining legacy callback compatibility; no ChatPanel/controller/timeline rewrite.",
+      "priorTaskIds": [
+        "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp07-20261106-r1"
+      ],
+      "localHead": "39835a4f259c414f1b5df96c23e23a494d2b9b85",
+      "publicationBlocker": "Builtbrowser refresh losesvisibleSSEtext despitebackendstream. Other focused133/frontend568/full12720+191/inspector pass. Integrate committedSP02 recovery first; keep source unchanged otherwise, bounded realflow retest."
     },
     {
       "id": "SP08",
@@ -310,7 +316,7 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "Ten implementation PRs published. SP02/SP07 active; three preserved implementations SP03/SP22/SP23 prepared for immediate resumed implementation (five-agent total). No repeated review delegates or speculative pushes. Heavy full gates once on final source, relevant focused checks during iteration.214/220 inspector unresolved;221/222 CI pending. No merge/release/acceptanceclosure.",
+  "dispatchNotes": "Ten PRs published; five preserved implementations SP02/SP03/SP07/SP22/SP23 being resumed immediately from correct committed feature bases. Two shared local acceptance slots prevent five full suites saturating host; reuse immutable-source passing gates and run missing/newlyaffected checks. No merges/releases/acceptanceclosure.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",
