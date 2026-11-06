@@ -6,6 +6,8 @@ import asyncio
 import atexit
 import base64
 import errno
+import hashlib
+import heapq
 import ipaddress
 import json
 import logging
@@ -267,11 +269,14 @@ def _safe_path(project_dir: Path, rel: str) -> Path:
 
 def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = False) -> dict[str, Any]:
     rel = str(path.relative_to(project_dir))
-    if path.is_dir():
+    if not path.is_symlink() and path.is_dir():
         children: list[dict[str, Any]] = []
         if depth < _MAX_TREE_DEPTH:
             try:
-                entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+                entries = sorted(
+                    path.iterdir(),
+                    key=lambda p: (p.is_symlink() or not p.is_dir(), p.name.casefold(), p.name),
+                )
                 for child in entries:
                     if not show_hidden and child.name.startswith("."):
                         continue
@@ -279,7 +284,7 @@ def _tree_node(path: Path, project_dir: Path, depth: int, show_hidden: bool = Fa
             except PermissionError:
                 _log.debug("Ignoring error in _tree_node()", exc_info=True)
         return {"name": path.name, "path": rel, "type": "dir", "children": children}
-    stat = path.stat()
+    stat = path.lstat()
     mime, _ = mimetypes.guess_type(path.name)
     return {
         "name": path.name,
@@ -821,7 +826,8 @@ def get_project_tree(slug: str, show_hidden: bool = Query(default=False)):
     children: list[dict[str, Any]] = []
     try:
         entries = sorted(
-            project_dir.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
+            project_dir.iterdir(),
+            key=lambda p: (p.is_symlink() or not p.is_dir(), p.name.casefold(), p.name)
         )
         for entry in entries:
             if not show_hidden and entry.name.startswith("."):
@@ -1244,10 +1250,71 @@ async def upload_workspace_files(files: list[UploadFile] = File(...)):
     return {"ok": True, "saved": saved}
 
 
+def _directory_page(project_dir: Path, path: str, show_hidden: bool,
+                    limit: int, cursor: str) -> dict[str, Any]:
+    """One level only; never follow directory links while enumerating children.
+
+    The canonical project root may itself be an intentional linked project.
+    Hidden entries follow the existing explicit visibility switch; no new ignore
+    rules are imposed on user files.
+    """
+    root = project_dir.resolve(strict=True)
+    target = _safe_path(root, path)
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
+    revision = str(target.stat().st_mtime_ns)
+    scope = hashlib.sha256(f"{root}:{path}:{show_hidden}:{revision}".encode()).hexdigest()
+    after: tuple[int, str, str] | None = None
+    if cursor:
+        try:
+            payload = json.loads(base64.urlsafe_b64decode(cursor))
+            if not isinstance(payload, list) or len(payload) != 2:
+                raise ValueError("Invalid cursor shape")
+            if payload[0] != scope:
+                raise HTTPException(status_code=409, detail="Directory changed; refresh this folder")
+            key = payload[1]
+            if (not isinstance(key, list) or len(key) != 3 or key[0] not in (0, 1)
+                    or not all(isinstance(value, str) for value in key[1:])):
+                raise ValueError("Invalid sort key")
+            after = (key[0], key[1], key[2])
+        except (ValueError, TypeError, IndexError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid directory cursor") from exc
+
+    def candidates():
+        with os.scandir(target) as iterator:
+            for entry in iterator:
+                if not show_hidden and entry.name.startswith("."):
+                    continue
+                is_dir = entry.is_dir(follow_symlinks=False)
+                key = (0 if is_dir else 1, entry.name.casefold(), entry.name)
+                if after is None or key > after:
+                    yield key, entry.name, is_dir, entry.is_symlink()
+
+    try:
+        page = heapq.nsmallest(limit + 1, candidates())
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Directory cannot be read") from exc
+    entries = []
+    for _, name, is_dir, link in page[:limit]:
+        rel = (Path(path) / name).as_posix()
+        # Links remain visible but are never recursively expanded, including cycles.
+        entries.append({"name": name, "path": rel, "type": "dir" if is_dir else "file",
+                        "symlink": link})
+    next_cursor = None
+    if len(page) > limit:
+        next_cursor = base64.urlsafe_b64encode(json.dumps([scope, page[limit - 1][0]]).encode()).decode()
+    return {"path": path, "entries": entries, "revision": scope, "next_cursor": next_cursor}
+
+
 @router.get("/projects/{slug}/list")
-def list_project_dir(slug: str, path: str = Query(default=""), show_hidden: bool = Query(default=False)):
-    """List one level of a directory in a workspace project for @ autocomplete."""
+def list_project_dir(slug: str, path: str = Query(default=""),
+                     show_hidden: bool = Query(default=False),
+                     limit: int = Query(default=200, ge=1, le=200),
+                     cursor: str = Query(default=""), paged: bool = Query(default=False)):
+    """Paged explorer reads; retain the existing autocomplete response contract."""
     project_dir = _project_dir(slug)
+    if paged:
+        return _directory_page(project_dir, path, show_hidden, limit, cursor)
     target = _safe_path(project_dir, path) if path else project_dir
     if not target.exists() or not target.is_dir():
         raise HTTPException(status_code=404, detail=f"Not found: {path!r}")
