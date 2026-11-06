@@ -431,3 +431,13 @@ Priority numbers above are authoritative; this map prevents concurrent writers f
 | Dependencies/build artifacts | No packet assumes a new npm package. If necessary, one designated writer updates nested lockfile. Do not commit web_dist in parallel feature PRs; regenerate at the coordinated verified web release gate. |
 
 For each assignment, attach representative fixtures (long thread, parallel chats, temporary Git project, slow provider/integration, two isolated profiles) relevant to that packet. Scope any uncovered prerequisite explicitly; do not silently expand a single PR into several roadmap items. Keep all 25 checkboxes open until their own acceptance record is complete.
+
+## Validation adjustment — user direction, 2026-11-06
+
+Stop repeated full-suite local runs per packet. During implementation, run focused
+regressions for changed behavior, relevant lint/type/build checks, and the affected
+browser acceptance flow. Reuse passing evidence for unchanged source. Existing CI
+runs the full matrix once per published PR; reruns require a specific diagnosed
+failure or material new change. Preserve meaningful tests/assertions and required
+behavioral acceptance; do not delete tests, skip failures, or weaken thresholds.
+This supersedes earlier blanket full-local-matrix delegation requirements.

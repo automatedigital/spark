@@ -345,5 +345,6 @@
     }
   ],
   "sharedInspectorRepairTaskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-inspector-common-20261106-r3",
-  "sharedInspectorRepairResult": "ecea250635b22d5ad23d9584ed22d459046306aa report only; no cause proven, no new runtime checks or fix. Hosted pre-switch keyed geometry absent. No more untriggered A/B or diagnostic CI reruns planned."
+  "sharedInspectorRepairResult": "ecea250635b22d5ad23d9584ed22d459046306aa report only; no cause proven, no new runtime checks or fix. Hosted pre-switch keyed geometry absent. No more untriggered A/B or diagnostic CI reruns planned.",
+  "validationDirection": "User explicitly stopped excessive repeated local testing. Active agents steered to stop own broad batches, focused changed-behavior tests + relevant lint/types/build + affected browser flow; full matrix once inCI. Preserve assertions and reuse immutable evidence."
 }
