@@ -188,7 +188,7 @@
       "id": "SP19",
       "title": "Stop terminal sessions whose start acknowledgement arrives too late",
       "issue": "https://github.com/automatedigital/spark/issues/206",
-      "state": "published_ci_pending",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp19-20261106-process-r2",
       "pr": "https://github.com/automatedigital/spark/pull/215",
       "base": "fa52522c8039ad00c8e94955cec5f8671715942f",
@@ -199,7 +199,8 @@
       ],
       "localHead": "fa52522c8039ad00c8e94955cec5f8671715942f",
       "head": "61a37907c8fdbc23afd5a6d2e5816f0fc1b06c58",
-      "leadVerification": "Reviewed terminal process/group ownership/queued-start fencing diff; independently reran7 terminal_process_lifecycle tests withfreshpytest9.2/ownsrc: pass2.05s. Agent realprocessbrowser reports4shells/0survivors. Hosted/native/combinedSP20 integration not inferred."
+      "leadVerification": "Reviewed terminal process/group ownership/queued-start fencing diff; independently reran7 terminal_process_lifecycle tests withfreshpytest9.2/ownsrc: pass2.05s. Agent realprocessbrowser reports4shells/0survivors. Hosted/native/combinedSP20 integration not inferred.",
+      "hostedVerification": "T3 check-completion event: all7checks passed at61a3790. Existing parent7focusedprocess tests pass; agentrealprocessbrowser4shells/0survivors. No native/process-tree-parity/combinedSP20 integration or merge/release inferred."
     },
     {
       "id": "SP20",
