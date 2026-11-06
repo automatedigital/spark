@@ -36,9 +36,11 @@
       "id": "SP03",
       "title": "Keep expensive chat preparation off the API event loop",
       "issue": "https://github.com/automatedigital/spark/issues/190",
-      "state": "pending",
-      "taskId": null,
-      "pr": null
+      "state": "running",
+      "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp03-20261106-r1",
+      "pr": null,
+      "base": "a12205a5737d7539875d6af16b3bb58c194e8edb",
+      "prBase": "feat/sp01-submission-acceptance"
     },
     {
       "id": "SP04",
@@ -118,20 +120,25 @@
       "id": "SP11",
       "title": "Make model search fast and immune to stale responses",
       "issue": "https://github.com/automatedigital/spark/issues/198",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp11-20261106-r1",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/219",
       "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
       "prBase": "feat/sp10-provider-catalogue",
-      "predecessorCorrection": "SP10correction completed andall7checks green; sameagentcontinuesseparateSP11PR asassigned."
+      "predecessorCorrection": "SP10correction completed andall7checks green; sameagentcontinuesseparateSP11PR asassigned.",
+      "head": "88097547172754d8eb953c7f604a6bd51ad12e23",
+      "leadVerification": "Reviewed bounded loader cache, per-consumer AbortController/generation and profile/backend/auth fences. Independently ran 11 modelListLoader tests under verified Node22: passed. Browser evidence reported by child; hosted e2e pending."
     },
     {
       "id": "SP12",
       "title": "Open the command palette without bulk-fetching the app",
       "issue": "https://github.com/automatedigital/spark/issues/199",
-      "state": "pending",
+      "state": "dispatch_prepared",
       "taskId": null,
-      "pr": null
+      "pr": null,
+      "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
+      "prBase": "feat/sp10-provider-catalogue",
+      "scheduling": "PLAN explicitly permits domain implementation before SP04/SP05; later transport/resource-cache integration remains open."
     },
     {
       "id": "SP13",
@@ -183,11 +190,13 @@
       "id": "SP18",
       "title": "Separate scheduled execution history from delivery history",
       "issue": "https://github.com/automatedigital/spark/issues/205",
-      "state": "running",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp18-20261106-r1",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/218",
       "base": "9c04091e4c62ad0edaf717ae564c3f18e7d51c13",
-      "prBase": "feat/cron-schedule-preview"
+      "prBase": "feat/cron-schedule-preview",
+      "head": "805f98dcd072a4d70d001ba914b57637af109174",
+      "leadVerification": "Reviewed SQLite acceptance/execution/delivery guards and scheduler hooks; independently ran 20 cron history tests: passed. Final focused neighbors pass; full Python run predates final five added tests, disclosed in report. Hosted pytest/e2e pending."
     },
     {
       "id": "SP19",
@@ -211,9 +220,9 @@
       "id": "SP20",
       "title": "Fetch project files as users expand folders",
       "issue": "https://github.com/automatedigital/spark/issues/207",
-      "state": "gate_repair_running_unpublished",
+      "state": "published_ci_pending_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp20-20261106-gates-r2",
-      "pr": null,
+      "pr": "https://github.com/automatedigital/spark/pull/220",
       "base": "d0de5a7bdf9f9a794a80cc323ba0dac080a9c705",
       "prBase": "feat/sp01-submission-acceptance",
       "scheduling": "Independent domain implementation authorised by PLAN Scheduling refinement; original SP04/SP10 dependency retained as later integration compatibility check, no shared API/schema writers.",
@@ -221,15 +230,20 @@
         "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp20-20261106-r1"
       ],
       "localHead": "d0de5a7bdf9f9a794a80cc323ba0dac080a9c705",
-      "publicationBlocker": "Lastparallelgate2unchangedgatewayapprovalnotificationfailures; earliercheckpointbudgetfailure. Focusedisolatedpassnotacceptance. Parentreadlogs: noexplicitTirithline, causeunproven; boundedthread/dependencydiagnostic beforeonecorrectedfullrun, notblindrerun."
+      "publicationBlocker": "Cleared by exact final local gates; historical timing cause not claimed proven.",
+      "head": "3d71089ea4fb5f33596ebe4be119195ba372f49a",
+      "leadVerification": "Child reports exact parallel12717/serial191 and focused143 passed after verifying real Tirith prerequisite. Implementation unchanged; earlier frontend/browser evidence retained. Historical approval failure cause remains unproven. Parent source/focused verification still pending."
     },
     {
       "id": "SP21",
       "title": "Give memory one coherent, searchable review surface",
       "issue": "https://github.com/automatedigital/spark/issues/208",
-      "state": "pending",
+      "state": "dispatch_prepared",
       "taskId": null,
-      "pr": null
+      "pr": null,
+      "base": "9acb185aeba859fade1b83b8171db85bf5b0b6c0",
+      "prBase": "feat/sp10-provider-catalogue",
+      "scheduling": "PLAN explicitly permits domain implementation before SP04/SP05; later transport/resource-cache integration remains open."
     },
     {
       "id": "SP22",
@@ -271,7 +285,7 @@
       "pr": null
     }
   ],
-  "dispatchNotes": "SP10liveUI/discoverygaps correctedon217 at9acb185, all7hostedchecks green; watchremovedafterrecord. FiveSolLow tasks continueSP02/SP11/SP18/SP20/SP23.5implementationPRs published; no merges/releases. PR214hostedinspectorunresolved, boundeddiagnostics archived/no speculativefix.",
+  "dispatchNotes": "Eight implementation PRs published. Confirmed hosted green213/215/216/217;214 unresolved inspector gate.218/219/220 longer checks pending. Active SP02/SP03/SP23; SP12/SP21 dispatch prepared. No merge/release or acceptance closure.",
   "auxiliaryTasks": [
     {
       "purpose": "PR214 hosted inspector scroll A/B investigation, no productionfiles or push authority; SP02 owns scroll implementation",

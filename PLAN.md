@@ -383,6 +383,18 @@ owns only create/send/warm preparation handlers and a new preparation helper.
 Keep SessionDB schema/receipts and recovery read fields unchanged. These separate
 function slices require explicit rebase/integration and shared lifecycle replay
 checks before acceptance; SP03 must preserve SP02's eventual recovery response.
+SP21 may implement its independent memory routes/review page from corrected
+SP10 head `9acb185a` while SP05 is pending. One view-owned parent read feeds both
+Markdown cards, using existing signal-capable fetchJSON and native cancellation;
+SP05 later adopts that domain read without a competing generic cache. SP12 may
+likewise implement its palette-only query owner and bounded search adapter now.
+It must not enumerate skills/jobs to open the palette or create a second shared
+resource cache. SP04/SP05 remain explicit integration checks for both packets.
+SP12 owns CommandPalette/new palette client and narrow search-route functions;
+SP21 owns MemoryPage/memory routes/new read adapter. Neither touches SP02/SP03
+lifecycle/controller functions, SP23 Settings/MCP functions, shared API barrels,
+SessionDB schema, lockfiles or generated bundles. Preserve existing endpoints;
+serialize any eventual shared server import/registration integration.
 This changes scheduling only; every packet's full behaviour, tests and performance
 acceptance remains required. No missing prerequisite is silently counted complete.
 
