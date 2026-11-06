@@ -27,3 +27,7 @@ Validation: two focused parseable_quiet_mode tests passed,250 deselected,8.75s w
 - Diagnose inspector restoration with retained keyed geometry around chat switches, under a bounded reproduction. Avoid weakening scroll tolerance.
 
 This PR does not retrofit25 existing feature branch heads or establish their hosted success. Shared fixes need dependency-order integration. GitHub notification preferences were not changed; failure email volume should be reduced by preventing failures, not hiding them.
+
+## First hosted persistence correction
+
+PR238 Ubuntu job128166178716 reproduced two Windows-handle test failures. The tests globally replaced os.fstat, trapping pytest9.2/contextlib cleanup on POSIX. Scoped the trap to a module-local os proxy; production code and the native-HANDLE assertion are unchanged. Before/after verification: original exact two cases fail locally with the hosted assertion; corrected upload-identity file13/13 passes. Exact persistence workflow selection then passes222,20 platform skips in10.93s. Windows hosted acceptance remains separate. This replaces no native tests with skips and changes no security boundary.
