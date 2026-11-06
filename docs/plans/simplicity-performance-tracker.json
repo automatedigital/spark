@@ -20,7 +20,7 @@
       "id": "SP02",
       "title": "Reconcile chat from one authoritative recovery snapshot",
       "issue": "https://github.com/automatedigital/spark/issues/189",
-      "state": "published_ci_pending_acceptance_open",
+      "state": "published_ci_green_acceptance_open",
       "taskId": "node:delegated-task:command%3Amcp%3Acf503875-0186-46bf-8d45-a6447ff9528b%3Adelegate-task%3Aspark-sp02-20261106-publication-r4",
       "pr": "https://github.com/automatedigital/spark/pull/224",
       "base": "bc54ab319d857a2400036c9f10b1f3ffb2109074",
@@ -35,7 +35,8 @@
       "head": "95fd191c62ad1501538071a4ba46ad230fc1ab1d",
       "leadVerification": "Reviewed narrow cached transcript restoration dependency correction; child reproduced1000-to0 beforefix, final production inspector1000-to1091 within unchanged<100 tolerance. This does not establish cause/repair of214/220 historical1000-to1410. Qualified199serial and20real-scanner tests pass; inherited synthetic scan fixture removed. Frontend571 andbrowser gates pass. Hosted pending.",
       "ciFailure": "e2e42289307299/job128138239116 chat-contracts Fork result visible timeout. Mockforkack/legacymessages have no authoritativeDBsession; parentseededrealfixture, affectedflowverificationrunning.",
-      "ciRepair": "Durableforkfixture+Mermaiddetachmentprecondition fixes; originalassertions/timeouts preserved. Completechat-contracts andMermaid10checks pass locally. CIpending."
+      "ciRepair": "Durableforkfixture+Mermaiddetachmentprecondition fixes; originalassertions/timeouts preserved. Completechat-contracts andMermaid10checks pass locally. CIpending.",
+      "hostedVerification": "T3completionevent: all7 hostedchecks passed95fd191c62ad1501538071a4ba46ad230fc1ab1d. Parent8recoverysnapshot tests andaffectedchat/Mermaidflows passed; integrated/nativeacceptance remainsopen. No merge/release."
     },
     {
       "id": "SP03",
