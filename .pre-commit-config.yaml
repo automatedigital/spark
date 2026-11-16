@@ -1,0 +1,29 @@
+# Install: pip install pre-commit && pre-commit install
+# These hooks check only the staged files. Ruff is not here because the
+# repository has preexisting ruff debt; CI runs the ruff ratchet instead.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+        exclude: ^(skills|references)/
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: detect-private-key
+        exclude: ^tests/
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: tool-manifest
+        name: tool manifest is current
+        entry: python scripts/generate_tool_manifest.py --check
+        language: system
+        pass_filenames: false
+        files: ^(src/tools/|scripts/generate_tool_manifest.py)
