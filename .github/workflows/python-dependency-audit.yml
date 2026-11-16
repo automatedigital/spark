@@ -1,0 +1,37 @@
+name: python-dependency-audit
+
+# Checks the core Python dependencies against the PyPI advisory database.
+# Runs weekly and when dependency files change.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "requirements.txt"
+      - ".github/workflows/python-dependency-audit.yml"
+
+concurrency:
+  group: python-dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install the package and pip-audit
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install -e ".[web]" pip-audit
+      - name: Audit installed dependencies
+        run: pip-audit --skip-editable --progress-spinner off
