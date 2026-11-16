@@ -18,6 +18,9 @@ on:
       - ".github/workflows/python-quality.yml"
 
 # A new push supersedes the previous run on the same branch.
+permissions:
+  contents: read
+
 concurrency:
   group: python-quality-${{ github.ref }}
   cancel-in-progress: true
@@ -25,6 +28,7 @@ concurrency:
 jobs:
   ruff-ratchet:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

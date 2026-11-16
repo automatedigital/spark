@@ -17,6 +17,9 @@ on:
       - "src/spark_cli/web/package-lock.json"
       - ".github/workflows/web-supply-chain.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: web-supply-chain-${{ github.ref }}
   cancel-in-progress: true
@@ -28,6 +31,7 @@ defaults:
 jobs:
   pinned-and-lockfile:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -36,6 +40,7 @@ jobs:
 
       - name: Enforce exact-pinned direct dependencies
         run: |
+          # shellcheck disable=SC2016
           node -e '
             const p = require("./package.json");
             const bad = [];

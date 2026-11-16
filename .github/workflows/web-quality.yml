@@ -27,6 +27,9 @@ on:
       - "scripts/generate_tool_manifest.py"
       - ".github/workflows/web-quality.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: web-quality-${{ github.ref }}
   cancel-in-progress: true
