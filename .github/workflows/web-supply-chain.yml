@@ -36,6 +36,7 @@ jobs:
 
       - name: Enforce exact-pinned direct dependencies
         run: |
+          # shellcheck disable=SC2016
           node -e '
             const p = require("./package.json");
             const bad = [];
