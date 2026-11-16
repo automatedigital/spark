@@ -45,7 +45,7 @@ keychain = ["keyring>=24.0,<26"]
 dev = [
   "debugpy>=1.8.0,<2",
   "pytest>=9.0.2,<10",
-  "pytest-asyncio>=1.3.0,<2",
+  "pytest-asyncio>=1.5.0,<2",
   "pytest-xdist>=3.0,<4",
   "pytest-cov>=4.0,<5",
   "pytest-timeout>=2.1,<3",
