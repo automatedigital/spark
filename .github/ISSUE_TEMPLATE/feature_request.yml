@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest a new capability or an improvement.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What do you want to do that you cannot do now?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
