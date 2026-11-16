@@ -1,0 +1,30 @@
+# Weekly, grouped dependency updates. Groups keep the PR count low.
+# Web dependencies stay exact-pinned (see web-supply-chain.yml).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /src/spark_cli/web
+    schedule:
+      interval: weekly
+    versioning-strategy: increase
+    open-pull-requests-limit: 5
+    groups:
+      web-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
