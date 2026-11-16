@@ -15,6 +15,15 @@ updates:
     schedule:
       interval: weekly
     versioning-strategy: increase
+    # Independent major bumps fail npm ci against the current peer graph.
+    # Revisit with the coordinated migrations recorded in docs/reviews/dependency-deferrals-2026-11-16.md.
+    ignore:
+      - dependency-name: vite
+        versions: [">=8.0.0 <9.0.0"]
+      - dependency-name: eslint
+        versions: [">=10.0.0 <11.0.0"]
+      - dependency-name: typescript
+        versions: [">=6.0.0 <8.0.0"]
     open-pull-requests-limit: 5
     groups:
       web-minor-patch:
