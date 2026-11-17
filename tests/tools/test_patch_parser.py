@@ -509,3 +509,53 @@ class TestParseErrorSignalling:
         ops, err = parse_v4a_patch(patch)
         assert err is None
         assert len(ops) == 1
+
+
+class TestSequentialAdditionValidation:
+    def test_later_hunk_can_edit_inserted_text(self):
+        ops, error = parse_v4a_patch("""*** Begin Patch
+*** Update File: a.txt
+@@ anchor @@
++inserted
+@@ next @@
+-inserted
++finished
+*** End Patch""")
+        assert error is None
+        files = {"a.txt": "anchor\n"}
+        class FileOps:
+            def read_file_raw(self, path):
+                return SimpleNamespace(content=files[path], error=None)
+            def write_file(self, path, content):
+                files[path] = content
+                return SimpleNamespace(error=None)
+        result = apply_v4a_operations(ops, FileOps())
+        assert result.success, result.error
+        assert files["a.txt"] == "anchor\nfinished\n"
+
+    def test_inserted_ambiguity_is_rejected_before_other_files_are_written(self):
+        ops, error = parse_v4a_patch("""*** Begin Patch
+*** Update File: first.txt
+-old
++new
+*** Update File: second.txt
+@@ anchor @@
++anchor
+@@ anchor @@
++more
+*** End Patch""")
+        assert error is None
+        files = {"first.txt": "old\n", "second.txt": "anchor\n"}
+        written = []
+        class FileOps:
+            def read_file_raw(self, path):
+                return SimpleNamespace(content=files[path], error=None)
+            def write_file(self, path, content):
+                written.append(path)
+                files[path] = content
+                return SimpleNamespace(error=None)
+        result = apply_v4a_operations(ops, FileOps())
+        assert not result.success
+        assert "validation failed" in result.error.lower()
+        assert written == []
+        assert files["first.txt"] == "old\n"
