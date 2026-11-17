@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
+from core.spark_constants import get_spark_home
+from cron import jobs, scheduler
 from cron.scheduler import (
     JOB_CANCELLED_ERROR,
     SILENT_MARKER,
@@ -18,6 +20,19 @@ from cron.scheduler import (
     _send_media_via_adapter,
     run_job,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_scheduler_paths(monkeypatch, _isolate_spark_home):
+    """Keep import-time paths in the same profile as the per-test history."""
+    home = get_spark_home()
+    cron_dir = home / "cron"
+    monkeypatch.setattr(scheduler, "_spark_home", home)
+    monkeypatch.setattr(scheduler, "_LOCK_DIR", cron_dir)
+    monkeypatch.setattr(scheduler, "_LOCK_FILE", cron_dir / ".tick.lock")
+    monkeypatch.setattr(jobs, "CRON_DIR", cron_dir)
+    monkeypatch.setattr(jobs, "JOBS_FILE", cron_dir / "jobs.json")
+    monkeypatch.setattr(jobs, "OUTPUT_DIR", cron_dir / "output")
 
 
 class TestResolveOrigin:

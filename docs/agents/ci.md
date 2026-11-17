@@ -2,16 +2,20 @@
 
 ## Trigger policy
 
-The automatic quality workflows use path filters, read-only tokens, job
+The automatic quality workflows use read-only tokens, job
 timeouts and per-workflow/ref concurrency with `cancel-in-progress: true`.
 Push checks run only on `main`; feature branches are checked through their PR,
 avoiding duplicate feature push and PR runs. A post-merge `main` run verifies
 the integrated commit and is separate acceptance evidence.
 
-- `python-quality.yml`: Python source, tests, package metadata and manifest
-  generator; Ruff ratchet, incremental mypy, parallel fast tests followed by
-  serial fast tests, the two slow ownership contracts, and manifest validation.
-  Pytest starts after Ruff passes. Runtime/cache/discovery tests run here once.
+- `python-quality.yml`: Every PR reports Ruff, mypy, and pytest. Qualifying PRs
+  run startup, packaging, cache, discovery, transport and persistence contracts
+  plus the affected cron, artifact, or file-tool tests when applicable. Mixed
+  backend areas, shared code, dependency and fixture changes, and unknown paths
+  run the full gate. An unavailable or mismatched Git diff also runs the full
+  gate. Pushes to `main` and manual dispatch always run the full fast suite.
+  Both paths keep separate non-serial and serial runs, the two slow ownership
+  contracts, and tool manifest validation. The workflow logs its selected scope.
 - `web-quality.yml`: frontend and shared backend changes; frontend checks and
   real-backend browser flows. Browser acceptance starts after frontend checks
   pass. Backend changes can affect Chat, so these triggers stay broad.
@@ -38,6 +42,10 @@ source .venv/bin/activate
 python -m pytest tests/ -m "not serial and not slow and not integration and not network" -q --timeout=60 -n 4
 python -m pytest tests/ -m "serial and not slow and not integration and not network" -q --timeout=60 -n 0
 ```
+
+For a scoped PR, substitute the exact targets printed by the selector for
+`tests/` in both commands. The full workflow runs two small regression selections
+first and excludes those same node IDs from the later non-serial pass.
 
 The Python job also runs these separately, preserving the slow cases formerly
 inside the browser job and the generated-schema gate:
