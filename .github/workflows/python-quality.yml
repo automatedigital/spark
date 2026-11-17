@@ -1,23 +1,12 @@
 name: python-quality
 
-# Runs on pull requests, and on pushes to main only.  Previously every push
-# to a PR branch triggered a second, identical run of the same commit.
+# Every PR gets coverage selection, including unclassified paths.
+# Main and manual runs always use the full Python gate.
 on:
   push:
     branches: [main]
-    paths:
-      - "src/**/*.py"
-      - "tests/**/*.py"
-      - "pyproject.toml"
-      - "scripts/generate_tool_manifest.py"
-      - ".github/workflows/python-quality.yml"
   pull_request:
-    paths:
-      - "src/**/*.py"
-      - "tests/**/*.py"
-      - "pyproject.toml"
-      - "scripts/generate_tool_manifest.py"
-      - ".github/workflows/python-quality.yml"
+  workflow_dispatch:
 
 # A new push supersedes the previous run on the same branch.
 permissions:
@@ -76,10 +65,18 @@ jobs:
       EARLY_RECOVERY_TESTS: tests/run_agent/test_primary_runtime_restore.py::TestTryRecoverPrimaryTransport
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
+
+      - name: Select Python coverage
+        id: coverage
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/select_python_ci.py --base "$PR_BASE" --output "$GITHUB_OUTPUT"
 
       # The [web] extra is required, not optional, for the test suite: the
       # workflow io nodes import spark_cli.workspace_routes, which imports
@@ -92,6 +89,7 @@ jobs:
       # Run these fast contracts before collecting the full suite. Reuse the
       # same node IDs below to keep each test in exactly one fast pass.
       - name: Check cron output and transport recovery first
+        if: steps.coverage.outputs.scope == 'full'
         env:
           OPENAI_API_KEY: sk-test-not-a-real-key
         run: >-
@@ -104,7 +102,18 @@ jobs:
       # A command-line -m replaces pytest's configured marker expression, so
       # retain the integration and network exclusions explicitly. Otherwise this job can run tests
       # that touch configured external services.
+      - name: Run selected fast tests
+        if: steps.coverage.outputs.scope != 'full'
+        env:
+          OPENAI_API_KEY: sk-test-not-a-real-key
+          PYTEST_TARGETS: ${{ steps.coverage.outputs.targets }}
+        run: |
+          read -r -a targets <<< "$PYTEST_TARGETS"
+          python -m pytest "${targets[@]}" -m "not serial and not slow and not integration and not network" -q --timeout=60 -n 4
+          python -m pytest "${targets[@]}" -m "serial and not slow and not integration and not network" -q --timeout=60 -n 0
+
       - name: Run non-serial fast tests in parallel
+        if: steps.coverage.outputs.scope == 'full'
         env:
           # Some tests construct a client at import/init time and only need a
           # syntactically valid key; no request is ever sent (integration
@@ -115,6 +124,7 @@ jobs:
           -m "not serial and not slow and not integration and not network" -q --timeout=60 -n 4
 
       - name: Run serial fast tests without xdist
+        if: steps.coverage.outputs.scope == 'full'
         env:
           OPENAI_API_KEY: sk-test-not-a-real-key
         run: python -m pytest tests/ -m "serial and not slow and not integration and not network" -q --timeout=60 -n 0
