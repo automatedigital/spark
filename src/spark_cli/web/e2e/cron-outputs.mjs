@@ -47,10 +47,14 @@ try {
     { id: "123456abcdef", name: "Empty history", prompt: "Fixture", state: "paused", enabled: false, schedule_display: "0 9 * * *" },
   ];
   await writeFile(path.join(profile, "cron/jobs.json"), JSON.stringify({ jobs }));
-  for (let day = 1; day <= 22; day++) {
+  for (let day = 1; day <= 21; day++) {
     await writeFile(path.join(output, `2026-10-${String(day).padStart(2, "0")}_09-00-00.md`),
-      day === 22 ? "# Newest output\n<script>window.outputExecuted=true</script>\nSaved fixture ✓" : `# Output day ${day}`);
+      `# Output day ${day}`);
   }
+  const earlier = `2026-10-22_09-00-00_000001-${"a".repeat(32)}.md`;
+  const newest = `2026-10-22_09-00-00_000002-${"b".repeat(32)}.md`;
+  await writeFile(path.join(output, earlier), "# Earlier same-second output");
+  await writeFile(path.join(output, newest), "# Newest output\n<script>window.outputExecuted=true</script>\nSaved fixture ✓");
   await writeFile(path.join(output, "2026-10-01_09-00-00.md"), "A".repeat(300000));
   const backend = path.join(temp, "backend.py");
   await writeFile(backend, "from fastapi import FastAPI\nfrom spark_cli.cron_routes import register_cron_routes\napp = FastAPI()\nregister_cron_routes(app)\n@app.post('/fixture/disable-outputs')\ndef disable_outputs():\n    import os\n    os.supports_dir_fd = set()\n    return {}\n");
@@ -79,9 +83,11 @@ createRoot(document.getElementById('root')).render(React.createElement(I18nProvi
   const drawer = page.getByRole("dialog", { name: "Saved output history" });
   await drawer.getByText("Saved fixture ✓", { exact: false }).waitFor();
   assert.equal(await page.evaluate(() => window.outputExecuted), undefined);
-  assert.equal(await drawer.getByRole("button", { name: /^2026-/ }).first().innerText(), "2026-10-22_09-00-00.md");
+  assert.equal(await drawer.getByRole("button", { name: /^2026-/ }).first().innerText(), newest);
   await drawer.getByRole("button", { name: "Copy Markdown", exact: true }).click();
   assert.match(await page.evaluate(() => navigator.clipboard.readText()), /Saved fixture ✓/);
+  await drawer.getByRole("button", { name: earlier, exact: true }).click();
+  await drawer.getByText("# Earlier same-second output", { exact: true }).waitFor();
   await drawer.getByRole("button", { name: "Load older outputs" }).click();
   await drawer.getByRole("button", { name: "2026-10-01_09-00-00.md" }).click();
   await drawer.getByText(/Showing the first/).waitFor();
@@ -94,6 +100,9 @@ createRoot(document.getElementById('root')).render(React.createElement(I18nProvi
   await drawer.getByText("# Output day 20", { exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await drawer.evaluate((element) => element.getBoundingClientRect().width <= window.innerWidth), true);
+  assert.equal(await drawer.getByRole("button", { name: newest, exact: true }).evaluate(
+    (button) => button.getBoundingClientRect().right <= window.innerWidth && button.scrollWidth <= button.clientWidth,
+  ), true);
   const screenshot = process.env.SCREENSHOT || path.join(os.tmpdir(), "spark-F10-output-drawer.png");
   await page.screenshot({ path: screenshot });
   await page.keyboard.press("Escape");

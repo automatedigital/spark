@@ -2,7 +2,7 @@
 Cron job storage and management.
 
 Jobs are stored in ~/.spark/cron/jobs.json
-Output is saved to ~/.spark/cron/output/{job_id}/{timestamp}.md
+Output is saved to ~/.spark/cron/output/{job_id}/{filename}.md
 """
 
 import copy
@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from core.spark_constants import get_spark_home
 from core.spark_time import now as _spark_now
+from cron.output_names import new_output_filename
 
 logger = logging.getLogger(__name__)
 
@@ -990,8 +991,7 @@ def save_job_output(job_id: str, output: str):
     job_output_dir.mkdir(parents=True, exist_ok=True)
     _secure_dir(job_output_dir)
 
-    timestamp = _spark_now().strftime("%Y-%m-%d_%H-%M-%S")
-    output_file = job_output_dir / f"{timestamp}.md"
+    output_file = job_output_dir / new_output_filename(_spark_now())
 
     fd, tmp_path = tempfile.mkstemp(dir=str(job_output_dir), suffix='.tmp', prefix='.output_')
     try:

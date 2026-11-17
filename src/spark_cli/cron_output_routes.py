@@ -8,16 +8,15 @@ import os
 import re
 import stat
 from contextlib import contextmanager
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
 from core.spark_constants import get_spark_home
+from cron.output_names import validate_output_filename
 
 router = APIRouter()
 MAX_READ_BYTES = 256 * 1024
 _ID = re.compile(r"[0-9a-f]{12}")
-_NAME = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.md")
 
 
 def saved_output_capability() -> dict:
@@ -36,12 +35,10 @@ def get_output_capability():
 
 
 def _filename(value: str) -> str:
-    if not _NAME.fullmatch(value):
-        raise HTTPException(400, "Invalid saved output filename")
     try:
-        datetime.strptime(value, "%Y-%m-%d_%H-%M-%S.md")
+        validate_output_filename(value)
     except ValueError as exc:
-        raise HTTPException(400, "Invalid saved output timestamp") from exc
+        raise HTTPException(400, str(exc)) from exc
     return value
 
 
