@@ -27,7 +27,6 @@ import logging
 import os
 import re
 import shlex
-import uuid
 from collections.abc import Sequence
 
 from tools.artifact_store import get_artifact, register_artifact, semantic_preview
@@ -42,7 +41,6 @@ logger = logging.getLogger(__name__)
 PERSISTED_OUTPUT_TAG = "<persisted-output>"
 PERSISTED_OUTPUT_CLOSING_TAG = "</persisted-output>"
 STORAGE_DIR = "/tmp/spark-results"
-HEREDOC_MARKER = "SPARK_PERSIST_EOF"
 _BUDGET_TOOL_NAME = "__budget_enforcement__"
 _CONTENT_HASH_RE = re.compile(r"^Content hash: (sha256:[0-9a-f]{64})$", re.MULTILINE)
 _FILE_PATH_RE = re.compile(r"^Full output saved to: (.+)$", re.MULTILINE)
@@ -94,21 +92,14 @@ def generate_preview(content: str, max_chars: int = DEFAULT_PREVIEW_SIZE_CHARS) 
     return truncated, True
 
 
-def _heredoc_marker(content: str) -> str:
-    """Return a heredoc delimiter that doesn't collide with content."""
-    if HEREDOC_MARKER not in content:
-        return HEREDOC_MARKER
-    return f"SPARK_PERSIST_{uuid.uuid4().hex[:8]}"
-
-
 def _write_to_sandbox(content: str, remote_path: str, env) -> bool:
     """Write content into the sandbox via env.execute(). Returns True on success."""
-    marker = _heredoc_marker(content)
     storage_dir = os.path.dirname(remote_path)
+    # A heredoc always appends a newline, changing the content-addressed
+    # artifact. A fixed printf format preserves bytes and quotes data safely.
     cmd = (
-        f"mkdir -p {shlex.quote(storage_dir)} && cat > {shlex.quote(remote_path)} << '{marker}'\n"
-        f"{content}\n"
-        f"{marker}"
+        f"mkdir -p {shlex.quote(storage_dir)} && "
+        f"printf '%s' {shlex.quote(content)} > {shlex.quote(remote_path)}"
     )
     result = env.execute(cmd, timeout=30)
     return result.get("returncode", 1) == 0

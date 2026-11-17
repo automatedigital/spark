@@ -1,4 +1,9 @@
 import json
+import os
+import re
+import subprocess
+
+import pytest
 import time
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -152,3 +157,42 @@ def test_large_result_fixture_reduces_p95_inline_tokens_by_sixty_percent():
     compact_p95 = sorted(len(item) for item in compact)[94]
     assert compact_p95 <= raw_p95 * 0.40
     assert all("Artifact handle:" in item for item in compact)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX sandbox shell transport")
+@pytest.mark.parametrize("suffix", ["", "\n", "\n\n", "\r\n"])
+def test_real_sandbox_artifact_round_trip_preserves_exact_content(tmp_path, monkeypatch, suffix):
+    content = "猫 'quoted' %s $HOME $(touch injected) `touch injected`\nSPARK_PERSIST_EOF" + suffix
+    class Env:
+        def get_temp_dir(self):
+            return str(tmp_path / "temp folder")
+        def execute(self, command, timeout):
+            result = subprocess.run(command, shell=True, cwd=tmp_path, capture_output=True, timeout=timeout)
+            return {"returncode": result.returncode}
+    persisted = maybe_persist_tool_result(content, "terminal", "round-trip", env=Env(), threshold=1)
+    handle = re.search(r"Artifact handle: (artifact://[0-9a-f]+)", persisted).group(1)
+    record = get_artifact(handle)
+    assert record is not None
+    from pathlib import Path
+    assert Path(record.backend_locator).read_bytes() == content.encode("utf-8")
+    assert not (tmp_path / "injected").exists()
+    ops = SimpleNamespace(read_file_raw=lambda path: SimpleNamespace(
+        content=Path(path).read_bytes().decode("utf-8"), error=None
+    ))
+    monkeypatch.setattr("tools.file_tools._get_file_ops", lambda task_id: ops)
+    page = json.loads(_handle_artifact({"handle": handle, "limit": 32000}))
+    assert page["content"] == content
+    assert page["total_size"] == len(content)
+    assert page["content_hash"] == record.content_hash
+
+
+@pytest.mark.parametrize("query", [None, "replacement"])
+def test_artifact_handler_rejects_changed_backing_content(monkeypatch, query):
+    record = register_artifact(content="original", locator="/private/backend", origin_tool="terminal")
+    ops = SimpleNamespace(read_file_raw=lambda path: SimpleNamespace(content="replacement", error=None))
+    monkeypatch.setattr("tools.file_tools._get_file_ops", lambda task_id: ops)
+    payload = json.loads(_handle_artifact({"handle": record.handle, "query": query}))
+    assert "error" in payload
+    assert "content" not in payload
+    assert "matches" not in payload
+    assert "/private/backend" not in json.dumps(payload)
