@@ -121,3 +121,9 @@ replay: the runtime handled the interrupt and cleared its flag before the test's
 poll sampled it. Latch the flag/message observation at the real HTTP close
 boundary instead of polling a flag that correctly resets. Keep exactly-once
 follow-up, cache identity, transcript and request-count assertions unchanged.
+
+The retained Windows gate subsequently exposed a real canvas revision collision:
+requesting an mtime one nanosecond ahead can round back to the old revision.
+Verify the temporary file's actual revision advances before atomic replacement;
+reject publication if the filesystem cannot represent it. Precision-simulation
+regressions supplement, rather than replace, hosted Windows contention tests.

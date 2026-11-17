@@ -357,10 +357,18 @@ def _write_canvas(scope: str, slug: str | None, canvas_id: str, doc: CanvasDoc) 
             ) as fh:
                 tmp = Path(fh.name)
                 fh.write(serialized)
-            # Preserve distinct revisions even on coarse filesystem clocks.
+            # Timestamp setters may round nanoseconds (e.g. NTFS). Verify
+            # representable advancement before publishing, rather than assume
+            # that requesting current + 1 creates a distinct revision.
             if current_revision is not None and tmp.stat().st_mtime_ns <= int(current_revision):
-                stamp = max(time.time_ns(), int(current_revision) + 1)
-                os.utime(tmp, ns=(stamp, stamp))
+                previous = int(current_revision)
+                for increment in (1, 1_000, 1_000_000, 2_000_000_000):
+                    stamp = max(time.time_ns(), previous + increment)
+                    os.utime(tmp, ns=(stamp, stamp))
+                    if tmp.stat().st_mtime_ns > previous:
+                        break
+                else:
+                    raise OSError("Filesystem cannot represent a distinct canvas revision")
             _canvas_stat(path)
             tmp.replace(path)
             revision = _revision(path)
