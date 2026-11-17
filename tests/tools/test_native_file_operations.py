@@ -96,3 +96,28 @@ def test_native_atomic_failure_preserves_target_and_cleans_temp(tmp_path, monkey
     assert target.read_text() == "original"
     assert stat.S_IMODE(target.stat().st_mode) == 0o755
     assert set(tmp_path.iterdir()) == original_entries
+
+
+@pytest.mark.parametrize("target", ["content", "files"])
+def test_native_relative_search_excludes_outside_symlink_files(tmp_path, target):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside-secret")
+    (workspace / "inside.txt").write_text("inside-visible")
+    try:
+        (workspace / "escape.txt").symlink_to(outside)
+        (workspace / "internal.txt").symlink_to(workspace / "inside.txt")
+    except OSError:
+        pytest.skip("Symlinks unavailable")
+    ops = NativeFileOperations(_LocalEnv(workspace))
+    result = ops.search("*" if target == "files" else ".", target=target)
+    assert result.error is None
+    paths = result.files if target == "files" else [m.path for m in result.matches]
+    assert all("escape.txt" not in path for path in paths)
+    assert any("inside.txt" in path for path in paths)
+    assert any("internal.txt" in path for path in paths)
+    # Absolute paths are an explicit opt-in to searching outside the task CWD.
+    explicit = ops.search("outside-secret", path=str(outside))
+    assert explicit.error is None
+    assert len(explicit.matches) == 1
