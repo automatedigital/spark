@@ -1422,6 +1422,18 @@ class NativeFileOperations(ShellFileOperations):
         except ValueError as exc:
             return SearchResult(error=str(exc))
         candidates = [root] if root.is_file() else [p for p in root.rglob(file_glob or "*") if p.is_file()]
+        if not Path(os.path.expandvars(os.path.expanduser(str(path)))).is_absolute():
+            # Resolving only the search root is insufficient: an individual
+            # file may be a symlink outside the task workspace.
+            workspace_root = Path(self.cwd).resolve(strict=False)
+            safe_candidates = []
+            for candidate in candidates:
+                try:
+                    candidate.resolve(strict=False).relative_to(workspace_root)
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                safe_candidates.append(candidate)
+            candidates = safe_candidates
         if target == "files":
             matched = [str(p) for p in candidates if fnmatch.fnmatch(p.name, pattern)]
             return SearchResult(files=matched[offset:offset + limit], total_count=len(matched), truncated=len(matched) > offset + limit)
