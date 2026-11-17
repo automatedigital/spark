@@ -31,30 +31,76 @@ def test_inflight_stream_retry_deadline_closes_worker_without_another_request(re
     parent = replay.parent()
     release = threading.Event()
     entered = threading.Event()
+    finished = threading.Event()
+    budget = RetryBudget(0.15)
+    started = []
     close = parent._close_request_openai_client
 
     def close_request(client, **kwargs):
         release.set()
-        return close(client, **kwargs)
+        try:
+            return close(client, **kwargs)
+        finally:
+            if kwargs.get("reason") == "stream_request_complete":
+                finished.set()
 
     def handle(transport, request):
         replay.wire.calls.append(json.loads(request.content))
+        # Measure an in-flight request, excluding SDK/client startup cost.
+        budget.start()
+        started.append(time.monotonic())
         entered.set()
         release.wait(5)
         raise httpx.ReadTimeout("Replay read timeout", request=request)
 
     monkeypatch.setattr(parent, "_close_request_openai_client", close_request)
     monkeypatch.setattr(httpx.HTTPTransport, "handle_request", handle)
-    budget = RetryBudget(0.15)
-    budget.start()
     kwargs = parent._build_api_kwargs([{"role": "user", "content": "In-flight retry deadline"}])
-    started = time.monotonic()
     try:
         with pytest.raises(RetryBudgetExceeded):
             call_with_retry_budget(parent, budget, parent._interruptible_streaming_api_call, kwargs)
         assert entered.is_set()
-        assert time.monotonic() - started < 0.5
+        assert time.monotonic() - started[0] < 0.5
         assert len(replay.wire.calls) == 1
         assert parent._active_retry_budget is None
     finally:
         release.set()
+        assert finished.wait(5), "Stream worker must finish before replay teardown"
+
+
+def test_expired_retry_during_client_setup_never_dispatches_after_return(replay, monkeypatch):
+    parent = replay.parent()
+    budget = RetryBudget(0.15)
+    release = threading.Event()
+    finished = threading.Event()
+    client = parent._create_request_openai_client(reason="replay_setup")
+    close = parent._close_request_openai_client
+
+    def create_request(**kwargs):
+        budget.start()
+        release.wait(5)
+        return client
+
+    def close_request(client, **kwargs):
+        try:
+            return close(client, **kwargs)
+        finally:
+            if kwargs.get("reason") == "stream_request_complete":
+                finished.set()
+
+    def handle(transport, request):
+        replay.wire.calls.append(json.loads(request.content))
+        raise httpx.ReadTimeout("Unexpected late request", request=request)
+
+    monkeypatch.setattr(parent, "_create_request_openai_client", create_request)
+    monkeypatch.setattr(parent, "_close_request_openai_client", close_request)
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", handle)
+    kwargs = parent._build_api_kwargs([{"role": "user", "content": "Retire during setup"}])
+    try:
+        with pytest.raises(RetryBudgetExceeded):
+            call_with_retry_budget(parent, budget, parent._interruptible_streaming_api_call, kwargs)
+        assert parent._active_retry_budget is None
+    finally:
+        release.set()
+        assert finished.wait(5), "Late setup worker must finish before teardown"
+    assert replay.wire.calls == []
