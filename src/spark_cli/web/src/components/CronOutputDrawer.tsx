@@ -61,6 +61,7 @@ export function CronOutputDrawer({ jobId, name, onClose, initialFilename }: { jo
     {!busy && !files.length && !error && <p>No saved outputs. Files may have been pruned.</p>}
     <div className="flex max-h-56 flex-col items-start gap-2 overflow-y-auto border-b py-2">
       {files.map((filename) => <Button key={filename} variant={selected === filename ? "secondary" : "ghost"}
+        className="h-auto min-h-8 max-w-full whitespace-normal break-all text-left"
         aria-pressed={selected === filename} onClick={() => choose(filename)}>{filename}</Button>)}
       {before && <Button disabled={busy} onClick={() => { setBusy(true); setError(""); setPage(before); }}>Load older outputs</Button>}
     </div>

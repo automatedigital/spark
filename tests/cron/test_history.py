@@ -153,6 +153,55 @@ def test_read_api_legacy_files_removed_job_and_invalid_pages(tmp_path, monkeypat
         assert client.get("/api/cron/jobs/abcdef123456/outputs/2026-11-06_12-00-00.md").status_code == 404
 
 
+def test_same_second_outputs_keep_distinct_history_links(tmp_path, monkeypatch):
+    from datetime import datetime
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from cron import jobs
+    from spark_cli.cron_routes import register_cron_routes
+
+    monkeypatch.setenv("SPARK_HOME", str(tmp_path))
+    cron_dir = tmp_path / "cron"
+    monkeypatch.setattr(jobs, "CRON_DIR", cron_dir)
+    monkeypatch.setattr(jobs, "OUTPUT_DIR", cron_dir / "output")
+    monkeypatch.setattr(jobs, "_spark_now", lambda: datetime(2026, 11, 6, 12))
+    record = job()
+    first = jobs.save_job_output(record["id"], "first document")
+    second = jobs.save_job_output(record["id"], "second document")
+    assert first != second
+    assert first.read_text(encoding="utf-8") == "first document"
+    assert second.read_text(encoding="utf-8") == "second document"
+
+    ledger = History(tmp_path)
+    first_attempt = ledger.accept(record)
+    second_attempt = ledger.accept({**record, "next_run_at": "2026-11-06T13:00:00Z"})
+    assert ledger.executed(first_attempt, "success", output=first)
+    assert ledger.executed(second_attempt, "success")
+    ledger.attach_output(second_attempt, second)
+
+    legacy = first.with_name("2026-11-06_12-00-00.md")
+    legacy.write_text("legacy document", encoding="utf-8")
+    app = FastAPI()
+    register_cron_routes(app)
+    with TestClient(app) as client:
+        references = [row["output_ref"] for row in client.get("/api/cron/history").json()["attempts"]]
+        assert references == [f"{record['id']}/{file.name}" for file in (second, first)]
+        endpoint = f"/api/cron/jobs/{record['id']}/outputs"
+        if not client.get("/api/cron/output-capability").json()["supported"]:
+            return
+        page = client.get(endpoint, params={"limit": 1}).json()
+        rest = client.get(endpoint, params={"before": page["next_before"]}).json()
+        assert page["files"] + rest["files"] == sorted(
+            [first.name, second.name, legacy.name], reverse=True,
+        )
+        for file, body in ((first, "first document"), (second, "second document"), (legacy, "legacy document")):
+            response = client.get(f"{endpoint}/{file.name}")
+            assert response.status_code == 200
+            assert response.json()["content"] == body
+
+
 def test_pruning_keeps_dispatch_guard_and_reconcile_keeps_confirmed_delivery(ledger, monkeypatch):
     attempt = ledger.accept(job())
     ledger.executed(attempt, "success")

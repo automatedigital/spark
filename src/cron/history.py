@@ -13,9 +13,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from core.spark_constants import get_spark_home
+from cron.output_names import validate_output_filename
 
 MAX_HISTORY = 5000
-_OUTPUT = re.compile(r"[0-9a-f]{12}/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.md")
+_JOB_ID = re.compile(r"[0-9a-f]{12}")
+
+
+def _validate_output_reference(reference: str) -> None:
+    job_id, _, filename = reference.partition("/")
+    if not _JOB_ID.fullmatch(job_id):
+        raise ValueError("Invalid output reference")
+    try:
+        validate_output_filename(filename)
+    except ValueError as exc:
+        raise ValueError("Invalid output reference") from exc
 
 
 def _now() -> str:
@@ -90,8 +101,7 @@ class History:
                 reference = output.relative_to(self.home / "cron" / "output").as_posix()
             except ValueError as exc:
                 raise ValueError("Output outside profile") from exc
-            if not _OUTPUT.fullmatch(reference):
-                raise ValueError("Invalid output reference")
+            _validate_output_reference(reference)
         with self._db() as db:
             row = db.execute("SELECT job_id FROM attempts WHERE attempt_id=?", (attempt,)).fetchone()
             if reference and (not row or reference.split('/')[0] != row[0]):
@@ -103,9 +113,8 @@ class History:
     def attach_output(self, attempt: str, output: Path) -> None:
         try:
             reference = output.relative_to(self.home / "cron" / "output").as_posix()
+            _validate_output_reference(reference)
         except ValueError:
-            return
-        if not _OUTPUT.fullmatch(reference):
             return
         with self._db() as db:
             db.execute("""UPDATE attempts SET output_ref=? WHERE attempt_id=? AND job_id=?
