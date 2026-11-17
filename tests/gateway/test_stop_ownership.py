@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import replace
 
+import httpx
 import pytest
 
 from gateway.config import Platform
@@ -164,13 +166,25 @@ async def test_stop_before_runtime_ack_never_reuses_live_cached_agent(gateway, m
             await idle(replacement)
 
 
-async def test_genuine_busy_followup_runs_once_and_reuses_finished_parent_cache(gateway):
+async def test_genuine_busy_followup_runs_once_and_reuses_finished_parent_cache(gateway, monkeypatch):
     g = gateway
     key, parent, _runs = await launched(g)
     frozen_prompt, frozen_tools = parent._cached_system_prompt, parent.tools
     followup = "GATEWAY: actual busy follow-up"
+    interrupted = threading.Event()
+    original_close = httpx.HTTPTransport.close
+
+    def observe_close(transport):
+        # Observe the real interruption at the external I/O boundary. The
+        # runtime clears this flag when the turn exits, so polling it can miss
+        # a correctly handled interrupt before the next event-loop tick.
+        if parent._interrupt_requested and parent._interrupt_message == followup:
+            interrupted.set()
+        return original_close(transport)
+
+    monkeypatch.setattr(httpx.HTTPTransport, "close", observe_close)
     await g.adapter.inbound_text(followup)
-    await until(lambda: parent._interrupt_requested, "genuine adapter interrupt")
+    await until(interrupted.is_set, "genuine adapter interrupt closed transport")
     g.wire.release_all()
     await drained(g.adapter)
     assert g.runner._agent_cache[key][0] is parent

@@ -468,6 +468,13 @@ class _ProviderTransportMixin:
             request_client_holder["client"] = self._create_request_openai_client(
                 reason="chat_completion_stream_request"
             )
+            # Client setup can outlive the caller's retry deadline. Recheck
+            # the captured request ownership before dispatching any HTTP work;
+            # the caller may already have restored its active-budget slot.
+            if request_retired.is_set() or self._interrupt_requested:
+                raise InterruptedError("Stream request retired during client setup")
+            if isinstance(call_retry_budget, RetryBudget) and call_retry_budget.exhausted:
+                raise RetryBudgetExceeded("Elapsed retry budget exhausted during client setup")
             # Reset stale-stream timer so the detector measures from this
             # attempt's start, not a previous attempt's last chunk.
             last_chunk_time["t"] = time.time()
