@@ -35,3 +35,25 @@ PR238 Ubuntu job128166178716 reproduced two Windows-handle test failures. The te
 ## Shared Discord mock correction
 
 PR238 pytest job128167671922 completed12,704 passing tests and four failures in test_discord_connect: later cases cannot find Intents.default after pytest9.2 restores a dynamically generated shared MagicMock child. Reproduced locally: four failures, one pass before the change. Replace the module's Intents binding with an explicit per-case namespace, preserving all connection assertions. This exact correction already existed on SP01 but had not reached main. Reviewed the other SP01 test-isolation corrections too: upload-fstat is already addressed above; brought over the approval-button SDK boundary's module-local proxy to avoid the same shared-child mutation. Root-submission feature tests are unrelated and were not copied. Combined connection/import/approval-ID tests18 passed in1.27s. No production changes or assertion weakening.
+
+## November 17 transport recovery and early regression checks
+
+[PR 272's pytest job](https://github.com/automatedigital/spark/actions/runs/44180301989/job/134382660804)
+spent 47 seconds on runner setup, checkout, Python setup and dependencies,
+10 seconds on the tool manifest, then 5 minutes 17 seconds on the non-serial
+suite. Worker progress first appeared 42 seconds into the suite, and the
+failure marker appeared at 80% after 3 minutes 49 seconds. Pytest printed
+the failing test details after the remaining cases finished. Serial fast and
+slow ownership tests were skipped as a consequence of the failed step.
+[The green main baseline](https://github.com/automatedigital/spark/actions/runs/44155763256)
+spent 4 minutes 45 seconds on non-serial fast tests and 4 minutes 54 seconds
+on serial fast tests. Both heads had identical provider transport and
+recovery test code. The six-second recovery assertion captured 42,321 calls
+because patching the standard-library sleep also replaced it in other threads.
+The test now swaps the clock binding in provider transport and retains its
+exact six- and eight-second assertions.
+
+The cron collision regression and transport recovery class run before the
+full-suite collection. The remaining non-serial pass deselects those same
+node IDs. The workflow still gates on Ruff, mypy, the generated tool manifest,
+all other fast Python cases, and the explicit slow ownership contracts.

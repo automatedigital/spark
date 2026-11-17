@@ -71,6 +71,9 @@ jobs:
     needs: ruff-ratchet
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      EARLY_CRON_TEST: tests/cron/test_history.py::test_same_second_outputs_keep_distinct_history_links
+      EARLY_RECOVERY_TESTS: tests/run_agent/test_primary_runtime_restore.py::TestTryRecoverPrimaryTransport
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -86,6 +89,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,web]"
 
+      # Run these fast contracts before collecting the full suite. Reuse the
+      # same node IDs below to keep each test in exactly one fast pass.
+      - name: Check cron output and transport recovery first
+        env:
+          OPENAI_API_KEY: sk-test-not-a-real-key
+        run: >-
+          python -m pytest "$EARLY_CRON_TEST" "$EARLY_RECOVERY_TESTS"
+          -m "not serial and not slow and not integration and not network" -q --timeout=60 -n 0
+
       - name: Verify generated built-in tool schemas
         run: python scripts/generate_tool_manifest.py --check
 
@@ -98,7 +110,9 @@ jobs:
           # syntactically valid key; no request is ever sent (integration
           # tests are deselected).
           OPENAI_API_KEY: sk-test-not-a-real-key
-        run: python -m pytest tests/ -m "not serial and not slow and not integration and not network" -q --timeout=60 -n 4
+        run: >-
+          python -m pytest tests/ --deselect="$EARLY_CRON_TEST" --deselect="$EARLY_RECOVERY_TESTS"
+          -m "not serial and not slow and not integration and not network" -q --timeout=60 -n 4
 
       - name: Run serial fast tests without xdist
         env:
