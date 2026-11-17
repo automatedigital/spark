@@ -463,7 +463,9 @@ class CheckpointManager:
         self._take(abs_dir, f"pre-rollback snapshot (restoring to {commit_hash[:8]})")
 
         # Restore — full directory or single file
-        restore_target = file_path if file_path else "."
+        # `--` ends options, but does not disable pathspec magic or globs.
+        # A single-file restore must never select neighboring files.
+        restore_target = f":(literal){file_path}" if file_path else "."
         ok, stdout, err = _run_git(
             ["checkout", commit_hash, "--", restore_target],
             shadow, abs_dir, timeout=_GIT_TIMEOUT * 2,
