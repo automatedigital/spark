@@ -1,6 +1,7 @@
 """Tests for tools/checkpoint_manager.py — CheckpointManager."""
 
 import logging
+import os
 import subprocess
 import pytest
 from pathlib import Path
@@ -587,3 +588,20 @@ class TestSecurity:
         
         result = mgr.restore(str(work_dir), target_hash, file_path="subdir/test.txt")
         assert result["success"] is True
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows forbids glob characters in filenames")
+@pytest.mark.parametrize("filename", ["*.txt", "file[1].txt", ":(glob)*.txt"])
+def test_single_file_restore_treats_path_as_literal(mgr, work_dir, filename):
+    target = work_dir / filename
+    other = work_dir / "file1.txt"
+    target.write_text("original target")
+    other.write_text("original other")
+    assert mgr.ensure_checkpoint(str(work_dir), "original")
+    checkpoint = mgr.list_checkpoints(str(work_dir))[0]["hash"]
+    target.write_text("modified target")
+    other.write_text("modified other")
+    result = mgr.restore(str(work_dir), checkpoint, file_path=filename)
+    assert result["success"], result
+    assert target.read_text() == "original target"
+    assert other.read_text() == "modified other"
