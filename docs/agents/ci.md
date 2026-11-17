@@ -115,3 +115,9 @@ failures were real npm peer conflicts, handled by scoped deferrals in #263 and
 tracked major-toolchain coordination in #262, not forced installs. An earlier
 actionlint SC2016 finding was corrected with a targeted literal-JavaScript
 annotation. These historical outcomes do not replace current-head checks.
+
+A later serial run exposed a transient-observation race in the busy-follow-up
+replay: the runtime handled the interrupt and cleared its flag before the test's
+poll sampled it. Latch the flag/message observation at the real HTTP close
+boundary instead of polling a flag that correctly resets. Keep exactly-once
+follow-up, cache identity, transcript and request-count assertions unchanged.
