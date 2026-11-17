@@ -18,12 +18,10 @@ permissions:
 
 jobs:
   persistence-contracts:
-    name: Persistence contracts (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    # Linux cases are already in python-quality's fast suite. Windows adds
+    # distinct path, atomic-replace and file-handle semantics for the desktop.
+    name: Persistence contracts (windows-latest)
+    runs-on: windows-latest
     timeout-minutes: 20
     env:
       SPARK_HOME: ${{ github.workspace }}/.spark-contracts/profile

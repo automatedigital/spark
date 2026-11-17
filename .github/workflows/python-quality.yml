@@ -9,12 +9,14 @@ on:
       - "src/**/*.py"
       - "tests/**/*.py"
       - "pyproject.toml"
+      - "scripts/generate_tool_manifest.py"
       - ".github/workflows/python-quality.yml"
   pull_request:
     paths:
       - "src/**/*.py"
       - "tests/**/*.py"
       - "pyproject.toml"
+      - "scripts/generate_tool_manifest.py"
       - ".github/workflows/python-quality.yml"
 
 # A new push supersedes the previous run on the same branch.
@@ -66,6 +68,7 @@ jobs:
         run: mypy src/agent/ src/spark_cli/
 
   pytest:
+    needs: ruff-ratchet
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -83,6 +86,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,web]"
 
+      - name: Verify generated built-in tool schemas
+        run: python scripts/generate_tool_manifest.py --check
+
       # A command-line -m replaces pytest's configured marker expression, so
       # retain the integration and network exclusions explicitly. Otherwise this job can run tests
       # that touch configured external services.
@@ -98,3 +104,11 @@ jobs:
         env:
           OPENAI_API_KEY: sk-test-not-a-real-key
         run: python -m pytest tests/ -m "serial and not slow and not integration and not network" -q --timeout=60 -n 0
+
+      # The browser job formerly repeated 25 backend modules. Fast cases are
+      # already covered above; retain its two slow ownership contracts here.
+      - name: Slow worktree and worker ownership contracts
+        run: >-
+          python -m pytest tests/tools/test_subagent_worktree.py
+          tests/core/test_kanban_worker_ownership.py
+          -m "slow and not integration and not network" -q -n 0
