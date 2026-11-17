@@ -34,6 +34,9 @@ python scripts/generate_tool_manifest.py --check
 Use an isolated `SPARK_HOME` for manual tests. Do not test against real user
 state.
 
+See [CI verification and troubleshooting](docs/agents/ci.md) for the hosted
+gate commands, baseline lint debt and deterministic replay requirements.
+
 ## Pull requests
 
 1. Make a branch with a `feat/`, `fix/` or `docs/` prefix.

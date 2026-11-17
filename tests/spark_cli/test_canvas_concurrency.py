@@ -505,3 +505,40 @@ def test_symlink_inserted_during_serialization_rejects_save_and_cleans_temp(tmp_
     assert path.is_symlink()
     assert outside.read_bytes() == sentinel
     assert not list(path.parent.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("quantum", [100, 1_000_000, 2_000_000_000])
+def test_revision_advances_when_filesystem_rounds_timestamps(monkeypatch, quantum):
+    save("original")
+    path = routes._canvas_path("global", None, "board")
+    # Put the current revision ahead of the wall clock so the fallback, rather
+    # than incidental execution time, determines the next file timestamp.
+    stamp = ((path.stat().st_mtime_ns // quantum) + 60_000_000_000 // quantum) * quantum
+    real_utime = os.utime
+    real_utime(path, ns=(stamp, stamp))
+    revision = routes._revision(path)
+
+    def rounded_utime(target, *, ns):
+        atime, mtime = ns
+        return real_utime(target, ns=(atime, mtime // quantum * quantum))
+
+    monkeypatch.setattr(routes.os, "utime", rounded_utime)
+    winner = save("winner", revision)
+    assert int(winner["revision"]) > int(revision)
+    assert outcome("stale writer", revision)["status"] == 409
+    assert routes._read_canvas("global", None, "board")["name"] == "winner"
+
+
+def test_unrepresentable_revision_fails_before_replacing_canvas(monkeypatch):
+    save("original")
+    path = routes._canvas_path("global", None, "board")
+    stamp = path.stat().st_mtime_ns + 60_000_000_000
+    os.utime(path, ns=(stamp, stamp))
+    revision = routes._revision(path)
+    before = path.read_bytes()
+    monkeypatch.setattr(routes.os, "utime", lambda *args, **kwargs: None)
+    result = outcome("must not publish", revision)
+    assert result["status"] == 500
+    assert path.read_bytes() == before
+    assert routes._revision(path) == revision
+    assert not list(path.parent.glob(".*.tmp"))

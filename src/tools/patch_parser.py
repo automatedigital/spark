@@ -270,20 +270,10 @@ def _validate_operations(
             for hunk in op.hunks:
                 search_lines = [l.content for l in hunk.lines if l.prefix in (' ', '-')]
                 if not search_lines:
-                    # Addition-only hunk: validate context hint uniqueness
-                    if hunk.context_hint:
-                        occurrences = _count_occurrences(simulated, hunk.context_hint)
-                        if occurrences == 0:
-                            errors.append(
-                                f"{op.file_path}: addition-only hunk context hint "
-                                f"'{hunk.context_hint}' not found"
-                            )
-                        elif occurrences > 1:
-                            errors.append(
-                                f"{op.file_path}: addition-only hunk context hint "
-                                f"'{hunk.context_hint}' is ambiguous "
-                                f"({occurrences} occurrences)"
-                            )
+                    simulated, insertion_error = _insert_addition(simulated, hunk)
+                    if insertion_error:
+                        errors.append(f"{op.file_path}: {insertion_error}")
+                        break
                     continue
 
                 search_pattern = '\n'.join(search_lines)
@@ -484,6 +474,26 @@ def _apply_move(op: PatchOperation, file_ops: Any) -> tuple[bool, str]:
     return True, diff
 
 
+def _insert_addition(content: str, hunk: Hunk) -> tuple[str, str | None]:
+    """Use the same addition-only transformation in preflight and apply."""
+    insert_text = '\n'.join(line.content for line in hunk.lines if line.prefix == '+')
+    if not hunk.context_hint:
+        return content.rstrip('\n') + '\n' + insert_text + '\n', None
+    occurrences = _count_occurrences(content, hunk.context_hint)
+    if occurrences == 0:
+        return content, f"Addition-only hunk: context hint '{hunk.context_hint}' not found"
+    if occurrences > 1:
+        return content, (
+            f"Addition-only hunk: context hint '{hunk.context_hint}' is ambiguous "
+            f"({occurrences} occurrences) — provide a more unique hint"
+        )
+    hint_pos = content.find(hunk.context_hint)
+    eol = content.find('\n', hint_pos)
+    if eol != -1:
+        return content[:eol + 1] + insert_text + '\n' + content[eol + 1:], None
+    return content + '\n' + insert_text, None
+
+
 def _apply_update(op: PatchOperation, file_ops: Any) -> tuple[bool, str]:
     """Apply an update file operation."""
     # Deferred import: breaks the patch_parser ↔ fuzzy_match circular dependency
@@ -544,29 +554,9 @@ def _apply_update(op: PatchOperation, file_ops: Any) -> tuple[bool, str]:
                 if error:
                     return False, f"Could not apply hunk: {error}"
         else:
-            # Addition-only hunk (no context or removed lines).
-            # Insert at the location indicated by the context hint, or at end of file.
-            insert_text = '\n'.join(replace_lines)
-            if hunk.context_hint:
-                occurrences = _count_occurrences(new_content, hunk.context_hint)
-                if occurrences == 0:
-                    # Hint not found — append at end as a safe fallback
-                    new_content = new_content.rstrip('\n') + '\n' + insert_text + '\n'
-                elif occurrences > 1:
-                    return False, (
-                        f"Addition-only hunk: context hint '{hunk.context_hint}' is ambiguous "
-                        f"({occurrences} occurrences) — provide a more unique hint"
-                    )
-                else:
-                    hint_pos = new_content.find(hunk.context_hint)
-                    # Insert after the line containing the context hint
-                    eol = new_content.find('\n', hint_pos)
-                    if eol != -1:
-                        new_content = new_content[:eol + 1] + insert_text + '\n' + new_content[eol + 1:]
-                    else:
-                        new_content = new_content + '\n' + insert_text
-            else:
-                new_content = new_content.rstrip('\n') + '\n' + insert_text + '\n'
+            new_content, insertion_error = _insert_addition(new_content, hunk)
+            if insertion_error:
+                return False, insertion_error
 
     # Write new content
     write_result = file_ops.write_file(op.file_path, new_content)

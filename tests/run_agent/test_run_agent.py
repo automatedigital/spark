@@ -1240,10 +1240,11 @@ class TestExecuteToolCalls:
         captured = io.StringIO()
         agent._print_fn = lambda *args, **kw: print(*args, file=captured, **kw)
 
-        # This contract checks retry output, not the post-turn curator scheduler.
-        # Keep its persistence/background work out of this isolated unit test.
+        # This contract checks retry output, not goal/Kanban reads or curator
+        # scheduling. Skip the retry delay without patching process-wide sleep.
         with (
-            patch("core.run_agent.time.sleep", return_value=None),
+            patch("core.run_agent.turn_loop.jittered_backoff", return_value=0.0),
+            patch("core.goal.get_goal_block", return_value=""),
             patch("agent.curator.maybe_run_curator"),
         ):
             result = agent.run_conversation("hello")

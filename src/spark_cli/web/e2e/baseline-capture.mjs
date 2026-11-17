@@ -736,17 +736,6 @@ async function captureCase({ browser, apiBase, webBase, screenshotRoot, size, vi
   }
 }
 
-function buildTemporaryWeb(outDir) {
-  const result = spawnSync(
-    viteBin,
-    ["build", webRoot, "--outDir", outDir, "--emptyOutDir", "--logLevel", "warn"],
-    { cwd: webRoot, env: process.env, encoding: "utf8" },
-  );
-  if (result.status !== 0) {
-    throw new Error(`Temporary web build failed (${result.status}): ${result.stderr || result.stdout}`);
-  }
-}
-
 async function validateCaseResult(result, stagedScreenshotRoot) {
   const expectedPages = Math.ceil(result.fixtureRows / historyPageSize) - 1;
   const label = `${result.theme.name}:${result.fixtureRows}:${result.viewport.width}`;
@@ -822,7 +811,6 @@ async function run(iteration) {
   const cases = [];
   let backendReadyMs;
   const stagedScreenshotRoot = path.join(stagedOutputRoot, "screenshots");
-  const stagedBuildRoot = path.join(stagedOutputRoot, "web-build");
   await writeFile(
     path.join(sparkHome, "config.yaml"),
     "model:\n  default: test-model\n  provider: ollama\n  base_url: http://127.0.0.1:1/v1\n",
@@ -859,7 +847,6 @@ async function run(iteration) {
   try {
     await waitFor(`${apiBase}/api/status`);
     backendReadyMs = performance.now() - backendStartedAt;
-    buildTemporaryWeb(stagedBuildRoot);
     await waitFor(webBase);
     browser = await chromium.launch({ headless: true });
     for (const theme of themes) {
