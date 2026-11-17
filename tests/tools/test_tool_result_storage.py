@@ -11,12 +11,10 @@ from tools.budget_config import (
     BudgetConfig,
 )
 from tools.tool_result_storage import (
-    HEREDOC_MARKER,
     PERSISTED_OUTPUT_CLOSING_TAG,
     PERSISTED_OUTPUT_TAG,
     STORAGE_DIR,
     _build_persisted_message,
-    _heredoc_marker,
     _resolve_storage_dir,
     _write_to_sandbox,
     enforce_turn_budget,
@@ -87,20 +85,6 @@ class TestEstimateToolResultTokens:
         assert estimate_tool_result_tokens("\ud800") == 1
 
 
-# ── _heredoc_marker ───────────────────────────────────────────────────
-
-class TestHeredocMarker:
-    def test_default_marker_when_no_collision(self):
-        assert _heredoc_marker("normal content") == HEREDOC_MARKER
-
-    def test_uuid_marker_on_collision(self):
-        content = f"some text with {HEREDOC_MARKER} embedded"
-        marker = _heredoc_marker(content)
-        assert marker != HEREDOC_MARKER
-        assert marker.startswith("SPARK_PERSIST_")
-        assert marker not in content
-
-
 # ── _write_to_sandbox ─────────────────────────────────────────────────
 
 class TestWriteToSandbox:
@@ -113,24 +97,13 @@ class TestWriteToSandbox:
         cmd = env.execute.call_args[0][0]
         assert "mkdir -p" in cmd
         assert "hello world" in cmd
-        assert HEREDOC_MARKER in cmd
+        assert "printf '%s'" in cmd
 
     def test_failure_returns_false(self):
         env = MagicMock()
         env.execute.return_value = {"output": "error", "returncode": 1}
         result = _write_to_sandbox("content", "/tmp/spark-results/abc.txt", env)
         assert result is False
-
-    def test_heredoc_collision_uses_uuid_marker(self):
-        env = MagicMock()
-        env.execute.return_value = {"output": "", "returncode": 0}
-        content = f"text with {HEREDOC_MARKER} inside"
-        _write_to_sandbox(content, "/tmp/spark-results/abc.txt", env)
-        cmd = env.execute.call_args[0][0]
-        # The default marker should NOT be used as the delimiter
-        lines = cmd.split("\n")
-        # The first and last lines contain the actual delimiter
-        assert HEREDOC_MARKER not in lines[0].split("<<")[1]
 
     def test_timeout_passed(self):
         env = MagicMock()
@@ -270,7 +243,7 @@ class TestMaybePersistToolResult:
             threshold=30_000,
         )
         assert PERSISTED_OUTPUT_TAG in result
-        # The heredoc written to sandbox should contain the full JSON blob
+        # The command transports the full JSON blob without extraction
         cmd = env.execute.call_args[0][0]
         assert '"exit_code"' in cmd
 

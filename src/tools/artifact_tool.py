@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from tools.artifact_store import get_artifact, page_content, search_content
+from tools.artifact_store import content_hash, get_artifact, page_content, search_content
 from tools.registry import registry
 
 ARTIFACT_SCHEMA = {
@@ -36,6 +36,8 @@ def _handle_artifact(args, **kwargs) -> str:
     if result.error:
         return json.dumps({"error": result.error, "handle": handle})
     content = result.content or ""
+    if content_hash(content) != record.content_hash:
+        return json.dumps({"error": "Artifact content no longer matches its handle.", "handle": handle})
     query = args.get("query")
     payload = (
         search_content(content, str(query), limit=args.get("limit", 20))
