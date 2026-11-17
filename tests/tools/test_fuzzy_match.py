@@ -148,3 +148,35 @@ class TestStrategyNameSurfaced:
         assert count == 0
         assert strategy is None
         assert err is not None
+
+
+class TestOverlappingReplaceAll:
+    def test_exact_matches_follow_nonoverlapping_string_replace_semantics(self):
+        for content, old, replacement in [
+            ("aaaa", "aa", "X"),
+            ("aaaaa", "aa", "X"),
+            ("banana", "ana", "longer"),
+            ("aaaa", "aa", ""),
+        ]:
+            updated, count, strategy, error = fuzzy_find_and_replace(
+                content, old, replacement, replace_all=True
+            )
+            assert error is None
+            assert strategy == "exact"
+            assert updated == content.replace(old, replacement)
+            assert count == content.count(old)
+
+    def test_overlaps_still_reject_ambiguous_single_replacement(self):
+        updated, count, _, error = fuzzy_find_and_replace("aaaa", "aa", "X")
+        assert updated == "aaaa"
+        assert count == 0
+        assert "Found 3 matches" in error
+
+    def test_normalized_multiline_overlaps_are_not_applied_twice(self):
+        updated, count, strategy, error = fuzzy_find_and_replace(
+            " x \n x \n x ", "x\nx", "done", replace_all=True
+        )
+        assert error is None
+        assert strategy == "line_trimmed"
+        assert count == 1
+        assert updated == "done\n x "

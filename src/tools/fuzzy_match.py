@@ -86,6 +86,15 @@ def fuzzy_find_and_replace(content: str, old_string: str, new_string: str,
         matches = strategy_fn(content, old_string)
 
         if matches:
+            if replace_all:
+                # Strategies also report overlapping spans to detect ambiguity
+                # for single replacements. Apply each original character at
+                # most once when replacing all, including normalized matches.
+                disjoint: list[tuple[int, int]] = []
+                for start, end in sorted(matches):
+                    if not disjoint or start >= disjoint[-1][1]:
+                        disjoint.append((start, end))
+                matches = disjoint
             # Found matches with this strategy
             if len(matches) > 1 and not replace_all:
                 return content, 0, None, (
