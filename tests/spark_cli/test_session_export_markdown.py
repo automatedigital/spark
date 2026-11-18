@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from core.spark_state import SessionDB
+from spark_cli import session_export
 from spark_cli.session_export import export_session_redacted, redact_session
 from spark_cli.session_export_markdown import render_session_markdown
 
@@ -189,6 +190,32 @@ def test_final_export_bytes(format, suffix):
         assert json.loads(text)["parent_session_id"] == "parent"
 
 
+@pytest.mark.parametrize("format", ["json", "markdown"])
+@pytest.mark.parametrize("operation", ["fsync", "replace"])
+def test_failed_export_preserves_previous_file(format, operation, monkeypatch):
+    source = payload()
+    db = SimpleNamespace(export_session=lambda sid: source)
+    first = export_session_redacted("child", db, format=format)
+    path = Path(first["path"])
+    previous = path.read_bytes()
+    source["messages"].append({"role": "user", "content": "A new message"})
+
+    def fail(*args):
+        raise OSError("injected export failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(session_export, operation, fail, raising=False)
+        result = export_session_redacted("child", db, format=format)
+
+    assert "injected export failure" in result.get("error", "")
+    assert path.read_bytes() == previous
+    assert list(path.parent.iterdir()) == [path]
+    retry = export_session_redacted("child", db, format=format)
+    assert retry["path"] == first["path"]
+    assert b"A new message" in path.read_bytes()
+    assert list(path.parent.iterdir()) == [path]
+
+
 def test_export_default_errors_and_empty_session(tmp_path, monkeypatch):
     db = Mock()
     assert "error" in export_session_redacted("s", db, format="html")
@@ -200,7 +227,7 @@ def test_export_default_errors_and_empty_session(tmp_path, monkeypatch):
     db.export_session.return_value = None
     assert "Session not found" in export_session_redacted("s", db)["error"]
     db.export_session.return_value = {"id": "s", "messages": []}
-    monkeypatch.setattr(Path, "write_text", Mock(side_effect=OSError("fixture denied")))
+    monkeypatch.setattr(session_export, "NamedTemporaryFile", Mock(side_effect=OSError("fixture denied")))
     assert "fixture denied" in export_session_redacted("s", db)["error"]
 
 
