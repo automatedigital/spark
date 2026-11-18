@@ -11,11 +11,15 @@ import { parseArgs } from "node:util";
 const { values } = parseArgs({ options: {
   suite: { type: "string" }, repeat: { type: "string", default: "1" },
   "output-dir": { type: "string" },
+  "built-assets": { type: "string" },
 } });
 const repeat = Number(values.repeat);
 if (!Number.isInteger(repeat) || repeat < 1 || repeat > 10) throw new Error("--repeat must be 1..10");
 if (!["sidebar", "longthread", "production-recovery"].includes(values.suite)) throw new Error("Choose --suite sidebar|longthread|production-recovery");
 if (!values["output-dir"]) throw new Error("--output-dir is required");
+if (values["built-assets"] !== undefined && (values.suite !== "production-recovery" || !values["built-assets"])) {
+  throw new Error("--built-assets requires a directory and the production-recovery suite");
+}
 const output = path.resolve(values["output-dir"]);
 const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const root = path.resolve(web, "../../..");
@@ -31,6 +35,7 @@ for (let attempt = 1; attempt <= repeat; attempt += 1) {
   const args = suite === "sidebar" ? ["e2e/sidebar-scale.mjs"]
     : suite === "longthread" ? ["e2e/baseline-capture.mjs", "--repeat", "1", "--case", "dark:2000:1440", "--output-dir", directory]
       : ["e2e/production-recovery.py", "--output-dir", directory];
+  if (values["built-assets"]) args.push("--built-assets", path.resolve(values["built-assets"]));
   const started = Date.now();
   const child = spawn(command, args, { cwd: web, detached: true, env: {
     ...process.env, PYTHON: python, PYTHONPATH: path.join(root, "src"),
