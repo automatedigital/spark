@@ -157,13 +157,15 @@ jobs:
           PYTHON: python
         run: node ./e2e/browser-gates.mjs --suite sidebar --repeat 3 --output-dir /tmp/spark-browser-gates/sidebar
 
+      - name: Build canonical web candidate
+        run: npm run build
+
       - name: Production-built draft and recovery browser gate
         env:
           PYTHON: python
-        run: node ./e2e/browser-gates.mjs --suite production-recovery --output-dir /tmp/spark-browser-gates/production-recovery
-
-      - name: Build canonical web candidate
-        run: npm run build
+        run: >-
+          node ./e2e/browser-gates.mjs --suite production-recovery
+          --built-assets ../web_dist --output-dir /tmp/spark-browser-gates/production-recovery
 
       - name: Production child inspector browser gate
         env:

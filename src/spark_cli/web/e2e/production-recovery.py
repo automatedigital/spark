@@ -1,7 +1,7 @@
-"""Run unchanged recovery assertions against freshly built temporary SPA assets.
+"""Run recovery assertions against production SPA assets in a temporary runtime.
 
 The runtime source copy gives web_server.WEB_DIST its normal relative layout.
-Neither the tracked bundle nor the installed app is read as acceptance evidence.
+Standalone runs build their own assets. CI can supply a build from the current job.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--built-assets", type=Path, help="Use the fresh production build from this job.")
     args = parser.parse_args()
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -31,17 +32,22 @@ def main():
             "web", "web_dist", "__pycache__", "*.pyc", "*.egg-info",
         ))
         built = runtime / "spark_cli" / "web_dist"
-        build = subprocess.run(
-            [str(web / "node_modules/.bin/vite"), "build", str(web),
-             "--outDir", str(built), "--emptyOutDir", "--logLevel", "warn"],
-            cwd=web, capture_output=True, text=True, timeout=180, check=False,
-        )
-        (output / "build.log").write_text(build.stdout + build.stderr)
-        if build.returncode:
-            raise RuntimeError(f"Temporary production build failed: {build.returncode}")
+        build_exit = None
+        if args.built_assets is None:
+            build = subprocess.run(
+                [str(web / "node_modules/.bin/vite"), "build", str(web),
+                 "--outDir", str(built), "--emptyOutDir", "--logLevel", "warn"],
+                cwd=web, capture_output=True, text=True, timeout=180, check=False,
+            )
+            build_exit = build.returncode
+            (output / "build.log").write_text(build.stdout + build.stderr)
+            if build_exit:
+                raise RuntimeError(f"Temporary production build failed: {build_exit}")
+        else:
+            shutil.copytree(args.built_assets.resolve(strict=True), built)
         manifest = built / ".vite" / "manifest.json"
-        if not manifest.is_file():
-            raise AssertionError("Production manifest missing")
+        if not manifest.is_file() or not (built / "index.html").is_file():
+            raise AssertionError("Production build must contain a Vite manifest and index.html")
         shutil.copyfile(manifest, output / "manifest.json")
         os.environ["SPARK_E2E_BUILT_WEB"] = "1"
         os.environ["PYTHONPATH"] = str(runtime)
@@ -63,7 +69,8 @@ def main():
             "mode": "production-built", "runtimeSource": str(runtime),
             "builtAssets": str(built), "driver": str(driver),
             "canonicalBundleTouched": False,
-            "python": sys.version, "buildExit": build.returncode, "resolvedBackendSource": source_origin,
+            "python": sys.version, "buildExit": build_exit, "resolvedBackendSource": source_origin,
+            "suppliedBuild": str(args.built_assets.resolve()) if args.built_assets is not None else None,
         }, indent=2) + "\n")
 
 
