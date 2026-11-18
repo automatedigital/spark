@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+from os import fsync, replace
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from spark_cli.config import get_spark_home
@@ -126,11 +128,27 @@ def export_session_redacted(
     else:
         content = json.dumps(redacted, indent=2, default=str, ensure_ascii=False)
         suffix = "json"
+    temporary_path = None
     try:
         path = exports_dir() / f"{session_id}.{suffix}"
-        path.write_text(content, encoding="utf-8")
+        with NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=".export-", suffix=".tmp", delete=False,
+        ) as stream:
+            temporary_path = Path(stream.name)
+            stream.write(content)
+            stream.flush()
+            fsync(stream.fileno())
+        replace(temporary_path, path)
+        temporary_path = None
     except OSError as exc:
         return {"error": f"Could not write session export: {exc}"}
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("Could not remove temporary session export", exc_info=True)
     return {
         "ok": True,
         "path": str(path),
