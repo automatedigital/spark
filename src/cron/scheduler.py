@@ -766,7 +766,7 @@ def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict, is_cance
     _cron_future = _cron_pool.submit(agent.run_conversation, prompt)
     _inactivity_timeout = False
     try:
-        if _cron_inactivity_limit is None:
+        if _cron_inactivity_limit is None and is_cancelled is None:
             result = _cron_future.result()
         else:
             result = None
@@ -779,6 +779,8 @@ def _execute_job_with_timeout(agent, job: dict, prompt: str, env: dict, is_cance
                     if hasattr(agent, "interrupt"):
                         agent.interrupt(JOB_CANCELLED_ERROR)
                     raise RuntimeError(JOB_CANCELLED_ERROR)
+                if _cron_inactivity_limit is None:
+                    continue
                 _idle_secs = 0.0
                 if hasattr(agent, "get_activity_summary"):
                     try:
