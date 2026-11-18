@@ -1201,17 +1201,20 @@ class TestCancellationPhases:
         assert error == f"RuntimeError: {JOB_CANCELLED_ERROR}"
         initialize.assert_not_called()
 
-    def test_cancel_during_model_interrupts_agent(self, monkeypatch):
+    @pytest.mark.parametrize("idle_timeout", [60, 0])
+    def test_cancel_during_model_interrupts_agent(self, monkeypatch, idle_timeout):
         import threading
 
         release = threading.Event()
+        interrupts = []
 
         class Agent:
             def run_conversation(self, _prompt):
                 release.wait(2)
                 return {"final_response": "late"}
 
-            def interrupt(self, _reason):
+            def interrupt(self, reason):
+                interrupts.append(reason)
                 release.set()
 
         monkeypatch.setattr("cron.scheduler.SCHEDULER_POLL_INTERVAL_SECS", 0.01)
@@ -1220,9 +1223,10 @@ class TestCancellationPhases:
                 Agent(),
                 {"name": "cancel"},
                 "prompt",
-                {"cron_timeout": 60},
+                {"cron_timeout": idle_timeout},
                 is_cancelled=lambda: True,
             )
+        assert interrupts == [JOB_CANCELLED_ERROR]
 
     def test_cancel_before_delivery_suppresses_delivery_and_marking(self, tmp_path):
         job = {"id": "cancel-delivery", "name": "cancel", "enabled": True, "schedule": {"kind": "interval"}}
