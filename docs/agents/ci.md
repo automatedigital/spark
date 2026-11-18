@@ -116,15 +116,6 @@ Node and Python Playwright browser installs remain because their pinned versions
 use different browser revisions; sharing that cache would select the wrong binary.
 Desktop packaging stays manual, outside ordinary PR quality work.
 
-## November 18 production browser build
-
-The browser job uses one fresh `npm run build` for production recovery, the
-child inspector and navigation. The build step checks types and bundle budgets
-before any of those browser gates run. Recovery copies those assets into its
-temporary backend tree and records the supplied build path and manifest.
-Standalone recovery without `--built-assets` still builds into its own temporary
-tree. Missing or incomplete explicitly supplied assets fail the gate.
-
 Inspected campaign cancellations belonged to superseded correction heads; the
 sampled jobs had acquired runners and were cancelled during execution. No
 runner-acquisition failure was found in that sample. Historic dependency-update
@@ -144,3 +135,17 @@ requesting an mtime one nanosecond ahead can round back to the old revision.
 Verify the temporary file's actual revision advances before atomic replacement;
 reject publication if the filesystem cannot represent it. Precision-simulation
 regressions supplement, rather than replace, hosted Windows contention tests.
+
+## November 18 production browser build
+
+The browser job uses one fresh `npm run build` for production recovery, the
+child inspector and navigation. The build step checks types and bundle budgets
+before any of those browser gates run. Recovery copies those assets into its
+temporary backend tree and records the supplied build path and manifest.
+Standalone recovery without `--built-assets` still builds into its own temporary
+tree. Missing or incomplete explicitly supplied assets fail the gate.
+
+The sidebar browser gate waits for second-page rows to render before capturing
+the scroll anchor for the SSE insertion check. Seeing the request alone can
+leave pagination and insertion overlapping in this fixture. The test still
+requires one second-page request and the same visible anchor after insertion.

@@ -339,7 +339,10 @@ db.close()
     const scroll = page.getByTestId("session-sidebar-scroll");
     await scroll.evaluate((el) => { el.scrollTop = el.scrollHeight; });
     await waitRequest((request) => request.offset === 50);
-    await page.waitForTimeout(250);
+    // The request can finish before React commits the larger virtual list.
+    // Measure the SSE insertion only after second-page rows are mounted.
+    await page.waitForFunction(() => Array.from(document.querySelectorAll("[data-sidebar-session-row]"))
+      .some((element) => /^scale-0[5-9][0-9]$/.test(element.dataset.sidebarSessionRow)));
     assert.ok(await page.locator("[data-sidebar-session-row]").count() <= 60);
     assert.equal(sessionRequests.filter((request) => request.offset === 50).length, 1, "Single-flight second page");
     metrics.secondPageRequests = sessionRequests.filter((request) => request.offset === 50).length;
