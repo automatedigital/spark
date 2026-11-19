@@ -17,13 +17,8 @@ Migration follow-up: [#262](https://github.com/automatedigital/spark/issues/262)
 
 ## Deferral scope
 
-`.github/dependabot.yml` ignores only Vite 8.x, ESLint 10.x and TypeScript 6.x–7.x
-within the nested frontend npm ecosystem. Current supported major lines still
-receive minor/patch proposals; other packages and ecosystems are unchanged.
-Future majors outside these ranges remain eligible for review. These ignores
-must be removed as part of each coordinated migration, after peer compatibility
-and full acceptance pass. They are not a declaration that these releases are
-unsafe or permanently unsupported.
+These upgrades remain deferred until the peer compatibility and acceptance
+criteria above are met. Review proposed upgrades manually.
 
 No dependency version, lockfile, npm install behavior, CI check, audit threshold
 or application source is changed. Security findings in a deferred major require
@@ -41,4 +36,4 @@ Before this configuration-only change, latest main workflow runs passed:
 and [npm supply chain](https://github.com/automatedigital/spark/actions/runs/43935594932).
 The latter three ran on `2d05317c`; the subsequent main commit `90575dd7` adds
 only the separately passing actionlint workflow. These source-identical checks
-remain applicable; this follow-up changes only Dependabot configuration/docs.
+remain applicable; the original follow-up changed only Dependabot configuration and documentation.

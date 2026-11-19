@@ -80,10 +80,10 @@ an installation path or symlink named `node@22` may point to another version.
 (cd src/spark_cli/web && npm run test:e2e:sidebar)
 ```
 
-Keep `.venv` active for browser suites that launch Python. The Node and Python
-Playwright suites need their respective browser installations; see
-`.github/workflows/web-quality.yml`. Manual servers and browser fixtures must use
-an isolated `SPARK_HOME`, not the user's live profile.
+Keep `.venv` active for browser suites that launch Python. See
+[CI verification](docs/agents/ci.md) for the local production build, full browser
+gate, both Playwright browser installations and the manual hosted fallback.
+Manual servers and browser fixtures must use an isolated `SPARK_HOME`.
 
 Before pushing, run the relevant focused tests while iterating, then run
 `ruff check src/`, the relevant pytest subset, and the full suite when practical

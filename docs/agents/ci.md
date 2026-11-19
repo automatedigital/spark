@@ -16,9 +16,9 @@ the integrated commit and is separate acceptance evidence.
   gate. Pushes to `main` and manual dispatch always run the full fast suite.
   Both paths keep separate non-serial and serial runs, the two slow ownership
   contracts, and tool manifest validation. The workflow logs its selected scope.
-- `web-quality.yml`: frontend and shared backend changes; frontend checks and
-  real-backend browser flows. Browser acceptance starts after frontend checks
-  pass. Backend changes can affect Chat, so these triggers stay broad.
+- `web-quality.yml`: frontend lint, types and unit tests on frontend and shared
+  backend changes. Run browser acceptance locally. An explicit manual dispatch
+  runs the full Ubuntu browser fallback after the frontend checks pass.
 - `release-contracts.yml`: PR/manual Windows persistence contracts. Windows adds
   distinct atomic replacement, open-file and path behavior; Linux cases already
   run in Python quality, so there is no duplicate Ubuntu persistence job.
@@ -69,6 +69,83 @@ do not add ignores to conceal them. The hosted ratchet command is:
 ```bash
 ruff check src/ --select UP015,F,B,I,W,UP028,UP031,UP035,UP037,UP042 --ignore B027
 ```
+
+## Local web build and browser acceptance
+
+Run the affected browser flows for web and shared-backend changes. For full
+browser acceptance, run the block below from the root of a disposable checkout
+at the candidate commit. The build writes to the tracked `web_dist/` directory
+and draft recovery writes into `web/screenshots/` in that checkout.
+
+Use Python 3.11 with `.[dev,web]` installed in `.venv` and Node 22. The Node
+lockfile and Python Playwright 1.62.0 require separate Chromium revisions.
+On macOS install both as shown below. On Ubuntu 24.04 use
+`npx playwright install --with-deps chromium` for the first install.
+
+```bash
+(
+  set -e
+  lock=/tmp/automatedigital-local-ci-heavy.lock
+  mkdir "$lock" || { echo "Heavy validation busy. Retry once the lock is free." >&2; exit 1; }
+  trap 'rmdir "$lock"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  source .venv/bin/activate
+  export PYTHON="$(command -v python)"
+  reports="$(mktemp -d "${TMPDIR:-/tmp}/spark-browser-gates.XXXXXX")"
+  printf 'Browser reports: %s\n' "$reports"
+  cd src/spark_cli/web
+  node --version
+  node -p process.execPath
+  node -e 'if (process.versions.node.split(".")[0] !== "22") process.exit(1)'
+  npm ci
+  npm run lint
+  npx tsc --noEmit -p tsconfig.app.json
+  npm test
+  npx playwright install chromium
+  python -m pip install playwright==1.62.0
+  python -m playwright install chromium
+  node e2e/integration-settings.mjs
+  npm run test:e2e
+  COMPOSER_HISTORY_OUTPUT="$reports/composer-history" node e2e/composer-history.mjs
+  STASH_OUTPUT="$reports/prompt-stash" node e2e/prompt-stash.mjs
+  MERMAID_OUTPUT="$reports/mermaid" node e2e/mermaid.mjs
+  MERMAID_COMPLETION_OUTPUT="$reports/mermaid-completion" node e2e/mermaid-completion.mjs
+  node e2e/cron-overrides.mjs
+  node e2e/cron-outputs.mjs
+  node e2e/chat-contracts.mjs
+  npm run test:e2e:recovery
+  python e2e/work-recovery.py
+  node e2e/browser-gates.mjs --suite sidebar --repeat 3 --output-dir "$reports/sidebar"
+  npm run build
+  node e2e/browser-gates.mjs --suite production-recovery --built-assets ../web_dist --output-dir "$reports/production-recovery"
+  SPARK_E2E_BUILT_WEB=1 SPARK_E2E_REPORTS="$reports/inspector" python e2e/subagent-controls.py
+  SPARK_E2E_BUILT_WEB=1 SPARK_E2E_REPORTS="$reports/navigation" python e2e/subagent-navigation.py
+  node e2e/browser-gates.mjs --suite longthread --repeat 3 --output-dir "$reports/longthread"
+)
+```
+
+Record the candidate SHA, commands and results. For an Ubuntu comparison or
+when local acceptance is unavailable, manually run **web-quality** for the
+candidate ref and confirm the run's SHA. Hosted browser diagnostics upload on
+failure and expire after three days. A failed browser gate still requires
+resolution before claiming browser acceptance.
+
+## Desktop packaging
+
+Build packages on the target platform. On a Mac with Xcode Command Line Tools,
+Rust, Node 22 and Python 3.11, run `bash scripts/build_desktop.sh`. Signed,
+notarized builds also need the signing identity and notary profile documented
+in `scripts/release.env.example`.
+
+On Windows x64, use PowerShell 7, Python 3.11, Node 22, Rust stable with the MSVC
+toolchain, Visual Studio C++ Build Tools with a Windows SDK, and WebView2.
+Install `python -m pip install -e ".[web,pty,messaging,dev]"` in a Windows venv,
+then run `./scripts/build_desktop_windows.ps1`. Use the manual **Windows desktop
+beta** fallback for native worktree and packaged lifecycle validation or when a
+local Windows builder is unavailable. It retains the versioned unsigned NSIS
+installer for 30 days. Publishing a verified installer is a separate release
+step. Web/browser acceptance and installed-package acceptance are separate.
 
 ## Replay and output-test isolation
 
@@ -138,7 +215,7 @@ regressions supplement, rather than replace, hosted Windows contention tests.
 
 ## November 18 production browser build
 
-The browser job uses one fresh `npm run build` for production recovery, the
+The full browser gate uses one fresh `npm run build` for production recovery, the
 child inspector and navigation. The build step checks types and bundle budgets
 before any of those browser gates run. Recovery copies those assets into its
 temporary backend tree and records the supplied build path and manifest.

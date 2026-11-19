@@ -1,6 +1,7 @@
 name: web-quality
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -62,10 +63,10 @@ jobs:
       - name: Unit tests
         run: npx vitest run
 
-  # Drive a real browser against a real Python backend. These contracts cover
-  # multi-chat isolation, refresh/reconnect, gateway restart, and persisted
-  # history, so a failure must block the merge rather than report as advisory.
+  # Local browser acceptance is the default. Dispatch this fallback when
+  # local acceptance is unavailable or Ubuntu-specific evidence is needed.
   e2e:
+    if: github.event_name == 'workflow_dispatch'
     needs: lint-types-tests
     # Playwright 1.59.1 does not support Ubuntu 26 dependency provisioning.
     runs-on: ubuntu-24.04
@@ -184,8 +185,8 @@ jobs:
           PYTHON: python
         run: node ./e2e/browser-gates.mjs --suite longthread --repeat 3 --output-dir /tmp/spark-browser-gates/longthread
 
-      - name: Retain browser gate reports, failures and screenshots
-        if: always()
+      - name: Retain browser diagnostics on failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: browser-gates-${{ github.run_attempt }}
@@ -193,4 +194,4 @@ jobs:
             /tmp/spark-browser-gates
             src/spark_cli/web/screenshots/work-recovery
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
