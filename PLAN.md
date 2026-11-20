@@ -1,3 +1,26 @@
+# November 20 scheduled-job reliability plan
+
+The November 18 Spark campaign named three deferred items after PRs #274–276 merged. Its final report is in [the project thread](t3-thread://v2/7be29275-49a0-47f8-b6cd-0ddb476aa5c7/mcp:launch:b0736923c393953a6c2f07191fbf0d157da8b2a72eadc80e7c15c4d6aa5cf9cd). At base 36672ad5 the live adapter waits on a future with a deadline, script capture buffers both streams, and the job loader accepts unchecked JSON shapes. The changes below address those paths. The November 6 plan follows this section for reference.
+
+| Owner | Task and write boundary | Dependencies | Acceptance and risk |
+| --- | --- | --- | --- |
+| A · Delivery | Handle ambiguous live text and media send timeouts in the delivery functions in cron/scheduler.py. Add focused delivery tests in a new module. | Base only | Request cancellation of pending sends, surface uncertain delivery, and suppress duplicate fallback. Preserve explicit adapter rejection fallback. A platform may have accepted a send before cancellation. |
+| B · Scripts | Bound stdout and stderr capture in the script execution function of cron/scheduler.py and an optional cron helper. Add focused script tests. | Base only | Exercise large concurrent output, nonzero exit, redaction and timeout. Keep normal output compatible. Truncation must be visible and must not expose partial secrets. Avoid unbounded temporary files. |
+| C · Storage | Validate the persisted jobs envelope and rows in cron/jobs.py, with focused loader tests. | Base only | Valid empty and legacy jobs still load. Reject malformed shape with an actionable error and preserve original bytes across attempted mutation, including repair. Diagnostics must omit job content. |
+| D · Integration | Add independent public-entry regression coverage in tests/cron/test_job_store_recovery.py. | Storage contract C | A bad snapshot survives a public mutation and a corrected file permits normal operations without restart. Use a temporary profile. |
+| E · Operator guide | Update docs/guides/automate-with-cron.md. | Final behavior from A–C | Explain how to handle uncertain delivery, oversized script output and invalid job storage. Verify guidance against the implemented paths, preserve recovery options and avoid undocumented commands. |
+
+The coordinator owns this plan and the combined PR. A and B edit disjoint functions. D and E can prepare fixtures and text before final integration. Run the cron suite, affected tools and CLI tests, lint and type checks, manifest validation and a diff check. Record results and platform limits in the PR. No live message, scheduled production job, migration, release or desktop build is needed.
+
+### Local acceptance
+
+- The two storage recovery cases failed on the planning commit before implementation. Both now preserve the original bytes and allow a new job after the operator restores the file.
+- The maintained Python smoke and cron selections passed together on macOS with Python 3.11.7. The serial run passed 632 tests in 95.26 seconds, including the delivery, capture, storage and recovery regressions.
+- The CI Ruff rules passed. Full Ruff reported the same 298 findings before and after the change. Mypy passed across 157 source files, and the manifest check validated 70 tools.
+- Live delivery tests used a local gateway loop and simulated adapters. Actual platform receipt after timeout remains unknown. Native Windows execution and desktop packaging were outside the local run.
+
+---
+
 # Spark simplicity and performance improvement plan
 
 Prepared 2026-11-06. **25 proposed improvements, in priority order; one implementation PR per item.** All checkboxes start unchecked. This is an implementation brief, not a claim that the changes or performance gains have been verified.

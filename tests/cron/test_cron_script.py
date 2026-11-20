@@ -174,6 +174,130 @@ class TestRunJobScript:
         parsed = json.loads(output)
         assert parsed["new_prs"][0]["number"] == 42
 
+    def test_oversized_stdout_and_stderr_are_discarded(self, cron_env):
+        from cron.scheduler import _run_job_script
+        from cron.script_capture import SCRIPT_STREAM_LIMIT
+
+        script = cron_env / "scripts" / "oversized.py"
+        script.write_text(textwrap.dedent(f"""\
+            import os
+            from threading import Thread
+
+            def write_stream(fd):
+                os.write(fd, b"-----BEGIN PRIVATE KEY-----\\npartial-key-must-not-appear\\n")
+                for _ in range(64):
+                    os.write(fd, b"x" * {SCRIPT_STREAM_LIMIT})
+                os.write(fd, b"\\n-----END PRIVATE KEY-----\\n")
+
+            writers = [Thread(target=write_stream, args=(fd,)) for fd in (1, 2)]
+            for writer in writers:
+                writer.start()
+            for writer in writers:
+                writer.join()
+            raise SystemExit(7)
+        """))
+
+        success, output = _run_job_script("oversized.py", timeout=5)
+        assert success is False
+        assert "Script exited with code 7" in output
+        assert "stderr:\n[Script output truncated" in output
+        assert "stdout:\n[Script output truncated" in output
+        assert "partial-key-must-not-appear" not in output
+        assert len(output) < 512
+
+    def test_success_reports_oversized_stderr_and_keeps_stdout(self, cron_env):
+        from cron.scheduler import _run_job_script
+        from cron.script_capture import SCRIPT_STREAM_LIMIT
+
+        script = cron_env / "scripts" / "noisy.py"
+        script.write_text(textwrap.dedent(f"""\
+            import sys
+            print("collected data")
+            sys.stderr.write("x" * {SCRIPT_STREAM_LIMIT + 1})
+        """))
+
+        success, output = _run_job_script("noisy.py", timeout=5)
+        assert success is True
+        assert output.startswith("collected data\nstderr: [Script output truncated")
+        assert len(output) < 512
+
+    def test_stream_at_limit_is_kept(self, cron_env):
+        from cron.scheduler import _run_job_script
+        from cron.script_capture import SCRIPT_STREAM_LIMIT
+
+        script = cron_env / "scripts" / "exact.py"
+        script.write_text(textwrap.dedent(f"""\
+            import sys
+            sys.stdout.write("x" * {SCRIPT_STREAM_LIMIT})
+            sys.stderr.write("ordinary warning")
+        """))
+
+        assert _run_job_script("exact.py", timeout=5) == (True, "x" * SCRIPT_STREAM_LIMIT)
+
+    def test_redacts_complete_streams_on_failure(self, cron_env):
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "credentials.py"
+        script.write_text(textwrap.dedent("""\
+            import sys
+            print('{"token": "fake-json-token"}')
+            print("TEST_PASSWORD=fake-env-pass", file=sys.stderr)
+            raise SystemExit(3)
+        """))
+
+        success, output = _run_job_script("credentials.py", timeout=5)
+        assert success is False
+        assert 'stdout:\n{"token": "***"}' in output
+        assert "stderr:\nTEST_PASSWORD=***" in output
+
+    def test_withholds_output_if_redaction_fails(self, cron_env, monkeypatch):
+        from agent import redact
+        from cron.scheduler import _run_job_script
+
+        def fail_redaction(text):
+            raise ValueError(text)
+
+        monkeypatch.setattr(redact, "redact_sensitive_text", fail_redaction)
+        script = cron_env / "scripts" / "redaction_failure.py"
+        script.write_text('print("TEST_PASSWORD=fake-env-pass")\n')
+
+        assert _run_job_script("redaction_failure.py", timeout=5) == (
+            False,
+            "Script output could not be redacted.",
+        )
+
+    def test_timeout_discards_output_while_pipes_are_active(self, cron_env):
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "endless.py"
+        script.write_text(textwrap.dedent("""\
+            import os
+            import time
+            for _ in range(2000):
+                os.write(1, b"data from unfinished script\\n")
+                os.write(2, b"x" * 8192)
+                time.sleep(0.01)
+        """))
+
+        success, output = _run_job_script("endless.py", timeout=1)
+        assert success is False
+        assert output.startswith("Script timed out after 1s:")
+        assert "data from unfinished script" not in output
+
+    def test_timeout_when_descendant_keeps_pipes_open(self, cron_env):
+        from cron.scheduler import _run_job_script
+
+        script = cron_env / "scripts" / "inherited_pipe.py"
+        script.write_text(textwrap.dedent("""\
+            import subprocess
+            import sys
+            subprocess.Popen([sys.executable, "-c", "import time; time.sleep(4)"])
+        """))
+
+        success, output = _run_job_script("inherited_pipe.py", timeout=1)
+        assert success is False
+        assert output.startswith("Script timed out after 1s:")
+
 
 class TestBuildJobPromptWithScript:
     """Test that script output is injected into the prompt."""
