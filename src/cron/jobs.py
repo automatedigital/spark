@@ -525,43 +525,116 @@ def save_jobs(jobs: list[dict[str, Any]]):
     _save_jobs(jobs)
 
 
+def _invalid_job_store(location: str, expected: str) -> RuntimeError:
+    return RuntimeError(
+        f"Invalid cron database (jobs.json): {location} must be {expected}. "
+        "Correct or restore jobs.json and retry."
+    )
+
+
+def _validate_job_store(data: Any) -> list[dict[str, Any]]:
+    """Validate record shapes. The scheduler handles schedule and next-run repair."""
+    if not isinstance(data, dict):
+        raise _invalid_job_store("the root", "an object")
+    jobs = data.get("jobs")
+    if not isinstance(jobs, list):
+        raise _invalid_job_store("jobs", "an array")
+
+    seen_ids: set[str] = set()
+    for index, job in enumerate(jobs):
+        row = f"jobs[{index}]"
+        if not isinstance(job, dict):
+            raise _invalid_job_store(row, "an object")
+        job_id = job.get("id")
+        if not isinstance(job_id, str) or not job_id.strip() or job_id in seen_ids:
+            raise _invalid_job_store(f"{row}.id", "a unique non-blank string")
+        seen_ids.add(job_id)
+
+        for field in ("name", "prompt", "deliver"):
+            if field in job and not isinstance(job[field], str):
+                raise _invalid_job_store(f"{row}.{field}", "a string")
+        for field in ("skill", "script", "model", "provider", "base_url"):
+            value = job.get(field)
+            if value is not None and not isinstance(value, str):
+                raise _invalid_job_store(f"{row}.{field}", "a string or null")
+
+        if "enabled" in job and not isinstance(job["enabled"], bool):
+            raise _invalid_job_store(f"{row}.enabled", "a boolean")
+        if job.get("origin") is not None and not isinstance(job["origin"], dict):
+            raise _invalid_job_store(f"{row}.origin", "an object or null")
+
+        skills = job.get("skills")
+        if skills is not None and not isinstance(skills, str):
+            if not isinstance(skills, list) or not all(isinstance(skill, str) for skill in skills):
+                raise _invalid_job_store(f"{row}.skills", "a string, an array of strings, or null")
+
+        repeat = job.get("repeat", {})
+        if not isinstance(repeat, dict):
+            raise _invalid_job_store(f"{row}.repeat", "an object")
+        times = repeat.get("times")
+        if times is not None and type(times) is not int:
+            raise _invalid_job_store(f"{row}.repeat.times", "an integer or null")
+        completed = repeat.get("completed", 0)
+        if type(completed) is not int or completed < 0:
+            raise _invalid_job_store(f"{row}.repeat.completed", "a non-negative integer")
+
+    return jobs
+
+
 def _load_jobs() -> list[dict[str, Any]]:
     """Load all jobs from storage."""
     ensure_dirs()
-    if not JOBS_FILE.exists():
-        return []
-
+    needs_repair = False
     try:
         with open(JOBS_FILE, encoding='utf-8') as f:
             data = json.load(f)
-            return data.get("jobs", [])
+    except FileNotFoundError:
+        return []
     except json.JSONDecodeError:
-        # Retry with strict=False to handle bare control chars in string values
+        # Retry with strict=False to handle bare control characters in strings.
         try:
             with open(JOBS_FILE, encoding='utf-8') as f:
                 data = json.loads(f.read(), strict=False)
-            jobs = data.get("jobs", [])
-            if jobs:
-                # Close the source before replacing it on Windows. The caller
-                # still holds the encompassing jobs lock through publication.
-                _save_jobs(jobs)
-                logger.warning("Auto-repaired jobs.json (had invalid control characters)")
-            return jobs
-        except Exception as e:
-            logger.error("Failed to auto-repair jobs.json: %s", e)
-            raise RuntimeError(f"Cron database corrupted and unrepairable: {e}") from e
-    except OSError as e:
-        logger.error("IOError reading jobs.json: %s", e)
-        raise RuntimeError(f"Failed to read cron database: {e}") from e
+        except (ValueError, RecursionError, OSError):
+            raise RuntimeError(
+                "Cron database corrupted and unrepairable. Correct or restore jobs.json and retry."
+            ) from None
+        needs_repair = True
+    except (ValueError, RecursionError):
+        raise RuntimeError(
+            "Cron database corrupted and unrepairable. Correct or restore jobs.json and retry."
+        ) from None
+    except OSError as exc:
+        raise RuntimeError(
+            "Failed to read cron database. Check access to jobs.json and retry."
+        ) from exc
+
+    jobs = _validate_job_store(data)
+    if needs_repair:
+        # Validate the whole snapshot and close both readers before replacing it
+        # on Windows. The caller still holds the encompassing jobs lock.
+        try:
+            _write_job_store(data)
+        except OSError as exc:
+            raise RuntimeError(f"Failed to write repaired jobs.json: {exc}") from exc
+        logger.warning("Auto-repaired jobs.json (had invalid control characters)")
+    return jobs
 
 
 def _save_jobs(jobs: list[dict[str, Any]]):
     """Save all jobs to storage."""
+    data = {"jobs": jobs, "updated_at": _spark_now().isoformat()}
+    _validate_job_store(data)
+    _write_job_store(data)
+
+
+def _write_job_store(data: dict[str, Any]):
+    """Atomically publish a validated snapshot."""
     ensure_dirs()
     fd, tmp_path = tempfile.mkstemp(dir=str(JOBS_FILE.parent), suffix='.tmp', prefix='.jobs_')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump({"jobs": jobs, "updated_at": _spark_now().isoformat()}, f, indent=2)
+            json.dump(data, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, JOBS_FILE)
@@ -712,8 +785,10 @@ def _update_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
             raise ValueError("Job ID is immutable")
         updates = dict(updates)
         if "schedule" in updates or "timezone" in updates:
-            zone = updates.pop("timezone", job.get("schedule", {}).get("timezone"))
-            proposed = updates.get("schedule", job["schedule"])
+            previous = job.get("schedule")
+            previous_zone = previous.get("timezone") if isinstance(previous, dict) else None
+            zone = updates.pop("timezone", previous_zone)
+            proposed = updates.get("schedule", previous)
             if zone is None and isinstance(proposed, dict):
                 proposed = {key: value for key, value in proposed.items() if key != "timezone"}
             updates["schedule"] = validate_schedule(proposed, zone)
@@ -908,16 +983,21 @@ def get_due_jobs() -> list[dict[str, Any]]:
 
     for job in jobs:
         try:
-            validate_schedule(job.get("schedule"))
-            if job.get("next_run_at"):
-                datetime.fromisoformat(job["next_run_at"])
-        except (ValueError, TypeError) as exc:
+            schedule = job.get("schedule")
+            if not isinstance(schedule, dict):
+                raise ValueError("Stored schedule must be an object")
+            validate_schedule(schedule)
+            next_run_at = job.get("next_run_at")
+            if next_run_at is not None and next_run_at != "":
+                _ensure_aware(datetime.fromisoformat(next_run_at))
+        except (ValueError, TypeError, OverflowError):
             for raw in raw_jobs:
                 if raw["id"] == job["id"]:
-                    reason = f"Schedule requires repair: {exc}"
+                    reason = "Schedule requires repair. Check schedule and next_run_at."
                     if raw.get("enabled", True) or raw.get("paused_reason") != reason:
-                        raw.update(enabled=False, state="paused", next_run_at=None,
-                                   paused_reason=reason)
+                        raw.update(
+                            enabled=False, state="paused", next_run_at=None, paused_reason=reason
+                        )
                         needs_save = True
             continue
         if not job.get("enabled", True):
