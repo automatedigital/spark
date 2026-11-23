@@ -165,6 +165,19 @@ _VIDEO_EXTS = frozenset({'.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp'})
 _IMAGE_EXTS = frozenset({'.jpg', '.jpeg', '.png', '.webp', '.gif'})
 
 
+class _LiveDeliveryUncertain(Exception):
+    """The live send timed out after dispatch and may have reached the platform."""
+
+
+def _wait_for_live_send(future, timeout: int, kind: str):
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError as exc:
+        # The platform may have accepted the send before cancellation takes effect.
+        future.cancel()
+        raise _LiveDeliveryUncertain(f"live adapter {kind} send timed out") from exc
+
+
 def _send_media_via_adapter(adapter, chat_id: str, media_files: list, metadata: dict | None, loop, job: dict) -> None:
     """Send extracted MEDIA files as native platform attachments via a live adapter.
 
@@ -187,12 +200,14 @@ def _send_media_via_adapter(adapter, chat_id: str, media_files: list, metadata: 
                 coro = adapter.send_document(chat_id=chat_id, file_path=media_path, metadata=metadata)
 
             future = asyncio.run_coroutine_threadsafe(coro, loop)
-            result = future.result(timeout=30)
+            result = _wait_for_live_send(future, timeout=30, kind="media")
             if result and not getattr(result, "success", True):
                 logger.warning(
                     "Job '%s': media send failed for %s: %s",
                     job.get("id", "?"), media_path, getattr(result, "error", "unknown"),
                 )
+        except _LiveDeliveryUncertain:
+            raise
         except Exception as e:
             logger.warning("Job '%s': failed to send media %s: %s", job.get("id", "?"), media_path, e)
 
@@ -227,7 +242,7 @@ def _build_delivery_content(job: dict, content: str) -> tuple[str, list]:
 
 def _send_via_live_adapter(adapter, chat_id: str, text: str, media_files: list,
                            thread_id, loop, job: dict) -> bool:
-    """Try to deliver via the live in-process adapter. Returns True on success."""
+    """Return True on success, False for fallback, or raise on an uncertain send."""
     send_metadata = {"thread_id": thread_id} if thread_id else None
     platform_name = job.get("_platform_name", "?")
     try:
@@ -236,7 +251,7 @@ def _send_via_live_adapter(adapter, chat_id: str, text: str, media_files: list,
             future = asyncio.run_coroutine_threadsafe(
                 adapter.send(chat_id, text, metadata=send_metadata), loop
             )
-            send_result = future.result(timeout=60)
+            send_result = _wait_for_live_send(future, timeout=60, kind="text")
             if send_result and not getattr(send_result, "success", True):
                 err = getattr(send_result, "error", "unknown")
                 logger.warning(
@@ -251,6 +266,8 @@ def _send_via_live_adapter(adapter, chat_id: str, text: str, media_files: list,
         if adapter_ok:
             logger.info("Job '%s': delivered to %s:%s via live adapter", job["id"], platform_name, chat_id)
         return adapter_ok
+    except _LiveDeliveryUncertain:
+        raise
     except Exception as e:
         logger.warning(
             "Job '%s': live adapter delivery to %s:%s failed (%s), falling back to standalone",
@@ -353,8 +370,13 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> str | 
 
     runtime_adapter = (adapters or {}).get(platform)
     if runtime_adapter is not None and loop is not None and getattr(loop, "is_running", lambda: False)():
-        if _send_via_live_adapter(runtime_adapter, chat_id, cleaned_text.strip(), media_files, thread_id, loop, job):
-            return None
+        try:
+            if _send_via_live_adapter(runtime_adapter, chat_id, cleaned_text.strip(), media_files, thread_id, loop, job):
+                return None
+        except _LiveDeliveryUncertain as exc:
+            msg = f"Delivery to {platform_name}:{chat_id} is uncertain. The {exc}. Check the destination before resending."
+            logger.warning("Job '%s': %s", job["id"], msg)
+            return msg
 
     return _send_via_standalone_path(platform, pconfig, chat_id, cleaned_text, thread_id, media_files, job)
 
@@ -417,6 +439,7 @@ def _run_job_script(script_path: str, timeout: int | None = None) -> tuple[bool,
         LLM can report the problem to the user.
     """
     from core.spark_constants import get_spark_home
+    from cron.script_capture import SCRIPT_STREAM_LIMIT, capture_script, decode_script_stream
 
     scripts_dir = get_spark_home() / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
@@ -445,15 +468,12 @@ def _run_job_script(script_path: str, timeout: int | None = None) -> tuple[bool,
     script_timeout = timeout if timeout is not None else _get_script_timeout()
 
     try:
-        result = subprocess.run(
-            [sys.executable, str(path)],
-            capture_output=True,
-            text=True,
-            timeout=script_timeout,
-            cwd=str(path.parent),
+        returncode, stdout_bytes, stderr_bytes = capture_script(
+            [sys.executable, str(path)], path.parent, script_timeout
         )
-        stdout = (result.stdout or "").strip()
-        stderr = (result.stderr or "").strip()
+        truncated = f"[Script output truncated. Stream exceeded {SCRIPT_STREAM_LIMIT // 1024} KiB.]"
+        stdout = truncated if stdout_bytes is None else decode_script_stream(stdout_bytes)
+        stderr = truncated if stderr_bytes is None else decode_script_stream(stderr_bytes)
 
         # Redact secrets from both stdout and stderr before any return path.
         try:
@@ -461,16 +481,18 @@ def _run_job_script(script_path: str, timeout: int | None = None) -> tuple[bool,
             stdout = redact_sensitive_text(stdout)
             stderr = redact_sensitive_text(stderr)
         except Exception:
-            logger.debug("Ignoring error in _run_job_script()", exc_info=True)
+            return False, "Script output could not be redacted."
 
-        if result.returncode != 0:
-            parts = [f"Script exited with code {result.returncode}"]
+        if returncode != 0:
+            parts = [f"Script exited with code {returncode}"]
             if stderr:
                 parts.append(f"stderr:\n{stderr}")
             if stdout:
                 parts.append(f"stdout:\n{stdout}")
             return False, "\n".join(parts)
 
+        if stderr_bytes is None:
+            return True, "\n".join(part for part in (stdout, f"stderr: {stderr}") if part)
         return True, stdout
 
     except subprocess.TimeoutExpired:

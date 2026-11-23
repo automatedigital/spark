@@ -261,6 +261,14 @@ One-shot schedules (`30m`, `1d`, ISO timestamps) disappear from the list after f
 
 ### Delivery failures
 
+**Delivery is uncertain after a live send timeout.** The destination may have
+received the message or some attachments. Spark skips the fallback send after
+this timeout. Check the destination chat or thread for the text and each
+attachment. Use **Execution history → Open saved output** or find the run's
+Markdown file in `cron/output/<job_id>/` under the active profile directory.
+Send only the confirmed missing content from that run. `spark cron run <job_id>`
+schedules a fresh execution and can repeat the job's actions.
+
 **Check the target is configured:**
 
 | Target | Requires |
@@ -316,18 +324,36 @@ cron:
 ps aux | grep spark
 ```
 
-**Check jobs.json permissions:**
-```bash
-ls -la ~/.spark/cron/jobs.json
-chmod 600 ~/.spark/cron/jobs.json
-```
+---
+
+### Invalid job storage
+
+1. Run `spark profile` to find the active profile directory. For a named profile,
+   use `spark -p <profile> profile` and keep the same `-p <profile>` flag for cron
+   commands. The job file is `cron/jobs.json` inside that directory.
+2. If Spark reports invalid job storage, keep a private copy of the original
+   file. Restore a known-good backup or use the error to fix a copy. The file
+   must contain a JSON object with a `jobs` array. Keep the original in place
+   until the corrected file is ready to replace it. Spark reads a missing file
+   as an empty job list.
+3. Run `spark cron list --all` for the same profile. Check that the expected
+   jobs and schedules are present before making more changes.
+
+If Spark reports a read error, check that the account running Spark owns the
+file and can read it. On macOS or Linux, run `ls -l cron/jobs.json` from the
+active profile directory. The owner can restore private read and write access
+with `chmod 600 cron/jobs.json`.
 
 ---
 
 ### Performance tips
 
 - **Stagger overlapping jobs.** Jobs run sequentially in each tick. `0 9 * * *` and `5 9 * * *` instead of both at `0 9 * * *`.
-- **Filter script output.** Scripts that dump megabytes will hit token limits. Emit only what the agent needs to reason about.
+- **Filter script output.** Spark keeps up to 64 KiB each of stdout and stderr.
+  If a stream exceeds that limit, Spark replaces the entire stream with a notice.
+  Check the **Prompt** section of the saved run output for `Script output truncated`.
+  Print only the summary the agent needs. If you need more detail, have the
+  script write a size-limited log and print its path with the summary.
 - **Add buffer time.** Each job creates a fresh agent session. Build in a few minutes of margin on time-sensitive schedules.
 
 ---
